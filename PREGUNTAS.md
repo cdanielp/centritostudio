@@ -49,3 +49,8 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
 - **Causa:** acumulacion de endpoints a traves de sesiones; este sesion aniadio ~15 lineas.
 - **Fix sugerido:** extraer las funciones background (_run_transcribe, _run_analyze, _run_depurar, _run_render) a un modulo separado `jobs.py`, dejando app.py solo con las rutas FastAPI (~250 lineas).
 - **Cuando:** al inicio de Fase 4 (antes de anadir el clipper) para no romper el limite mas.
+
+### 8. DELTA_THRESHOLD en depurador.py — constante faltante
+- **Situacion:** el umbral de 6dB de _eval_and_adjust esta hardcodeado en el `if abs(...) > 6`.
+- **Fix sugerido:** `DELTA_THRESHOLD = 6.0` en las constantes del modulo, referenciada en la funcion.
+- **Prioridad:** baja — aplica al inicio de Fase 4 junto con el refactor de app.py.

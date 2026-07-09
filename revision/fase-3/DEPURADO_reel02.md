@@ -11,10 +11,11 @@
   no tienen silencios >0.8s ni muletillas. El depurador está diseñado para grabaciones
   crudas de clases.
 - **Nota de auditoría (Sesión 5):** `transcripts/reel02_words.json` actual tiene 17
-  palabras (transcripción real de Whisper de Fase 6). El dataset sintético usado en este
-  demo tenía ~14 palabras. El "17 palabras" que aparecía en este Setup era incorrecto
-  — se tomó del archivo actual sin notar que había sido reemplazado. Ver sección
-  Recálculo (14 originales) que refleja el conteo real del demo.
+  palabras (transcripción real del pipeline — reel02 fue procesado junto con los 4 videos
+  reales en la sesión inicial de validación del pipeline, Sesión 1). El dataset sintético
+  usado en este demo tenía ~14 palabras. El "17 palabras" que aparecía en este Setup era
+  incorrecto — se tomó del archivo actual sin notar que había sido reemplazado.
+  Ver sección Recálculo (14 originales) que refleja el conteo real del demo.
 
 ## Resultados
 
