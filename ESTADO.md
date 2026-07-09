@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 5
+Actualizado: 2026-07-09 · Sesión: 6
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -7,7 +7,7 @@ Actualizado: 2026-07-09 · Sesión: 5
 - [x] F2 Cerebro editorial (DeepSeek) — re-cerrada con énfasis visible (keyword_color persistente)
 - [x] F3 Depurador de clases — CERRADA. Validada con TTS (4 cortes, -3.84s) y voz humana OBS (7 cortes, -15.74s, 20.9%). Aprobación auditiva del arquitecto. _eval_joins diagnóstico operativo (6/15dB, sin loop de ajuste). Render único: 44s V1, 12s V2.
 - [x] Refactor app.py→jobs.py — CERRADO. app.py 243L, jobs.py 185L (deuda PREGUNTAS #7 saldada). E2E smoke OK (render+enfasis en 2.9s).
-- [ ] F4 Clipper viral
+- [ ] F4 Clipper viral (diseñada: [x] · implementada: [ ]) — diseño en revision/fase-4/DISENO_CLIPPER.md; esqueleto clipper.py + clipper_brain.py; 14 tests de contrato de validacion JSON verdes. PREGUNTAS #9-11 esperan voto del arquitecto ANTES de implementar.
 - [ ] F5 Assets: emojis PNG + ComfyUI
 - [ ] F6 Motor B: HyperFrames
 - [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ])
@@ -27,3 +27,4 @@ Actualizado: 2026-07-09 · Sesión: 5
 - 2026-07-09: Sesión 5 — keyword_color persistente (visible en frames), fix _eval_and_adjust (todas las uniones por iteración), fix usage tracking en brain.py, énfasis IA siempre reportado en UI (ámbar). F0/F2/F3 re-auditadas y cerradas. Bug 17vs14 en DEPURADO_reel02.md documentado y corregido.
 - 2026-07-09: Sesión 5c — _eval_joins: diagnóstico voz-a-voz puro. F3 cerrada sin pendientes. 28 tests.
 - 2026-07-09: Sesión 5d — Refactor app.py→jobs.py: deuda saldada (243+185L). E2E smoke: render+enfasis 2.9s. F4 lista.
+- 2026-07-09: Sesión 6 — F4 SESIÓN DE DISEÑO (sin implementar): DISENO_CLIPPER.md completo (frase como unidad atómica, chunking 2500/300, LLM nunca calcula totales, depurar antes del clipper), esqueleto clipper.py/clipper_brain.py con validadores reales + stubs, 14 tests de contrato verdes, ruff format aplicado a todo el repo (paso nuevo de check.bat). Próximo paso: arquitecto vota PREGUNTAS #9-11 → sesión de implementación F4.

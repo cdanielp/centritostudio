@@ -46,3 +46,36 @@
 - `ffmpeg -vf ass=... -c:v libx264 -crf 18 -c:a copy`
 - Audio original intacto (`-c:a copy`)
 - Misma resolución que el input
+
+---
+
+## Fase 2 — Cerebro editorial
+
+### SDK OpenAI-compatible para DeepSeek (no httpx directo)
+
+Opciones evaluadas:
+1. **`openai` SDK con `base_url="https://api.deepseek.com"`** (elegido)
+2. `httpx` directo a la API REST de DeepSeek
+
+Razones para elegir el SDK:
+- DeepSeek expone la API OpenAI-compatible exactamente para ser usada así
+- El SDK maneja reintentos automáticos, timeouts y `response_format=json_object`
+- Compatibilidad inmediata con otros providers (Anthropic, Ollama) si cambia `LLM_PROVIDER`
+- `python-dotenv` (dependencia complementaria) carga `.env` sin código adicional
+
+## Fase 4 — Clipper viral (sesión de diseño)
+
+Las decisiones de diseño del clipper (frase como unidad atómica de segmentación,
+chunking 2500 palabras con solape 300, scoring de duración y total ponderado
+calculados en Python — nunca por el LLM, depurar ANTES del clipper, validación
+estricta-en-estructural / laxa-en-cosmético) están documentadas y justificadas en
+`revision/fase-4/DISENO_CLIPPER.md`. Sin dependencias nuevas: reusa el SDK openai
+vía brain.py y la maquinaria EDL de depurador.py.
+
+### python-dotenv para carga del .env
+
+Se elige `python-dotenv` sobre manejo manual de `.env` porque:
+- Es el estándar de facto, mínimo peso
+- `load_dotenv()` es no-destructiva (no pisa variables ya seteadas)
+- Fall-through con try/except ImportError: si no está instalado, el sistema sigue funcionando
+  vía `os.environ` directa (útil en CI/CD donde las vars vienen del entorno del runner)

@@ -49,6 +49,29 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
 - jobs.py: 185 lineas (new_job, update_job, get_job + 4 workers).
 - Deuda saldada antes de F4.
 
+### 9. F4 Clipper — ¿ranking unico o cuota por tipo? (responder ANTES de implementar)
+- **Diseño actual (DISENO_CLIPPER.md §5):** ranking unico puro por score — pueden salir
+  3 cortos y 0 largos si el score manda. El tipo es informativo.
+- **Alternativa:** garantizar al menos 1 clip de cada tipo si ambos superan el umbral 60.
+- **Pregunta binaria:** ¿ranking unico puro (propuesta) SI/NO?
+
+### 10. F4 Clipper — ¿caption.py reutiliza el transcript del clip?
+- El clipper emite `transcripts/{clip}_words.json` re-basado a t=0 (regla de oro #4).
+  El Studio lo aprovecha directo; la CLI `caption.py` hoy SIEMPRE re-transcribe
+  (~1-2s por clip en GPU, costo bajo).
+- **Propuesta:** en la sesion de implementacion, caption.py prefiere el transcript
+  existente si el mtime del .json es posterior al del video. Toca la CLI (regla #10),
+  cambio pequeño y con test.
+- **Pregunta binaria:** ¿autorizas tocar caption.py para reutilizar transcripts? SI/NO
+  (si NO: la CLI re-transcribe clips, cero cambios; el Studio ya los reutiliza igual)
+
+### 11. F4 Clipper — ¿--vertical (center-crop 16:9 a 9:16) entra en la implementacion?
+- MAESTRO lo menciona para fuentes 16:9. Las clases del usuario suelen ser ya verticales
+  o consumirse tal cual.
+- **Propuesta:** posponer a F4.1 para que la sesion de implementacion quede enfocada
+  (segmentacion + scoring + corte + UI ya es bastante). Face-tracking sigue fuera.
+- **Pregunta binaria:** ¿posponer --vertical a F4.1 (propuesta) SI/NO?
+
 ### 8. Umbrales de diagnostico _eval_joins — RESUELTO
 - **Decision del arquitecto:** el loop de ajuste fue eliminado. La medicion voz-a-voz queda
   como diagnostico puro: DELTA_CLEAN_DB = 6, DELTA_NOTABLE_DB = 15.
