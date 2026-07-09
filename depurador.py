@@ -193,14 +193,32 @@ def _join_output_times(edl: list[tuple[float, float]]) -> list[float]:
     return times
 
 
+def _last_word_end_before(words: list[dict], seg_end: float) -> float | None:
+    """Fin de la ultima palabra dentro del segmento (antes del silencio comprimido)."""
+    voice_cutoff = seg_end - SILENCE_COMPRESS
+    best: float | None = None
+    for w in words:
+        if w["e"] <= voice_cutoff + 0.01:
+            best = w["e"]
+    return best
+
+
 def _eval_and_adjust(
-    output: Path, edl: list[tuple[float, float]]
+    output: Path, edl: list[tuple[float, float]], voice_refs: list[float | None]
 ) -> tuple[list[tuple[float, float]], bool]:
-    """Verifica TODAS las fronteras; ajusta ±80ms donde delta > 6dB. Devuelve (edl, hubo_ajuste)."""
+    """Verifica fronteras midiendo voz-a-voz con refs estables. Devuelve (edl, hubo_ajuste)."""
     joins = _join_output_times(edl)
     hubo_ajuste = False
     for j, j_time in enumerate(joins):
-        vol_pre = _volume_at(output, j_time - 0.3)
+        last_voice_end = voice_refs[j] if j < len(voice_refs) else None
+        if last_voice_end is None:
+            continue
+        silence_in_seg = edl[j][1] - last_voice_end
+        if silence_in_seg < XFADE_S:
+            continue  # silencio agotado por ajustes previos
+        # Medir en ventana de 150ms justo antes del silencio comprimido (voz-a-voz)
+        pre_start = max(0.0, j_time - silence_in_seg - 0.15)
+        vol_pre = _volume_at(output, pre_start, dur=0.15)
         vol_post = _volume_at(output, j_time + 0.02)
         if abs(vol_pre - vol_post) > 6:
             print(f"[depurar] Union @{j_time:.1f}s: delta={abs(vol_pre-vol_post):.1f}dB, ajustando")
@@ -242,11 +260,14 @@ def depurar(
         print("[depurar] Sin cortes necesarios.")
         return {"cuts": 0, "saved_s": 0.0, "iterations": 0, "edl": edl}
 
+    # Precomputar refs de voz estables antes de cualquier ajuste
+    voice_refs = [_last_word_end_before(words, seg[1]) for seg in edl[:-1]]
+
     iterations = 0
     for _ in range(MAX_ITERS):
         iterations += 1
         _run_edl(video_path, edl, output_path)
-        edl, ajustado = _eval_and_adjust(output_path, edl)
+        edl, ajustado = _eval_and_adjust(output_path, edl, voice_refs)
         if not ajustado:
             break
 

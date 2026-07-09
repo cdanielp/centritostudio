@@ -50,7 +50,11 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
 - **Fix sugerido:** extraer las funciones background (_run_transcribe, _run_analyze, _run_depurar, _run_render) a un modulo separado `jobs.py`, dejando app.py solo con las rutas FastAPI (~250 lineas).
 - **Cuando:** al inicio de Fase 4 (antes de anadir el clipper) para no romper el limite mas.
 
-### 8. DELTA_THRESHOLD en depurador.py — constante faltante
-- **Situacion:** el umbral de 6dB de _eval_and_adjust esta hardcodeado en el `if abs(...) > 6`.
-- **Fix sugerido:** `DELTA_THRESHOLD = 6.0` en las constantes del modulo, referenciada en la funcion.
-- **Prioridad:** baja — aplica al inicio de Fase 4 junto con el refactor de app.py.
+### 8. DELTA_THRESHOLD — valor del umbral de convergencia (PENDIENTE DECISION)
+- **Situacion:** el umbral de 6dB esta hardcodeado. Con criterio voz-a-voz, mide diferencia de nivel
+  entre secciones de audio: 2/7 uniones V2 convergen (6dB), 0/4 de V1 TTS.
+- **Propuesta A (6dB, solo nombrar):** `DELTA_THRESHOLD = 6.0` — legibilidad sin cambio de comportamiento.
+- **Propuesta B (12dB):** V2 pasa de 2/7 a 5/7 convergentes (mayoria). Recomendada para OBS.
+- **Propuesta C (15dB):** V1 pasa de 0/4 a 3/4 convergentes, V2 6/7. Para TTS multi-clip.
+- **Evidencia detallada:** DEPURADO_pruebaparaedicion.md y DEPURADO_pruebaedicionvideoyo.md
+- **Pregunta binaria:** 12dB o 15dB como nuevo DELTA_THRESHOLD?
