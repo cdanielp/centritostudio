@@ -1,100 +1,124 @@
-# Skill: Captions Pipeline — Prompt Models Studio
+# Skill: Centrito Studio — Pipeline de Captions
 
 ## Cuando usar esta skill
-Cuando el usuario pida:
-- Agregar captions animados a un video
-- Cambiar el estilo de captions
-- Diagnosticar por que el pipeline falla
-- Agregar un nuevo estilo
-- Ajustar posicion/tamano de los subtitulos
+- Agregar captions animados a un video (CLI o UI web)
+- Diagnosticar errores de transcripción, ASS, o FFmpeg
+- Agregar un nuevo estilo visual
+- Operar o extender la UI web (FastAPI + HTML)
+- Editar una transcripción antes de renderizar
 
-## Estado del proyecto (2026-07-08)
-- Pipeline completamente funcional y probado en 9:16 y 16:9
-- 4 estilos implementados: hormozi, karaoke, bounce, pms
-- Rendimiento: ~4s para video de 15s (GPU RTX 5070 Ti + CUDA)
-- Modelo: faster-whisper small en CUDA float16
-
-## Estructura de archivos
+## Arquitectura v2.0 (2026-07-08)
 
 ```
-caption.py    — CLI principal (punto de entrada)
-styles.py     — Definicion de estilos (editar PMS_* vars al top)
-requirements.txt
-venv/         — entorno Python (ya instalado)
-input/        — videos de entrada
-output/       — videos procesados
+core.py           Funciones puras (import desde caption.py y app.py)
+caption.py        CLI — importa core.py
+app.py            FastAPI server puerto 8787
+static/index.html UI web completa (vanilla JS, CSS inline)
+arranque.bat      Doble clic → server + browser
+vocabulario.txt   30+ términos técnicos como initial_prompt para Whisper
+styles.py         4 estilos: hormozi, karaoke, bounce, pms
+models/medium/    Whisper medium descargado localmente (sin symlinks)
 ```
 
-## Comandos de operacion
-
-```powershell
-# Setup de entorno (obligatorio en Windows)
+## Arranque del Studio
+```bat
+arranque.bat   ← doble clic
+# o manualmente:
 $env:PYTHONIOENCODING="utf-8"
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING="1"
+.\venv\Scripts\python -m uvicorn app:app --host 0.0.0.0 --port 8787
+```
 
-# Uso basico
+## API endpoints principales
+
+```
+GET  /api/videos                      → lista de videos con estado
+POST /api/videos/upload               → subir .mp4
+POST /api/videos/{name}/transcribe    → iniciar transcripción (background)
+GET  /api/jobs/{job_id}               → polling de estado del job
+GET  /api/videos/{name}/transcript    → obtener grupos editables
+PUT  /api/videos/{name}/transcript    → guardar grupos editados
+POST /api/videos/{name}/render        → iniciar render (background)
+```
+
+## CLI (sin UI)
+```powershell
+$env:PYTHONIOENCODING="utf-8"; $env:HF_HUB_DISABLE_SYMLINKS_WARNING="1"
 .\venv\Scripts\python caption.py input/video.mp4 --style hormozi --lang es
-
-# Batch
-.\venv\Scripts\python caption.py input/ --style karaoke --lang es
+.\venv\Scripts\python caption.py input/ --style karaoke --lang es   # batch
 ```
 
-## Como agregar un estilo
+## Funciones clave de core.py
 
-En `styles.py`, agrega al dict `STYLES`:
+| Función | Descripción |
+|---------|-------------|
+| `detect_device()` | → (device, compute_type) |
+| `resolve_model(arg)` | → (path, label). "auto" usa medium local si existe |
+| `get_video_info(path)` | → dict con width, height, duration, mean_volume |
+| `transcribe_video(path, lang, ...)` | → {"words": [...], "language": str} |
+| `group_words(words, ...)` | → lista de Groups con timestamps |
+| `rebalance_timestamps(group)` | Re-distribuye timestamps tras editar texto |
+| `build_ass(groups, w, h, style, out)` | Genera .ass con animaciones word-by-word |
+| `burn_video(input, ass, output)` | FFmpeg: quema .ass → .mp4 |
+| `extract_thumb(video, out)` | Frame @1s, escala a 200px ancho |
 
-```python
-"nombre": StyleConfig(
-    name="nombre",
-    font_name="Arial Black",      # Fuente instalada en Windows
-    font_size=88,
-    primary_color="&H00FFFFFF",   # Blanco (formato &HAABBGGRR)
-    highlight_color="&H000000FF", # Rojo
-    outline_color="&H00000000",
-    outline_size=5.0,
-    shadow_color="&H88000000",
-    shadow_depth=2.0,
-    bold=True,
-    uppercase=True,
-    animation_type="highlight",   # "highlight" | "karaoke" | "bounce" | "scale"
-    max_chars_per_line=18,
-    margin_pct=0.10,
-),
+## Formato de Group (JSON)
+```json
+{
+  "id": 0,
+  "start": 1.22,
+  "end": 3.45,
+  "text": "Fui a Tacos Juan",
+  "edited": false,
+  "words": [
+    {"text": "Fui", "start": 1.22, "end": 1.56, "line_idx": 0},
+    {"text": "a", "start": 1.56, "end": 1.72, "line_idx": 0},
+    {"text": "Tacos", "start": 1.72, "end": 2.04, "line_idx": 0},
+    {"text": "Juan", "start": 2.04, "end": 2.22, "line_idx": 1}
+  ]
+}
 ```
 
-Luego agregar `"nombre"` a los `choices` del argparse en `caption.py`.
+## Mejoras de transcripción activas
+- `vocabulario.txt` → `initial_prompt`: "ComfyUI" en vez de "confiwai"
+- `condition_on_previous_text=False`: evita alucinaciones en clips largos
+- `beam_size=5`: más preciso que default (beam=1)
+- `vad_filter=True` con `min_silence_duration_ms=300`: filtra silencio
+- Agrupación por pausas > 0.4s y puntuación final (`.!?…`)
+- Anti-huérfano: último grupo de 1 sola palabra se fusiona con el anterior
 
-## Diagnostico de problemas comunes
-
-### "No se encontraron palabras con timestamps"
-- Causa: faster-whisper no genero word_timestamps (raro con vad_filter=True)
-- Fix: verificar que el audio tiene voz clara. Probar con `--lang` correcto.
-
-### Primera corrida muy lenta (~180s)
-- Causa: descarga del modelo + warmup de CUDA
-- Normal. Las corridas siguientes son ~4s.
-
-### Error de symlinks con modelo medium
-- Causa: Windows sin Developer Mode no permite symlinks
-- Fix: Activar Developer Mode en Windows Settings, o usar `small` (ya funciona)
-
-### Texto cortado en un lado
-- Causa: `max_chars_per_line` muy alto para la fuente/resolucion
-- Fix: reducir `max_chars_per_line` en el estilo correspondiente en `styles.py`
-
-### Video de salida sin audio
-- Causa: el video original tenia audio en formato que FFmpeg no copia directamente
-- Fix: cambiar `-c:a copy` por `-c:a aac -b:a 128k` en `burn_subtitles()` en `caption.py`
-
-## Tecnica ASS word-by-word
-El efecto se logra creando UN evento ASS por cada palabra en el grupo. Cada evento dura desde el inicio de esa palabra hasta el inicio de la siguiente. El texto del evento muestra TODAS las palabras del grupo, pero solo la palabra activa lleva tags ASS de color/animacion. El tag `\r` resetea al final de cada palabra activa para que el resto del texto vuelva al color base.
-
-## Colores ASS (referencia rapida)
-Formato: `&HAABBGGRR` (alpha, blue, green, red — NOT RGB)
-- Blanco:   `&H00FFFFFF`
-- Amarillo: `&H0000FFFF`
-- Cian:     `&H00FFFF00`
-- Naranja:  `&H000080FF`
-- Morado:   `&H00ED3A7C`  (#7C3AED en hex)
-- Rojo:     `&H000000FF`
+## Colores ASS (referencia rápida)
+Formato `&HAABBGGRR` (alpha, blue, green, red — NO es RGB):
+- Blanco: `&H00FFFFFF` | Amarillo: `&H0000FFFF` | Cian: `&H00FFFF00`
+- Naranja: `&H000080FF` | Morado #7C3AED: `&H00ED3A7C`
 Conversor: RGB(R,G,B) → `&H00` + hex(B) + hex(G) + hex(R)
+
+## Escala de fuente (consistencia entre resoluciones)
+```python
+ref_height = 1920 if video_height >= video_width else 1080
+dim_scale  = max(video_height / ref_height, 0.40)
+font_size  = style.font_size * dim_scale
+# → 1056x1920 y 1080x1920 dan dim_scale=1.0 → fuente idéntica
+```
+
+## Diagnostico de problemas
+
+### UI no carga
+- Verificar que arranque.bat se ejecutó
+- Puerto 8787 libre: `netstat -an | findstr 8787`
+
+### "confiwai" u otro nombre mal transcrito
+- Agregar el término correcto a `vocabulario.txt`
+- El initial_prompt se carga automáticamente en cada transcripción
+
+### Texto demasiado grande / pequeño
+- Ajustar `font_size` en `styles.py` para ese estilo
+- `dim_scale` se aplica automáticamente a la resolución
+
+### Video sin audio detectado (mean_volume < -40 dB)
+- La UI muestra advertencia y bloquea transcripción
+- En CLI: Whisper puede transcribir basura; usar `--vad-filter` (ya activo)
+
+### FFmpeg error con rutas Windows
+- `_ffmpeg_ass_path()` en core.py maneja escape del colon
+- Si falla: verificar que el output/ está en el mismo disco que el proyecto

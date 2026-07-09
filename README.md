@@ -1,8 +1,29 @@
-# Pipeline de Captions Animados — Prompt Models Studio
+# Centrito Studio
 
-Herramienta local que recibe un video con voz en español, transcribe con timestamps a nivel de palabra usando Whisper, y quema subtítulos animados palabra por palabra (estilo Hormozi/CapCut/karaoke) directamente en el video.
+Herramienta local para generar captions animados palabra por palabra (estilo Hormozi/CapCut/karaoke). Incluye UI web con editor de transcripción sincronizado y CLI para batch processing.
 
 Equivalente self-hosted de captions.ai. Sin suscripción, sin API externa, sin Docker.
+
+## Centrito Studio — UI Web (recomendado)
+
+### Arranque en 1 clic
+
+Doble clic en **`arranque.bat`** — levanta el server y abre el navegador automáticamente.
+
+### Flujo en 5 pasos
+
+1. **Videos** → arrastra tu .mp4 o haz clic para seleccionar
+2. **Transcribir** → haz clic en el botón "Transcribir" del video; espera la barra de progreso
+3. **Editor** → abre el Editor, haz clic en cualquier grupo para saltar al timestamp; edita el texto si Whisper se equivocó
+4. **Guardar** → "Guardar cambios" preserva tus ediciones; "Restaurar original" vuelve a la transcripción automática
+5. **Render** → elige estilo y palabras por grupo → "Renderizar" → preview + Descargar
+
+### Características del editor
+
+- Click en grupo → el video salta a ese momento
+- El grupo activo se resalta automáticamente mientras se reproduce
+- "Unir con siguiente" fusiona grupos adyacentes
+- Los cambios solo afectan al texto; los timestamps se redistribuyen proporcionalmente
 
 ## Requisitos
 

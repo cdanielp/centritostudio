@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Centrito Studio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08080f;--surface:#0d0d14;--border:0.5px solid #1e1e2e;
+  --purple:#7C3AED;--purple-dim:#4c1d95;--text:#e2e2f0;--muted:#6b6b8a;
+  --yellow:#FFD700;--cyan:#00FFFF;--orange:#FF8000;--red:#ef4444;--green:#22c55e;
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;height:100vh;display:flex;flex-direction:column}
+a{color:var(--purple);text-decoration:none}
+
+/* ── Header ── */
+#header{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:var(--border);background:var(--surface)}
+#header h1{font-size:16px;font-weight:500;letter-spacing:.5px;color:var(--text)}
+#header span{color:var(--purple);font-size:20px}
+nav{display:flex;gap:4px;margin-left:auto}
+nav button{background:none;border:var(--border);border-radius:6px;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px;transition:all .15s}
+nav button.active{background:var(--purple-dim);border-color:var(--purple);color:var(--text)}
+nav button:hover:not(.active){color:var(--text);border-color:var(--muted)}
+
+/* ── Tabs ── */
+.tab{display:none;flex:1;overflow:hidden}
+.tab.active{display:flex;flex-direction:column}
+
+/* ── Utilities ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
+.badge.sin_transcribir{background:#1e1e2e;color:var(--muted)}
+.badge.transcrito{background:#1c2a1c;color:var(--green)}
+.badge.renderizado{background:#1a1228;color:var(--purple)}
+button.btn{background:var(--purple);border:none;border-radius:6px;color:#fff;padding:7px 16px;cursor:pointer;font-size:13px;font-weight:500;transition:background .15s}
+button.btn:hover{background:#6d28d9}
+button.btn.secondary{background:#1e1e2e;color:var(--text);border:var(--border)}
+button.btn.secondary:hover{background:#2a2a3e}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+.progress-bar{height:4px;background:#1e1e2e;border-radius:2px;overflow:hidden;margin-top:6px}
+.progress-bar .fill{height:100%;background:var(--purple);border-radius:2px;transition:width .3s}
+input,select,textarea{background:#111122;border:var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:13px;padding:6px 10px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--purple)}
+.msg{font-size:12px;color:var(--muted);margin-top:4px}
+.msg.err{color:var(--red)}
+.msg.ok{color:var(--green)}
+
+/* ══════════════════════════════════════════
+   TAB 1: VIDEOS
+══════════════════════════════════════════ */
+#tab-videos{padding:20px;gap:16px;overflow-y:auto}
+#upload-zone{border:0.5px dashed var(--purple-dim);border-radius:10px;padding:24px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .2s}
+#upload-zone:hover,#upload-zone.dragover{border-color:var(--purple);color:var(--text)}
+#upload-zone input{display:none}
+#upload-progress{display:none}
+#video-list{display:flex;flex-direction:column;gap:10px}
+.video-card{display:flex;align-items:center;gap:14px;background:var(--surface);border:var(--border);border-radius:10px;padding:12px 16px;transition:border-color .2s}
+.video-card:hover{border-color:var(--purple-dim)}
+.video-card img{width:54px;height:96px;object-fit:cover;border-radius:6px;background:#111}
+.video-card .info{flex:1}
+.video-card .name{font-weight:500;margin-bottom:4px}
+.video-card .meta{color:var(--muted);font-size:12px;margin-bottom:6px}
+.video-card .actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+
+/* ══════════════════════════════════════════
+   TAB 2: EDITOR
+══════════════════════════════════════════ */
+#tab-editor{flex-direction:row}
+#editor-left{width:340px;min-width:260px;display:flex;flex-direction:column;border-right:var(--border);background:var(--surface)}
+#editor-header{padding:12px 16px;border-bottom:var(--border);display:flex;gap:8px;align-items:center}
+#editor-header select{flex:1}
+#groups-container{flex:1;overflow-y:auto;padding:8px}
+.group-card{background:#111122;border:var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:border-color .15s}
+.group-card.active-group{border-color:var(--purple);background:#110d1f}
+.group-card .g-header{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;user-select:none}
+.group-card .g-ts{color:var(--purple);font-size:11px;font-family:monospace;min-width:56px}
+.group-card .g-merge{margin-left:auto;background:none;border:0.5px solid #2a2a3e;border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer}
+.group-card .g-merge:hover{border-color:var(--purple);color:var(--text)}
+.group-card textarea{width:100%;background:transparent;border:none;border-top:var(--border);color:var(--text);font-family:inherit;font-size:13px;padding:7px 10px;resize:none;min-height:46px;outline:none}
+.group-card textarea:focus{background:#0d0d20}
+#editor-footer{padding:10px 16px;border-top:var(--border);display:flex;gap:8px}
+#editor-right{flex:1;display:flex;flex-direction:column;padding:16px;gap:12px;overflow:hidden}
+#editor-video-wrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;background:#000;border-radius:10px;overflow:hidden}
+#editor-video{max-width:100%;max-height:100%;display:block}
+.no-video{color:var(--muted);text-align:center;padding:40px}
+#editor-info{font-size:12px;color:var(--muted)}
+
+/* ══════════════════════════════════════════
+   TAB 3: RENDER
+══════════════════════════════════════════ */
+#tab-render{padding:20px;gap:16px;overflow-y:auto}
+#render-panel{background:var(--surface);border:var(--border);border-radius:10px;padding:20px;max-width:520px}
+#render-panel h2{font-size:15px;font-weight:500;margin-bottom:16px}
+.field{margin-bottom:12px}
+.field label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+.field select,.field input{width:100%}
+#render-status{margin-top:12px}
+#output-preview{display:none;margin-top:16px}
+#output-preview video{width:100%;border-radius:8px;max-height:400px}
+#output-preview .dl-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span>🎬</span>
+  <h1>Centrito Studio</h1>
+  <nav>
+    <button class="active" onclick="showTab('videos',this)">Videos</button>
+    <button onclick="showTab('editor',this)">Editor</button>
+    <button onclick="showTab('render',this)">Render</button>
+  </nav>
+</div>
+
+<!-- ════════════════ TAB: VIDEOS ════════════════ -->
+<div id="tab-videos" class="tab active">
+
+  <div id="upload-zone" onclick="document.getElementById('file-input').click()"
+       ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+    <input type="file" id="file-input" accept="video/mp4" onchange="uploadFile(this.files[0])">
+    <div style="font-size:28px;margin-bottom:8px">📁</div>
+    <div>Arrastra un .mp4 aquí o <b>haz clic para seleccionar</b></div>
+  </div>
+  <div id="upload-progress" style="display:none">
+    <div class="msg">Subiendo…</div>
+    <div class="progress-bar"><div class="fill" id="upload-bar" style="width:0%"></div></div>
+  </div>
+
+  <div id="video-list"></div>
+</div>
+
+<!-- ════════════════ TAB: EDITOR ════════════════ -->
+<div id="tab-editor" class="tab">
+  <div id="editor-left">
+    <div id="editor-header">
+      <select id="editor-video-select" onchange="loadEditorVideo(this.value)">
+        <option value="">— Elegir video —</option>
+      </select>
+    </div>
+    <div id="groups-container">
+      <div class="no-video" style="color:var(--muted);padding:20px;font-size:12px">
+        Selecciona un video transcrito para editar sus grupos.
+      </div>
+    </div>
+    <div id="editor-footer">
+      <button class="btn secondary" onclick="restoreGroups()" style="flex:1">Restaurar original</button>
+      <button class="btn" onclick="saveGroups()" style="flex:1">Guardar cambios</button>
+    </div>
+  </div>
+  <div id="editor-right">
+    <div id="editor-video-wrap">
+      <div class="no-video">El video aparecerá aquí</div>
+    </div>
+    <div id="editor-info">Selecciona un video en el panel izquierdo</div>
+  </div>
+</div>
+
+<!-- ════════════════ TAB: RENDER ════════════════ -->
+<div id="tab-render" class="tab">
+  <div id="render-panel">
+    <h2>Renderizar captions</h2>
+    <div class="field">
+      <label>Video</label>
+      <select id="render-video-select">
+        <option value="">— Elegir video —</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Estilo</label>
+      <select id="render-style">
+        <option value="hormozi">Hormozi — blanco + amarillo</option>
+        <option value="karaoke">Karaoke — relleno cian</option>
+        <option value="bounce">Bounce — naranja animado</option>
+        <option value="pms">PMS — morado de marca</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Palabras por grupo</label>
+      <select id="render-wpg">
+        <option value="">Auto (agrupación inteligente)</option>
+        <option value="2">2 palabras (estilo TikTok puro)</option>
+        <option value="3">3 palabras</option>
+      </select>
+    </div>
+    <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
+    <div id="render-status"></div>
+  </div>
+
+  <div id="output-preview">
+    <video id="output-video" controls></video>
+    <div class="dl-row">
+      <span id="output-label" style="color:var(--muted);font-size:12px"></span>
+      <a id="output-dl" href="#" download class="btn" style="display:inline-block;text-align:center">Descargar</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// Estado global
+// ═══════════════════════════════════════════════════════
+let videos        = [];
+let editorName    = null;
+let editorGroups  = [];   // grupos actuales (editables)
+let origGroups    = [];   // copia para restaurar
+let editorVideo   = null; // <video> element
+let syncInterval  = null;
+
+// ═══════════════════════════════════════════════════════
+// Tabs
+// ═══════════════════════════════════════════════════════
+function showTab(id, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'videos') loadVideos();
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB VIDEOS — carga y render de lista
+// ═══════════════════════════════════════════════════════
+async function loadVideos() {
+  const res  = await fetch('/api/videos');
+  videos = await res.json();
+  renderVideoList();
+  populateSelects();
+}
+
+function renderVideoList() {
+  const list = document.getElementById('video-list');
+  list.innerHTML = '';
+  if (!videos.length) {
+    list.innerHTML = '<div class="msg" style="text-align:center;padding:20px">No hay videos en input/. Sube uno arriba.</div>';
+    return;
+  }
+  videos.forEach(v => {
+    const dur  = fmtTime(v.duration);
+    const warn = v.mean_volume < -40 ? '⚠️ Sin voz detectada' : '';
+    const div  = document.createElement('div');
+    div.className = 'video-card';
+    div.innerHTML = `
+      <img src="${v.thumb || ''}" alt="" onerror="this.style.display='none'">
+      <div class="info">
+        <div class="name">${v.name}</div>
+        <div class="meta">${v.width}×${v.height} · ${dur} · ${warn || (v.mean_volume.toFixed(1) + ' dB')}</div>
+        <span class="badge ${v.status}">${statusLabel(v.status)}</span>
+        <div class="actions">
+          ${v.mean_volume >= -40
+            ? `<button class="btn" onclick="transcribeVideo('${v.name}',this)">Transcribir</button>`
+            : `<span class="msg err">Sin voz — no se puede transcribir</span>`}
+          ${v.status !== 'sin_transcribir'
+            ? `<button class="btn secondary" onclick="openEditor('${v.name}')">Editar</button>` : ''}
+          ${v.outputs.length
+            ? `<button class="btn secondary" onclick="openRender('${v.name}')">Render</button>` : ''}
+        </div>
+        <div id="job-${v.name}"></div>
+      </div>`;
+    list.appendChild(div);
+  });
+}
+
+function statusLabel(s) {
+  return {sin_transcribir:'Sin transcribir', transcrito:'Transcrito', renderizado:'Renderizado'}[s] || s;
+}
+
+function populateSelects() {
+  const opts = videos.map(v => `<option value="${v.name}">${v.name} (${statusLabel(v.status)})</option>`).join('');
+  document.getElementById('editor-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
+  document.getElementById('render-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
+}
+
+// ═══════════════════════════════════════════════════════
+// Upload
+// ═══════════════════════════════════════════════════════
+function onDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
+function onDragLeave()  { document.getElementById('upload-zone').classList.remove('dragover'); }
+function onDrop(e)      { e.preventDefault(); onDragLeave(); if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); }
+
+async function uploadFile(file) {
+  if (!file || !file.name.endsWith('.mp4')) return;
+  const prog = document.getElementById('upload-progress');
+  const bar  = document.getElementById('upload-bar');
+  prog.style.display = 'block';
+  bar.style.width    = '10%';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  const xhr = new XMLHttpRequest();
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) bar.style.width = Math.round(e.loaded/e.total*90) + '%';
+  };
+  xhr.onload = () => {
+    bar.style.width = '100%';
+    setTimeout(() => { prog.style.display = 'none'; loadVideos(); }, 600);
+  };
+  xhr.onerror = () => { prog.style.display = 'none'; alert('Error al subir'); };
+  xhr.open('POST', '/api/videos/upload');
+  xhr.send(fd);
+}
+
+// ═══════════════════════════════════════════════════════
+// Transcribir
+// ═══════════════════════════════════════════════════════
+async function transcribeVideo(name, btn) {
+  btn.disabled = true;
+  const box = document.getElementById('job-' + name);
+  box.innerHTML = '<div class="msg">Iniciando…</div><div class="progress-bar"><div class="fill" id="pb-'+name+'" style="width:0%"></div></div>';
+
+  const res = await fetch(`/api/videos/${name}/transcribe`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json();
+    box.innerHTML = `<div class="msg err">${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id} = await res.json();
+  pollJob(job_id, (j) => {
+    const pb = document.getElementById('pb-'+name);
+    if (pb) pb.style.width = j.progress + '%';
+    if (j.status === 'done') {
+      box.innerHTML = `<div class="msg ok">${j.message}</div>`;
+      loadVideos();
+    } else if (j.status === 'error') {
+      box.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
+      btn.disabled = false;
+    } else {
+      box.querySelector('.msg').textContent = j.message;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// Polling de jobs
+// ═══════════════════════════════════════════════════════
+function pollJob(jid, cb, interval=900) {
+  const tick = async () => {
+    const r = await fetch('/api/jobs/' + jid);
+    if (!r.ok) return;
+    const j = await r.json();
+    cb(j);
+    if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
+  };
+  tick();
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB EDITOR
+// ═══════════════════════════════════════════════════════
+function openEditor(name) {
+  showTab('editor', document.querySelectorAll('nav button')[1]);
+  document.getElementById('editor-video-select').value = name;
+  loadEditorVideo(name);
+}
+
+async function loadEditorVideo(name) {
+  if (!name) return;
+  editorName = name;
+
+  // Montar video
+  const wrap = document.getElementById('editor-video-wrap');
+  wrap.innerHTML = `<video id="editor-video" controls src="/input/${name}.mp4" style="max-width:100%;max-height:100%"></video>`;
+  editorVideo = document.getElementById('editor-video');
+  editorVideo.addEventListener('timeupdate', onTimeUpdate);
+
+  // Cargar grupos
+  const res = await fetch(`/api/videos/${name}/transcript`);
+  if (!res.ok) {
+    document.getElementById('groups-container').innerHTML =
+      '<div class="msg err" style="padding:16px">No hay transcript. Transcribe primero desde la pestaña Videos.</div>';
+    return;
+  }
+  origGroups   = await res.json();
+  editorGroups = JSON.parse(JSON.stringify(origGroups));
+  renderGroups();
+
+  document.getElementById('editor-info').textContent =
+    `${name} · ${editorGroups.length} grupos · Haz clic en un grupo para saltar`;
+}
+
+function renderGroups() {
+  const c = document.getElementById('groups-container');
+  c.innerHTML = '';
+  editorGroups.forEach((g, idx) => {
+    const card  = document.createElement('div');
+    card.id      = `g-${g.id}`;
+    card.className = 'group-card';
+    const canMerge = idx < editorGroups.length - 1;
+
+    card.innerHTML = `
+      <div class="g-header" onclick="seekTo(${g.start})">
+        <span class="g-ts">${fmtTimestamp(g.start)}</span>
+        <span style="color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.text}</span>
+        ${canMerge ? `<button class="g-merge" onclick="event.stopPropagation();mergeGroup(${g.id})">+ sig</button>` : ''}
+      </div>
+      <textarea rows="2" oninput="onGroupEdit(${g.id},this.value)">${g.text}</textarea>`;
+    c.appendChild(card);
+  });
+}
+
+function onGroupEdit(id, val) {
+  const g = editorGroups.find(x => x.id === id);
+  if (!g) return;
+  g.text   = val;
+  g.edited = true;
+  // Actualizar preview en header
+  const header = document.querySelector(`#g-${id} .g-header span:nth-child(2)`);
+  if (header) header.textContent = val;
+}
+
+function seekTo(t) {
+  if (editorVideo) editorVideo.currentTime = t;
+}
+
+function onTimeUpdate() {
+  if (!editorVideo) return;
+  const t = editorVideo.currentTime;
+  editorGroups.forEach(g => {
+    const el = document.getElementById('g-' + g.id);
+    if (!el) return;
+    if (t >= g.start && t <= g.end + 0.15) {
+      el.classList.add('active-group');
+      el.scrollIntoView({block:'nearest',behavior:'smooth'});
+    } else {
+      el.classList.remove('active-group');
+    }
+  });
+}
+
+function mergeGroup(id) {
+  const i = editorGroups.findIndex(g => g.id === id);
+  if (i < 0 || i >= editorGroups.length - 1) return;
+  const a = editorGroups[i], b = editorGroups[i + 1];
+  const merged = {
+    ...a,
+    end:    b.end,
+    text:   a.text + ' ' + b.text,
+    words:  [...a.words, ...b.words],
+    edited: true,
+  };
+  editorGroups.splice(i, 2, merged);
+  editorGroups.forEach((g, k) => g.id = k);
+  renderGroups();
+}
+
+async function saveGroups() {
+  if (!editorName) return;
+  const res = await fetch(`/api/videos/${editorName}/transcript`, {
+    method:  'PUT',
+    headers: {'Content-Type':'application/json'},
+    body:    JSON.stringify(editorGroups),
+  });
+  const r = await res.json();
+  const info = document.getElementById('editor-info');
+  info.textContent = `Guardado: ${r.saved} grupos`;
+  info.style.color = 'var(--green)';
+  setTimeout(() => info.style.color = '', 2000);
+  origGroups = JSON.parse(JSON.stringify(editorGroups));
+}
+
+function restoreGroups() {
+  editorGroups = JSON.parse(JSON.stringify(origGroups));
+  renderGroups();
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB RENDER
+// ═══════════════════════════════════════════════════════
+function openRender(name) {
+  showTab('render', document.querySelectorAll('nav button')[2]);
+  document.getElementById('render-video-select').value = name;
+}
+
+async function startRender() {
+  const name  = document.getElementById('render-video-select').value;
+  const style = document.getElementById('render-style').value;
+  const wpg   = document.getElementById('render-wpg').value;
+  if (!name) { alert('Elige un video'); return; }
+
+  const btn = document.getElementById('render-btn');
+  btn.disabled = true;
+
+  const params = new URLSearchParams({style});
+  if (wpg) params.append('words_per_group', wpg);
+
+  const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json();
+    document.getElementById('render-status').innerHTML = `<div class="msg err">${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id} = await res.json();
+  const statusDiv = document.getElementById('render-status');
+  statusDiv.innerHTML = '<div class="msg">Iniciando render…</div><div class="progress-bar"><div class="fill" id="render-pb" style="width:5%"></div></div>';
+
+  pollJob(job_id, (j) => {
+    const pb = document.getElementById('render-pb');
+    if (pb) pb.style.width = j.progress + '%';
+    statusDiv.querySelector('.msg').textContent = j.message;
+    if (j.status === 'done') {
+      btn.disabled = false;
+      showOutputPreview(j.result.output, name, style);
+      loadVideos();
+    } else if (j.status === 'error') {
+      statusDiv.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
+      btn.disabled = false;
+    }
+  });
+}
+
+function showOutputPreview(filename, name, style) {
+  const preview = document.getElementById('output-preview');
+  const video   = document.getElementById('output-video');
+  preview.style.display = 'block';
+  video.src      = '/output/' + filename + '?t=' + Date.now();
+  video.load();
+  document.getElementById('output-label').textContent = filename;
+  document.getElementById('output-dl').href     = '/output/' + filename;
+  document.getElementById('output-dl').download = filename;
+}
+
+// ═══════════════════════════════════════════════════════
+// Utilidades
+// ═══════════════════════════════════════════════════════
+function fmtTime(s) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+function fmtTimestamp(s) {
+  const m = Math.floor(s / 60), sec = (s % 60).toFixed(1);
+  return `${m}:${sec.toString().padStart(4,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════
+loadVideos();
+</script>
+</body>
+</html>
