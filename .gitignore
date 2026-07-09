@@ -5,4 +5,11 @@ output/*.mp4
 output/*.ass
 output/*.png
 input/audio_test.mp3
+input/*.mp4
+input/*.mov
 referencias/
+.env
+!.env.example
+thumbs/
+.pytest_cache/
+.ruff_cache/

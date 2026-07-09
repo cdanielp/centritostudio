@@ -79,18 +79,20 @@ def list_videos():
         if not thumb.exists():
             core.extract_thumb(mp4, thumb)
 
-        result.append({
-            "name": mp4.stem,
-            "filename": mp4.name,
-            "status": status,
-            "duration": round(info.get("duration", 0), 2),
-            "width": info.get("width", 0),
-            "height": info.get("height", 0),
-            "mean_volume": info.get("mean_volume", -99),
-            "has_audio": info.get("has_audio", False),
-            "thumb": f"/thumbs/{mp4.stem}.jpg" if thumb.exists() else None,
-            "outputs": [o.name for o in outputs],
-        })
+        result.append(
+            {
+                "name": mp4.stem,
+                "filename": mp4.name,
+                "status": status,
+                "duration": round(info.get("duration", 0), 2),
+                "width": info.get("width", 0),
+                "height": info.get("height", 0),
+                "mean_volume": info.get("mean_volume", -99),
+                "has_audio": info.get("has_audio", False),
+                "thumb": f"/thumbs/{mp4.stem}.jpg" if thumb.exists() else None,
+                "outputs": [o.name for o in outputs],
+            }
+        )
     return result
 
 
@@ -204,8 +206,10 @@ def start_depurar(name: str, mode: str = "seguro"):
 # ─── Render ───────────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/render")
 def start_render(
-    name: str, style: str = "hormozi",
-    words_per_group: int | None = None, use_emphasis: bool = False,
+    name: str,
+    style: str = "hormozi",
+    words_per_group: int | None = None,
+    use_emphasis: bool = False,
 ):
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -240,4 +244,5 @@ def list_styles():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app:app", host="0.0.0.0", port=8787, reload=False)

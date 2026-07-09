@@ -107,14 +107,18 @@ def analizar_grupos(grupos: list[dict], contexto: str = "", video_name: str = ""
         return {"groups": []}
 
     max_e = max(1, len(grupos) * 30 // 100)
-    txt = "\n".join(
-        f"[{g['id']}]: {' '.join(w['text'] for w in g['words'])}" for g in grupos
-    )
+    txt = "\n".join(f"[{g['id']}]: {' '.join(w['text'] for w in g['words'])}" for g in grupos)
     messages = [
         {"role": "system", "content": _SYSTEM},
-        {"role": "user", "content": _PROMPT.format(
-            n=len(grupos), ctx=contexto or video_name, max_e=max_e, txt=txt,
-        )},
+        {
+            "role": "user",
+            "content": _PROMPT.format(
+                n=len(grupos),
+                ctx=contexto or video_name,
+                max_e=max_e,
+                txt=txt,
+            ),
+        },
     ]
 
     t0 = time.time()

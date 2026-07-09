@@ -18,7 +18,11 @@ def test_estilos_minimos_existen():
 def test_campos_y_colores_validos(nombre):
     cfg = styles.get_style(nombre)
     campos_color = (
-        "primary_color", "highlight_color", "outline_color", "shadow_color", "keyword_color"
+        "primary_color",
+        "highlight_color",
+        "outline_color",
+        "shadow_color",
+        "keyword_color",
     )
     for campo in campos_color:
         valor = getattr(cfg, campo)

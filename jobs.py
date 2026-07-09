@@ -68,7 +68,9 @@ def run_transcribe(jid: str, mp4: Path, lang: str, model_arg: str, name: str) ->
         grp_path.write_text(json.dumps(groups, ensure_ascii=False, indent=2), encoding="utf-8")
 
         update_job(
-            jid, status="done", progress=100,
+            jid,
+            status="done",
+            progress=100,
             message=f"OK - {len(result['words'])} palabras, {len(groups)} grupos",
             result={"words": len(result["words"]), "groups": len(groups)},
         )
@@ -90,9 +92,13 @@ def run_analyze(jid: str, grp_path: Path, name: str) -> None:
         data = brain.analizar_grupos(groups, contexto=name, video_name=name)
         n_kw = sum(1 for g in data.get("groups", []) if g.get("kw") is not None)
         n_em = sum(1 for g in data.get("groups", []) if g.get("emoji"))
-        update_job(jid, status="done", progress=100,
-                   message=f"OK - {n_kw} keywords, {n_em} emojis",
-                   result={"keywords": n_kw, "emojis": n_em})
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=f"OK - {n_kw} keywords, {n_em} emojis",
+            result={"keywords": n_kw, "emojis": n_em},
+        )
     except Exception as exc:
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
@@ -118,9 +124,13 @@ def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> 
             json.dumps(raw_clean, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         drift_note = " (re-transcribir recomendado)" if drift > dep.DRIFT_THRESHOLD else ""
-        update_job(jid, status="done", progress=100,
-                   message=f"Listo - {result['cuts']} cortes, -{result['saved_s']}s{drift_note}",
-                   result={**result, "output": out_mp4.name, "drift_s": drift})
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=f"Listo - {result['cuts']} cortes, -{result['saved_s']}s{drift_note}",
+            result={**result, "output": out_mp4.name, "drift_s": drift},
+        )
     except Exception as exc:
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
@@ -146,8 +156,13 @@ def _apply_emphasis(groups: list[dict], name: str) -> tuple[list[dict], str]:
 
 
 def run_render(
-    jid: str, mp4: Path, grp_path: Path, name: str,
-    style: str, words_per_group: int | None, use_emphasis: bool = False,
+    jid: str,
+    mp4: Path,
+    grp_path: Path,
+    name: str,
+    style: str,
+    words_per_group: int | None,
+    use_emphasis: bool = False,
 ) -> None:
     """Worker: genera ASS con captions y quema el video de salida."""
     try:
@@ -182,7 +197,9 @@ def run_render(
 
         emphasis_result = enfasis_msg if use_emphasis else None
         update_job(
-            jid, status="done", progress=100,
+            jid,
+            status="done",
+            progress=100,
             message=f"Listo en {elapsed:.1f}s",
             result={"output": out_path.name, "elapsed": elapsed, "emphasis_msg": emphasis_result},
         )

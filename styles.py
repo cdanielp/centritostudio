@@ -42,7 +42,7 @@ class StyleConfig:
     bold: bool
     uppercase: bool
     animation_type: str  # "highlight" | "karaoke" | "bounce" | "scale"
-    keyword_color: str   # Color persistente del keyword (distinto de highlight)
+    keyword_color: str  # Color persistente del keyword (distinto de highlight)
     max_chars_per_line: int = 18
     max_lines: int = 2
     margin_pct: float = 0.12  # Margen inferior como fracción del alto del video

@@ -1,6 +1,9 @@
 """Genera cuadriculas 2x2 de comparacion de estilos para revision visual."""
+
 from __future__ import annotations
+
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 REVISION = Path("revision")
@@ -48,11 +51,13 @@ def make_2x2_grid(
         title_offset = 40
 
     positions = [
-        (0, 0), (1, 0),
-        (0, 1), (1, 1),
+        (0, 0),
+        (1, 0),
+        (0, 1),
+        (1, 1),
     ]
 
-    for i, ((col, row), img, label) in enumerate(zip(positions, imgs, labels)):
+    for _i, ((col, row), img, label) in enumerate(zip(positions, imgs, labels, strict=False)):
         x = col * CELL_W
         y = title_offset + row * (cell_h + LABEL_H)
 
@@ -75,8 +80,10 @@ def make_2x2_grid(
 
 
 def make_2col_grid(
-    frame_a: Path, label_a: str,
-    frame_b: Path, label_b: str,
+    frame_a: Path,
+    label_a: str,
+    frame_b: Path,
+    label_b: str,
     out_path: Path,
     title: str = "",
 ) -> None:
@@ -97,10 +104,10 @@ def make_2col_grid(
         title_offset = 38
 
     for x_off, img, label in [(0, img_a, label_a), (CELL_W, img_b, label_b)]:
-        draw.rectangle([x_off, title_offset, x_off + CELL_W, title_offset + LABEL_H],
-                       fill=(30, 30, 50))
-        draw.text((x_off + 8, title_offset + 7), label.upper(),
-                  fill=(200, 200, 200), font=FONT)
+        draw.rectangle(
+            [x_off, title_offset, x_off + CELL_W, title_offset + LABEL_H], fill=(30, 30, 50)
+        )
+        draw.text((x_off + 8, title_offset + 7), label.upper(), fill=(200, 200, 200), font=FONT)
         canvas.paste(img, (x_off, title_offset + LABEL_H))
 
     canvas.save(str(out_path), quality=92)
@@ -138,8 +145,10 @@ def main():
         if p_2w.exists() and p_gr.exists():
             out = REVISION / f"tacosjuan_agrupacion_t{ts_idx}.png"
             make_2col_grid(
-                p_2w, "2 palabras / grupo",
-                p_gr, "4-6 palabras / grupo (auto)",
+                p_2w,
+                "2 palabras / grupo",
+                p_gr,
+                "4-6 palabras / grupo (auto)",
                 out,
                 title=f"tacosjuan hormozi — comparacion agrupacion t{ts_idx}",
             )

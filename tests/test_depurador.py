@@ -7,21 +7,22 @@ import depurador
 # ── Fixture de words sinteticas ───────────────────────────────────────────────
 
 WORDS = [
-    {"w": "hola",    "s": 0.0,  "e": 0.4,  "prob": 0.99},
-    {"w": "buenas",  "s": 0.5,  "e": 1.0,  "prob": 0.99},
+    {"w": "hola", "s": 0.0, "e": 0.4, "prob": 0.99},
+    {"w": "buenas", "s": 0.5, "e": 1.0, "prob": 0.99},
     # Silencio de 1.5s (1.0 → 2.5) — debe comprimirse
-    {"w": "eh",      "s": 2.5,  "e": 2.7,  "prob": 0.99},  # muletilla aislada
+    {"w": "eh", "s": 2.5, "e": 2.7, "prob": 0.99},  # muletilla aislada
     # Pausa de 0.5s (2.7 → 3.2) — ok
-    {"w": "esto",    "s": 3.2,  "e": 3.8,  "prob": 0.99},
-    {"w": "es",      "s": 3.9,  "e": 4.2,  "prob": 0.99},
+    {"w": "esto", "s": 3.2, "e": 3.8, "prob": 0.99},
+    {"w": "es", "s": 3.9, "e": 4.2, "prob": 0.99},
     # Falso arranque: "es" repetido con pausa antes de "esto" mayor a 0.4s (1.2s → ok)
-    {"w": "es",      "s": 4.3,  "e": 4.6,  "prob": 0.99},
-    {"w": "bueno",   "s": 4.7,  "e": 5.0,  "prob": 0.99},
+    {"w": "es", "s": 4.3, "e": 4.6, "prob": 0.99},
+    {"w": "bueno", "s": 4.7, "e": 5.0, "prob": 0.99},
 ]
 DUR = 5.5
 
 
 # ── Tests seguro ──────────────────────────────────────────────────────────────
+
 
 def test_edl_seguro_comprime_silencio():
     edl = depurador.build_edl_seguro(WORDS, DUR)
@@ -48,6 +49,7 @@ def test_edl_seguro_respeta_pausas_cortas():
 
 # ── Tests muletillas ──────────────────────────────────────────────────────────
 
+
 def test_detectar_muletilla_aislada():
     # "eh" en WORDS[2] tiene pausa_antes=1.5s y pausa_despues=0.5s — ambas >= 0.25s
     indices = depurador.detectar_muletillas(WORDS)
@@ -57,8 +59,8 @@ def test_detectar_muletilla_aislada():
 def test_no_cortar_este_sin_pausas():
     words_sin_pausa = [
         {"w": "quiero", "s": 0.0, "e": 0.5},
-        {"w": "este",   "s": 0.6, "e": 0.8},  # pausa_antes=0.1s < 0.25s
-        {"w": "libro",  "s": 0.9, "e": 1.2},  # pausa_despues=0.1s < 0.25s
+        {"w": "este", "s": 0.6, "e": 0.8},  # pausa_antes=0.1s < 0.25s
+        {"w": "libro", "s": 0.9, "e": 1.2},  # pausa_despues=0.1s < 0.25s
     ]
     indices = depurador.detectar_muletillas(words_sin_pausa)
     assert 1 not in indices, "'este' sin pausas NO debe cortarse"
@@ -66,19 +68,21 @@ def test_no_cortar_este_sin_pausas():
 
 # ── Tests falsos arranques ────────────────────────────────────────────────────
 
+
 def test_detectar_falso_arranque():
     words_fa = [
-        {"w": "hola",   "s": 0.0, "e": 0.3},
+        {"w": "hola", "s": 0.0, "e": 0.3},
         # Silencio 1.2s
-        {"w": "es",     "s": 1.5, "e": 1.8},  # inicio de segmento nuevo (pausa 1.2s)
-        {"w": "es",     "s": 1.9, "e": 2.2},  # bigrama repetido
-        {"w": "bueno",  "s": 2.3, "e": 2.6},
+        {"w": "es", "s": 1.5, "e": 1.8},  # inicio de segmento nuevo (pausa 1.2s)
+        {"w": "es", "s": 1.9, "e": 2.2},  # bigrama repetido
+        {"w": "bueno", "s": 2.3, "e": 2.6},
     ]
     indices = depurador.detectar_falsos_arranques(words_fa)
     assert 1 in indices, f"'es es' debe detectarse como falso arranque; got {indices}"
 
 
 # ── Tests recalcular_words ────────────────────────────────────────────────────
+
 
 def test_recalcular_words_elimina_cortados():
     edl = [(0.0, 1.25), (2.5, 5.5)]
@@ -116,7 +120,7 @@ def test_edl_agresivo_mas_cortes_que_seguro():
 # ── Tests _eval_joins (diagnostico voz-a-voz) ────────────────────────────────
 
 _WORDS_VOZ = [
-    {"w": "hola",  "s": 0.0, "e": 1.0, "prob": 0.99},
+    {"w": "hola", "s": 0.0, "e": 1.0, "prob": 0.99},
     {"w": "mundo", "s": 2.5, "e": 3.0, "prob": 0.99},
 ]
 # EDL: silencio original 1.5s (1.0->2.5) comprimido a 0.25s -> seg[0] = (0, 1.25)

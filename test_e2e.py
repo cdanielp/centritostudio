@@ -1,8 +1,14 @@
 """Prueba E2E: transcribe reel02 via API, corrige confiwai->ComfyUI, renderiza, extrae frame."""
-import requests, json, time, sys, subprocess
+
+import subprocess
+import sys
+import time
 from pathlib import Path
 
+import requests
+
 BASE = "http://localhost:8787"
+
 
 def poll_job(jid, timeout=120):
     for _ in range(timeout):
@@ -14,6 +20,7 @@ def poll_job(jid, timeout=120):
             return j
         time.sleep(1.5)
     return {"status": "timeout"}
+
 
 print("=== E2E Test 1: reel02 — transcribir, editar, renderizar ===\n")
 
@@ -80,7 +87,7 @@ print(f"OK — {j2['message']}\n")
 
 # 6. Extraer frame para verificar que "ComfyUI" quedo quemado
 output = Path("output/reel02_hormozi.mp4")
-frame  = Path("revision/e2e_reel02_comfyui.png")
+frame = Path("revision/e2e_reel02_comfyui.png")
 print("[6] Extrayendo frame de verificacion...")
 subprocess.run(
     ["ffmpeg", "-y", "-i", str(output), "-ss", "4.5", "-vframes", "1", str(frame)],

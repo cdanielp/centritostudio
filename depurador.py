@@ -8,13 +8,13 @@ import subprocess
 from pathlib import Path
 
 MULETILLAS = frozenset({"eh", "em", "mmm", "ehh", "este"})
-SILENCE_GAP = 0.8         # Silencio mayor a esto se comprime
-SILENCE_COMPRESS = 0.25   # Comprimir a este valor
-MULETILLA_PAUSE = 0.25    # Pausa minima a ambos lados para cortar muletilla
-XFADE_S = 0.03            # Crossfade audio 30ms
-DRIFT_THRESHOLD = 0.1     # Umbral de desfase para anotar alerta
-DELTA_CLEAN_DB = 6        # Delta voz-a-voz <= este valor: union limpia
-DELTA_NOTABLE_DB = 15     # Delta voz-a-voz > este valor: salto notable, considerar normalizacion
+SILENCE_GAP = 0.8  # Silencio mayor a esto se comprime
+SILENCE_COMPRESS = 0.25  # Comprimir a este valor
+MULETILLA_PAUSE = 0.25  # Pausa minima a ambos lados para cortar muletilla
+XFADE_S = 0.03  # Crossfade audio 30ms
+DRIFT_THRESHOLD = 0.1  # Umbral de desfase para anotar alerta
+DELTA_CLEAN_DB = 6  # Delta voz-a-voz <= este valor: union limpia
+DELTA_NOTABLE_DB = 15  # Delta voz-a-voz > este valor: salto notable, considerar normalizacion
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Construccion del EDL (lista de segmentos a conservar)
@@ -151,11 +151,27 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
     if not edl:
         raise ValueError("EDL vacio: no hay segmentos que conservar")
     cmd = [
-        "ffmpeg", "-y", "-i", str(video_path),
-        "-filter_complex", _build_filter(edl),
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-        "-c:a", "aac", "-b:a", "128k", str(output),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-filter_complex",
+        _build_filter(edl),
+        "-map",
+        "[outv]",
+        "-map",
+        "[outa]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        str(output),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -170,9 +186,24 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
 def _volume_at(video_path: Path, start: float, dur: float = 0.3) -> float:
     """Devuelve mean_volume dBFS en el tramo [start, start+dur]."""
     r = subprocess.run(
-        ["ffmpeg", "-y", "-ss", str(max(0, start)), "-t", str(dur),
-         "-i", str(video_path), "-af", "volumedetect", "-vn", "-f", "null", "NUL"],
-        capture_output=True, text=True,
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(max(0, start)),
+            "-t",
+            str(dur),
+            "-i",
+            str(video_path),
+            "-af",
+            "volumedetect",
+            "-vn",
+            "-f",
+            "null",
+            "NUL",
+        ],
+        capture_output=True,
+        text=True,
     )
     for line in r.stderr.splitlines():
         if "mean_volume:" in line:
@@ -243,16 +274,15 @@ def _probe_duration(video_path: Path) -> float:
     """Devuelve duracion en segundos del video."""
     r = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0:
         raise RuntimeError(f"ffprobe error:\n{r.stderr[-1000:]}")
     return float(json.loads(r.stdout).get("format", {}).get("duration", 0))
 
 
-def depurar(
-    video_path: Path, words: list[dict], mode: str, output_path: Path
-) -> dict:
+def depurar(video_path: Path, words: list[dict], mode: str, output_path: Path) -> dict:
     """Depura el video: comprime silencios (seguro) o ademas corta muletillas (agresivo)."""
     dur = _probe_duration(video_path)
     edl = build_edl_agresivo(words, dur) if mode == "agresivo" else build_edl_seguro(words, dur)

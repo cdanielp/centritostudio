@@ -69,8 +69,10 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
                 tag = f"{{\\kf{dur_cs}\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
             elif anim == "bounce":
                 hi, lo = (128, 122) if is_kw else (122, 100)
-                tag = (f"{{\\t(0,80,\\fscx{hi}\\fscy{hi})"
-                       f"\\t(80,160,\\fscx{lo}\\fscy{lo})\\c{active_color}}}{esc}{{\\r}}")
+                tag = (
+                    f"{{\\t(0,80,\\fscx{hi}\\fscy{hi})"
+                    f"\\t(80,160,\\fscx{lo}\\fscy{lo})\\c{active_color}}}{esc}{{\\r}}"
+                )
             elif anim == "scale":
                 sc = 122 if is_kw else 115
                 tag = f"{{\\fscx{sc}\\fscy{sc}\\c{active_color}}}{esc}{{\\r}}"
@@ -130,11 +132,15 @@ def _make_ass_style(
     """Configura PlayRes, ScaledBorderAndShadow y el estilo Default."""
     ref_h = 1920 if video_height >= video_width else 1080
     dim_scale = max(video_height / ref_h, 0.40)
-    subs.info.update({
-        "WrapStyle": "3", "ScaledBorderAndShadow": "yes",
-        "PlayResX": str(video_width), "PlayResY": str(video_height),
-        "ScriptType": "v4.00+",
-    })
+    subs.info.update(
+        {
+            "WrapStyle": "3",
+            "ScaledBorderAndShadow": "yes",
+            "PlayResX": str(video_width),
+            "PlayResY": str(video_height),
+            "ScriptType": "v4.00+",
+        }
+    )
     base = pysubs2.SSAStyle()
     base.fontname = style_cfg.font_name
     base.fontsize = max(int(style_cfg.font_size * dim_scale), 20)
@@ -166,11 +172,13 @@ def build_ass(
         for idx, word in enumerate(gw):
             ev_end = gw[idx + 1]["start"] if idx < len(gw) - 1 else group["end"]
             ev_end = max(ev_end, word["start"] + 0.05)
-            subs.events.append(pysubs2.SSAEvent(
-                start=pysubs2.make_time(s=word["start"]),
-                end=pysubs2.make_time(s=ev_end),
-                text=_word_event_text(gw, idx, style_cfg),
-            ))
+            subs.events.append(
+                pysubs2.SSAEvent(
+                    start=pysubs2.make_time(s=word["start"]),
+                    end=pysubs2.make_time(s=ev_end),
+                    text=_word_event_text(gw, idx, style_cfg),
+                )
+            )
     subs.save(str(output_path))
 
 
@@ -196,10 +204,21 @@ def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
     """Quema el .ass sobre el video. Devuelve el tiempo de proceso en segundos."""
     t0 = time.time()
     cmd = [
-        "ffmpeg", "-y", "-i", str(input_video),
-        "-vf", f"ass={_ffmpeg_ass_path(ass_path)}",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-        "-c:a", "copy", str(output_video),
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_video),
+        "-vf",
+        f"ass={_ffmpeg_ass_path(ass_path)}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-c:a",
+        "copy",
+        str(output_video),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -210,7 +229,18 @@ def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
 def extract_thumb(video_path: Path, output_path: Path, at_sec: float = 1.0) -> None:
     """Extrae un frame del video como miniatura."""
     subprocess.run(
-        ["ffmpeg", "-y", "-ss", str(at_sec), "-i", str(video_path),
-         "-vframes", "1", "-vf", "scale=200:-1", str(output_path)],
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(at_sec),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=200:-1",
+            str(output_path),
+        ],
         capture_output=True,
     )

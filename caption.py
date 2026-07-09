@@ -4,6 +4,7 @@ Toda la lógica vive en core.py. Esta es solo la interfaz de línea de comandos.
 Uso: python caption.py input/video.mp4 --style hormozi --lang es
      python caption.py input/ --style karaoke --lang es   (batch)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,9 +33,9 @@ def process_video(
     print(f"[model] {label} | {device} | {compute}")
 
     style_cfg = get_style(style)
-    stem      = out_stem or video_path.stem
-    ass_path  = output_dir / f"{stem}_{style}.ass"
-    out_path  = output_dir / f"{stem}_{style}.mp4"
+    stem = out_stem or video_path.stem
+    ass_path = output_dir / f"{stem}_{style}.ass"
+    out_path = output_dir / f"{stem}_{style}.mp4"
 
     transcript = core.transcribe_video(video_path, lang, device, compute, model_path)
     print(f"[whisper] {len(transcript['words'])} palabras | idioma: {transcript['language']}")
@@ -42,36 +43,73 @@ def process_video(
     groups = core.group_words(transcript["words"], max_words=max_words)
     print(f"[grupos] {len(groups)} bloques de subtitulo")
 
-    width, height = core.get_video_info(video_path)["width"], core.get_video_info(video_path)["height"]
+    vinfo = core.get_video_info(video_path)
+    width, height = vinfo["width"], vinfo["height"]
     print(f"[video] {width}x{height}")
 
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
 
-    elapsed = core.burn_video(video_path, ass_path, out_path)
+    core.burn_video(video_path, ass_path, out_path)
     total = time.time() - t0
     print(f"[ok] {video_path.name} -> {out_path.name} en {total:.1f}s\n")
     return total, transcript
+
+
+def _run_depurar_cli(input_path: Path, mode: str, output_dir: Path) -> None:
+    """Depura un video desde la CLI: silencios (seguro) o muletillas (agresivo)."""
+    import json  # noqa: PLC0415
+
+    import depurador as dep  # noqa: PLC0415
+
+    if not input_path.is_file():
+        print(f"[ERROR] No existe: {input_path}")
+        sys.exit(1)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / f"{input_path.stem}_limpio.mp4"
+    transcripts_dir = Path(__file__).parent / "transcripts"
+    words_path = transcripts_dir / f"{input_path.stem}_words.json"
+
+    if not words_path.exists():
+        print(f"[ERROR] Falta transcript: {words_path}. Transcribe el video primero.")
+        sys.exit(1)
+
+    raw = json.loads(words_path.read_text(encoding="utf-8"))
+    words = raw.get("words", [])
+    print(f"[depurar] Modo={mode} | {len(words)} palabras | -> {out_path.name}")
+
+    result = dep.depurar(input_path, words, mode, out_path)
+    print(f"[depurar] Listo: {result['cuts']} cortes, -{result['saved_s']}s ahorrados")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Captions animados word-by-word — Centrito Studio CLI"
     )
-    parser.add_argument("input",
-                        help="Video .mp4 de entrada, o carpeta para batch")
-    parser.add_argument("--style", default="hormozi",
-                        choices=["hormozi", "karaoke", "bounce", "pms"])
+    parser.add_argument("input", help="Video .mp4 de entrada, o carpeta para batch")
+    parser.add_argument(
+        "--style", default="hormozi", choices=["hormozi", "karaoke", "bounce", "pms"]
+    )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")
-    parser.add_argument("--model", default="auto",
-                        choices=["auto", "small", "medium"])
+    parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
     parser.add_argument("--words-per-group", type=int, default=None, metavar="N")
     parser.add_argument("--out-stem", default=None)
+    parser.add_argument(
+        "--depurar",
+        choices=["seguro", "agresivo"],
+        default=None,
+        help="Depurar silencios (seguro) o tambien muletillas (agresivo)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     input_path = Path(args.input)
+
+    if args.depurar:
+        _run_depurar_cli(input_path, args.depurar, output_dir)
+        return
 
     if input_path.is_dir():
         videos = sorted(v for v in input_path.glob("*.mp4") if not v.stem.startswith("test_"))
@@ -81,13 +119,21 @@ def main() -> None:
         print(f"[batch] {len(videos)} videos\n")
         total = 0.0
         for v in videos:
-            t, _ = process_video(v, args.style, args.lang, output_dir,
-                                  args.model, args.words_per_group)
+            t, _ = process_video(
+                v, args.style, args.lang, output_dir, args.model, args.words_per_group
+            )
             total += t
         print(f"[batch] Total: {total:.1f}s")
     elif input_path.is_file():
-        process_video(input_path, args.style, args.lang, output_dir,
-                      args.model, args.words_per_group, args.out_stem)
+        process_video(
+            input_path,
+            args.style,
+            args.lang,
+            output_dir,
+            args.model,
+            args.words_per_group,
+            args.out_stem,
+        )
     else:
         print(f"[ERROR] No existe: {input_path}")
         sys.exit(1)

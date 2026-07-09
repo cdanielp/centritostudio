@@ -1,0 +1,27 @@
+line-length = 100
+target-version = "py312"
+exclude = [
+    "referencias",
+    "venv",
+    ".agents",
+    "models",
+    "motion",
+    "assets",
+    "output",
+    "input",
+    "transcripts",
+    "revision",
+    "static",
+]
+
+[lint]
+# E/W pycodestyle, F pyflakes, I isort, B bugbear (bugs comunes), UP modernizador, C90 complejidad
+select = ["E", "F", "W", "I", "B", "UP", "C90"]
+
+[lint.mccabe]
+# Funcion con complejidad > 12 = spaghetti. Ruff la marca y el gate la bloquea.
+max-complexity = 12
+
+[lint.per-file-ignores]
+# B008: File/Body en defaults de FastAPI es el patron idiomatico del framework
+"app.py" = ["B008"]
