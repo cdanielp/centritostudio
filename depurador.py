@@ -12,8 +12,9 @@ SILENCE_GAP = 0.8         # Silencio mayor a esto se comprime
 SILENCE_COMPRESS = 0.25   # Comprimir a este valor
 MULETILLA_PAUSE = 0.25    # Pausa minima a ambos lados para cortar muletilla
 XFADE_S = 0.03            # Crossfade audio 30ms
-MAX_ITERS = 3             # Iteraciones de auto-evaluacion
 DRIFT_THRESHOLD = 0.1     # Umbral de desfase para anotar alerta
+DELTA_CLEAN_DB = 6        # Delta voz-a-voz <= este valor: union limpia
+DELTA_NOTABLE_DB = 15     # Delta voz-a-voz > este valor: salto notable, considerar normalizacion
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Construccion del EDL (lista de segmentos a conservar)
@@ -203,29 +204,34 @@ def _last_word_end_before(words: list[dict], seg_end: float) -> float | None:
     return best
 
 
-def _eval_and_adjust(
+def _eval_joins(
     output: Path, edl: list[tuple[float, float]], voice_refs: list[float | None]
-) -> tuple[list[tuple[float, float]], bool]:
-    """Verifica fronteras midiendo voz-a-voz con refs estables. Devuelve (edl, hubo_ajuste)."""
+) -> list[dict]:
+    """Diagnostica uniones midiendo voz-a-voz. Sin ajuste de cortes. Solo informa."""
     joins = _join_output_times(edl)
-    hubo_ajuste = False
+    report: list[dict] = []
     for j, j_time in enumerate(joins):
         last_voice_end = voice_refs[j] if j < len(voice_refs) else None
         if last_voice_end is None:
+            report.append({"join": j_time, "delta": None, "clase": "sin_referencia"})
             continue
         silence_in_seg = edl[j][1] - last_voice_end
         if silence_in_seg < XFADE_S:
-            continue  # silencio agotado por ajustes previos
-        # Medir en ventana de 150ms justo antes del silencio comprimido (voz-a-voz)
+            report.append({"join": j_time, "delta": None, "clase": "silencio_minimo"})
+            continue
         pre_start = max(0.0, j_time - silence_in_seg - 0.15)
         vol_pre = _volume_at(output, pre_start, dur=0.15)
         vol_post = _volume_at(output, j_time + 0.02)
-        if abs(vol_pre - vol_post) > 6:
-            print(f"[depurar] Union @{j_time:.1f}s: delta={abs(vol_pre-vol_post):.1f}dB, ajustando")
-            s, e = edl[j]
-            edl[j] = (s, max(s + XFADE_S * 2, e - 0.08))
-            hubo_ajuste = True
-    return edl, hubo_ajuste
+        delta = round(abs(vol_pre - vol_post), 1)
+        if delta <= DELTA_CLEAN_DB:
+            clase = "limpia"
+        elif delta <= DELTA_NOTABLE_DB:
+            clase = "salto_leve"
+        else:
+            clase = "salto_notable"
+        print(f"[depurar] Union @{j_time:.1f}s: delta={delta:.1f}dB {clase}")
+        report.append({"join": round(j_time, 2), "delta": delta, "clase": clase})
+    return report
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,19 +264,12 @@ def depurar(
     if n_cuts == 0:
         shutil.copy2(str(video_path), str(output_path))
         print("[depurar] Sin cortes necesarios.")
-        return {"cuts": 0, "saved_s": 0.0, "iterations": 0, "edl": edl}
+        return {"cuts": 0, "saved_s": 0.0, "edl": edl, "join_report": []}
 
-    # Precomputar refs de voz estables antes de cualquier ajuste
     voice_refs = [_last_word_end_before(words, seg[1]) for seg in edl[:-1]]
-
-    iterations = 0
-    for _ in range(MAX_ITERS):
-        iterations += 1
-        _run_edl(video_path, edl, output_path)
-        edl, ajustado = _eval_and_adjust(output_path, edl, voice_refs)
-        if not ajustado:
-            break
+    _run_edl(video_path, edl, output_path)
+    join_report = _eval_joins(output_path, edl, voice_refs)
 
     saved = round(dur_orig - dur_out, 2)
-    print(f"[depurar] {n_cuts} cortes | -{saved}s | modo={mode} | iters={iterations}")
-    return {"cuts": n_cuts, "saved_s": saved, "iterations": iterations, "edl": edl}
+    print(f"[depurar] {n_cuts} cortes | -{saved}s | modo={mode}")
+    return {"cuts": n_cuts, "saved_s": saved, "edl": edl, "join_report": join_report}

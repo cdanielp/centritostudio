@@ -113,40 +113,51 @@ def test_edl_agresivo_mas_cortes_que_seguro():
     assert dur_agr <= dur_seg + 0.01, "Agresivo no puede ser mas largo que seguro"
 
 
-# ── Tests _eval_and_adjust (criterio voz-a-voz) ───────────────────────────────
+# ── Tests _eval_joins (diagnostico voz-a-voz) ────────────────────────────────
 
 _WORDS_VOZ = [
     {"w": "hola",  "s": 0.0, "e": 1.0, "prob": 0.99},
     {"w": "mundo", "s": 2.5, "e": 3.0, "prob": 0.99},
 ]
-# EDL: silencio original 1.5s (1.0→2.5) comprimido a 0.25s → seg[0] = (0, 1.25)
+# EDL: silencio original 1.5s (1.0->2.5) comprimido a 0.25s -> seg[0] = (0, 1.25)
 _EDL_BASE = [(0.0, 1.25), (2.5, 4.0)]
-# voice_refs precomputados desde EDL inicial: "hola" termina en 1.0, que es ≤ 1.25-0.25+0.01=1.01
+# voice_refs: "hola" termina en 1.0 <= 1.25-0.25+0.01=1.01
 _VOICE_REFS = [depurador._last_word_end_before(_WORDS_VOZ, e) for _, e in _EDL_BASE[:-1]]
 
 
-def test_voice_refs_apunta_a_ultima_palabra(tmp_path):
+def test_voice_refs_apunta_a_ultima_palabra():
     """_last_word_end_before devuelve el fin de la ultima palabra antes del silencio."""
     assert _VOICE_REFS == [1.0], f"Esperado [1.0], obtenido {_VOICE_REFS}"
 
 
-def test_eval_and_adjust_no_dispara_silencio_comprimido(tmp_path):
-    """Delta voz-voz < 6dB: no ajusta aunque silencio comprimido cause delta grande raw."""
+def test_eval_joins_clasifica_union_limpia(tmp_path):
+    """Delta voz-voz <= 6dB: clasifica como 'limpia' y no modifica el EDL."""
     fake = tmp_path / "v.mp4"
     fake.write_bytes(b"")
-    # _volume_at: pre=-15dB (voz), post=-17dB (voz) → delta=2dB → sin ajuste
     with patch.object(depurador, "_volume_at", side_effect=[-15.0, -17.0]):
-        edl2, ajustado = depurador._eval_and_adjust(fake, list(_EDL_BASE), _VOICE_REFS)
-    assert not ajustado, "Delta voz-voz de 2dB no debe disparar ajuste"
-    assert edl2 == _EDL_BASE
+        report = depurador._eval_joins(fake, list(_EDL_BASE), _VOICE_REFS)
+    assert len(report) == 1
+    assert report[0]["clase"] == "limpia"
+    assert report[0]["delta"] == 2.0
 
 
-def test_eval_and_adjust_dispara_con_delta_voz_real(tmp_path):
-    """Delta voz-voz > 6dB: ajusta el EDL acortando el segmento 80ms."""
+def test_eval_joins_clasifica_salto_leve(tmp_path):
+    """Delta voz-voz 6-15dB: clasifica como 'salto_leve'."""
     fake = tmp_path / "v.mp4"
     fake.write_bytes(b"")
-    # pre=-15dB, post=-35dB → delta=20dB → debe ajustar
+    with patch.object(depurador, "_volume_at", side_effect=[-15.0, -25.0]):
+        report = depurador._eval_joins(fake, list(_EDL_BASE), _VOICE_REFS)
+    assert len(report) == 1
+    assert report[0]["clase"] == "salto_leve"
+    assert report[0]["delta"] == 10.0
+
+
+def test_eval_joins_clasifica_salto_notable(tmp_path):
+    """Delta voz-voz > 15dB: clasifica como 'salto_notable'; EDL permanece intacto."""
+    fake = tmp_path / "v.mp4"
+    fake.write_bytes(b"")
     with patch.object(depurador, "_volume_at", side_effect=[-15.0, -35.0]):
-        edl2, ajustado = depurador._eval_and_adjust(fake, list(_EDL_BASE), _VOICE_REFS)
-    assert ajustado, "Delta voz-voz de 20dB debe disparar ajuste"
-    assert edl2[0][1] < _EDL_BASE[0][1], "Segmento debe haberse acortado"
+        report = depurador._eval_joins(fake, list(_EDL_BASE), _VOICE_REFS)
+    assert len(report) == 1
+    assert report[0]["clase"] == "salto_notable"
+    assert report[0]["delta"] == 20.0

@@ -5,7 +5,7 @@ Actualizado: 2026-07-09 · Sesión: 5
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
 - [x] F1 Studio core + fixes transcripción
 - [x] F2 Cerebro editorial (DeepSeek) — re-cerrada con énfasis visible (keyword_color persistente)
-- [x] F3 Depurador de clases — validado con 2 videos reales, drift=0, fronteras limpias. Criterio voz-a-voz implementado (feedback loop eliminado, voice_refs estables). 2/7 uniones convergen (V2); 5/7 y 4/4 (V1) no convergen por variación real de nivel entre secciones. Threshold 6dB pendiente ajuste para grabaciones de nivel variable. Ver PREGUNTAS.md #8.
+- [x] F3 Depurador de clases — CERRADA. Validada con TTS (4 cortes, -3.84s) y voz humana OBS (7 cortes, -15.74s, 20.9%). Aprobación auditiva del arquitecto. _eval_joins diagnóstico operativo (6/15dB, sin loop de ajuste). Render único: 44s V1, 12s V2.
 - [ ] F4 Clipper viral
 - [ ] F5 Assets: emojis PNG + ComfyUI
 - [ ] F6 Motor B: HyperFrames
@@ -24,4 +24,4 @@ Actualizado: 2026-07-09 · Sesión: 5
 - 2026-07-09: Sesión 3 — Fase 0 cerrada (node OK, HyperFrames, /watch, skills), Fase 2: brain.py + DeepSeek + keywords en Motor A + UI Énfasis IA
 - 2026-07-09: Sesión 4 — TAREA B: brain.json re-ancla por kw_ts (regroup-safe), 2 tests contrato nuevos. core_ass.py split (core.py 288 lineas). TAREA C: depurador.py completo (modos seguro/agresivo, EDL, FFmpeg crossfade, auto-eval, CLI --depurar, Studio botón, recalcular_words). Fase 3 cerrada con evidencia real (reel02 demo, 2 cortes, -2.7s).
 - 2026-07-09: Sesión 5 — keyword_color persistente (visible en frames), fix _eval_and_adjust (todas las uniones por iteración), fix usage tracking en brain.py, énfasis IA siempre reportado en UI (ámbar). F0/F2/F3 re-auditadas y cerradas. Bug 17vs14 en DEPURADO_reel02.md documentado y corregido.
-- 2026-07-09: Sesión 5b — Depurador validado: 2 videos reales. Fix voz-a-voz con voice_refs estables (feedback loop eliminado). V1: 4 cortes, -4.8s. V2: 7 cortes, -16.94s, 22.5%. 2/7 uniones V2 convergen iter1; resto: variación real de nivel. Threshold 6dB pendiente ajuste (ver PREGUNTAS #8). 3 tests unitarios nuevos.
+- 2026-07-09: Sesión 5c — _eval_joins reemplaza loop de ajuste: diagnóstico voz-a-voz puro (6/15dB, sin mover cortes). F3 cerrada sin pendientes. 28 tests. V1: 44s; V2: 12s (3x mas rapido).
