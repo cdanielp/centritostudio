@@ -241,6 +241,50 @@ def get_clips(name: str):
     return json.loads(clips_path.read_text(encoding="utf-8"))
 
 
+# ─── Reframe ──────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/clips/{name}/detectar")
+def detectar_caras_clip(name: str):
+    """Detecta caras en un clip y devuelve la lista con thumbnails."""
+    clip_path = CLIPS_DIR / f"{name}.mp4"
+    if not clip_path.exists():
+        raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
+    import reframe  # noqa: PLC0415
+
+    caras = reframe.detectar_caras_video(clip_path)
+    return {"n_caras": len(caras), "caras": caras}
+
+
+@app.post("/api/clips/{name}/turnos")
+def save_turnos_clip(name: str, body: dict = Body(...)):
+    """Guarda el archivo de turnos para un clip multi-cara."""
+    clip_path = CLIPS_DIR / f"{name}.mp4"
+    if not clip_path.exists():
+        raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
+    turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
+    turnos_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"saved": len(body.get("turnos", []))}
+
+
+@app.post("/api/clips/{name}/reframe")
+def start_reframe(name: str, punch_in: bool = False):
+    """Inicia el reencuadre 9:16 de un clip en background."""
+    clip_path = CLIPS_DIR / f"{name}.mp4"
+    if not clip_path.exists():
+        raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
+    turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
+    turnos = json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None
+    output_path = CLIPS_DIR / f"{name}_9x16.mp4"
+    jid = jobs.new_job(f"Reencuadrando {name} a 9:16...")
+    threading.Thread(
+        target=jobs.run_reframe,
+        args=(jid, clip_path, output_path, turnos, punch_in),
+        daemon=True,
+    ).start()
+    return {"job_id": jid}
+
+
 # ─── Render ───────────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/render")
 def start_render(

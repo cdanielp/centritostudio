@@ -207,6 +207,31 @@ def run_clips(jid: str, mp4: Path, words_path: Path, name: str, tipos: str) -> N
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
 
+# --- Worker: reframe ----------------------------------------------------------
+
+
+def run_reframe(
+    jid: str, clip_path: Path, output_path: Path, turnos: dict | None, punch_in: bool
+) -> None:
+    """Worker: reencuadra un clip de 16:9 a 9:16 con face tracking."""
+    try:
+        import reframe  # noqa: PLC0415
+
+        update_job(jid, status="running", progress=10, message="Detectando caras...")
+        result = reframe.reframe_clip(clip_path, output_path, turnos=turnos, punch_in=punch_in)
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=f"Listo ({result['n_caras']} cara(s)) en {result['dur_s']:.1f}s",
+            result=result,
+        )
+    except ValueError as exc:
+        update_job(jid, status="error", progress=0, message=str(exc), error=str(exc))
+    except Exception as exc:
+        update_job(jid, status="error", message=str(exc), error=str(exc))
+
+
 # --- Worker: render -----------------------------------------------------------
 
 

@@ -69,31 +69,88 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
 - **DECISIÓN (sesión 7):** pospuesto a F4.1.
 - **Nota:** center-crop puro no sirve para clases con screen-share. F4.1 necesitará diseño propio (¿recuadro lateral? ¿zoom semántico?). Face-tracking sigue explícitamente fuera.
 
-### 12. F4 Clipper v2 — Zona muerta de duracion 40-55s (primera mejora candidata)
+### 12. F4 Clipper v2 — Zona muerta de duracion 40-55s — **RESUELTO (sesion 9)**
 
-18 de 31 candidatos de segmentacion fueron descartados por duracion en la calibracion.
-6 de esos 18 caen en la zona 40-55s (entre el tope del tipo corto y el minimo del tipo largo).
-Estos son tipicamente bloques de procedimiento completos, medianos, que no encajan en ningun tipo.
+~~18 de 31 candidatos de segmentacion fueron descartados por duracion en la calibracion.~~
+~~6 de esos 18 caen en la zona 40-55s...~~
 
-Opciones para v2 (NO decidir ahora — registrar para cuando el arquitecto quiera iterar):
-- **A) Ampliar largo.min a 45s**: cobertura inmediata, invalida la calibracion actual.
-- **B) Tipo "medio" (45-60s)**: mas granular, requiere prompt de segmentacion actualizado.
-- **C) Dejar como esta**: los 6 candidatos son clase normal; el usuario los puede encadenar a mano.
+**Voto del arquitecto: opcion A — ampliar largo.min a 45s.**
+Registrado en DECISIONES.md §F4.1. No implementar hasta sesion v2 del clipper.
 
-### 13. F4 Clipper v2 — Razones de exclusion precisas (mejora UX)
+### 13. F4 Clipper v2 — Razones de exclusion precisas (mejora UX) — **RESUELTO (sesion 9)**
 
-`seleccionar_clips()` hoy aplica el check `len(elegidos) >= MAX_CLIPS` ANTES del check
-`score < SCORE_MIN`. Resultado: items con score<60 reciben "max_clips" cuando el cupo ya
-esta lleno, ocultando que tambien son "bajo el umbral". Ejemplo de la calibracion:
-- Candidato score=58 ("Custom Nodes"): cupo lleno + score<60 → etiqueta "max_clips"
-- Candidato score=41 ("Workflow listo"): cupo lleno + score<60 → etiqueta "max_clips"
+~~`seleccionar_clips()` hoy aplica el check `len(elegidos) >= MAX_CLIPS` ANTES del check...~~
 
-Para v2: agregar campo `razon_real` con valores:
-- `cupo_lleno`: score>=60 pero MAX_CLIPS ya estaba lleno (habria sido un clip entregado)
-- `score_bajo`: score<60, cupo no lleno (genuinamente bajo el umbral)
-- `cupo_y_bajo`: score<60 Y cupo lleno (ambos criterios aplican)
-- `solape`: solapamiento con clip de mayor score
-- `separacion`: muy cercano a otro clip entregado
+**Voto del arquitecto: SI al campo razon_real** con valores: `cupo_lleno`, `score_bajo`,
+`cupo_y_bajo`, `solape`, `separacion`.
+Registrado en DECISIONES.md §F4.1. No implementar hasta sesion v2 del clipper.
+
+---
+
+## PREGUNTAS F4.1 — Reframe Vertical (para votar ANTES de implementar)
+
+### 14. Punch-ins: ¿opt-in (--punch-in flag) o activados por default?
+
+El diseño actual los pone como **opt-in** (desactivados por default).
+
+**Razón para opt-in:** un punch-in mal calibrado (keywords muy juntas, zoom brusco) arruina el
+reencuadre. El usuario puede probar el reframe limpio primero y activar punch-ins cuando quiera.
+El flag `--punch-in` es visible y controlable.
+
+**Alternativa:** activarlos siempre (simplifica la CLI).
+
+- **Pregunta binaria:** ¿opt-in con `--punch-in` (propuesta) o siempre activos?
+
+### 15. Resolución de salida: ¿siempre 1080×1920 o respetar la resolución del clip fuente?
+
+Los clips de F4 pueden venir de fuentes 1280×720 (si la grabación de clase era 720p) o
+1920×1080 (full HD). El diseño actual **siempre produce 1080×1920** (upscale si la fuente
+es 720p; FFmpeg lanczos, calidad aceptable).
+
+**Alternativa:** preservar resolución fuente → output 720×1280 para fuentes 720p.
+
+- **Pregunta binaria:** ¿siempre 1080×1920 (propuesta) o respetar resolución fuente?
+
+### 16. CLI del reframe: ¿módulo independiente o subcomando de caption.py?
+
+El diseño actual expone el reframe como **módulo independiente**:
+`python reframe.py output/clips/clip.mp4 [--punch-in]`
+
+Esto respeta la regla #10 (caption.py no puede romperse) y mantiene caption.py < 400 líneas.
+El Studio llama a reframe.py internamente vía subprocess.
+
+**Alternativa:** añadir `--reframe` a caption.py (un solo punto de entrada para todo).
+
+- **Pregunta binaria:** ¿módulo independiente `reframe.py` (propuesta) o `--reframe` en `caption.py`?
+
+### 17. ¿El Studio muestra preview de frames ANTES del render completo?
+
+**Propuesta:** sí — botón "Preview (3 frames)" que extrae 3 frames representativos del clip
+ya reencuadrado (~1-2s) para que el usuario vea la posición del encuadre antes de esperar
+el render completo (20-40s). Si el preview se ve mal, puede ajustar los turnos y re-probar.
+
+**Alternativa:** render directo sin preview (más simple, menos iteración visual).
+
+- **Pregunta binaria:** ¿preview de frames antes del render (propuesta) o render directo?
+
+### 14-17: RESUELTOS — ver DECISIONES.md §F4.1 Votos del arquitecto (sesion 10)
+
+### 18. mediapipe 0.10.14 no disponible en pip — version real 0.10.35
+
+La version 0.10.35 elimino `mp.solutions.face_detection` (API Solutions legacy).
+Se usa la nueva Tasks API con modelo TFLite descargado a `models/blaze_face_short_range.tflite`.
+La API Tasks es la recomendada por Google para todas las versiones 0.10.x+.
+**Accion:** requirements.txt y DISENO_REFRAME.md actualizados con la version real.
+Estado: resuelto en sesion 10.
+
+### 19. Preview de frames para reframe — mejora futura
+
+Voto #17 fue render directo. Si los renders de 20-40s empiezan a ser un friccion frecuente
+(usuario descubre encuadre incorrecto DESPUES de esperar), considerar en v2:
+- Boton "Preview 3 frames" que extrae frames 10%/50%/90% del clip con el crop aplicado (~2s)
+- Solo activar si el feedback real del uso indica que 20-40s es doloroso
+
+---
 
 ### 8. Umbrales de diagnostico _eval_joins — RESUELTO
 - **Decision del arquitecto:** el loop de ajuste fue eliminado. La medicion voz-a-voz queda

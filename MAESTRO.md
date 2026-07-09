@@ -178,6 +178,41 @@
 
 ---
 
+## FASE 4.1 — Reframe Vertical (16:9 → 9:16 con face tracking)
+
+**Objetivo:** los clips de F4 salen en 16:9; su destino (Reels, TikTok, Shorts) es 9:16.
+Esta fase los reencuadra con seguimiento de cara, suavizado EMA + deadzone, y punch-ins
+opcionales en keywords. **Orden del pipeline:** clipper → reframe → captions.
+
+**Decisiones fijas (no reabrir):**
+- Detección: MediaPipe (face detection). Cada 3 frames, interpolación entre detecciones.
+- Suavizado: EMA (alpha=0.08) + deadzone 30% del ancho de fuente.
+- Punch-ins: zoom 112% en keywords del brain, 4 frames de transición. Opt-in (`--punch-in`).
+- Multi-cara: asignación MANUAL via `{clip}_turnos.json`. Transición = CORTE SECO.
+- Audio: `-c:a copy` siempre. El reframe no re-encodea audio.
+- Nueva dependencia: `mediapipe==0.10.35` (CPU, sin torch).
+
+**Diseño completo:** `revision/fase-4.1/DISENO_REFRAME.md`
+
+**Pasos de implementación:**
+1. `pip install mediapipe==0.10.35` en el venv; verificar con `python -c "import mediapipe; print(mediapipe.__version__)"`.
+2. Implementar `reframe_track.detectar_cara_frame()` con MediaPipe FaceDetector (API short-range).
+3. Implementar `reframe.detectar_caras_video()`: cv2.VideoCapture, muestra N frames, extrae thumbnails de caras.
+4. Implementar `reframe.renderizar_reframe()`: pipe OpenCV → FFmpeg (ver esquema en DISENO §1).
+5. Implementar `reframe.reframe_clip()` completo (orchestación, turnos, brain, punch-ins).
+6. Integrar en Studio: endpoint `POST /api/reframe/detectar` y `POST /api/reframe/generar`, UI en pestaña Clips.
+
+**DoD:**
+1. `python reframe.py output/clips/clip.mp4` genera `output/clips/clip_9x16.mp4` sin temblor.
+2. Con 2+ caras sin turnos: error accionable; con turnos: reencuadre correcto.
+3. Audio intacto verificado con `ffprobe`.
+4. Sin caras: center-crop + log.
+5. `check.bat` verde (27 tests de contrato + smoke test caption.py intactos).
+6. `revision/fase-4.1/REFRAME_REPORT.md` con frames comparativos 16:9 vs 9:16.
+7. Commit `fase-4.1: reframe vertical`.
+
+---
+
 ## FASE 5 — Assets: emojis como overlay PNG + puente a ComfyUI
 
 **Objetivo:** materializar los emojis del cerebro (Fase 2) como overlays visuales de calidad, y conectar el ComfyUI local del usuario como generador de assets propios.

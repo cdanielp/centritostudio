@@ -116,3 +116,53 @@ captions" — el transcript re-basado a t=0 es lo que habilita esto sin re-trans
 con score<60 reciban "max_clips" cuando el cupo ya esta lleno. Semanticamente correcto
 para el codigo, pero ambiguo para el usuario. Para v2: distinguir cupo_lleno (score>=60)
 de cupo_y_bajo (score<60 Y cupo lleno). Ver PREGUNTAS.md.
+
+---
+
+## Fase 4.1 — Reframe Vertical (sesion 9, 2026-07-09)
+
+### Votos del arquitecto para v2 del clipper (PREGUNTAS #12 y #13)
+
+**#12 — Opcion A: ampliar largo.min a 45s**
+Los 6 candidatos en zona 40-55s son bloques de procedimiento completos validos.
+Ampliar el rango corrige el fallo de cobertura. La calibracion actual queda invalida
+al implementarse — requiere re-calibracion con videolargo.mov antes del merge.
+No implementar hasta que el arquitecto abra la sesion v2 del clipper.
+
+**#13 — SI al campo razon_real**
+Agregar `razon_real` a `seleccionar_clips()` con valores: `cupo_lleno`, `score_bajo`,
+`cupo_y_bajo`, `solape`, `separacion`. No implementar hasta la sesion v2 del clipper.
+
+### Decisiones de disenio de F4.1 (delegadas al disenio)
+
+Todas las decisiones tecnicas (estrategia de render, parametros, casos borde, formato
+de turnos, estructura de modulos, audio) estan justificadas en:
+`revision/fase-4.1/DISENO_REFRAME.md`
+
+Resumen ejecutivo:
+- **Render**: OpenCV frame-a-frame + pipe a FFmpeg (no zoompan, no sendcmd)
+- **EMA_ALPHA=0.08**, **DEADZONE_PCT=0.30**, **DETECT_EVERY_N=3**, **PUNCH_ZOOM=1.12**
+- **Audio**: `-map 1:a -c:a copy` — nunca se re-encodea
+- **Punch-ins**: opt-in (--punch-in flag), desactivados por default — pendiente voto #14
+- **Multi-cara**: `{clip}_turnos.json` obligatorio; fallo accionable si falta con 2+ caras
+- **Sin caras**: center-crop + log (no falla)
+- **Nueva dependencia**: `mediapipe==0.10.35` (CPU, sin torch; ver PREGUNTAS #18)
+
+## Fase 4.1 — Votos del arquitecto (sesion 10, 2026-07-09)
+
+### #14 Punch-ins: OPT-IN (propuesta confirmada)
+`--punch-in` flag, desactivado por default. En el Studio: checkbox "Punch-ins en keywords".
+Se decidira si pasa a default tras validacion visual con material real.
+
+### #15 Output: SIEMPRE 1080x1920
+Upscale con `cv2.INTER_LANCZOS4` cuando la fuente sea 720p u otra resolucion menor.
+Correccion del diseno: §2 de DISENO_REFRAME.md atribuia el upscale a FFmpeg, pero con
+el pipe fijo a `1080x1920 -s` lo hace OpenCV en el resize. Alineado en el doc.
+
+### #16 CLI: reframe.py INDEPENDIENTE
+No tocar `caption.py` (regla #10). El encadenado clipper→reframe→captions lo hace el
+Studio via jobs.py. `caption.py` no se modifica en ninguna fase de reframe.
+
+### #17 Render DIRECTO sin preview
+Sin preview de frames previo al render completo. Anotar en PREGUNTAS como mejora futura
+si los renders empiezan a doler (ver PREGUNTAS #19).
