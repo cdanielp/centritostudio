@@ -44,11 +44,10 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
 - El modelo medium falla en la descarga por permisos de symlinks en Windows sin Developer Mode — se usa small como fallback estable
 - Audio de test generado con `es-MX-JorgeNeural` (voz masculina, Mexico). Whisper lo detecta correctamente como `es`
 
-### 7. app.py supera 400 lineas (deuda tecnica)
-- **Situacion:** app.py tiene 423 lineas (limite=400 segun reglas centrito-dev).
-- **Causa:** acumulacion de endpoints a traves de sesiones; este sesion aniadio ~15 lineas.
-- **Fix sugerido:** extraer las funciones background (_run_transcribe, _run_analyze, _run_depurar, _run_render) a un modulo separado `jobs.py`, dejando app.py solo con las rutas FastAPI (~250 lineas).
-- **Cuando:** al inicio de Fase 4 (antes de anadir el clipper) para no romper el limite mas.
+### 7. app.py→jobs.py — RESUELTO
+- app.py: 243 lineas (workers extraidos a jobs.py).
+- jobs.py: 185 lineas (new_job, update_job, get_job + 4 workers).
+- Deuda saldada antes de F4.
 
 ### 8. Umbrales de diagnostico _eval_joins — RESUELTO
 - **Decision del arquitecto:** el loop de ajuste fue eliminado. La medicion voz-a-voz queda
