@@ -119,6 +119,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <button class="active" onclick="showTab('videos',this)">Videos</button>
     <button onclick="showTab('editor',this)">Editor</button>
     <button onclick="showTab('render',this)">Render</button>
+    <button onclick="showTab('clips',this)">Clips</button>
   </nav>
 </div>
 
@@ -211,6 +212,56 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   </div>
 </div>
 
+<!-- ════════════════ TAB: CLIPS ════════════════ -->
+<div id="tab-clips" class="tab">
+  <div id="clips-panel" style="padding:20px;max-width:680px;display:flex;flex-direction:column;gap:16px">
+    <div style="background:var(--surface);border:var(--border);border-radius:10px;padding:20px">
+      <h2 style="font-size:15px;font-weight:500;margin-bottom:16px">Generar clips virales</h2>
+      <div class="field">
+        <label>Video fuente</label>
+        <select id="clips-video-select" onchange="onClipsVideoChange(this.value)">
+          <option value="">— Elegir video —</option>
+        </select>
+      </div>
+      <div id="clips-source-note" class="msg" style="margin-bottom:8px;display:none"></div>
+      <div class="field">
+        <label>Tipo de clips</label>
+        <select id="clips-tipo">
+          <option value="ambos">Ambos (cortos y largos)</option>
+          <option value="cortos">Solo cortos (20-40s)</option>
+          <option value="largos">Solo largos (55-100s)</option>
+        </select>
+      </div>
+      <button class="btn" id="clips-btn" onclick="startClips()">Generar clips</button>
+      <div id="clips-job-status" style="margin-top:10px"></div>
+    </div>
+
+    <div id="clips-results" style="display:none">
+      <div id="clips-cards" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+
+    <div id="clips-note" class="msg" style="display:none;font-size:12px;color:var(--muted)">
+      Los clips salen sin captions — pasalos por Render con el estilo que quieras.
+    </div>
+  </div>
+</div>
+
+<style>
+/* ══════════════════════════════════════════
+   TAB 4: CLIPS
+══════════════════════════════════════════ */
+#tab-clips{padding:0;overflow-y:auto}
+.clip-card{background:var(--surface);border:var(--border);border-radius:10px;padding:16px;display:flex;gap:14px}
+.clip-card video{width:120px;height:auto;border-radius:6px;background:#111;flex-shrink:0}
+.clip-card .clip-info{flex:1;min-width:0}
+.clip-score{font-size:28px;font-weight:500;color:var(--purple);line-height:1}
+.clip-score span{font-size:13px;color:var(--muted);font-weight:400}
+.clip-tipo{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;background:#1a1228;color:var(--purple);margin-bottom:6px}
+.clip-titulo{font-size:14px;font-weight:500;margin:4px 0}
+.clip-razon{font-size:12px;color:var(--muted);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clip-dur{font-size:11px;color:var(--muted)}
+</style>
+
 <script>
 // ═══════════════════════════════════════════════════════
 // Estado global
@@ -287,6 +338,12 @@ function populateSelects() {
   const opts = videos.map(v => `<option value="${v.name}">${v.name} (${statusLabel(v.status)})</option>`).join('');
   document.getElementById('editor-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
   document.getElementById('render-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
+  const clipsEl = document.getElementById('clips-video-select');
+  if (clipsEl) {
+    const transcribed = videos.filter(v => v.status !== 'sin_transcribir');
+    clipsEl.innerHTML = '<option value="">— Elegir video —</option>' +
+      transcribed.map(v => `<option value="${v.name}">${v.name}</option>`).join('');
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -650,6 +707,131 @@ function showOutputPreview(filename, name, style) {
   document.getElementById('output-label').textContent = filename;
   document.getElementById('output-dl').href     = '/output/' + filename;
   document.getElementById('output-dl').download = filename;
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB CLIPS
+// ═══════════════════════════════════════════════════════
+let clipsName = null;
+
+function onClipsVideoChange(name) {
+  clipsName = name || null;
+  const note = document.getElementById('clips-source-note');
+  if (!name) { note.style.display='none'; return; }
+  // Si existe version depurada, avisarlo
+  const v = videos.find(x => x.name === name);
+  if (v && v.outputs && v.outputs.some(o => o.includes('_limpio'))) {
+    note.textContent = 'Tip: usa la version depurada para mejores scores';
+    note.style.display = 'block';
+  } else {
+    note.style.display = 'none';
+  }
+  // Cargar clips existentes si los hay
+  loadClipsResult(name);
+}
+
+async function loadClipsResult(name) {
+  try {
+    const res = await fetch(`/api/videos/${name}/clips`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.clips && data.clips.length > 0) renderClipsCards(data);
+  } catch(e) {}
+}
+
+async function startClips() {
+  if (!clipsName) { alert('Elige un video'); return; }
+  const tipos = document.getElementById('clips-tipo').value;
+  const btn = document.getElementById('clips-btn');
+  const statusDiv = document.getElementById('clips-job-status');
+  btn.disabled = true;
+  document.getElementById('clips-results').style.display = 'none';
+  document.getElementById('clips-note').style.display = 'none';
+  statusDiv.innerHTML = '<div class="msg">Iniciando...</div><div class="progress-bar"><div class="fill" id="clips-pb" style="width:3%"></div></div>';
+
+  const res = await fetch(`/api/videos/${clipsName}/clips?tipos=${tipos}`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json();
+    statusDiv.innerHTML = `<div class="msg err">${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id} = await res.json();
+
+  pollJob(job_id, (j) => {
+    const pb = document.getElementById('clips-pb');
+    if (pb) pb.style.width = Math.max(5, j.progress) + '%';
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl) msgEl.textContent = j.message;
+    if (j.status === 'done') {
+      btn.disabled = false;
+      statusDiv.innerHTML = `<div class="msg ok">${j.message}</div>`;
+      if (j.result) renderClipsCards(j.result);
+    } else if (j.status === 'error') {
+      statusDiv.innerHTML = `<div class="msg warn">${j.message}</div>`;
+      btn.disabled = false;
+    }
+  }, 1200);
+}
+
+function renderClipsCards(data) {
+  const clips = data.clips || [];
+  const casi = data.casi || [];
+  const cards = document.getElementById('clips-cards');
+  cards.innerHTML = '';
+
+  if (clips.length === 0) {
+    let html = '<div class="msg" style="padding:12px 0">';
+    if (casi.length > 0) {
+      const mejor = casi.reduce((a,b) => (b.score||0) > (a.score||0) ? b : a, casi[0]);
+      html += `Ningun segmento supero 60/100. El mejor llego a <b>${mejor.score}</b>: "${mejor.titulo || ''}" — ${mejor.razon || ''}`;
+    } else {
+      html += 'Ningun candidato supero el umbral de 60/100.';
+    }
+    html += '</div>';
+    cards.innerHTML = html;
+    document.getElementById('clips-results').style.display = 'block';
+    return;
+  }
+
+  clips.forEach((clip, i) => {
+    const dur = fmtTime(clip.dur_s || 0);
+    const file = clip.archivo || '';
+    const score = clip.score || 0;
+    const scoreColor = score >= 75 ? 'var(--green)' : score >= 60 ? 'var(--purple)' : 'var(--muted)';
+    const div = document.createElement('div');
+    div.className = 'clip-card';
+    div.innerHTML = `
+      <video src="/clips/${file}?t=${Date.now()}" controls muted style="width:140px;border-radius:6px;background:#111;flex-shrink:0"></video>
+      <div class="clip-info">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+          <div class="clip-score" style="color:${scoreColor}">${score}<span>/100</span></div>
+          <span class="clip-tipo">${clip.tipo || ''}</span>
+          <span class="clip-dur">${dur}</span>
+        </div>
+        <div class="clip-titulo">${clip.titulo || ''}</div>
+        <div class="clip-razon">${clip.razon || ''}</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <a href="/clips/${file}" download class="btn secondary" style="font-size:12px;padding:5px 12px">Descargar</a>
+          <button class="btn secondary" style="font-size:12px;padding:5px 12px"
+            onclick="openRenderClip('${file.replace('.mp4','')}')">Agregar captions</button>
+        </div>
+        <div class="msg" style="margin-top:6px;font-size:11px">
+          Hook ${clip.subscores?.hook||0} · Autocontenido ${clip.subscores?.autocontenido||0} · Densidad ${clip.subscores?.densidad||0} · Cierre ${clip.subscores?.cierre||0}
+        </div>
+      </div>`;
+    cards.appendChild(div);
+  });
+
+  document.getElementById('clips-results').style.display = 'block';
+  document.getElementById('clips-note').style.display = 'block';
+}
+
+function openRenderClip(stem) {
+  showTab('render', document.querySelectorAll('nav button')[2]);
+  // El clip estara en output/clips/ pero caption.py lo trata como video normal
+  // Aviso al usuario
+  alert(`Para agregar captions al clip, ejecuta:\n.\\ venv\\Scripts\\python caption.py output/clips/${stem}.mp4 --style hormozi`);
 }
 
 // ═══════════════════════════════════════════════════════

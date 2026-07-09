@@ -135,6 +135,78 @@ def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> 
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
 
+# ---Worker: clipper ---───────────────────────────────────────────────────────
+
+
+def run_clips(jid: str, mp4: Path, words_path: Path, name: str, tipos: str) -> None:
+    """Worker: genera clips virales con IA y los guarda en output/clips/."""
+    try:
+        import clipper  # noqa: PLC0415
+
+        update_job(jid, status="running", progress=5, message="Cargando words.json...")
+        raw = json.loads(words_path.read_text(encoding="utf-8"))
+        words = raw.get("words", [])
+        update_job(jid, progress=10, message=f"Construyendo frases ({len(words)} palabras)...")
+
+        def _progress(msg: str, pct: int) -> None:
+            update_job(jid, progress=pct, message=msg)
+
+        # Monkey-patch print para capturar mensajes de progreso al job
+        import builtins  # noqa: PLC0415
+
+        orig_print = builtins.print
+
+        def _patched_print(*args, **kwargs) -> None:
+            orig_print(*args, **kwargs)
+            txt = " ".join(str(a) for a in args)
+            if "[clipper]" in txt or "[clipper_brain]" in txt:
+                clean = txt.replace("[clipper] ", "").replace("[clipper_brain] ", "")
+                update_job(jid, message=clean)
+
+        builtins.print = _patched_print
+        try:
+            result = clipper.generar_clips(mp4, words, tipos)
+        finally:
+            builtins.print = orig_print
+
+        n_clips = len(result.get("clips", []))
+        err = result.get("error")
+        casi = result.get("casi", [])
+
+        if err:
+            update_job(jid, status="error", progress=100, message=err, error=err, result=result)
+            return
+
+        resumen = result.get("telemetria_resumen", {})
+        msg = f"Listo - {n_clips} clip(s) generados" + (
+            f" | ${resumen.get('costo_usd', 0):.4f}" if resumen else ""
+        )
+        if n_clips == 0 and casi:
+            mejor = max(casi, key=lambda c: c.get("score", 0))
+            msg = (
+                f"Ningun segmento supero {clipper.SCORE_MIN}/100. "
+                f"El mejor llego a {mejor.get('score', 0)}: "
+                f'"{mejor.get("titulo", "")}" -- {mejor.get("razon", "")}'
+            )
+        elif n_clips == 0:
+            msg = f"Ningun clip supero el umbral {clipper.SCORE_MIN}/100"
+
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=msg,
+            result={
+                "clips": result.get("clips", []),
+                "casi": casi,
+                "telemetria_resumen": resumen,
+                "n_clips": n_clips,
+            },
+        )
+    except Exception as exc:
+        update_job(jid, status="error", message=str(exc), error=str(exc))
+
+
 # --- Worker: render -----------------------------------------------------------
 
 

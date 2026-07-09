@@ -146,6 +146,11 @@ def _build_filter(edl: list[tuple[float, float]]) -> str:
     return ";".join(parts_v + parts_a + [concat])
 
 
+def run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> None:
+    """Alias publico de _run_edl para uso por clipper (evita importar privados)."""
+    _run_edl(video_path, edl, output)
+
+
 def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> None:
     """Ejecuta el EDL en FFmpeg re-encoding con crossfade de audio."""
     if not edl:

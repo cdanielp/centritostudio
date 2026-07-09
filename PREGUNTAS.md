@@ -66,11 +66,34 @@ Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante,
   (si NO: la CLI re-transcribe clips, cero cambios; el Studio ya los reutiliza igual)
 
 ### 11. F4 Clipper — ¿--vertical (center-crop 16:9 a 9:16) entra en la implementacion?
-- MAESTRO lo menciona para fuentes 16:9. Las clases del usuario suelen ser ya verticales
-  o consumirse tal cual.
-- **Propuesta:** posponer a F4.1 para que la sesion de implementacion quede enfocada
-  (segmentacion + scoring + corte + UI ya es bastante). Face-tracking sigue fuera.
-- **Pregunta binaria:** ¿posponer --vertical a F4.1 (propuesta) SI/NO?
+- **DECISIÓN (sesión 7):** pospuesto a F4.1.
+- **Nota:** center-crop puro no sirve para clases con screen-share. F4.1 necesitará diseño propio (¿recuadro lateral? ¿zoom semántico?). Face-tracking sigue explícitamente fuera.
+
+### 12. F4 Clipper v2 — Zona muerta de duracion 40-55s (primera mejora candidata)
+
+18 de 31 candidatos de segmentacion fueron descartados por duracion en la calibracion.
+6 de esos 18 caen en la zona 40-55s (entre el tope del tipo corto y el minimo del tipo largo).
+Estos son tipicamente bloques de procedimiento completos, medianos, que no encajan en ningun tipo.
+
+Opciones para v2 (NO decidir ahora — registrar para cuando el arquitecto quiera iterar):
+- **A) Ampliar largo.min a 45s**: cobertura inmediata, invalida la calibracion actual.
+- **B) Tipo "medio" (45-60s)**: mas granular, requiere prompt de segmentacion actualizado.
+- **C) Dejar como esta**: los 6 candidatos son clase normal; el usuario los puede encadenar a mano.
+
+### 13. F4 Clipper v2 — Razones de exclusion precisas (mejora UX)
+
+`seleccionar_clips()` hoy aplica el check `len(elegidos) >= MAX_CLIPS` ANTES del check
+`score < SCORE_MIN`. Resultado: items con score<60 reciben "max_clips" cuando el cupo ya
+esta lleno, ocultando que tambien son "bajo el umbral". Ejemplo de la calibracion:
+- Candidato score=58 ("Custom Nodes"): cupo lleno + score<60 → etiqueta "max_clips"
+- Candidato score=41 ("Workflow listo"): cupo lleno + score<60 → etiqueta "max_clips"
+
+Para v2: agregar campo `razon_real` con valores:
+- `cupo_lleno`: score>=60 pero MAX_CLIPS ya estaba lleno (habria sido un clip entregado)
+- `score_bajo`: score<60, cupo no lleno (genuinamente bajo el umbral)
+- `cupo_y_bajo`: score<60 Y cupo lleno (ambos criterios aplican)
+- `solape`: solapamiento con clip de mayor score
+- `separacion`: muy cercano a otro clip entregado
 
 ### 8. Umbrales de diagnostico _eval_joins — RESUELTO
 - **Decision del arquitecto:** el loop de ajuste fue eliminado. La medicion voz-a-voz queda

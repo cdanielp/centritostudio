@@ -72,6 +72,12 @@ estricta-en-estructural / laxa-en-cosmético) están documentadas y justificadas
 `revision/fase-4/DISENO_CLIPPER.md`. Sin dependencias nuevas: reusa el SDK openai
 vía brain.py y la maquinaria EDL de depurador.py.
 
+### Votos del arquitecto — F4 implementación (sesión 7)
+
+- **#9 Ranking**: único puro por score, sin cuotas por tipo. 3 cortos y 0 largos es resultado válido.
+- **#10 Reutilizar transcript**: SÍ. caption.py prefiere `{clip}_words.json` si su mtime >= mtime del video; loguea "reutilizando transcript existente" explícito. Fail-open mudo prohibido.
+- **#11 --vertical**: pospuesto a F4.1. Center-crop puro no sirve para clases con screen-share; F4.1 necesitará diseño propio.
+
 ### python-dotenv para carga del .env
 
 Se elige `python-dotenv` sobre manejo manual de `.env` porque:
@@ -79,3 +85,34 @@ Se elige `python-dotenv` sobre manejo manual de `.env` porque:
 - `load_dotenv()` es no-destructiva (no pisa variables ya seteadas)
 - Fall-through con try/except ImportError: si no está instalado, el sistema sigue funcionando
   vía `os.environ` directa (útil en CI/CD donde las vars vienen del entorno del runner)
+
+## Fase 4 — Calibración y cierre (sesión 8, 2026-07-09)
+
+**Aprobacion humana del arquitecto:** clips de calibracion revisados y aprobados — coherentes y utilizables.
+
+### SCORE_MIN y MAX_CLIPS — confirmados
+
+- **SCORE_MIN=60 se queda.** Evidencia: entregados 86/78/77 (calibracion 57 min), 63 (smoke 1:15 min).
+  El piso filtra arranques planos y referencias externas sin sacrificar buenos candidatos.
+- **MAX_CLIPS=3 se queda.** El 4o candidato elegible habria sido "Resuelve nodos rojos con Manager"
+  (score=77, corto 23s) — buen clip, pero 3 es el limite correcto para la experiencia del usuario.
+
+### Zona muerta de duracion 40-55s — no se toca en v1
+
+Cambiar rangos corto/largo invalidaria la calibracion hecha. Queda registrada como primera mejora
+de v2 en PREGUNTAS.md. Los 6 candidatos descartados por zona muerta son clase normal de clases
+magistrales con secuencias de pasos medianos — no indican falla del sistema.
+
+### Clips SIN captions en F4 — diseno correcto
+
+El clipper entrega MP4 limpio + `{clip}_words.json` re-basado a t=0. El usuario aplica
+`caption.py --style X` cuando quiera el estilo. Mas flexible que quemar el estilo en el corte.
+La nota del MAESTRO.md "clips con captions" se interpreta como "clips listos para recibir
+captions" — el transcript re-basado a t=0 es lo que habilita esto sin re-transcribir.
+
+### Etiqueta max_clips — aclaracion
+
+`seleccionar_clips()` aplica max_clips ANTES del check de SCORE_MIN. Esto hace que items
+con score<60 reciban "max_clips" cuando el cupo ya esta lleno. Semanticamente correcto
+para el codigo, pero ambiguo para el usuario. Para v2: distinguir cupo_lleno (score>=60)
+de cupo_y_bajo (score<60 Y cupo lleno). Ver PREGUNTAS.md.

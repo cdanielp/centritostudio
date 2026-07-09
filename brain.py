@@ -62,12 +62,40 @@ def _call_deepseek(messages: list[dict]) -> tuple[dict, dict]:
 
 
 def _call_mock(messages: list[dict]) -> tuple[dict, dict]:
-    """Provider mock — genera datos de prueba sin key."""
+    """Provider mock — genera datos de prueba sin key. Soporta brain + clipper."""
     content = messages[-1]["content"] if messages else ""
+    usage = {"prompt": 0, "completion": 0, "total": 0}
+    # Clipper: segmentacion
+    if '"segments"' in content or "SEGMENTAR" in content:
+        lines = [ln for ln in content.splitlines() if ln.startswith("[f") and ") " in ln]
+        if len(lines) >= 2:
+            seg = {"f_ini": 0, "f_fin": len(lines) - 1, "tipo": "largo", "tema": "mock completo"}
+            return {"segments": [seg]}, usage
+        return {"segments": []}, usage
+    # Clipper: scoring
+    if '"clips"' in content or "hook" in content:
+        # Extraer indices globales del prompt
+        import re
+
+        indices = [int(m) for m in re.findall(r"^\[(\d+)\]", content, re.MULTILINE)]
+        clips = [
+            {
+                "c": i,
+                "hook": 55,
+                "autocontenido": 60,
+                "densidad": 50,
+                "cierre": 45,
+                "titulo": f"Clip mock {i}",
+                "razon": "Generado por mock",
+            }
+            for i in indices
+        ]
+        return {"clips": clips}, usage
+    # Brain: analisis de grupos
     n = len([ln for ln in content.splitlines() if ln.startswith("[") and "]:" in ln])
     n = max(1, n)
     groups = [{"g": i, "kw": 0 if i % 3 == 0 else None, "emoji": None} for i in range(n)]
-    return {"groups": groups}, {"prompt": 0, "completion": 0, "total": 0}
+    return {"groups": groups}, usage
 
 
 def _dispatch(messages: list[dict]) -> tuple[dict, dict]:
@@ -75,6 +103,10 @@ def _dispatch(messages: list[dict]) -> tuple[dict, dict]:
     if PROVIDER == "mock":
         return _call_mock(messages)
     return _call_deepseek(messages)
+
+
+# Alias publico para clipper_brain (evita importar privados)
+chat_json = _dispatch
 
 
 def llm(messages: list[dict], json_schema_hint: dict | None = None) -> dict:

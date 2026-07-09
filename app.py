@@ -38,8 +38,12 @@ for d in [INPUT_DIR, TRANSCRIPTS, OUTPUT_DIR, THUMBS_DIR, STATIC_DIR]:
 # ─── FastAPI ──────────────────────────────────────────────────────────────────
 app = FastAPI(title="Centrito Studio")
 
+CLIPS_DIR = ROOT / "output" / "clips"
+CLIPS_DIR.mkdir(exist_ok=True)
+
 app.mount("/input", StaticFiles(directory=str(INPUT_DIR)), name="input")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+app.mount("/clips", StaticFiles(directory=str(CLIPS_DIR)), name="clips")
 app.mount("/thumbs", StaticFiles(directory=str(THUMBS_DIR)), name="thumbs")
 
 
@@ -201,6 +205,40 @@ def start_depurar(name: str, mode: str = "seguro"):
         target=jobs.run_depurar, args=(jid, mp4, words_path, name, mode), daemon=True
     ).start()
     return {"job_id": jid}
+
+
+# ─── Clips ────────────────────────────────────────────────────────────────────
+@app.post("/api/videos/{name}/clips")
+def start_clips(name: str, tipos: str = "ambos"):
+    mp4 = INPUT_DIR / f"{name}.mp4"
+    # Soportar .mov tambien
+    if not mp4.exists():
+        for ext in (".mov", ".MP4", ".MOV"):
+            candidate = INPUT_DIR / f"{name}{ext}"
+            if candidate.exists():
+                mp4 = candidate
+                break
+    if not mp4.exists():
+        raise HTTPException(404, f"Video {name} no encontrado en input/")
+    words_path = TRANSCRIPTS / f"{name}_words.json"
+    if not words_path.exists():
+        raise HTTPException(400, "Transcribe el video antes de generar clips")
+    if tipos not in ("cortos", "largos", "ambos"):
+        raise HTTPException(400, "tipos debe ser 'cortos', 'largos' o 'ambos'")
+    jid = jobs.new_job(f"Generando clips ({tipos}) de {name}...")
+    threading.Thread(
+        target=jobs.run_clips, args=(jid, mp4, words_path, name, tipos), daemon=True
+    ).start()
+    return {"job_id": jid}
+
+
+@app.get("/api/videos/{name}/clips")
+def get_clips(name: str):
+    clips_dir = ROOT / "output" / "clips"
+    clips_path = clips_dir / f"{name}_clips.json"
+    if not clips_path.exists():
+        return {"clips": [], "descartados": [], "casi": [], "error": None}
+    return json.loads(clips_path.read_text(encoding="utf-8"))
 
 
 # ─── Render ───────────────────────────────────────────────────────────────────

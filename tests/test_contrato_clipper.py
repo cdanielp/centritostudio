@@ -206,15 +206,79 @@ def test_el_llm_nunca_calcula_el_total():
     assert clipper.calcular_score_total(out[0], 30.0, "corto") == 55  # 50*0.9 + 100*0.1
 
 
-# ── Stubs: la orquestacion aun no implementa (sesion de diseño) ──────────────
+# ── Comportamiento real con inputs vacios (sesion de implementacion) ──────────
 
 
-def test_stubs_levantan_notimplemented():
-    with pytest.raises(NotImplementedError):
-        clipper.generar_clips(Path("x.mp4"), [], "ambos")
-    with pytest.raises(NotImplementedError):
-        clipper.build_frases([])
-    with pytest.raises(NotImplementedError):
-        cb.segmentar_transcript([], "ctx")
-    with pytest.raises(NotImplementedError):
-        cb.puntuar_candidatos([])
+def test_generar_clips_sin_key_retorna_error():
+    """Sin DEEPSEEK_API_KEY y provider != mock, retorna error accionable (no crashea)."""
+    import os
+
+    orig = os.environ.pop("DEEPSEEK_API_KEY", None)
+    orig_prov = os.environ.pop("LLM_PROVIDER", None)
+    try:
+        one_word = [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 1.0}]
+        result = clipper.generar_clips(Path("x.mp4"), one_word)
+        assert result["clips"] == []
+        assert result["error"] is not None
+        assert "DEEPSEEK_API_KEY" in result["error"]
+    finally:
+        if orig is not None:
+            os.environ["DEEPSEEK_API_KEY"] = orig
+        if orig_prov is not None:
+            os.environ["LLM_PROVIDER"] = orig_prov
+
+
+def test_build_frases_vacio():
+    assert clipper.build_frases([]) == []
+
+
+def test_build_frases_minimo():
+    words = [{"w": "Hola.", "s": 0.0, "e": 0.5, "prob": 1.0}]
+    frases = clipper.build_frases(words)
+    assert len(frases) == 1
+    assert frases[0]["wi"] == 0 and frases[0]["wf"] == 0
+    assert frases[0]["text"] == "Hola."
+
+
+def test_build_frases_corta_por_puntuacion():
+    words = [
+        {"w": "Hola.", "s": 0.0, "e": 0.5, "prob": 1.0},
+        {"w": "mundo", "s": 0.55, "e": 1.0, "prob": 1.0},
+    ]
+    frases = clipper.build_frases(words)
+    # "Hola." termina en punto -> frase 1; "mundo" -> frase 2
+    assert len(frases) == 2
+
+
+def test_build_frases_corta_por_pausa():
+    words = [
+        {"w": "hola", "s": 0.0, "e": 0.3, "prob": 1.0},
+        {"w": "mundo", "s": 1.1, "e": 1.5, "prob": 1.0},  # pausa 0.8s > FRASE_PAUSA_S
+    ]
+    frases = clipper.build_frases(words)
+    assert len(frases) == 2
+
+
+def test_dedup_segmentos_quita_duplicados():
+    segs = [
+        {"f_ini": 0, "f_fin": 5, "tipo": "corto", "tema": "a", "wi": 0, "wf": 50},
+        {"f_ini": 1, "f_fin": 6, "tipo": "corto", "tema": "b", "wi": 5, "wf": 55},  # IoU alto
+        {"f_ini": 10, "f_fin": 20, "tipo": "largo", "tema": "c", "wi": 100, "wf": 200},
+    ]
+    out = clipper.dedup_segmentos(segs)
+    # El primero y el tercero pasan; el segundo tiene IoU alto con el primero
+    assert len(out) == 2
+    assert out[0]["wi"] == 0
+    assert out[1]["wi"] == 100
+
+
+def test_segmentar_transcript_vacio():
+    segs, tels = cb.segmentar_transcript([], "ctx")
+    assert segs == []
+    assert tels == []
+
+
+def test_puntuar_candidatos_vacio():
+    scores, tels = cb.puntuar_candidatos([])
+    assert scores == []
+    assert tels == []

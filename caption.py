@@ -8,12 +8,34 @@ Uso: python caption.py input/video.mp4 --style hormozi --lang es
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
 
 import core
 from styles import get_style
+
+_TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
+
+
+def _load_or_transcribe(
+    video_path: Path, stem: str, lang: str, device: str, compute: str, model_path: str
+) -> dict:
+    """Reutiliza el transcript existente si es mas reciente que el video (voto #10)."""
+    words_path = _TRANSCRIPTS_DIR / f"{stem}_words.json"
+    if words_path.exists():
+        vid_mtime = video_path.stat().st_mtime
+        words_mtime = words_path.stat().st_mtime
+        if words_mtime >= vid_mtime:
+            print(f"[whisper] reutilizando transcript existente: {words_path.name}")
+            raw = json.loads(words_path.read_text(encoding="utf-8"))
+            lang_str = raw.get("language", "?")
+            print(f"[whisper] {len(raw.get('words', []))} palabras | idioma: {lang_str}")
+            return raw
+    transcript = core.transcribe_video(video_path, lang, device, compute, model_path)
+    print(f"[whisper] {len(transcript['words'])} palabras | idioma: {transcript['language']}")
+    return transcript
 
 
 def process_video(
@@ -37,8 +59,7 @@ def process_video(
     ass_path = output_dir / f"{stem}_{style}.ass"
     out_path = output_dir / f"{stem}_{style}.mp4"
 
-    transcript = core.transcribe_video(video_path, lang, device, compute, model_path)
-    print(f"[whisper] {len(transcript['words'])} palabras | idioma: {transcript['language']}")
+    transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
 
     groups = core.group_words(transcript["words"], max_words=max_words)
     print(f"[grupos] {len(groups)} bloques de subtitulo")
@@ -83,6 +104,31 @@ def _run_depurar_cli(input_path: Path, mode: str, output_dir: Path) -> None:
     print(f"[depurar] Listo: {result['cuts']} cortes, -{result['saved_s']}s ahorrados")
 
 
+def _run_clips_cli(input_path: Path, tipos: str) -> None:
+    """Genera clips virales desde la CLI."""
+    if not input_path.is_file():
+        print(f"[ERROR] No existe: {input_path}")
+        sys.exit(1)
+
+    words_path = _TRANSCRIPTS_DIR / f"{input_path.stem}_words.json"
+    if not words_path.exists():
+        print(f"[ERROR] Falta transcript: {words_path}. Transcribe el video primero.")
+        sys.exit(1)
+
+    import clipper  # noqa: PLC0415
+
+    raw = json.loads(words_path.read_text(encoding="utf-8"))
+    words = raw.get("words", [])
+    print(f"[clips] {len(words)} palabras | tipos={tipos}")
+    result = clipper.generar_clips(input_path, words, tipos)
+    n = len(result.get("clips", []))
+    err = result.get("error")
+    if err:
+        print(f"[clips] ERROR: {err}")
+        sys.exit(1)
+    print(f"[clips] {n} clip(s) generados en output/clips/")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Captions animados word-by-word — Centrito Studio CLI"
@@ -102,6 +148,12 @@ def main() -> None:
         default=None,
         help="Depurar silencios (seguro) o tambien muletillas (agresivo)",
     )
+    parser.add_argument(
+        "--clips",
+        choices=["cortos", "largos", "ambos"],
+        default=None,
+        help="Generar clips virales con IA (cortos|largos|ambos)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -109,6 +161,10 @@ def main() -> None:
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
+        return
+
+    if args.clips:
+        _run_clips_cli(input_path, args.clips)
         return
 
     if input_path.is_dir():
