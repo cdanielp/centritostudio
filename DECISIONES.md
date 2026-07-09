@@ -166,3 +166,25 @@ Studio via jobs.py. `caption.py` no se modifica en ninguna fase de reframe.
 ### #17 Render DIRECTO sin preview
 Sin preview de frames previo al render completo. Anotar en PREGUNTAS como mejora futura
 si los renders empiezan a doler (ver PREGUNTAS #19).
+
+## Fase 4.1 — Fix y conmutacion multi-cara (sesion 11, 2026-07-09)
+
+### Bug pix_fmt yuv444p → yuv420p
+
+Los outputs 9:16 de sesion 10 tenian `pix_fmt=yuv444p / profile High 4:4:4 Predictive`
+porque el raw BGr24 del pipe se interpreta como 4:4:4 sin que se fije el formato de salida.
+Fix: agregar `-pix_fmt yuv420p` a los argumentos de SALIDA en `_cmd_ffmpeg_pipe()`.
+Todos los clips 9:16 re-renderizados con el fix. Verificado con ffprobe.
+
+### Conmutacion real multi-cara
+
+Decision del arquitecto: se implementa ya en sesion 11 porque hay material de validacion.
+- 2+ caras SIN turnos: WARNING + render con cara principal (ya no es ValueError)
+- 2+ caras CON turnos: conmutacion real con CORTE SECO en el frame exacto de t_ini
+- El tracking (EMA + deadzone) se aplica INDEPENDIENTEMENTE por segmento; al conmutar,
+  la camara arranca centrada en la cara nueva sin paneo desde la posicion anterior.
+- `detectar_todas_caras_frame()` agregado a reframe_track.py (devuelve todas las caras).
+- `calcular_crops_por_turnos()` agregado a reframe_track.py (puro math, testeable).
+- `_detectar_trayectorias_multi()` en reframe.py (con cv2, por cara activa del turno).
+- `cargar_o_crear_turnos()` eliminada (codigo muerto detectado por el revisor).
+- Validado con input/pruebapodcast2personas.mp4 (60s test clip).

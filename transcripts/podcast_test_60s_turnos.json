@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "fuente": "podcast_test_60s.mp4",
+  "caras": [
+    {
+      "id": 0,
+      "thumb": "thumbs/podcast_test_60s_cara0.jpg",
+      "primera_vez_s": 0.0
+    },
+    {
+      "id": 1,
+      "thumb": "thumbs/podcast_test_60s_cara1.jpg",
+      "primera_vez_s": 0.0
+    }
+  ],
+  "turnos": [
+    {
+      "t_ini": 0.0,
+      "t_fin": 10.0,
+      "cara_id": 0
+    },
+    {
+      "t_ini": 10.0,
+      "t_fin": 20.0,
+      "cara_id": 1
+    },
+    {
+      "t_ini": 20.0,
+      "t_fin": 30.0,
+      "cara_id": 0
+    },
+    {
+      "t_ini": 30.0,
+      "t_fin": 40.0,
+      "cara_id": 1
+    },
+    {
+      "t_ini": 40.0,
+      "t_fin": 50.0,
+      "cara_id": 0
+    },
+    {
+      "t_ini": 50.0,
+      "t_fin": 60.0,
+      "cara_id": 1
+    }
+  ]
+}

@@ -164,3 +164,80 @@ def detectar_cara_frame(frame, detector) -> dict | None:
         "center_y": float(y + bh / 2),
         "bbox": [x, y, bw, bh],
     }
+
+
+def detectar_todas_caras_frame(frame, detector) -> list[dict]:
+    """Detecta todas las caras en un fotograma numpy (BGR); devuelve lista ordenada por score desc.
+
+    Cada elemento: {'center_x': float, 'center_y': float, 'bbox': list, 'score': float}.
+    """
+    import cv2
+    import mediapipe as _mp
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_img = _mp.Image(image_format=_mp.ImageFormat.SRGB, data=rgb)
+    result = detector.detect(mp_img)
+    if not result.detections:
+        return []
+    dets = []
+    for d in result.detections:
+        bb = d.bounding_box
+        h, w = frame.shape[:2]
+        x = max(0, bb.origin_x)
+        y = max(0, bb.origin_y)
+        bw = min(bb.width, w - x)
+        bh = min(bb.height, h - y)
+        dets.append(
+            {
+                "center_x": float(x + bw / 2),
+                "center_y": float(y + bh / 2),
+                "bbox": [x, y, bw, bh],
+                "score": d.categories[0].score,
+            }
+        )
+    return sorted(dets, key=lambda d: d["score"], reverse=True)
+
+
+# ── Crops multi-cara con conmutacion por turnos ───────────────────────────────
+
+
+def calcular_crops_por_turnos(
+    sparsa_multi: dict[int, dict[int, float]],
+    turnos_list: list[dict],
+    fps: float,
+    total_frames: int,
+    src_w: int,
+    src_h: int,
+) -> list[tuple[int, int, int, int]]:
+    """Calcula crops con CORTE SECO en cada t_ini de turno. Puro math, sin I/O.
+
+    sparsa_multi: {cara_id: {frame_idx: center_x}} desde _detectar_trayectorias_multi.
+    Cada segmento aplica EMA+deadzone independientemente — no hay suavizado entre turnos.
+    """
+    src_center = src_w / 2
+    deadzone_w = DEADZONE_PCT * src_w
+    cw_def = src_h * 9 // 16
+    default_crop: tuple[int, int, int, int] = ((src_w - cw_def) // 2, 0, cw_def, src_h)
+    result: list[tuple[int, int, int, int] | None] = [None] * total_frames
+
+    for i, turno in enumerate(turnos_list):
+        f_ini = int(turno["t_ini"] * fps)
+        next_t = turnos_list[i + 1]["t_ini"] if i + 1 < len(turnos_list) else total_frames / fps
+        f_fin = min(int(next_t * fps) - 1, total_frames - 1)
+        n_seg = f_fin - f_ini + 1
+        if n_seg <= 0:
+            continue
+        cara_id = int(turno["cara_id"])
+        sparsa_seg = {
+            fi - f_ini: cx
+            for fi, cx in sparsa_multi.get(cara_id, {}).items()
+            if f_ini <= fi <= f_fin
+        }
+        raw = interpolar_detecciones(sparsa_seg, n_seg)
+        filled = manejar_cara_perdida(raw, FACE_LOST_PATIENCE, src_center)
+        targets = aplicar_deadzone_secuencia(filled, deadzone_w)
+        smooth = ema_smooth(targets, EMA_ALPHA)
+        for j, cx_val in enumerate(smooth):
+            result[f_ini + j] = calcular_ventana_crop(cx_val, src_w, src_h)
+
+    return [c if c is not None else default_crop for c in result]

@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 10
+Actualizado: 2026-07-09 · Sesión: 11
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -8,7 +8,7 @@ Actualizado: 2026-07-09 · Sesión: 10
 - [x] F3 Depurador de clases — CERRADA. Validada con TTS (4 cortes, -3.84s) y voz humana OBS (7 cortes, -15.74s, 20.9%). Aprobación auditiva del arquitecto. _eval_joins diagnóstico operativo (6/15dB, sin loop de ajuste). Render único: 44s V1, 12s V2.
 - [x] Refactor app.py→jobs.py — CERRADO. app.py 243L, jobs.py 185L (deuda PREGUNTAS #7 saldada). E2E smoke OK (render+enfasis en 2.9s).
 - [x] F4 Clipper viral — CERRADA. Smoke test pruebaedicionvideoyo.mov: 1 clip score=63 OK. Calibración videolargo.mov (57 min): 3 clips (86/78/77), $0.0094, 45s wall. SCORE_MIN=60 y MAX_CLIPS=3 confirmados por arquitecto. Bug dotenv fix incluido. Evidencia: revision/fase-4/DISENO_CLIPPER.md + CALIBRACION_CLIPPER.md + frames clip1-3.
-- [ ] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — IMPLEMENTACIÓN COMPLETA (sesion 10). 4 clips 9:16 generados, audio intacto, punch-ins OK, 79 tests. Pendiente: veredicto visual del arquitecto (temblor + posicion) y validacion multi-cara con video real 2 personas.
+- [ ] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — SESION 11: fix pix_fmt (yuv420p) + conmutacion multi-cara real + validacion podcast 2 personas. 82 tests. Pendiente: veredicto visual del arquitecto.
 - [ ] F5 Assets: emojis PNG + ComfyUI
 - [ ] F6 Motor B: HyperFrames
 - [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ])
@@ -32,4 +32,5 @@ Actualizado: 2026-07-09 · Sesión: 10
 - 2026-07-09: Sesión 7 — F4 IMPLEMENTACIÓN COMPLETA: clipper_brain.py (segmentar_transcript+puntuar_candidatos con retry técnico+semántico, telemetría, chunking via chunk_frases), clipper.py (build_frases, chunk_frases, dedup_segmentos, seleccionar_clips, cortar_clip, exportar_transcript_clip, generar_clips), caption.py (--clips + reutilización words.json), jobs.py (run_clips), app.py (POST/GET /api/clips), index.html (pestaña Clips), brain.py (chat_json alias + mock mejorado), depurador.py (run_edl alias). 49 tests verdes. Smoke test mock OK. Pendiente: smoke con API real + calibración videolargo.mov.
 - 2026-07-09: Sesión 8 — F4 CERRADA. Bug fix: dotenv en clipper.py (API key no cargaba antes del check). Smoke test OK (1 clip score=63). Calibración videolargo.mov (57 min, 7559 palabras): 3 clips 86/78/77, $0.0094, 45s wall. Arquitecto aprueba. SCORE_MIN=60/MAX_CLIPS=3 confirmados. CALIBRACION_CLIPPER.md aclarado (max_clips vs score_bajo, candidato #4). PREGUNTAS #12-13 para v2. Próximo paso: F5 Assets o F6 Motor B (pendiente decisión arquitecto).
 - 2026-07-09: Sesión 9 — F4.1 SESIÓN DE DISEÑO COMPLETA. Votos #12/#13 registrados. DISENO_REFRAME.md completo. Esqueleto reframe.py + reframe_track.py. 27 tests de contrato. mediapipe en requirements. Pendiente: votos #14-17 → sesión de implementación.
-- 2026-07-09: Sesión 10 — F4.1 IMPLEMENTACIÓN. Votos #14-17 (punch-in opt-in, 1080x1920, reframe.py independiente, render directo). FACE_MIN_CONFIDENCE=0.20 (clips 480p). 4 clips validados: videolargo x3 (87%/63% deteccion, audio AAC exacto, 6-20s render) + pruebaedicionvideoyo 2560x1440 (multi-cara disparado, punch-ins x9 OK). run_reframe en jobs.py, 3 endpoints en app.py, UI Studio. 79 tests. Validacion visual multi-cara pendiente.
+- 2026-07-09: Sesión 10 — F4.1 IMPLEMENTACIÓN. Votos #14-17. FACE_MIN_CONFIDENCE=0.20. 4 clips validados, punch-ins x9, run_reframe/API/UI. 79 tests. Multi-cara pendiente.
+- 2026-07-09: Sesión 11 — F4.1 FIX + CONMUTACION. Fix critico pix_fmt yuv420p (todos los outputs eran yuv444p). Conmutacion multi-cara real: calcular_crops_por_turnos (puro math), detectar_trayectorias_multi, detectar_todas_caras_frame. 2+ caras sin turnos: WARNING (no error). Validacion podcast 2 personas: 2 caras detectadas (cx=1362/719, score=0.40/0.24), 6 turnos test, renders OK, frames pre/post corte extraidos. 82 tests verdes.

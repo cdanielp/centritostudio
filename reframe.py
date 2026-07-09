@@ -20,7 +20,6 @@ import reframe_track as rt
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-CLIPS_DIR = Path(__file__).parent / "output" / "clips"
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 THUMBS_DIR = Path(__file__).parent / "thumbs"
 MODEL_PATH = Path(__file__).parent / "models" / "blaze_face_short_range.tflite"
@@ -50,6 +49,26 @@ def _crear_detector():
 # ── Deteccion inicial de caras ────────────────────────────────────────────────
 
 
+def _registrar_cara_nueva(
+    det: dict, frame, caras: list[dict], stem: str, idx: int, fps: float
+) -> None:
+    """Registra una deteccion si su center_x no solapa con caras ya conocidas."""
+    cx = det["center_x"]
+    if any(abs(c["center_x"] - cx) < FACE_CLUSTER_DIST for c in caras):
+        return
+    cara_id = len(caras)
+    thumb_path = THUMBS_DIR / f"{stem}_cara{cara_id}.jpg"
+    extraer_thumb_cara(frame, det["bbox"], thumb_path)
+    caras.append(
+        {
+            "id": cara_id,
+            "center_x": cx,
+            "thumb": f"thumbs/{stem}_cara{cara_id}.jpg",
+            "primera_vez_s": round(idx / fps, 3),
+        }
+    )
+
+
 def detectar_caras_video(video_path: Path, muestra_frames: int = 30) -> list[dict]:
     """Detecta caras en los primeros muestra_frames fotogramas; guarda thumbnails.
 
@@ -60,29 +79,14 @@ def detectar_caras_video(video_path: Path, muestra_frames: int = 30) -> list[dic
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     detector = _crear_detector()
     caras: list[dict] = []
+    stem = video_path.stem
     try:
         for idx in range(muestra_frames):
             ret, frame = cap.read()
             if not ret:
                 break
-            det = rt.detectar_cara_frame(frame, detector)
-            if det is None:
-                continue
-            cx = det["center_x"]
-            if any(abs(c["center_x"] - cx) < FACE_CLUSTER_DIST for c in caras):
-                continue
-            cara_id = len(caras)
-            stem = video_path.stem
-            thumb_path = THUMBS_DIR / f"{stem}_cara{cara_id}.jpg"
-            extraer_thumb_cara(frame, det["bbox"], thumb_path)
-            caras.append(
-                {
-                    "id": cara_id,
-                    "center_x": cx,
-                    "thumb": f"thumbs/{stem}_cara{cara_id}.jpg",
-                    "primera_vez_s": round(idx / fps, 3),
-                }
-            )
+            for det in rt.detectar_todas_caras_frame(frame, detector):
+                _registrar_cara_nueva(det, frame, caras, stem, idx, fps)
     finally:
         cap.release()
         detector.close()
@@ -93,8 +97,7 @@ def extraer_thumb_cara(frame, bbox: list[int], out_path: Path) -> Path:
     """Recorta el bounding box de una cara y lo guarda como thumbnail JPEG."""
     x, y, w, h = bbox
     pad = max(10, int(min(w, h) * 0.15))
-    x0 = max(0, x - pad)
-    y0 = max(0, y - pad)
+    x0, y0 = max(0, x - pad), max(0, y - pad)
     x1 = min(frame.shape[1], x + w + pad)
     y1 = min(frame.shape[0], y + h + pad)
     crop = frame[y0:y1, x0:x1]
@@ -103,26 +106,7 @@ def extraer_thumb_cara(frame, bbox: list[int], out_path: Path) -> Path:
     return out_path
 
 
-# ── Gestion de turnos ─────────────────────────────────────────────────────────
-
-
-def cargar_o_crear_turnos(video_path: Path, caras: list[dict]) -> tuple[dict | None, bool]:
-    """Carga _turnos.json si existe; si hay 2+ caras y no existe, retorna (None, False).
-
-    Retorna (turnos_dict, auto) donde auto=True significa pipeline automatico (1 cara).
-    """
-    stem = video_path.stem
-    turnos_path = TRANSCRIPTS_DIR / f"{stem}_turnos.json"
-    if len(caras) <= 1:
-        return None, True
-    if turnos_path.exists():
-        turnos = json.loads(turnos_path.read_text(encoding="utf-8"))
-        print(f"[reframe] {len(caras)} caras detectadas, usando turnos.json")
-        return turnos, False
-    return None, False
-
-
-# ── Deteccion de trayectoria (pasada completa) ────────────────────────────────
+# ── Deteccion de trayectoria ──────────────────────────────────────────────────
 
 
 def _detectar_trayectoria(video_path: Path, total_frames: int) -> dict[int, float]:
@@ -130,8 +114,7 @@ def _detectar_trayectoria(video_path: Path, total_frames: int) -> dict[int, floa
     cap = cv2.VideoCapture(str(video_path))
     detector = _crear_detector()
     sparsa: dict[int, float] = {}
-    n_det = 0
-    n_sin = 0
+    n_det = n_sin = 0
     try:
         for fi in range(total_frames):
             ret, frame = cap.read()
@@ -150,6 +133,43 @@ def _detectar_trayectoria(video_path: Path, total_frames: int) -> dict[int, floa
         detector.close()
     if n_sin > n_det:
         print(f"[reframe] cara perdida en {n_sin}/{n_det + n_sin} detecciones, recentrando")
+    return sparsa
+
+
+def _asignar_detecciones_a_caras(
+    all_dets: list[dict], caras: list[dict], sparsa: dict[int, dict[int, float]], fi: int
+) -> None:
+    """Para cada cara conocida, asigna la deteccion mas cercana si esta dentro del rango."""
+    for cara in caras:
+        ref = cara["center_x"]
+        best = min(all_dets, key=lambda d: abs(d["center_x"] - ref))
+        if abs(best["center_x"] - ref) < FACE_CLUSTER_DIST * 2:
+            sparsa[cara["id"]][fi] = best["center_x"]
+
+
+def _detectar_trayectorias_multi(
+    video_path: Path, total_frames: int, caras: list[dict]
+) -> dict[int, dict[int, float]]:
+    """Detecta, por cara, el center_x cada DETECT_EVERY_N frames.
+
+    Devuelve {cara_id: {frame_idx: center_x}}.
+    """
+    cap = cv2.VideoCapture(str(video_path))
+    detector = _crear_detector()
+    sparsa: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
+    try:
+        for fi in range(total_frames):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if fi % rt.DETECT_EVERY_N != 0:
+                continue
+            all_dets = rt.detectar_todas_caras_frame(frame, detector)
+            if all_dets:
+                _asignar_detecciones_a_caras(all_dets, caras, sparsa, fi)
+    finally:
+        cap.release()
+        detector.close()
     return sparsa
 
 
@@ -175,6 +195,15 @@ def _calcular_crop_secuencia(
 
 
 # ── Punch-ins en keywords ─────────────────────────────────────────────────────
+
+
+def _punch_crop_w(offset: int, span: int, normal_w: int, punch_w: int, trans: int) -> int:
+    """Calcula el ancho de crop con rampa de entrada/salida para punch-in."""
+    if offset < trans:
+        return int(normal_w - (offset / max(trans, 1)) * (normal_w - punch_w))
+    if offset > span - trans:
+        return int(normal_w - (max(0, span - offset) / max(trans, 1)) * (normal_w - punch_w))
+    return punch_w
 
 
 def _aplicar_punch_ins(
@@ -203,19 +232,10 @@ def _aplicar_punch_ins(
         for fi in range(f_ini, f_fin + 1):
             if fi >= len(result):
                 break
-            x, y, w, h = result[fi]
-            offset = fi - f_ini
-            if offset < trans:
-                ratio = offset / max(trans, 1)
-                cw = int(normal_w - ratio * (normal_w - punch_w))
-            elif offset > span - trans:
-                ratio = max(0, f_fin - fi) / max(trans, 1)
-                cw = int(normal_w - ratio * (normal_w - punch_w))
-            else:
-                cw = punch_w
-            cx = x + w // 2
-            new_x = max(0, min(cx - cw // 2, src_w - cw))
-            result[fi] = (new_x, y, cw, h)
+            x, y, w, _ = result[fi]
+            cw = _punch_crop_w(fi - f_ini, span, normal_w, punch_w, trans)
+            new_x = max(0, min(x + w // 2 - cw // 2, src_w - cw))
+            result[fi] = (new_x, y, cw, src_h)
     return result
 
 
@@ -223,28 +243,11 @@ def _aplicar_punch_ins(
 
 
 def _cmd_ffmpeg_pipe(input_path: Path, output_path: Path, fps: float, has_audio: bool) -> list[str]:
-    """Construye el comando FFmpeg para el pipe OpenCV (bgr24) → MP4."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "bgr24",
-        "-s",
-        f"{OUTPUT_W}x{OUTPUT_H}",
-        "-r",
-        str(fps),
-        "-i",
-        "pipe:0",
-    ]
-    if has_audio:
-        cmd += ["-i", str(input_path), "-map", "0:v", "-map", "1:a"]
-    else:
-        cmd += ["-map", "0:v"]
-    cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "fast"]
+    """Construye el comando FFmpeg para el pipe OpenCV (bgr24) -> MP4 yuv420p."""
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24"]
+    cmd += ["-s", f"{OUTPUT_W}x{OUTPUT_H}", "-r", str(fps), "-i", "pipe:0"]
+    ai = ["-i", str(input_path), "-map", "0:v", "-map", "1:a"] if has_audio else ["-map", "0:v"]
+    cmd += ai + ["-c:v", "libx264", "-crf", "18", "-preset", "fast", "-pix_fmt", "yuv420p"]
     if has_audio:
         cmd += ["-c:a", "copy"]
     cmd += ["-movflags", "+faststart", str(output_path)]
@@ -282,9 +285,6 @@ def renderizar_reframe(
     return time.time() - t0
 
 
-# ── Brain para punch-ins ──────────────────────────────────────────────────────
-
-
 def _cargar_o_generar_brain(clip_path: Path) -> dict | None:
     """Carga {clip}_brain.json si existe; si no, llama brain.py UNA vez y persiste."""
     brain_path = TRANSCRIPTS_DIR / f"{clip_path.stem}.brain.json"
@@ -312,8 +312,31 @@ def _cargar_o_generar_brain(clip_path: Path) -> dict | None:
 
 
 def _contar_punch_ins(brain_data: dict | None) -> int:
-    """Cuenta keywords con timestamp en brain_data (para reportar punch_ins al caller)."""
+    """Cuenta keywords con timestamp en brain_data."""
     return sum(1 for g in (brain_data or {}).get("groups", []) if g.get("kw_ts") is not None)
+
+
+def _calcular_crops(
+    input_path: Path,
+    caras: list[dict],
+    turnos_list: list[dict],
+    fps: float,
+    total_frames: int,
+    src_w: int,
+    src_h: int,
+) -> list[tuple[int, int, int, int]]:
+    """Elige ruta single-face o multi-cara y devuelve la secuencia de crops."""
+    if len(caras) >= 2 and turnos_list:
+        n_t = len(turnos_list)
+        print(f"[reframe] {len(caras)} caras con turnos -- conmutacion activada ({n_t} turnos)")
+        sparsa_multi = _detectar_trayectorias_multi(input_path, total_frames, caras)
+        return rt.calcular_crops_por_turnos(
+            sparsa_multi, turnos_list, fps, total_frames, src_w, src_h
+        )
+    if len(caras) >= 2:
+        print(f"[reframe] {len(caras)} caras -- cara principal; asigna turnos para conmutar")
+    sparsa = _detectar_trayectoria(input_path, total_frames)
+    return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h)
 
 
 def reframe_clip(
@@ -323,7 +346,7 @@ def reframe_clip(
     brain_data: dict | None = None,
     punch_in: bool = False,
 ) -> dict:
-    """Reencuadra clip 16:9 a 9:16. ValueError si 2+ caras sin turnos. Tracking v1 = cara principal."""  # noqa: E501
+    """Reencuadra clip 16:9 a 9:16 con face tracking EMA+deadzone y conmutacion por turnos."""
     from core import get_video_info
 
     info = get_video_info(input_path)
@@ -336,20 +359,10 @@ def reframe_clip(
     cap.release()
 
     caras = detectar_caras_video(input_path)
-    n_caras = len(caras)
-
-    if n_caras >= 2 and turnos is None:
-        msg = f"{n_caras} caras detectadas en {input_path.name} -- asigna turnos en el Studio"
-        print(f"[reframe] {msg}")
-        raise ValueError(msg)
-    if n_caras >= 2 and turnos is not None:
-        print(f"[reframe] {n_caras} caras con turnos -- tracking usa cara principal (v1)")
-
     if punch_in and brain_data is None:
         brain_data = _cargar_o_generar_brain(input_path)
-
-    sparsa = _detectar_trayectoria(input_path, total_frames)
-    crops = _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h)
+    turnos_list = (turnos or {}).get("turnos", [])
+    crops = _calcular_crops(input_path, caras, turnos_list, fps, total_frames, src_w, src_h)
     if punch_in and brain_data:
         crops = _aplicar_punch_ins(crops, brain_data, fps, src_w, src_h)
 
@@ -359,7 +372,7 @@ def reframe_clip(
     return {
         "output": str(output_path),
         "dur_s": round(elapsed, 2),
-        "n_caras": n_caras,
+        "n_caras": len(caras),
         "punch_ins": _contar_punch_ins(brain_data if punch_in else None),
     }
 
@@ -374,9 +387,7 @@ def _build_parser():
     p.add_argument("input", type=Path, help="Clip MP4 de entrada")
     p.add_argument("--turnos", type=Path, default=None, help="Archivo _turnos.json")
     p.add_argument("--punch-in", action="store_true", help="Activar punch-ins en keywords")
-    p.add_argument(
-        "--out", type=Path, default=None, help="Ruta de salida (default: {input}_9x16.mp4"
-    )  # noqa: E501
+    p.add_argument("--out", type=Path, default=None, help="Ruta de salida")
     return p
 
 

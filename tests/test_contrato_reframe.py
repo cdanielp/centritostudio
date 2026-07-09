@@ -227,3 +227,39 @@ def test_cara_en_frame_fallback_sin_turno():
     # Frame fuera de todos los turnos -> cara_id=0 (fallback documentado)
     assert rt.cara_en_frame(9999, 30.0, TURNOS_EJEMPLO) == 0
     assert rt.cara_en_frame(0, 30.0, []) == 0
+
+
+# ── calcular_crops_por_turnos (corte seco multi-cara) ────────────────────────
+
+TURNOS_2CARAS = [
+    {"t_ini": 0.0, "t_fin": 1.0, "cara_id": 0},
+    {"t_ini": 1.0, "t_fin": 2.0, "cara_id": 1},
+]
+
+
+def test_calcular_crops_por_turnos_longitud():
+    total = 60
+    sparsa_multi = {0: {0: 700.0}, 1: {30: 1200.0}}
+    crops = rt.calcular_crops_por_turnos(sparsa_multi, TURNOS_2CARAS, 30.0, total, 1920, 1080)
+    assert len(crops) == total
+
+
+def test_calcular_crops_por_turnos_corte_seco():
+    # Cara 0 siempre a x=700, Cara 1 siempre a x=1200 (bien separadas)
+    sparsa_multi = {
+        0: {fi: 700.0 for fi in range(0, 30, rt.DETECT_EVERY_N)},
+        1: {fi: 1200.0 for fi in range(30, 60, rt.DETECT_EVERY_N)},
+    }
+    crops = rt.calcular_crops_por_turnos(sparsa_multi, TURNOS_2CARAS, 30.0, 60, 1920, 1080)
+    x_antes, *_ = crops[29]  # ultimo frame de turno 0 (cara a x=700)
+    x_despues, *_ = crops[30]  # primer frame de turno 1 (cara a x=1200): corte seco
+    assert x_despues > x_antes + 100  # salto significativo: no hay suavizado entre turnos
+
+
+def test_calcular_crops_por_turnos_sin_datos_usa_default():
+    # Sin detecciones: debe rellenar con center-crop default (no fallar)
+    sparsa_multi: dict[int, dict[int, float]] = {0: {}, 1: {}}
+    crops = rt.calcular_crops_por_turnos(sparsa_multi, TURNOS_2CARAS, 30.0, 60, 1920, 1080)
+    assert len(crops) == 60
+    for c in crops:
+        assert len(c) == 4

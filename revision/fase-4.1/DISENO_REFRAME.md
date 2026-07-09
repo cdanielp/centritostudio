@@ -47,11 +47,11 @@ y produce un MP4 1080×1920 con encuadre dinámico que sigue al hablante.
 ### Comando FFmpeg (esquema del render)
 
 ```
-ffmpeg
+ffmpeg -y -loglevel error
   -f rawvideo -pix_fmt bgr24 -s 1080x1920 -r {fps} -i pipe:0
   -i {input_video_original}
   -map 0:v -map 1:a
-  -c:v libx264 -crf 18 -preset fast
+  -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p
   -c:a copy
   -movflags +faststart
   {output_9x16.mp4}
@@ -59,6 +59,10 @@ ffmpeg
 
 El proceso de Python escribe frames BGR crudos al stdin del proceso FFmpeg. El audio viene del
 `-i {input_video_original}` con `-map 1:a -c:a copy` — intacto, sin re-encode.
+
+**FIX sesion 11:** `-pix_fmt yuv420p` es OBLIGATORIO en los argumentos de salida. Sin el,
+el raw BGr24 del pipe produce `yuv444p / High 4:4:4 Predictive`, incompatible con moviles,
+Windows Media Player y plataformas de social media. Verificado con ffprobe.
 
 ---
 
@@ -147,8 +151,8 @@ output/clips/{stem}_9x16.mp4
 | Cara perdida ≤ `FACE_LOST_PATIENCE` frames | Mantener última posición conocida | — |
 | Cara perdida > `FACE_LOST_PATIENCE` frames | EMA gradual hacia center-crop | `"cara perdida en frame {n}, recentrando"` |
 | Sin caras en todo el video | Center-crop (`x = source_w//2 − crop_w//2`) sin fallar | `"no se detectaron caras — center-crop aplicado"` |
-| 2+ caras, sin `{clip}_turnos.json` | Fallo con mensaje accionable (no excepción silenciosa) | `"2 caras detectadas en {clip} — asigna turnos en el Studio"` |
-| 3+ caras, con `_turnos.json` | Misma lógica que 2 caras; turnos soporta N caras | `"3 caras detectadas, usando turnos.json"` |
+| 2+ caras, sin turnos | **WARNING** + render con cara principal (sesion 11: ya no es error) | `"N caras -- cara principal; asigna turnos para conmutar"` |
+| 2+ caras, con turnos | Conmutacion real con CORTE SECO en frame exacto de cada t_ini | `"N caras con turnos -- conmutacion activada (M turnos)"` |
 | Bbox parcialmente fuera de frame | Clamp del bbox a (0, source_w) antes del cálculo | — |
 | Clip sin `{clip}_brain.json` (para punch-ins) | Llamar brain UNA vez y persistir junto al clip | `"brain generado"` o `"brain reutilizado"` |
 | Punch-in sin keywords en brain | Reframe normal sin punch-ins (no falla) | — |
@@ -229,25 +233,30 @@ Asignar turnos:
 ## §7 Estructura de módulos
 
 ```
-reframe.py          (≤400L)  Orquestación + CLI
-  Constantes: CLIPS_DIR, TRANSCRIPTS_DIR, THUMBS_DIR, SUFFIX_9X16
+reframe.py          (≤400L)  Orquestación + CLI  [estado: sesion 11]
+  Constantes: TRANSCRIPTS_DIR, THUMBS_DIR, SUFFIX_9X16, OUTPUT_W/H, etc.
   reframe_clip(input_path, output_path, turnos, brain_data, punch_in) → dict
-  detectar_caras_video(video_path, muestra_frames) → list[dict]
+  detectar_caras_video(video_path, muestra_frames) → list[dict]   [usa detectar_todas_caras_frame]
   extraer_thumb_cara(frame, bbox, out_path) → Path
-  cargar_o_crear_turnos(video_path, caras) → tuple[dict | None, bool]
-  renderizar_reframe(input_path, crop_frames, output_path, fps) → float
+  _detectar_trayectoria(video_path, total_frames) → dict[int, float]
+  _detectar_trayectorias_multi(video_path, total_frames, caras) → dict[int, dict[int, float]]
+  _calcular_crops(input_path, caras, turnos_list, fps, total_frames, src_w, src_h) → list
+  renderizar_reframe(input_path, crop_frames, output_path, fps, has_audio) → float
   _cargar_o_generar_brain(clip_path) → dict | None
   CLI: python reframe.py {clip.mp4} [--turnos {turnos.json}] [--punch-in]
 
-reframe_track.py    (≤400L)  Detección + matemáticas puras
-  Constantes calibrables: EMA_ALPHA, DEADZONE_PCT, DETECT_EVERY_N, etc.
+reframe_track.py    (≤400L)  Detección + matemáticas puras  [estado: sesion 11]
+  Constantes: EMA_ALPHA, DEADZONE_PCT, DETECT_EVERY_N, FACE_MIN_CONFIDENCE, etc.
   calcular_ventana_crop(face_center_x, source_w, source_h) → (x, y, w, h)
   ema_smooth(positions, alpha) → list[float]
   aplicar_deadzone(face_x, current_target, deadzone_w) → float
   aplicar_deadzone_secuencia(face_centers, deadzone_w) → list[float]
   interpolar_detecciones(sparsa, total_frames) → list[float | None]
   manejar_cara_perdida(raw_centers, patience, source_center_x) → list[float]
-  detectar_cara_frame(frame, detector) → dict | None  [stub — requiere mediapipe]
+  cara_en_frame(frame_idx, fps, turnos) → int
+  calcular_crops_por_turnos(sparsa_multi, turnos_list, fps, total_frames, ...) → list  [sesion 11]
+  detectar_cara_frame(frame, detector) → dict | None
+  detectar_todas_caras_frame(frame, detector) → list[dict]  [sesion 11]
 ```
 
 **Criterio de división:** todo lo que sea matemáticas puras (sin I/O, sin OpenCV, sin MediaPipe
