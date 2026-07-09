@@ -17,32 +17,47 @@ import pysubs2
 from styles import StyleConfig, get_style
 
 
-# ─── Detección de GPU ─────────────────────────────────────────────────────
+# ─── Detección de GPU y modelo ───────────────────────────────────────────
+LOCAL_MEDIUM_PATH = Path(__file__).parent / "models" / "medium"
+
+
 def _detect_device() -> tuple[str, str, str]:
-    """
-    Devuelve (device, model_size, compute_type).
-    Usa small+cuda si hay GPU (rapido y sin descarga extra).
-    Modelo medium requiere descarga; activar con --model medium.
-    """
+    """Devuelve (device, compute_type, model_path_or_name)."""
     try:
         import ctranslate2
         n = ctranslate2.get_cuda_device_count()
         if n > 0:
-            print(f"[gpu] {n} GPU CUDA disponible - usando cuda+float16")
-            return "cuda", "small", "float16"
+            print(f"[gpu] {n} GPU CUDA disponible - cuda+float16")
+            return "cuda", "float16", "cuda"
     except Exception:
         pass
-    print("[gpu] Sin GPU CUDA - usando CPU+int8")
-    return "cpu", "small", "int8"
+    print("[gpu] Sin GPU CUDA - CPU+int8")
+    return "cpu", "int8", "cpu"
+
+
+def _resolve_model(model_arg: str, device: str) -> tuple[str, str]:
+    """
+    Devuelve (model_path_or_name, label).
+    Si model_arg == 'medium' y existe models/medium local, lo usa sin HF.
+    """
+    if model_arg == "medium":
+        if LOCAL_MEDIUM_PATH.exists():
+            return str(LOCAL_MEDIUM_PATH), "medium-local"
+        print("[whisper] AVISO: models/medium no encontrado, usando small")
+        return "small", "small"
+    if model_arg == "small":
+        return "small", "small"
+    # Permite rutas absolutas o nombres custom
+    return model_arg, model_arg
 
 
 # ─── Transcripción ────────────────────────────────────────────────────────
 def transcribe(audio_path: Path, lang: str, device: str,
-               model_size: str, compute_type: str) -> dict:
+               compute_type: str, model_path: str) -> dict:
     from faster_whisper import WhisperModel
 
-    print(f"[whisper] Cargando modelo '{model_size}' en {device} ({compute_type})...")
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    print(f"[whisper] Cargando '{model_path}' en {device} ({compute_type})...")
+    model = WhisperModel(model_path, device=device, compute_type=compute_type)
 
     print(f"[whisper] Transcribiendo {audio_path.name}...")
     t0 = time.time()
@@ -101,19 +116,20 @@ def build_blocks(
     transcript: dict,
     max_chars: int = 18,
     max_lines: int = 2,
+    max_words: int | None = None,
 ) -> list[tuple[float, float, list[tuple[str, float, float, int]]]]:
     """
     Devuelve lista de (block_start, block_end, [(word, start, end, line_idx), ...])
-    Agrupa palabras en bloques de max_lines líneas con max_chars por línea.
+    max_words: si se especifica, limita el bloque a N palabras independientemente de chars.
     """
     all_words = _flatten_words(transcript)
     if not all_words:
         return []
 
     blocks: list[tuple[float, float, list]] = []
-    # current_lines: lista de líneas; cada línea es lista de (word, start, end)
     current_lines: list[list[tuple[str, float, float]]] = [[]]
     current_line_chars: list[int] = [0]
+    current_word_count: int = 0
 
     for (word, start, end) in all_words:
         word_len = len(word)
@@ -124,19 +140,29 @@ def build_blocks(
 
         block_empty = not any(current_lines)
 
-        if block_empty:
+        # Forzar nuevo bloque si se alcanzó el límite de palabras
+        if not block_empty and max_words is not None and current_word_count >= max_words:
+            _commit_block(blocks, current_lines)
             current_lines = [[(word, start, end)]]
             current_line_chars = [word_len]
+            current_word_count = 1
+        elif block_empty:
+            current_lines = [[(word, start, end)]]
+            current_line_chars = [word_len]
+            current_word_count = 1
         elif current_chars + space + word_len <= max_chars:
             current_lines[line_idx].append((word, start, end))
             current_line_chars[line_idx] += space + word_len
+            current_word_count += 1
         elif line_idx + 1 < max_lines:
             current_lines.append([(word, start, end)])
             current_line_chars.append(word_len)
+            current_word_count += 1
         else:
             _commit_block(blocks, current_lines)
             current_lines = [[(word, start, end)]]
             current_line_chars = [word_len]
+            current_word_count = 1
 
     if any(current_lines):
         _commit_block(blocks, current_lines)
@@ -233,8 +259,8 @@ def generate_ass(
     video_height: int,
     style_cfg: StyleConfig,
     output_path: Path,
+    max_words: int | None = None,
 ) -> None:
-    # Escala de fuente relativa a la resolución
     ref_height = 1920 if video_height >= video_width else 1080
     dim_scale = max(video_height / ref_height, 0.4)
 
@@ -242,6 +268,7 @@ def generate_ass(
         transcript,
         max_chars=style_cfg.max_chars_per_line,
         max_lines=style_cfg.max_lines,
+        max_words=max_words,
     )
     if not blocks:
         print("[ass] ADVERTENCIA: no se encontraron palabras con timestamps")
@@ -330,27 +357,30 @@ def process_video(
     lang: str,
     output_dir: Path,
     device: str,
-    model_size: str,
     compute_type: str,
-) -> float:
+    model_path: str,
+    max_words: int | None = None,
+    out_stem: str | None = None,
+) -> tuple[float, dict]:
+    """Retorna (elapsed_seconds, transcript)."""
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     style_cfg = get_style(style)
-    stem = video_path.stem
+    stem = out_stem or video_path.stem
     ass_path = output_dir / f"{stem}_{style}.ass"
     out_path = output_dir / f"{stem}_{style}.mp4"
 
-    transcript = transcribe(video_path, lang, device, model_size, compute_type)
+    transcript = transcribe(video_path, lang, device, compute_type, model_path)
     width, height = get_video_dimensions(video_path)
-    print(f"[video] Resolución: {width}x{height}")
+    print(f"[video] Resolucion: {width}x{height}")
 
-    generate_ass(transcript, width, height, style_cfg, ass_path)
+    generate_ass(transcript, width, height, style_cfg, ass_path, max_words=max_words)
     burn_subtitles(video_path, ass_path, out_path)
 
     elapsed = time.time() - t0
     print(f"[ok] {video_path.name} -> {out_path.name} en {elapsed:.1f}s\n")
-    return elapsed
+    return elapsed, transcript
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────
@@ -364,29 +394,51 @@ def main() -> None:
                         choices=["hormozi", "karaoke", "bounce", "pms"],
                         help="Estilo de captions (default: hormozi)")
     parser.add_argument("--lang", default="es",
-                        help="Código de idioma del audio (default: es)")
+                        help="Codigo de idioma del audio (default: es)")
     parser.add_argument("--output-dir", default="output",
                         help="Carpeta de salida (default: output/)")
+    parser.add_argument("--model", default="auto",
+                        choices=["auto", "small", "medium"],
+                        help="Modelo Whisper: auto usa medium si esta descargado (default: auto)")
+    parser.add_argument("--words-per-group", type=int, default=None,
+                        metavar="N",
+                        help="Limitar N palabras por bloque de subtitulo (default: auto por chars)")
+    parser.add_argument("--out-stem", default=None,
+                        help="Nombre base del archivo de salida (sin extension)")
     args = parser.parse_args()
 
-    device, model_size, compute_type = _detect_device()
+    device, compute_type, _ = _detect_device()
+
+    # Resolver modelo
+    if args.model == "auto":
+        model_src = "medium" if LOCAL_MEDIUM_PATH.exists() else "small"
+    else:
+        model_src = args.model
+    model_path, model_label = _resolve_model(model_src, device)
+    print(f"[modelo] {model_label} | device: {device} | compute: {compute_type}")
+
     output_dir = Path(args.output_dir)
     input_path = Path(args.input)
 
     if input_path.is_dir():
-        videos = sorted(input_path.glob("*.mp4"))
+        videos = sorted(v for v in input_path.glob("*.mp4")
+                        if not v.stem.startswith("test_"))
         if not videos:
             print(f"[!] No se encontraron archivos .mp4 en {input_path}")
             sys.exit(1)
         print(f"[batch] {len(videos)} videos encontrados en {input_path}\n")
         total = 0.0
         for v in videos:
-            total += process_video(v, args.style, args.lang, output_dir,
-                                   device, model_size, compute_type)
+            elapsed, _ = process_video(v, args.style, args.lang, output_dir,
+                                       device, compute_type, model_path,
+                                       max_words=args.words_per_group)
+            total += elapsed
         print(f"[batch] Completado. Tiempo total: {total:.1f}s")
     elif input_path.is_file():
         process_video(input_path, args.style, args.lang, output_dir,
-                      device, model_size, compute_type)
+                      device, compute_type, model_path,
+                      max_words=args.words_per_group,
+                      out_stem=args.out_stem)
     else:
         print(f"[ERROR] No existe: {input_path}")
         sys.exit(1)
