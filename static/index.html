@@ -98,6 +98,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 #output-preview{display:none;margin-top:16px}
 #output-preview video{width:100%;border-radius:8px;max-height:400px}
 #output-preview .dl-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+
+/* Brain / Énfasis IA */
+.g-brain{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:var(--border);font-size:11px;color:var(--muted);flex-wrap:wrap}
+.g-kw{color:var(--yellow);font-weight:500;cursor:pointer;padding:1px 4px;border-radius:3px}
+.g-kw:hover{background:rgba(255,215,0,.12)}
+.g-emoji-input{width:36px;font-size:13px;padding:1px 4px;text-align:center}
+.emphasis-row{display:flex;align-items:center;gap:8px;padding:8px 0}
+.emphasis-row input[type=checkbox]{accent-color:var(--purple);width:15px;height:15px;cursor:pointer}
+.emphasis-row label{color:var(--text);cursor:pointer;font-size:13px}
+.msg.warn{color:var(--yellow)}
 </style>
 </head>
 <body>
@@ -143,8 +153,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       </div>
     </div>
     <div id="editor-footer">
-      <button class="btn secondary" onclick="restoreGroups()" style="flex:1">Restaurar original</button>
-      <button class="btn" onclick="saveGroups()" style="flex:1">Guardar cambios</button>
+      <button class="btn secondary" onclick="restoreGroups()" style="flex:1">Restaurar</button>
+      <button class="btn secondary" onclick="analyzeVideo()" id="analyze-btn" style="flex:1">Analizar IA</button>
+      <button class="btn" onclick="saveGroups()" style="flex:1">Guardar</button>
     </div>
   </div>
   <div id="editor-right">
@@ -182,6 +193,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <option value="3">3 palabras</option>
       </select>
     </div>
+    <div class="emphasis-row">
+      <input type="checkbox" id="use-emphasis" onchange="onEmphasisToggle()">
+      <label for="use-emphasis">Énfasis IA — keywords destacadas</label>
+      <span class="msg" id="emphasis-hint" style="margin:0"></span>
+    </div>
     <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
     <div id="render-status"></div>
   </div>
@@ -205,6 +221,7 @@ let editorGroups  = [];   // grupos actuales (editables)
 let origGroups    = [];   // copia para restaurar
 let editorVideo   = null; // <video> element
 let syncInterval  = null;
+let brainMap      = {};   // {groupId: {g, kw, emoji}} — datos de análisis IA
 
 // ═══════════════════════════════════════════════════════
 // Tabs
@@ -251,6 +268,8 @@ function renderVideoList() {
             : `<span class="msg err">Sin voz — no se puede transcribir</span>`}
           ${v.status !== 'sin_transcribir'
             ? `<button class="btn secondary" onclick="openEditor('${v.name}')">Editar</button>` : ''}
+          ${v.status !== 'sin_transcribir'
+            ? `<button class="btn secondary" onclick="showDepurarPanel('${v.name}')">Depurar</button>` : ''}
           ${v.outputs.length
             ? `<button class="btn secondary" onclick="openRender('${v.name}')">Render</button>` : ''}
         </div>
@@ -372,10 +391,19 @@ async function loadEditorVideo(name) {
   }
   origGroups   = await res.json();
   editorGroups = JSON.parse(JSON.stringify(origGroups));
+  brainMap = {};
   renderGroups();
+  loadBrainData();
 
   document.getElementById('editor-info').textContent =
     `${name} · ${editorGroups.length} grupos · Haz clic en un grupo para saltar`;
+}
+
+function _highlightKw(words, kwIdx, fallbackText) {
+  if (!words || kwIdx == null || kwIdx >= words.length) return fallbackText;
+  return words.map((w, i) =>
+    i === kwIdx ? `<b style="color:var(--yellow)">${w.text}</b>` : w.text
+  ).join(' ');
 }
 
 function renderGroups() {
@@ -386,14 +414,28 @@ function renderGroups() {
     card.id      = `g-${g.id}`;
     card.className = 'group-card';
     const canMerge = idx < editorGroups.length - 1;
+    const brain   = brainMap[g.id] || {};
+    const kwIdx   = brain.kw != null ? brain.kw : null;
+    const kwWord  = kwIdx != null && g.words && g.words[kwIdx] ? g.words[kwIdx].text : null;
+    const emojiVal = brain.emoji || '';
+
+    const brainRow = Object.keys(brain).length ? `
+      <div class="g-brain">
+        <span>KW:</span>
+        <span class="g-kw" title="Clic en otra palabra para cambiar">${kwWord || '—'}</span>
+        <span style="margin-left:6px">Emoji:</span>
+        <input class="g-emoji-input" type="text" value="${emojiVal}" maxlength="5"
+               onchange="setBrainEmoji(${g.id},this.value)" placeholder="—">
+      </div>` : '';
 
     card.innerHTML = `
       <div class="g-header" onclick="seekTo(${g.start})">
         <span class="g-ts">${fmtTimestamp(g.start)}</span>
-        <span style="color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.text}</span>
+        <span style="color:var(--muted);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${kwWord ? _highlightKw(g.words, kwIdx, g.text) : g.text}</span>
         ${canMerge ? `<button class="g-merge" onclick="event.stopPropagation();mergeGroup(${g.id})">+ sig</button>` : ''}
       </div>
-      <textarea rows="2" oninput="onGroupEdit(${g.id},this.value)">${g.text}</textarea>`;
+      <textarea rows="2" oninput="onGroupEdit(${g.id},this.value)">${g.text}</textarea>
+      ${brainRow}`;
     c.appendChild(card);
   });
 }
@@ -464,6 +506,92 @@ function restoreGroups() {
 }
 
 // ═══════════════════════════════════════════════════════
+// Análisis IA — brain.json
+// ═══════════════════════════════════════════════════════
+async function analyzeVideo() {
+  if (!editorName) { alert('Selecciona un video primero'); return; }
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true; btn.textContent = 'Analizando...';
+
+  const res = await fetch(`/api/videos/${editorName}/analyze`, {method:'POST'});
+  if (!res.ok) {
+    btn.disabled = false; btn.textContent = 'Analizar IA';
+    alert('Error al iniciar análisis: ' + (await res.json()).detail);
+    return;
+  }
+  const {job_id} = await res.json();
+  pollJob(job_id, (j) => {
+    if (j.status === 'done') {
+      btn.textContent = 'Analizar IA'; btn.disabled = false;
+      loadBrainData();
+    } else if (j.status === 'error') {
+      btn.textContent = 'Analizar IA'; btn.disabled = false;
+      const hint = document.getElementById('emphasis-hint');
+      if (hint) hint.textContent = 'Fallo — render sin enfasis';
+    } else {
+      btn.textContent = j.message.substring(0, 18) + '...';
+    }
+  });
+}
+
+async function loadBrainData() {
+  if (!editorName) return;
+  const res = await fetch(`/api/videos/${editorName}/brain`);
+  if (!res.ok) return;
+  const data = await res.json();
+  brainMap = {};
+  (data.groups || []).forEach(g => { brainMap[g.g] = g; });
+  renderGroups();
+  const kws = (data.groups || []).filter(g => g.kw != null).length;
+  const hint = document.getElementById('emphasis-hint');
+  if (hint) hint.textContent = kws ? `${kws} keywords listos` : '';
+}
+
+async function setBrainEmoji(gid, val) {
+  if (!editorName) return;
+  if (!brainMap[gid]) brainMap[gid] = {g: gid, kw: null, emoji: null};
+  brainMap[gid].emoji = val || null;
+  await fetch(`/api/videos/${editorName}/brain`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(Object.values(brainMap)),
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// Depurador
+// ═══════════════════════════════════════════════════════
+function showDepurarPanel(name) {
+  const modeInput = window.prompt(
+    'Modo de depuracion:\n  seguro  — comprime silencios >0.8s (recomendado)\n  agresivo — ademas corta muletillas (eh, em, este...)\n\nEscribe "seguro" o "agresivo":',
+    'seguro'
+  );
+  if (!modeInput) return;
+  const mode = modeInput.trim().toLowerCase() === 'agresivo' ? 'agresivo' : 'seguro';
+  const box = document.getElementById('job-' + name);
+  if (!box) return;
+  box.innerHTML = `<div class="msg">Iniciando depuracion ${mode}...</div>
+    <div class="progress-bar"><div class="fill" id="dep-pb-${name}" style="width:5%"></div></div>`;
+  fetch('/api/videos/' + name + '/depurar?mode=' + mode, {method:'POST'})
+    .then(r => r.json())
+    .then(({job_id}) => pollJob(job_id, j => {
+      const pb = document.getElementById('dep-pb-' + name);
+      if (pb) pb.style.width = j.progress + '%';
+      if (box) box.querySelector('.msg').textContent = j.message;
+      if (j.status === 'done' || j.status === 'error') loadVideos();
+    }))
+    .catch(e => { if (box) box.innerHTML = `<div class="msg err">${e}</div>`; });
+}
+
+function onEmphasisToggle() {
+  const on = document.getElementById('use-emphasis').checked;
+  const hint = document.getElementById('emphasis-hint');
+  if (!on) { if (hint) hint.textContent = ''; return; }
+  const hasBrain = Object.keys(brainMap).length > 0;
+  if (hint) hint.textContent = hasBrain ? '' : '— analiza el video primero';
+}
+
+// ═══════════════════════════════════════════════════════
 // TAB RENDER
 // ═══════════════════════════════════════════════════════
 function openRender(name) {
@@ -482,6 +610,7 @@ async function startRender() {
 
   const params = new URLSearchParams({style});
   if (wpg) params.append('words_per_group', wpg);
+  if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
 
   const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
   if (!res.ok) {
@@ -500,6 +629,9 @@ async function startRender() {
     statusDiv.querySelector('.msg').textContent = j.message;
     if (j.status === 'done') {
       btn.disabled = false;
+      if (j.result && j.result.emphasis_msg) {
+        statusDiv.innerHTML += `<div class="msg warn">${j.result.emphasis_msg}</div>`;
+      }
       showOutputPreview(j.result.output, name, style);
       loadVideos();
     } else if (j.status === 'error') {

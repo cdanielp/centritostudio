@@ -24,9 +24,28 @@
   - Descarga: https://www.theboldguy.co/ (gratuita para uso personal)
   - Luego editar `styles.py`: `font_name="TheBoldFont-Regular"`
 
+### 5. Referencia Captions AI para benchmark (Regla #13)
+El archivo `revision/benchmark/referencia_captions.mp4` no existe todavía. Para activar el
+benchmark permanente contra Captions AI:
+1. Procesa `input/tacosjuan.mp4` con Captions AI y guarda el output como
+   `revision/benchmark/referencia_captions.mp4`
+2. Los benchmarks de Fase 2 son comparaciones CON vs SIN énfasis IA (no contra la referencia
+   externa, que se activa en cuanto el archivo exista).
+
+### 6. Keywords de calidad baja — ajuste del prompt
+DeepSeek marcó "muy" (adverbio) y "fue" (verbo auxiliar) como keywords en tacosjuan.
+Posible mejora: añadir al prompt "NUNCA adverbios de intensidad (muy, bastante, super)" y
+"NUNCA verbos auxiliares (fue, era, está)". Dejar para Fase 2 v2 si el usuario quiere ajustar.
+
 ## Decisiones que tome (asumiendolas razonables)
 
 - Primera corrida lenta (181s) fue por descarga del modelo + warmup de CUDA — las corridas subsiguientes son 4x tiempo real (~3.8s para 15s de video)
 - La variable `HF_HUB_DISABLE_SYMLINKS_WARNING=1` debe setearse antes de correr (o agregar al `.env`)
 - El modelo medium falla en la descarga por permisos de symlinks en Windows sin Developer Mode — se usa small como fallback estable
 - Audio de test generado con `es-MX-JorgeNeural` (voz masculina, Mexico). Whisper lo detecta correctamente como `es`
+
+### 7. app.py supera 400 lineas (deuda tecnica)
+- **Situacion:** app.py tiene 423 lineas (limite=400 segun reglas centrito-dev).
+- **Causa:** acumulacion de endpoints a traves de sesiones; este sesion aniadio ~15 lineas.
+- **Fix sugerido:** extraer las funciones background (_run_transcribe, _run_analyze, _run_depurar, _run_render) a un modulo separado `jobs.py`, dejando app.py solo con las rutas FastAPI (~250 lineas).
+- **Cuando:** al inicio de Fase 4 (antes de anadir el clipper) para no romper el limite mas.

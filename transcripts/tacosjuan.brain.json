@@ -1,0 +1,47 @@
+{
+  "provider": "deepseek",
+  "latency_s": 2.48,
+  "tokens": {
+    "prompt": 316,
+    "completion": 125,
+    "total": 441
+  },
+  "groups": [
+    {
+      "g": 0,
+      "kw": 2,
+      "emoji": null,
+      "kw_ts": 0.72
+    },
+    {
+      "g": 1,
+      "kw": 0,
+      "emoji": null,
+      "kw_ts": 2.18
+    },
+    {
+      "g": 2,
+      "kw": 4,
+      "emoji": null,
+      "kw_ts": 5.68
+    },
+    {
+      "g": 3,
+      "kw": 1,
+      "emoji": null,
+      "kw_ts": 7.42
+    },
+    {
+      "g": 4,
+      "kw": 3,
+      "emoji": null,
+      "kw_ts": 9.78
+    },
+    {
+      "g": 5,
+      "kw": 1,
+      "emoji": "🌮",
+      "kw_ts": 10.94
+    }
+  ]
+}
