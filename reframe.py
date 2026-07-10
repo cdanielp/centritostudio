@@ -29,9 +29,39 @@ TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 THUMBS_DIR = Path(__file__).parent / "thumbs"
 
 SUFFIX_9X16 = "_9x16"
+SUFFIX_STACK = "_stack_9x16"
 OUTPUT_W, OUTPUT_H = 1080, 1920
 FACE_CLUSTER_DIST = 80  # px: umbral para agrupar caras del scan inicial
 PUNCH_KW_DUR_S = 0.8  # duracion de cada punch-in en segundos
+N_CORTES_WARN = 2  # mas de este numero de cortes de escena emite WARNING
+
+
+# ── Precondicion de fuente ────────────────────────────────────────────────────
+
+
+def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
+    """Cuenta cortes de escena con FFmpeg scdet. Retorna 0 si FFmpeg falla (fail-open)."""
+    try:
+        r = subprocess.run(
+            [
+                "ffmpeg", "-i", str(video_path),
+                "-vf", f"select='gt(scene,{threshold})',metadata=print:file=-",
+                "-an", "-f", "null", "-",
+            ],
+            capture_output=True, text=True, timeout=60, errors="replace",
+        )
+        return r.stdout.count("pts_time:")
+    except Exception:
+        return 0
+
+
+def _avisar_cortes(n: int, umbral: int = N_CORTES_WARN) -> None:
+    """Emite WARNING si la fuente tiene mas cortes de escena que el umbral."""
+    if n > umbral:
+        print(
+            f"[reframe] WARNING: fuente con {n} cortes de escena detectados: "
+            "el reframe asume toma continua; resultados pueden degradarse"
+        )
 
 
 # ── Deteccion inicial de caras ────────────────────────────────────────────────
@@ -323,6 +353,7 @@ def reframe_clip(
     """Reencuadra clip 16:9 a 9:16 con face tracking EMA+deadzone y conmutacion por turnos."""
     from core import get_video_info
 
+    _avisar_cortes(_contar_cortes_escena(input_path))
     info = get_video_info(input_path)
     src_w, src_h = info["width"], info["height"]
     has_audio = bool(info.get("has_audio", True))
@@ -357,8 +388,6 @@ def reframe_clip(
 
 
 # ── Stack layout ─────────────────────────────────────────────────────────────
-
-SUFFIX_STACK = "_stack_9x16"
 
 
 def renderizar_stack(
@@ -404,6 +433,7 @@ def reframe_stack_clip(input_path: Path, output_path: Path) -> dict:
     """Reencuadra en modo stack: N=2 o N=3 bandas estaticas, cero EMA/turnos."""
     from core import get_video_info
 
+    _avisar_cortes(_contar_cortes_escena(input_path))
     info = get_video_info(input_path)
     src_w, src_h = info["width"], info["height"]
     has_audio = bool(info.get("has_audio", True))

@@ -599,3 +599,69 @@ determinista: mismo offset (0s), misma duracion (60s), mismo fuente => mismo con
 | 11. CSV trayectoria por render | OK — `revision/fase-4.1/trayectoria_{stem}.csv` |
 | **12. C2v2: cam en zona Y dist>80px <=2% (noturnos)** | PASS s14: 0.2% (C2 original reemplazado por C2v2, decision arquitecto D1) |
 | **13. C1 >=95% con alpha adaptativo** | PASS s15: noturnos 96.2%, turnos 97.5%, videolargo 100% |
+
+---
+
+## Sesion 18 — Forense de fuente y causa raiz del HOLD
+
+### Hallazgo del arquitecto
+
+El render stack de sesion 17 mostraba la MISMA persona en ambas bandas.
+Causa: `podcast_test_60s.mp4` es material EDITADO con 7 cortes de escena duros.
+El scan inicial (primeros 30 frames = plano 0, 1.95s) encontro 2 caras, pero el
+resto del clip es de plano unico con 1 sola cara. Las anclas quedaron invalidas
+para la mayor parte del material.
+
+### Inventario de planos (7 cortes, umbral scdet=0.25, scores>=0.877)
+
+Ver detalle completo en `revision/fase-4.2-lite/planos_fuente.md`.
+
+| Plano | t_ini | t_fin | dur | 2 caras reales | notas |
+|-------|-------|-------|-----|----------------|-------|
+| 0 | 0.00s | 1.95s | 1.95s | SI (brevemente) | scan captura anclas aqui |
+| 1 | 1.95s | 22.17s | 20.22s | NO (1 cara) | cx≈1090-1123 |
+| 2 | 22.17s | 24.13s | 1.96s | NO | |
+| 3 | 24.13s | 41.07s | 16.94s | NO (1 cara real) | artefacto doble en borde corte |
+| 4 | 41.07s | 44.62s | 3.55s | parcial | |
+| 5-6 | 44.62s | 51.38s | 6.76s | NO | |
+| 7 | 51.38s | 60.03s | 8.65s | NO (doble det. misma persona) | cx muy proximas |
+
+**Conclusion:** ningun plano tiene 2 caras distintas continuas >=15s.
+Fuente inadecuada para validacion de stack.
+
+### Cruce retrospectivo: cortes vs tramos C2/HOLD de s15
+
+| Evento | t_ini | t_fin | corte cercano | delta | causal? |
+|--------|-------|-------|--------------|-------|---------|
+| C2 tramo 1 | 2.73s | 4.70s | corte t=1.95s | 0.78s | posible |
+| C2 tramo 2 | 9.13s | 10.12s | ninguno ±5s | >5s | NO — movimiento natural |
+| C2 tramo 3 | 19.18s | 22.18s | corte t=22.17s | **0.01s** | **SI — tramo termina exactamente en corte** |
+| C2 tramo 4 | 24.98s | 41.98s | cortes t=24.13 y t=41.07 | 0.85/0.91s | SI — plano nuevo genera la zona |
+| HOLD t=54-60s | 54.00s | 60.03s | corte t=51.38s | 2.62s | **SI — causa raiz (ver abajo)** |
+
+### Causa raiz del HOLD en t=54-60s (correccion del diagnostico anterior)
+
+**Diagnostico anterior (s16):** "cara debil con 34.4% de deteccion; 6s de hold."
+**Diagnostico correcto (s18):** el corte en t=51.38s introduce un plano donde la
+persona esta a cx≈870-1010, FUERA del gate de ancla_0 (ancla=1362, zone=[1074,1650]).
+Todas las detecciones post-corte son rechazadas por el gate => 0 detecciones validas
+=> HOLD desde ~t=51.38+2.62=54s. La cara a cx=1134 vista en el diagnostico es la
+posicion pre-corte holdada, no la cara en el nuevo plano.
+
+**El descuadre NO es principalmente por deteccion debil de la cara.
+Es por cortes de escena en material editado que el gate no puede manejar.**
+
+### Accion: check automatico de cortes
+
+Implementado en sesion 18 en `reframe.py`:
+- `N_CORTES_WARN = 2`
+- `_contar_cortes_escena(video_path, threshold=0.3) -> int`
+- `_avisar_cortes(n)` → WARNING si n > 2
+- Llamado al inicio de `reframe_clip` y `reframe_stack_clip`
+
+112 tests (4 nuevos de umbral).
+
+### Validacion stack — PENDIENTE
+
+Tarea 3b aplica: K aportara fuente de toma fija con 2 personas estaticas >=15s.
+Hasta entonces la validacion visual de stack esta BLOQUEADA.

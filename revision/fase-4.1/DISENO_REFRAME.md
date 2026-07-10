@@ -432,3 +432,41 @@ Error: "stack requiere 2-3 caras detectadas; usa el modo seguimiento"
 | C-STACK cara_0 crop=[705,1920] | 934/934 = 100% |
 | C-STACK cara_1 crop=[111,1326] | 165/165 = 100% |
 | Render | 39.1s |
+
+---
+
+## §9 Precondicion de fuente (sesion 18)
+
+### Supuesto de diseno
+
+Tracking y stack asumen UNA SOLA TOMA continua con N hablantes de posicion
+ESTABLE. El scan inicial calcula anclas fijas. Los gates, holds y crops estaticos
+del stack dependen de que esas anclas sean validas durante todo el clip.
+
+### Consecuencias si la fuente es editada (multiples planos)
+
+| Efecto | Mecanismo |
+|--------|-----------|
+| Holds largos | Corte de escena → cara migra fuera del gate → 0 detecciones aceptadas → HOLD indefinido |
+| Tracks huerfanos | Ancla calculada en plano A, cara ya no existe en plano B |
+| Bandas duplicadas (stack) | Scan encuentra 2 caras en plano 0 (2 personas), despues solo 1; ambos crops siguen a la misma persona |
+| C2 zone entries | Cara en plano nuevo esta en posicion distinta; camara no puede seguirla → zona vacia |
+
+### Check automatico
+
+```python
+N_CORTES_WARN = 2  # en reframe.py
+
+_contar_cortes_escena(video_path, threshold=0.3) -> int  # subprocess FFmpeg, fail-open
+_avisar_cortes(n, umbral=N_CORTES_WARN) -> None          # log WARNING si n > umbral
+```
+
+Llamado al inicio de `reframe_clip` y `reframe_stack_clip`. NO bloquea; solo avisa.
+Umbral 2: permite el corte de inicio de grabacion tipico + 1 corte interior.
+
+### Fuentes validadas
+
+| Fuente | Planos | Resultado |
+|--------|--------|-----------|
+| podcast_test_60s.mp4 | 8 planos (7 cortes durs) | INVALIDA para stack: no hay plano con 2 caras >=15s |
+| (pendiente) fuente toma fija K | 1 plano | pendiente validacion |

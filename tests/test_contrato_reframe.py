@@ -475,3 +475,41 @@ def test_bandas_stack_fuente_angosta_error():
     caras_ang = [{"center_x": 80.0}, {"center_x": 240.0}]
     with pytest.raises(ValueError, match="fuente demasiado angosta"):
         rt.calcular_bandas_stack(caras_ang, src_w=320, src_h=320)
+
+
+# ── _avisar_cortes (umbral de escena continua) ────────────────────────────────
+
+
+def test_avisar_cortes_constante():
+    # N_CORTES_WARN es 2 por defecto — importado aqui para no arrastrar cv2 al nivel de modulo
+    import reframe as rf  # noqa: PLC0415
+
+    assert rf.N_CORTES_WARN == 2
+
+
+def test_avisar_cortes_bajo_umbral_no_alerta(capsys):
+    # n <= N_CORTES_WARN: sin mensaje
+    import reframe as rf  # noqa: PLC0415
+
+    rf._avisar_cortes(2)
+    out = capsys.readouterr().out
+    assert "WARNING" not in out
+
+
+def test_avisar_cortes_sobre_umbral_emite(capsys):
+    # n > N_CORTES_WARN: emite WARNING con el conteo
+    import reframe as rf  # noqa: PLC0415
+
+    rf._avisar_cortes(5)
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "5" in out
+
+
+def test_avisar_cortes_cero_sin_alerta(capsys):
+    # n=0 (FFmpeg fallo, fail-open): sin WARNING
+    import reframe as rf  # noqa: PLC0415
+
+    rf._avisar_cortes(0)
+    out = capsys.readouterr().out
+    assert "WARNING" not in out

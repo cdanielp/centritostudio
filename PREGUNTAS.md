@@ -168,38 +168,40 @@ renders de F5 completos. Sigue pendiente.
 
 Pregunta binaria cuando llegue el momento: densidad actual OK / necesita reduccion.
 
-### 21. Descuadre en reposo — DEUDA RECLASIFICADA (sesion 17)
+### 21. Descuadre en reposo — CAUSA RAIZ CORREGIDA (sesion 18)
 
-**Voto del arquitecto (sesion 17):** ESPERAR. Reclasificacion del orden de fix:
-1. PRIMERO: evaluar detector full-range para cara debil (#22) — el diagnostico t=57s
-   muestra que el descuadre es un HOLD de 6s (100% hold, 0 detecciones). El creep NO
-   funciona durante HOLD porque no hay cara detectada hacia donde ir, solo posicion vieja.
-   Full-range mejora cara_1 de 34.4% a 41.2% de deteccion — menos holds, menos descuadre.
-2. SEGUNDO: creep lento solo si el descuadre persiste CON detecciones frescas (no HOLDs).
-3. TERCERO: stack (F4.2-LITE) cubre el caso podcast de raiz.
-Trigger sin cambio: cuando moleste en renders reales.
+**Voto del arquitecto (sesion 17):** ESPERAR. Trigger: cuando moleste en renders reales.
 
-**Descripcion original:**
+**Causa raiz real (sesion 18, forense de planos):**
+El HOLD en t=54-60s NO es principalmente por "cara debil con 34.4% deteccion".
+Es por el CORTE DE ESCENA en t=51.38s que introduce un plano donde la persona
+esta a cx≈870-1010, FUERA del gate de ancla_0 (ancla=1362, zone=[1074,1650]).
+El gate rechaza todas las detecciones post-corte => 0 detecciones validas =>
+HOLD desde t=51.38+2.62=54s. El creep hacia la cara no funciona durante un HOLD
+porque no hay cara detectada en la nueva posicion.
 
-**Descripcion:** en modo noturnos a t=54-60s, la camara queda en cam=1182 con cara en 1134
-(dist=48px), dentro de la deadzone (dz_half=76px). 100% hold — MediaPipe no detecto la cara
-en ese tramo. La cara aparece 48px a la izquierda del centro del crop (7.9% del crop_w=607).
+**Detalle tecnico:** el diagnostico original atribuia el HOLD a la cara debil.
+Es incorrecto. La fuente `podcast_test_60s.mp4` tiene 7 cortes de escena duros
+(scores 0.877-1.000). El sistema de anclas fijas asume toma continua y no puede
+adaptarse a planos donde la misma persona esta en posicion diferente.
 
-**Diagnostico a t=57s:** cam=1182 face=1134 dist=48px regimen=LENTO conf=HOLD.
-El descuadre no lo genera el adaptativo — la camara actua correctamente (deadzone activa).
-Lo genera la combinacion de: (a) dz_half=76px permite un desfase de hasta 76px sin corregir,
-(b) la cara debil tiene solo 34.4% de tasa de deteccion — muchos holds.
+**Orden de fix correcto (sesion 18):**
+1. PRIMERO: cortes de escena → re-scan de anclas por plano (va a F4.2 completo).
+   Esto es lo que realmente genera los holds largos en material editado.
+2. SEGUNDO: full-range (#22) como mejora de deteccion, no como fix principal.
+3. TERCERO: creep lento SOLO si el descuadre persiste CON detecciones frescas.
+4. CUARTO: stack (F4.2-LITE) cubre el caso podcast estatico de raiz.
 
 **Candidatos de fix (no implementar sin decision):**
-- (a) Creep lento HACIA LA CARA dentro de la deadzone: alpha minimo ~0.005 aplicado siempre,
-  solo cuando error > 0. NUNCA hacia el source_center (ese era el bug viejo de
-  manejar_cara_perdida que creaba drift al vacio). El target del creep es face_x, no source_x.
-- (b) Reducir dz_half: DEADZONE_PCT de 0.25 a 0.18 aprox, umbral_lento a ~55px. Riesgo:
-  mas temblor con persona estatica.
-- (c) En podcasts, resolver por F4.2-LITE layout stack: sin tracking, las caras siempre
-  centradas en sus bandas.
+- (a) Deteccion de cortes + re-scan de anclas por plano — FIX REAL para material editado.
+  Va a F4.2 completo (junto a la linea de tiempo de layouts ya contemplada).
+- (b) Creep lento HACIA LA CARA dentro de la deadzone (alpha~0.005). Solo util con
+  detecciones frescas. NUNCA hacia source_center (era el bug viejo de manejar_cara_perdida).
+- (c) Reducir dz_half: DEADZONE_PCT 0.25->0.18, umbral_lento ~55px. Mas temblor.
+- (d) Stack (F4.2-LITE): sin tracking, faces siempre centradas. Requiere fuente estatica.
 
-**Trigger:** si el descuadre molesta en renders reales de clases. No parchear antes.
+**Warning automatico implementado (sesion 18):** `reframe.py` detecta cortes y emite
+WARNING si > N_CORTES_WARN=2. No bloquea, informa al usuario.
 
 ### 22. Evaluar detector full-range para cara debil — DEUDA
 

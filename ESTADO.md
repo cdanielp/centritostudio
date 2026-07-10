@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 17
+Actualizado: 2026-07-09 · Sesión: 18
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -40,3 +40,4 @@ Actualizado: 2026-07-09 · Sesión: 17
 - 2026-07-09: Sesión 15 — F4.1 RETUNE D5. Alpha adaptativo 2 regimenes: ALPHA_BASE_LENTO=0.08, ALPHA_BASE_RAPIDO=0.28, rampa lineal dz_half a 3xdz_half. C1 PASS: noturnos 96.2%, turnos 97.5%, videolargo 100% (tracking-only). C2v2 PASS: 0.19/0.53%. 10 tests nuevos (98 total). Correcciones model_selection.md (4a/4b/4c). DECISIONES.md D5 cerrado.
 - 2026-07-09: Sesión 16 — F4.1 CIERRE FORMAL. DoD completo verificado. DECISIONES.md D6 (cierre K 90/100). Diagnostico descuadre t=57s (cam=1182 face=1134 dist=48px HOLD). PREGUNTAS.md: puntos 20-24 (punch-in veredicto, deuda descuadre, full-range, riesgos revisor, F4.2-LITE spec). ESTADO.md: F4.1 cerrada, avance 65/100. Siguiente: F4.2-LITE.
 - 2026-07-09: Sesión 17 — F4.2-LITE. calcular_bandas_stack (math puro, 9 tests), renderizar_stack, reframe_stack_clip, --layout stack CLI. Studio: selector Seguimiento|Stack. Render podcast_test_60s stack OK (39.1s, 1080x1920 yuv420p AAC). C-STACK cara_0 100% cara_1 100%. 107 tests. Votos #20/21/24. Paquete en revision/fase-4.2-lite/. Pendiente: ojo de K y /cerrar-fase.
+- 2026-07-09: Sesión 18 — F4.2-LITE FORENSE. Hallazgo K: misma persona en ambas bandas. Causa: podcast_test_60s tiene 7 cortes de escena (material editado, NO toma fija). Inventario completo 8 planos: ningun plano tiene 2 caras distintas >=15s. HOLD t=57s re-diagnosticado: causa raiz = corte escena t=51.38s saca cara del gate. Check automatico N_CORTES_WARN=2. PREGUNTAS #21 causa raiz corregida. 112 tests. Pendiente: K aporta fuente toma fija para validar stack.
