@@ -608,3 +608,16 @@ La discusion de Direccion de Producto y la formalizacion del modelo "dos modos, 
 en documento aparte. NO esta cancelada: es un bloque de trabajo propio (vision de producto,
 posicionamiento vs OpusClip/Captions, roadmap de recetas #29). Registrada aqui para que no
 se pierda al haber priorizado s28A en cierre de cabos + F5-s2 captions cineticos.
+
+---
+
+### 32. F7 Telegram / distribucion — DIFERIDA post-v1 (D18, s28A)
+
+Decision de roadmap del arquitecto (DECISIONES D18): F7 se DIFIERE fuera del alcance de v1,
+NO se cancela. Razon: la distribucion no es motor; en v1 el usuario revisa el paquete y
+publica a mano (compuerta de revision humana, regla #19). "Terminado v1" = video entra ->
+paquete de clips listos para revisar sale (loop ya funcional, Modo Automatico v1).
+
+Spec de F7 (cuando se retome, post-v1): worker de distribucion a Telegram; la PC solo hace
+requests SALIENTES (poll), cero puertos abiertos (MAESTRO F7). Bloqueada por M5 de K
+(canal/grupo destino + quien aprueba). Estado: **diferida, post-v1**.

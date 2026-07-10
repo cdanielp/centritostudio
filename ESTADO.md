@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-10 · Sesión: 28A · **Avance real: 79/100**
+Actualizado: 2026-07-10 · Sesión: 28A · **Avance real: 82/100** (v1 sin F7; def. v1 = video entra → paquete de clips a revisar sale, D18)
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -15,7 +15,7 @@ Actualizado: 2026-07-10 · Sesión: 28A · **Avance real: 79/100**
 - [x] Modo Automatico v1 (s27) — capa delgada auto.py + run_auto + pestana Automatico; objetivo "Clips virales"; paquete con REPORTE.md de calidad por tramos (D17, MAESTRO regla #19)
 - [~] F5-s2 Captions cinéticos + estilos de marca — MOTOR ENTREGADO s28A (scale-pop palabra activa suave/fuerte + estilo clean + styles.json fail-safe por-campo + placeholder marca pms). Espera: ojo de K sobre los 3 renders (revision/fase-5/s28A_comparativa/) + M2/M3 para estilo de marca real. Follow-up: exponer --pop/clean en Studio web
 - [ ] F6 Motor B: HyperFrames
-- [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ]) (necesita M5 de K)
+- [⏸] F7 Distribución Telegram — **DIFERIDA fuera de v1 (D18, s28A)**, NO cancelada. Post-v1: la distribución no es motor; en v1 el usuario revisa el paquete y publica a mano. Spec en PREGUNTAS (marcada "diferida, post-v1"). Necesita M5 de K cuando se retome
 
 ## Herramientas del agente
 - [x] Plugin /watch operativo (frame extraction + análisis visual multimodal — tacosjuan@5s verificado)
@@ -78,7 +78,7 @@ Actualizado: 2026-07-10 · Sesión: 28A · **Avance real: 79/100**
 | Multi v2 (#28: stack/turnos por segmento) | 2 | requiere identidad entre planos (parcial con #24b) |
 | Modo AUTO en Studio (clasificador de fuente + ruteo) | 2 | semilla: `revision/inventario/fuentes.md`; depende de #27 y #28 |
 | F6 HyperFrames (2 plantillas) | 2 | independiente, puede intercalarse |
-| F7 Telegram/worker | 1 diseño + 2 despliegue | bloqueada por M5 de K y por uso personal real de F1-F4 |
+| ~~F7 Telegram/worker~~ | — | **DIFERIDA post-v1 (D18)**: fuera del alcance de v1; no cuenta para "terminado v1" |
 
 ### (c) Espera material de K (detalle en `revision/para-K/README.md`)
 - M1: 2-3 videos completos de tipos distintos → `input/`
@@ -87,11 +87,15 @@ Actualizado: 2026-07-10 · Sesión: 28A · **Avance real: 79/100**
 - M4: aprobar/tachar `assets/keywords_draft.json` (47 generadas en s26)
 - M5: canal/grupo de Telegram destino + quién aprueba
 
-### Mapa de sesiones hasta cierre (~10-13 sesiones)
-s27 (veredictos K + selector tracker + arranque #24b) → s28 (#24b cierre) →
-s29-30 (F5-s2 con M2/M3) → s31-32 (#27 modo pantalla) → s33-34 (multi v2) →
-s35-36 (modo AUTO v1 + F6) → s37+ (F7 si K la activa). El avance 74/100 asume
-cierre = F1-F6 + modo AUTO v1 en uso real; F7 desplegada suma aparte.
+### Mapa de fases restantes hasta v1 (actualizado D18, s28A — F7 fuera de v1)
+**Definición v1:** video entra → paquete de clips listos para revisar sale (loop ya
+funcional: Modo Automático v1, validado s27). Camino restante:
+**F5-s2 captions cinéticos** (motor entregado s28A; falta ojo de K + M2/M3 marca) →
+**F6 HyperFrames** (Motor B, 2 plantillas; independiente, intercalable) →
+**reframe general v2** (modo pantalla #27 / multi v2 #28 / selección manual de caras #24b,
+en el orden que dicte el uso real) → **v1**.
+**F7 (Telegram/distribución): DIFERIDA post-v1 (D18)** — no cuenta para terminar v1.
+El avance 82/100 asume v1 = F1-F6 + reframe v2 + Modo AUTO v1 en uso real, SIN F7.
 
 ## Repriorización arquitecto (s24)
 

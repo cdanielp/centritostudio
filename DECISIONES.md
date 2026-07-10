@@ -309,3 +309,27 @@ convertir Centrito en editor generico de timeline. Roadmap de la capa en PREGUNT
   YA devuelve (tipo/c1v2/n_caras por segmento) a avisos en lenguaje humano.
   Umbral de aviso C1V2_AVISO=80.0 (heuristica inicial, ajustable con feedback de K).
 - Paquete: `output/paquetes/{video}_{fecha}/` con clips finales + REPORTE.md.
+
+## D18: F7 (Telegram / distribucion) DIFERIDA fuera de v1 (roadmap, arquitecto, s28A)
+
+**Decision:** F7 (Telegram + distribucion automatica) se DIFIERE fuera del alcance de la v1.
+NO se cancela: queda como fase futura post-v1. Su spec se conserva en PREGUNTAS marcada
+"diferida, post-v1".
+
+**Razon:** la distribucion NO es motor. En v1 el usuario revisa el paquete y publica a mano
+(compuerta de revision humana, regla #19). Meter distribucion automatica en v1 mezcla una
+preocupacion externa (canales, credenciales, aprobacion) con el nucleo del producto.
+
+**Definicion de "terminado v1" (vinculante):** video entra -> paquete de clips listos para
+revisar sale. Ese loop ya funciona (Modo Automatico v1, validado s27). Lo que resta para
+pulir v1 no incluye distribucion.
+
+**Mapa de fases restantes hasta v1 (actualizado):**
+F5-s2 captions cineticos -> F6 HyperFrames (Motor B) -> reframe general v2 (modo pantalla #27
+/ multi v2 #28 / seleccion manual de caras #24b, en el orden que dicte el uso real) -> v1.
+F7 queda despues de v1.
+
+**Recalculo de avance:** el denominador /100 ya trataba F7 como "suma aparte" (nota s26), asi
+que formalizarlo no infla el numero; lo que cambia es que el alcance de v1 queda cerrado y
+claro. Con el loop nucleo ya funcional y F5-s2 (motor) entregado, el avance pasa a 82/100
+(F5-s2 pulido + F6 + reframe v2 son lo que resta para v1).
