@@ -12,13 +12,13 @@ from __future__ import annotations
 # Ver tabla en DISENO_REFRAME.md §2 para rango sensato de cada constante.
 
 EMA_ALPHA = 0.08  # alias de ALPHA_BASE_LENTO (backward-compat)
-ALPHA_BASE_LENTO = 0.08   # tau ~0.41s a 30fps: reposo y movimientos suaves
+ALPHA_BASE_LENTO = 0.08  # tau ~0.41s a 30fps: reposo y movimientos suaves
 ALPHA_BASE_RAPIDO = 0.28  # tau ~0.11s a 30fps; equivale al alpha efectivo de s13 @60fps
-                           # (1-(1-0.08)^2 = 0.1536 ≈ 1-(1-0.28)^0.5 = 0.1515)
-RAMP_LENTO_FACTOR = 1.0   # umbral_lento  = deadzone_half × 1.0 (borde de la deadzone)
+# (1-(1-0.08)^2 = 0.1536 ≈ 1-(1-0.28)^0.5 = 0.1515)
+RAMP_LENTO_FACTOR = 1.0  # umbral_lento  = deadzone_half × 1.0 (borde de la deadzone)
 RAMP_RAPIDO_FACTOR = 3.0  # umbral_rapido = deadzone_half × 3.0 (3x el borde)
-                           # => podcast 1920x1080: umbral_lento=76px  umbral_rapido=228px
-                           # => videolargo 854x480: umbral_lento=34px  umbral_rapido=101px
+# => podcast 1920x1080: umbral_lento=76px  umbral_rapido=228px
+# => videolargo 854x480: umbral_lento=34px  umbral_rapido=101px
 
 DEADZONE_PCT = 0.25  # zona muerta como fraccion de CROP_W (corregido s12; era 0.30 de source_w)
 DETECT_EVERY_N = 3  # detectar cara cada N fotogramas
@@ -97,9 +97,7 @@ def calcular_alpha_adaptativo(
     return calcular_alpha_fps(alpha_base, fps, fps_ref)
 
 
-def ema_smooth_adaptativo(
-    positions: list[float], fps: float, deadzone_w: float
-) -> list[float]:
+def ema_smooth_adaptativo(positions: list[float], fps: float, deadzone_w: float) -> list[float]:
     """EMA con alpha adaptativo por frame segun |target - camara_anterior|."""
     if not positions:
         return []

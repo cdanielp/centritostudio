@@ -108,6 +108,23 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .emphasis-row input[type=checkbox]{accent-color:var(--purple);width:15px;height:15px;cursor:pointer}
 .emphasis-row label{color:var(--text);cursor:pointer;font-size:13px}
 .msg.warn{color:var(--yellow)}
+
+/* Pipeline badges */
+.pipeline-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.badge.depurado{background:#1c2020;color:#6ee7b7}
+.badge.clips{background:#1a1228;color:var(--purple)}
+.badge.reencuadrado{background:#0f1a2e;color:#60a5fa}
+
+/* Inline depurar panel */
+.depurar-panel{display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  background:#111122;border:0.5px solid #2a2a3e;border-radius:6px;padding:8px 10px;margin-top:8px}
+.depurar-panel>span{font-size:12px;color:var(--muted)}
+
+/* No-transcript notice */
+.no-transcript-notice{background:#1a1228;border:0.5px solid var(--purple-dim);border-radius:8px;
+  padding:12px 14px;margin-bottom:8px;display:none}
+.no-transcript-notice p{font-size:13px;margin-bottom:8px}
+.no-transcript-notice .notice-actions{display:flex;gap:8px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -224,6 +241,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         </select>
       </div>
       <div id="clips-source-note" class="msg" style="margin-bottom:8px;display:none"></div>
+      <div id="no-transcript-notice" class="no-transcript-notice"></div>
       <div class="field">
         <label>Tipo de clips</label>
         <select id="clips-tipo">
@@ -302,6 +320,9 @@ function showTab(id, btn) {
   if (id === 'videos') loadVideos();
 }
 
+// esc(): escapa comillas simples para uso seguro en atributos onclick inline
+function esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
 // ═══════════════════════════════════════════════════════
 // TAB VIDEOS — carga y render de lista
 // ═══════════════════════════════════════════════════════
@@ -320,26 +341,44 @@ function renderVideoList() {
     return;
   }
   videos.forEach(v => {
-    const dur  = fmtTime(v.duration);
-    const warn = v.mean_volume < -40 ? '⚠️ Sin voz detectada' : '';
-    const div  = document.createElement('div');
+    const dur = fmtTime(v.duration);
+    const st  = v.stages || {};
+    const hasVoice = v.mean_volume >= -40;
+    const transcrito = !!st.transcrito;
+
+    // Pipeline badges
+    let badges = '';
+    if (!transcrito) {
+      badges = '<span class="badge sin_transcribir">Sin transcribir</span>';
+    } else {
+      badges = '<span class="badge transcrito">Transcrito</span>';
+      if (st.depurado)      badges += ' <span class="badge depurado">Depurado</span>';
+      if (st.clips_n > 0)   badges += ` <span class="badge clips">Clips ${st.clips_n}</span>`;
+      if (st.reencuadrado)  badges += ' <span class="badge reencuadrado">Reencuadrado</span>';
+    }
+
+    const n = esc(v.name); // nombre escapado para onclick
+    const div = document.createElement('div');
     div.className = 'video-card';
     div.innerHTML = `
       <img src="${v.thumb || ''}" alt="" onerror="this.style.display='none'">
       <div class="info">
         <div class="name">${v.name}</div>
-        <div class="meta">${v.width}×${v.height} · ${dur} · ${warn || (v.mean_volume.toFixed(1) + ' dB')}</div>
-        <span class="badge ${v.status}">${statusLabel(v.status)}</span>
+        <div class="meta">${v.width}×${v.height} · ${dur} · ${hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz'}</div>
+        <div class="pipeline-badges">${badges}</div>
         <div class="actions">
-          ${v.mean_volume >= -40
-            ? `<button class="btn" onclick="transcribeVideo('${v.name}',this)">Transcribir</button>`
+          ${hasVoice
+            ? `<button class="btn" onclick="transcribeVideo('${n}',this)">Transcribir</button>`
             : `<span class="msg err">Sin voz — no se puede transcribir</span>`}
-          ${v.status !== 'sin_transcribir'
-            ? `<button class="btn secondary" onclick="openEditor('${v.name}')">Editar</button>` : ''}
-          ${v.status !== 'sin_transcribir'
-            ? `<button class="btn secondary" onclick="showDepurarPanel('${v.name}')">Depurar</button>` : ''}
-          ${v.outputs.length
-            ? `<button class="btn secondary" onclick="openRender('${v.name}')">Render</button>` : ''}
+          ${transcrito ? `<button class="btn secondary" onclick="openEditor('${n}')">Editar</button>` : ''}
+          ${transcrito ? `<button class="btn secondary" onclick="toggleDepurarPanel('${n}')">Depurar</button>` : ''}
+          ${transcrito ? `<button class="btn secondary" onclick="openRender('${n}')">Render</button>` : ''}
+        </div>
+        <div id="dep-panel-${v.name}" class="depurar-panel" style="display:none">
+          <span>Modo:</span>
+          <button class="btn" onclick="runDepurar('${n}','seguro')">Seguro — silencios</button>
+          <button class="btn secondary" onclick="runDepurar('${n}','agresivo')">Agresivo + muletillas</button>
+          <button class="btn secondary" onclick="toggleDepurarPanel('${n}')">Cancelar</button>
         </div>
         <div id="job-${v.name}"></div>
       </div>`;
@@ -357,9 +396,8 @@ function populateSelects() {
   document.getElementById('render-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
   const clipsEl = document.getElementById('clips-video-select');
   if (clipsEl) {
-    const transcribed = videos.filter(v => v.status !== 'sin_transcribir');
-    clipsEl.innerHTML = '<option value="">— Elegir video —</option>' +
-      transcribed.map(v => `<option value="${v.name}">${v.name}</option>`).join('');
+    // Todos los videos — los sin transcript reciben notice accionable al seleccionarlos
+    clipsEl.innerHTML = '<option value="">— Elegir video —</option>' + opts;
   }
 }
 
@@ -387,7 +425,11 @@ async function uploadFile(file) {
     bar.style.width = '100%';
     setTimeout(() => { prog.style.display = 'none'; loadVideos(); }, 600);
   };
-  xhr.onerror = () => { prog.style.display = 'none'; alert('Error al subir'); };
+  xhr.onerror = () => {
+    prog.style.display = 'none';
+    prog.innerHTML = '<div class="msg err">Error al subir el archivo. Verifica que el server esta corriendo.</div>';
+    prog.style.display = 'block';
+  };
   xhr.open('POST', '/api/videos/upload');
   xhr.send(fd);
 }
@@ -398,6 +440,7 @@ async function uploadFile(file) {
 async function transcribeVideo(name, btn) {
   btn.disabled = true;
   const box = document.getElementById('job-' + name);
+  const t0 = Date.now();
   box.innerHTML = '<div class="msg">Iniciando…</div><div class="progress-bar"><div class="fill" id="pb-'+name+'" style="width:0%"></div></div>';
 
   const res = await fetch(`/api/videos/${name}/transcribe`, {method:'POST'});
@@ -411,14 +454,16 @@ async function transcribeVideo(name, btn) {
   pollJob(job_id, (j) => {
     const pb = document.getElementById('pb-'+name);
     if (pb) pb.style.width = j.progress + '%';
+    const elapsed = Math.round((Date.now() - t0) / 1000);
     if (j.status === 'done') {
-      box.innerHTML = `<div class="msg ok">${j.message}</div>`;
+      box.innerHTML = `<div class="msg ok">${j.message} (${elapsed}s)</div>`;
       loadVideos();
     } else if (j.status === 'error') {
       box.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
       btn.disabled = false;
     } else {
-      box.querySelector('.msg').textContent = j.message;
+      const msgEl = box.querySelector('.msg');
+      if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
     }
   });
 }
@@ -459,8 +504,11 @@ async function loadEditorVideo(name) {
   // Cargar grupos
   const res = await fetch(`/api/videos/${name}/transcript`);
   if (!res.ok) {
-    document.getElementById('groups-container').innerHTML =
-      '<div class="msg err" style="padding:16px">No hay transcript. Transcribe primero desde la pestaña Videos.</div>';
+    document.getElementById('groups-container').innerHTML = `
+      <div style="padding:16px">
+        <div class="msg err" style="margin-bottom:10px">Este video no tiene transcripcion.</div>
+        <button class="btn" onclick="goTranscribeVideo('${name}')">Ir a transcribir</button>
+      </div>`;
     return;
   }
   origGroups   = await res.json();
@@ -583,18 +631,24 @@ function restoreGroups() {
 // Análisis IA — brain.json
 // ═══════════════════════════════════════════════════════
 async function analyzeVideo() {
-  if (!editorName) { alert('Selecciona un video primero'); return; }
+  if (!editorName) {
+    document.getElementById('editor-info').textContent = 'Selecciona un video primero';
+    return;
+  }
   const btn = document.getElementById('analyze-btn');
   btn.disabled = true; btn.textContent = 'Analizando...';
 
   const res = await fetch(`/api/videos/${editorName}/analyze`, {method:'POST'});
   if (!res.ok) {
     btn.disabled = false; btn.textContent = 'Analizar IA';
-    alert('Error al iniciar análisis: ' + (await res.json()).detail);
+    const detail = (await res.json()).detail || 'Error desconocido';
+    document.getElementById('editor-info').innerHTML = `<span style="color:var(--red)">Error: ${detail}</span>`;
     return;
   }
   const {job_id} = await res.json();
+  const t0 = Date.now();
   pollJob(job_id, (j) => {
+    const elapsed = Math.round((Date.now() - t0) / 1000);
     if (j.status === 'done') {
       btn.textContent = 'Analizar IA'; btn.disabled = false;
       loadBrainData();
@@ -603,7 +657,7 @@ async function analyzeVideo() {
       const hint = document.getElementById('emphasis-hint');
       if (hint) hint.textContent = 'Fallo — render sin enfasis';
     } else {
-      btn.textContent = j.message.substring(0, 18) + '...';
+      btn.textContent = j.message.substring(0, 16) + `… (${elapsed}s)`;
     }
   });
 }
@@ -633,26 +687,36 @@ async function setBrainEmoji(gid, val) {
 }
 
 // ═══════════════════════════════════════════════════════
-// Depurador
+// Depurador — panel inline (reemplaza window.prompt)
 // ═══════════════════════════════════════════════════════
-function showDepurarPanel(name) {
-  const modeInput = window.prompt(
-    'Modo de depuracion:\n  seguro  — comprime silencios >0.8s (recomendado)\n  agresivo — ademas corta muletillas (eh, em, este...)\n\nEscribe "seguro" o "agresivo":',
-    'seguro'
-  );
-  if (!modeInput) return;
-  const mode = modeInput.trim().toLowerCase() === 'agresivo' ? 'agresivo' : 'seguro';
+function toggleDepurarPanel(name) {
+  const panel = document.getElementById('dep-panel-' + name);
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+}
+
+function runDepurar(name, mode) {
+  toggleDepurarPanel(name);
   const box = document.getElementById('job-' + name);
   if (!box) return;
-  box.innerHTML = `<div class="msg">Iniciando depuracion ${mode}...</div>
+  const t0 = Date.now();
+  box.innerHTML = `<div class="msg">Iniciando depuracion ${mode}…</div>
     <div class="progress-bar"><div class="fill" id="dep-pb-${name}" style="width:5%"></div></div>`;
   fetch('/api/videos/' + name + '/depurar?mode=' + mode, {method:'POST'})
     .then(r => r.json())
     .then(({job_id}) => pollJob(job_id, j => {
       const pb = document.getElementById('dep-pb-' + name);
       if (pb) pb.style.width = j.progress + '%';
-      if (box) box.querySelector('.msg').textContent = j.message;
-      if (j.status === 'done' || j.status === 'error') loadVideos();
+      const elapsed = Math.round((Date.now() - t0) / 1000);
+      if (box) {
+        const msgEl = box.querySelector('.msg');
+        if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
+      }
+      if (j.status === 'done') {
+        if (box) box.innerHTML = `<div class="msg ok">${j.message}</div>`;
+        loadVideos();
+      } else if (j.status === 'error') {
+        if (box) box.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
+      }
     }))
     .catch(e => { if (box) box.innerHTML = `<div class="msg err">${e}</div>`; });
 }
@@ -677,7 +741,23 @@ async function startRender() {
   const name  = document.getElementById('render-video-select').value;
   const style = document.getElementById('render-style').value;
   const wpg   = document.getElementById('render-wpg').value;
-  if (!name) { alert('Elige un video'); return; }
+  if (!name) {
+    document.getElementById('render-status').innerHTML = '<div class="msg warn">Elige un video del selector.</div>';
+    return;
+  }
+
+  // Check transcript client-side
+  const v = videos.find(x => x.name === name);
+  const transcrito = v && v.stages && v.stages.transcrito;
+  if (!transcrito) {
+    document.getElementById('render-status').innerHTML = `
+      <div class="msg err" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        Este video no tiene transcripcion.
+        <button class="btn" style="font-size:12px;padding:4px 10px"
+          onclick="transcribeFromRender('${name}')">Transcribir ahora</button>
+      </div>`;
+    return;
+  }
 
   const btn = document.getElementById('render-btn');
   btn.disabled = true;
@@ -695,12 +775,15 @@ async function startRender() {
   }
   const {job_id} = await res.json();
   const statusDiv = document.getElementById('render-status');
+  const t0 = Date.now();
   statusDiv.innerHTML = '<div class="msg">Iniciando render…</div><div class="progress-bar"><div class="fill" id="render-pb" style="width:5%"></div></div>';
 
   pollJob(job_id, (j) => {
     const pb = document.getElementById('render-pb');
     if (pb) pb.style.width = j.progress + '%';
-    statusDiv.querySelector('.msg').textContent = j.message;
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
     if (j.status === 'done') {
       btn.disabled = false;
       if (j.result && j.result.emphasis_msg) {
@@ -733,17 +816,41 @@ let clipsName = null;
 
 function onClipsVideoChange(name) {
   clipsName = name || null;
-  const note = document.getElementById('clips-source-note');
-  if (!name) { note.style.display='none'; return; }
-  // Si existe version depurada, avisarlo
+  const notice = document.getElementById('no-transcript-notice');
+  const note   = document.getElementById('clips-source-note');
+  const btn    = document.getElementById('clips-btn');
+
+  if (!name) {
+    notice.style.display = 'none';
+    note.style.display   = 'none';
+    btn.disabled = false;
+    return;
+  }
+
   const v = videos.find(x => x.name === name);
+  const transcrito = v && v.stages && v.stages.transcrito;
+
+  if (!transcrito) {
+    notice.style.display = 'block';
+    notice.innerHTML = `<p>Este video no tiene transcripcion — los clips requieren transcript.</p>
+      <div class="notice-actions">
+        <button class="btn" onclick="transcribeAndGenerateClips('${name}')">Transcribir y generar clips</button>
+        <button class="btn secondary" onclick="document.getElementById('no-transcript-notice').style.display='none';document.getElementById('clips-btn').disabled=false">Cancelar</button>
+      </div>`;
+    btn.disabled = true;
+    note.style.display = 'none';
+    return;
+  }
+
+  notice.style.display = 'none';
+  btn.disabled = false;
+
   if (v && v.outputs && v.outputs.some(o => o.includes('_limpio'))) {
     note.textContent = 'Tip: usa la version depurada para mejores scores';
     note.style.display = 'block';
   } else {
     note.style.display = 'none';
   }
-  // Cargar clips existentes si los hay
   loadClipsResult(name);
 }
 
@@ -757,14 +864,32 @@ async function loadClipsResult(name) {
 }
 
 async function startClips() {
-  if (!clipsName) { alert('Elige un video'); return; }
+  if (!clipsName) {
+    document.getElementById('clips-job-status').innerHTML = '<div class="msg warn">Elige un video primero</div>';
+    return;
+  }
+
+  // Guard: si no tiene transcript, mostrar notice accionable
+  const v = videos.find(x => x.name === clipsName);
+  const transcrito = v && v.stages && v.stages.transcrito;
+  if (!transcrito) {
+    const notice = document.getElementById('no-transcript-notice');
+    notice.style.display = 'block';
+    notice.innerHTML = `<p>Este video no tiene transcripcion — los clips requieren transcript.</p>
+      <div class="notice-actions">
+        <button class="btn" onclick="transcribeAndGenerateClips('${clipsName}')">Transcribir y generar clips</button>
+        <button class="btn secondary" onclick="document.getElementById('no-transcript-notice').style.display='none'">Cancelar</button>
+      </div>`;
+    return;
+  }
+
   const tipos = document.getElementById('clips-tipo').value;
   const btn = document.getElementById('clips-btn');
   const statusDiv = document.getElementById('clips-job-status');
   btn.disabled = true;
   document.getElementById('clips-results').style.display = 'none';
   document.getElementById('clips-note').style.display = 'none';
-  statusDiv.innerHTML = '<div class="msg">Iniciando...</div><div class="progress-bar"><div class="fill" id="clips-pb" style="width:3%"></div></div>';
+  statusDiv.innerHTML = '<div class="msg">Iniciando…</div><div class="progress-bar"><div class="fill" id="clips-pb" style="width:3%"></div></div>';
 
   const res = await fetch(`/api/videos/${clipsName}/clips?tipos=${tipos}`, {method:'POST'});
   if (!res.ok) {
@@ -774,16 +899,19 @@ async function startClips() {
     return;
   }
   const {job_id} = await res.json();
+  const t0 = Date.now();
 
   pollJob(job_id, (j) => {
     const pb = document.getElementById('clips-pb');
     if (pb) pb.style.width = Math.max(5, j.progress) + '%';
+    const elapsed = Math.round((Date.now() - t0) / 1000);
     const msgEl = statusDiv.querySelector('.msg');
-    if (msgEl) msgEl.textContent = j.message;
+    if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
     if (j.status === 'done') {
       btn.disabled = false;
       statusDiv.innerHTML = `<div class="msg ok">${j.message}</div>`;
       if (j.result) renderClipsCards(j.result);
+      loadVideos();
     } else if (j.status === 'error') {
       statusDiv.innerHTML = `<div class="msg warn">${j.message}</div>`;
       btn.disabled = false;
@@ -859,14 +987,17 @@ function setLayoutMode(mode) {
 }
 
 async function _pollReframe(jobId, stem, btn, statusDiv, outFile) {
+  const t0 = Date.now();
   const poll = setInterval(async () => {
     const j = await (await fetch(`/api/jobs/${jobId}`)).json();
-    statusDiv.textContent = j.message || '...';
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    statusDiv.textContent = `${j.message || '...'} (${elapsed}s)`;
     if (j.status === 'done') {
       clearInterval(poll);
       btn.disabled = false;
       const out = j.result?.output ? j.result.output.split(/[/\\]/).pop() : outFile;
-      statusDiv.innerHTML = `Listo: <a href="/clips/${out}" download style="color:var(--purple)">Descargar 9:16</a>`;
+      statusDiv.innerHTML = `Listo en ${elapsed}s: <a href="/clips/${out}" download style="color:var(--purple)">Descargar 9:16</a>`;
+      loadVideos();
     } else if (j.status === 'error') {
       clearInterval(poll);
       btn.disabled = false;
@@ -918,9 +1049,11 @@ async function startReframe(stem, btn) {
 
 function openRenderClip(stem) {
   showTab('render', document.querySelectorAll('nav button')[2]);
-  // El clip estara en output/clips/ pero caption.py lo trata como video normal
-  // Aviso al usuario
-  alert(`Para agregar captions al clip, ejecuta:\n.\\ venv\\Scripts\\python caption.py output/clips/${stem}.mp4 --style hormozi`);
+  document.getElementById('render-status').innerHTML = `
+    <div class="msg" style="font-size:12px">
+      Para captions de este clip, usa la CLI:<br>
+      <code style="display:block;background:#111;padding:4px 8px;border-radius:4px;margin-top:4px;font-size:11px;color:var(--cyan)">.\\venv\\Scripts\\python caption.py output/clips/${stem}.mp4 --style hormozi</code>
+    </div>`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -933,6 +1066,149 @@ function fmtTime(s) {
 function fmtTimestamp(s) {
   const m = Math.floor(s / 60), sec = (s % 60).toFixed(1);
   return `${m}:${sec.toString().padStart(4,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// Helpers: pollJob promesificado + encadenados
+// ═══════════════════════════════════════════════════════
+function pollJobP(jid, onTick, interval=900) {
+  return new Promise(resolve => {
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/jobs/' + jid);
+        if (!r.ok) { resolve(false); return; }
+        const j = await r.json();
+        if (onTick) onTick(j);
+        if (j.status === 'done')  { resolve(true);  return; }
+        if (j.status === 'error') { resolve(false); return; }
+        if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
+      } catch(e) { resolve(false); }
+    };
+    tick();
+  });
+}
+
+// Navega a Videos y señala el video específico que necesita transcripción
+function goTranscribeVideo(name) {
+  showTab('videos', document.querySelectorAll('nav button')[0]);
+  setTimeout(() => {
+    const jobEl = document.getElementById('job-' + name);
+    if (jobEl) {
+      jobEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      jobEl.innerHTML = '<div class="msg warn">Pulsa Transcribir para este video.</div>';
+    }
+  }, 200);
+}
+
+// Transcribir desde el tab Render cuando falta transcript
+async function transcribeFromRender(name) {
+  const statusDiv = document.getElementById('render-status');
+  const btn = document.getElementById('render-btn');
+  btn.disabled = true;
+  const t0 = Date.now();
+  statusDiv.innerHTML = '<div class="msg">Transcribiendo…</div><div class="progress-bar"><div class="fill" id="render-pb" style="width:3%"></div></div>';
+
+  const res = await fetch(`/api/videos/${name}/transcribe`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json();
+    statusDiv.innerHTML = `<div class="msg err">Error: ${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id} = await res.json();
+
+  const ok = await pollJobP(job_id, (j) => {
+    const pb = document.getElementById('render-pb');
+    if (pb) pb.style.width = j.progress + '%';
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl) msgEl.textContent = `Transcribiendo… ${j.message} (${elapsed}s)`;
+  });
+
+  btn.disabled = false;
+  if (ok) {
+    await loadVideos();
+    statusDiv.innerHTML = '<div class="msg ok">Transcripcion lista — ya puedes renderizar.</div>';
+  } else {
+    statusDiv.innerHTML = '<div class="msg err">Error en transcripcion. Intenta de nuevo.</div>';
+  }
+}
+
+// Encadenado: Transcribir + Generar clips en un solo flujo
+async function transcribeAndGenerateClips(name) {
+  const notice = document.getElementById('no-transcript-notice');
+  notice.style.display = 'none';
+
+  const tipos    = document.getElementById('clips-tipo').value;
+  const statusDiv = document.getElementById('clips-job-status');
+  const btn       = document.getElementById('clips-btn');
+  btn.disabled = true;
+  document.getElementById('clips-results').style.display = 'none';
+  document.getElementById('clips-note').style.display    = 'none';
+
+  // Fase 1: Transcribir
+  const t0 = Date.now();
+  statusDiv.innerHTML = '<div class="msg">Transcribiendo…</div><div class="progress-bar"><div class="fill" id="clips-pb" style="width:3%"></div></div>';
+
+  const transcRes = await fetch(`/api/videos/${name}/transcribe`, {method:'POST'});
+  if (!transcRes.ok) {
+    const err = await transcRes.json();
+    statusDiv.innerHTML = `<div class="msg err">Error: ${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id: tJobId} = await transcRes.json();
+
+  const transcOk = await pollJobP(tJobId, (j) => {
+    const pb = document.getElementById('clips-pb');
+    if (pb) pb.style.width = Math.max(3, Math.round(j.progress * 0.5)) + '%';
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl) msgEl.textContent = `Transcribiendo… ${j.message} (${elapsed}s)`;
+  });
+
+  if (!transcOk) {
+    try {
+      const job = await (await fetch('/api/jobs/' + tJobId)).json();
+      statusDiv.innerHTML = `<div class="msg err">Error en transcripcion: ${job.message || 'desconocido'}</div>`;
+    } catch(e) {
+      statusDiv.innerHTML = '<div class="msg err">Error en transcripcion.</div>';
+    }
+    btn.disabled = false;
+    return;
+  }
+
+  await loadVideos(); // Refresca estado para que los badges se actualicen
+
+  // Fase 2: Generar clips
+  statusDiv.innerHTML = '<div class="msg">Generando clips…</div><div class="progress-bar"><div class="fill" id="clips-pb" style="width:52%"></div></div>';
+
+  const clipsRes = await fetch(`/api/videos/${name}/clips?tipos=${tipos}`, {method:'POST'});
+  if (!clipsRes.ok) {
+    const err = await clipsRes.json();
+    statusDiv.innerHTML = `<div class="msg err">Error: ${err.detail}</div>`;
+    btn.disabled = false;
+    return;
+  }
+  const {job_id: cJobId} = await clipsRes.json();
+  const t1 = Date.now();
+
+  pollJob(cJobId, (j) => {
+    const pb = document.getElementById('clips-pb');
+    if (pb) pb.style.width = Math.min(99, 52 + Math.round(j.progress * 0.48)) + '%';
+    const elapsed = Math.round((Date.now() - t1) / 1000);
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
+    if (j.status === 'done') {
+      btn.disabled = false;
+      statusDiv.innerHTML = `<div class="msg ok">${j.message}</div>`;
+      if (j.result) renderClipsCards(j.result);
+      loadVideos();
+    } else if (j.status === 'error') {
+      statusDiv.innerHTML = `<div class="msg warn">${j.message}</div>`;
+      btn.disabled = false;
+    }
+  }, 1200);
 }
 
 // ═══════════════════════════════════════════════════════

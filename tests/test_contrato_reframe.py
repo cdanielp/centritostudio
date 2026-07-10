@@ -226,7 +226,7 @@ def test_calcular_alpha_fps_nunca_supera_1():
 
 # ── calcular_alpha_adaptativo + ema_smooth_adaptativo ────────────────────────
 
-_DZ_W = 150.0   # deadzone_w de referencia (podcast 1920x1080 aprox)
+_DZ_W = 150.0  # deadzone_w de referencia (podcast 1920x1080 aprox)
 _DZ_HALF = _DZ_W / 2  # 75.0
 
 
@@ -373,8 +373,8 @@ _TURNOS_CONF = [
     {"t_ini": 1.0, "t_fin": 2.0, "cara_id": 1},
 ]
 _CONF_MULTI_EJ = {
-    0: {0: 0.5, 3: 0.6, 27: 0.7},   # frames en turno 0 (f=0..29 a 30fps)
-    1: {30: 0.8, 33: 0.9},            # frames en turno 1 (f=30..59)
+    0: {0: 0.5, 3: 0.6, 27: 0.7},  # frames en turno 0 (f=0..29 a 30fps)
+    1: {30: 0.8, 33: 0.9},  # frames en turno 1 (f=30..59)
 }
 
 
@@ -401,7 +401,7 @@ def test_aplanar_conf_por_turnos_vacio_sin_crash():
 
 # ── calcular_bandas_stack ────────────────────────────────────────────────────
 
-_CARAS_2 = [{"center_x": 1362.0}, {"center_x": 719.0}]   # podcast 1920x1080
+_CARAS_2 = [{"center_x": 1362.0}, {"center_x": 719.0}]  # podcast 1920x1080
 _CARAS_3 = [{"center_x": 500.0}, {"center_x": 960.0}, {"center_x": 1400.0}]
 
 
@@ -548,10 +548,12 @@ def test_filtrar_artefactos_cortes_solo_artefacto():
 def test_parsear_cortes_escena_extrae_timestamps():
     import reframe as rf  # noqa: PLC0415
 
-    stdout = "frame:0    pts:4    pts_time:0.0666667\n" \
-             "lavfi.scene_score=1.000000\n" \
-             "frame:1    pts:3240 pts_time:54.033333\n" \
-             "lavfi.scene_score=0.662516\n"
+    stdout = (
+        "frame:0    pts:4    pts_time:0.0666667\n"
+        "lavfi.scene_score=1.000000\n"
+        "frame:1    pts:3240 pts_time:54.033333\n"
+        "lavfi.scene_score=0.662516\n"
+    )
     result = rf._parsear_cortes_escena(stdout)
     assert len(result) == 2
     assert abs(result[0] - 0.067) < 0.001

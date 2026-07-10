@@ -73,6 +73,22 @@ def list_videos():
         else:
             status = "sin_transcribir"
 
+        # Pipeline stages — fuente de verdad: artefactos en disco
+        stages: dict = {
+            "transcrito": groups_file.exists(),
+            "depurado": (OUTPUT_DIR / f"{mp4.stem}_limpio.mp4").exists(),
+            "clips_n": 0,
+            "reencuadrado": False,
+        }
+        clips_json = CLIPS_DIR / f"{mp4.stem}_clips.json"
+        if clips_json.exists():
+            try:
+                clips_data = json.loads(clips_json.read_text(encoding="utf-8"))
+                stages["clips_n"] = len(clips_data.get("clips", []))
+            except Exception:
+                pass
+        stages["reencuadrado"] = bool(list(CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")))
+
         if info_file.exists():
             info = json.loads(info_file.read_text(encoding="utf-8"))
         else:
@@ -88,6 +104,7 @@ def list_videos():
                 "name": mp4.stem,
                 "filename": mp4.name,
                 "status": status,
+                "stages": stages,
                 "duration": round(info.get("duration", 0), 2),
                 "width": info.get("width", 0),
                 "height": info.get("height", 0),
@@ -278,7 +295,9 @@ def start_reframe(name: str, punch_in: bool = False, layout: str = "tracking"):
         jid = jobs.new_job(f"Stack {name} ...")
     else:
         turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
-        turnos = json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None  # noqa: E501
+        turnos = (
+            json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None
+        )  # noqa: E501
         output_path = CLIPS_DIR / f"{name}_9x16.mp4"
         jid = jobs.new_job(f"Reencuadrando {name} a 9:16...")
     threading.Thread(

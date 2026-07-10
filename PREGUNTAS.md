@@ -269,18 +269,20 @@ El subagente revisor de la sesion 15 reporto 4 riesgos no bloqueantes:
 - N_CORTES_WARN=2 implementado como check automatico (fail-open)
 - Fuente valida para validar: K aporta toma fija con 2 personas
 
-### 24d. Intrusion cruzada en stack — deuda tolerable (sesion 21)
+### 24d. Intrusion cruzada en stack — RESERVA ACTIVA (voto arquitecto s22)
 
 K verifico el stack sobre `stack_test_estatico.mp4` y califico 9/10. La intrusion cruzada
 en bordes de banda (sep=309px < crop_w=540px) esta PRESENTE y K la acepta — "no molesta".
+
+**Voto del arquitecto (s22): NO cerrar como permanentemente aceptada.**
+La geometria cambia con N=3 o separaciones mayores. Mantener como reserva activa.
 
 **Fix en reserva:** parametro `ALTURA_CROP_PCT` que reduce el crop_h desde src_h hasta un
 porcentaje (ej. 0.90 * src_h) y centra verticalmente. Permite aumentar crop_w sin intrusion.
 Alternativa: dejar el crop de ancho completo (crop_w = band_w * src_h / band_h) como ahora,
 pero reducir la zona visible con un centrado vertical ajustado.
 
-**Trigger:** si la intrusion molesta visualmente en escenas donde los sujetos estan mas
-separados. No implementar aun.
+**Trigger:** si la intrusion molesta visualmente con N=3 o sujetos mas separados. No implementar aun.
 
 ---
 
@@ -344,3 +346,33 @@ Dataset de calibracion: `revision/fase-4.2-lite/cortes_dataset.md` — 3 fuentes
   como diagnostico puro: DELTA_CLEAN_DB = 6, DELTA_NOTABLE_DB = 15.
 - **Estado:** implementado. "Threshold irrelevante — el ajuste se elimino; la medicion quedo
   como diagnostico con umbrales 6/15dB." Ver depurador.py.
+
+---
+
+### 22. Detector full-range (cara con lentes oscuros) — ESPERAR (voto arquitecto s22)
+
+El .tflite de full-range esta descargado en `models/`. No activar aun.
+**Trigger:** cuando duela en renders reales de K (contenido 1080p talking-head sin lentes).
+El caso debil (lentes oscuros) es secundario en el flujo de produccion actual.
+Estado: PENDIENTE — sin trigger activo.
+
+### 24b. Seleccion manual de caras — prioridad JUSTO DESPUES DE F5 (voto arquitecto s22)
+
+No posponer a F4.2 completo. Prioridad: terminar F5 emojis → implementar seleccion manual.
+Spec en PREGUNTAS #24b (sesion 19). Ver MAESTRO F4.1 spec de seleccion manual.
+
+### 25. Poll de job sin respuesta cuelga el spinner en silencio — deuda UX (s22)
+
+**Síntoma:** si un job del Studio desaparece del registro (reinicio del server, crash del worker)
+el `pollJob` hace fetch silencioso indefinidamente → spinner eterno sin mensaje de error.
+Viola regla #16 (NINGUN ERROR SIN ACCION).
+
+**Fix propuesto:** añadir timeout al poll (ej. 5 min) → si se supera, mostrar mensaje de error
+con botón "Reintentar" o "Cancelar" y marcar el job como stale.
+**Prioridad:** follow-up de s22, próxima sesión de Studio.
+
+### Nota de higiene s20/s21
+Extracto `stack_test_estatico.mp4` tiene audio 52.5s vs video 48.5s (cola por -c copy).
+Benigno en test. Regla nueva de higiene para extractos de validacion:
+generarlos con `-shortest` o re-encode completo para que la compuerta "AAC identico"
+no pase con asteriscos silenciosos. Aplicar en proxima sesion de extractos.

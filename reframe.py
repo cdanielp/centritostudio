@@ -65,11 +65,20 @@ def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
     try:
         r = subprocess.run(
             [
-                "ffmpeg", "-i", str(video_path),
-                "-vf", f"select='gt(scene,{threshold})',metadata=print:file=-",
-                "-an", "-f", "null", "-",
+                "ffmpeg",
+                "-i",
+                str(video_path),
+                "-vf",
+                f"select='gt(scene,{threshold})',metadata=print:file=-",
+                "-an",
+                "-f",
+                "null",
+                "-",
             ],
-            capture_output=True, text=True, timeout=60, errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=60,
+            errors="replace",
         )
         return len(_filtrar_artefactos_cortes(_parsear_cortes_escena(r.stdout)))
     except Exception:
