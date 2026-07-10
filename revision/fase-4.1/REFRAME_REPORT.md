@@ -665,3 +665,77 @@ Implementado en sesion 18 en `reframe.py`:
 
 Tarea 3b aplica: K aportara fuente de toma fija con 2 personas estaticas >=15s.
 Hasta entonces la validacion visual de stack esta BLOQUEADA.
+
+---
+
+## Sesion 19 — Precondicion, caveat C1, registro
+
+### Fuente nueva: prueba2personasenmedio.mov
+
+**Nota:** K subio la fuente como `.mov`; la spec decia `.mp4`. Se uso el `.mov`
+(mismo nombre, distinto contenedor). Arquitecto confirmar si aplica.
+
+**Precondicion 0a:** 854x480, HORIZONTAL, 30fps, 96s, h264/AAC. OK.
+
+**Precondicion 0b: 3 cortes detectados (threshold=0.3):**
+
+| # | t | score | tipo probable |
+|---|---|-------|--------------|
+| 1 | 0.067s | 1.000 | artefacto scdet en primer frame (siempre ocurre) |
+| 2 | 54.03s | 0.663 | posible falso positivo — autoexposicion/movimiento |
+| 3 | 56.70s | 0.651 | posible falso positivo — autoexposicion/movimiento |
+
+Frames extraidos: revision/fase-4.2-lite/corte1_pre_t0.0.jpg,
+corte2_pre/post_t54.0.jpg, corte3_pre/post_t56.7.jpg.
+
+**3 > N_CORTES_WARN=2 → WARNING emitido. RENDERS PAUSADOS hasta clarificacion.**
+Notas: el corte 1 (t=0.067s) es un artefacto conocido del filtro scdet. Los cortes 2 y 3
+tienen scores 0.663/0.651 (vs 0.877-1.0 en material editado real). Pueden ser
+falsos positivos en toma fija. El arquitecto revisa los frames y decide si proceder.
+
+**Precondicion 0c: anclas:**
+- cara_id=1: cx=269, conf_media=0.3454
+- cara_id=0: cx=562, conf_media=0.4806
+- Separacion: 293px < crop_w=540px (N=2 src_h=480) → INTRUSION CRUZADA esperada en stack.
+
+### Nota de vacuidad del C-STACK s17
+
+El resultado 100%/100% del C-STACK s17 era trivialmente garantizado:
+- gate_0 = [ancla0 - 288, ancla0 + 288] = [1074, 1650]
+- crop_0 = [705, 1920]  →  gate_0 ⊂ crop_0  ✓
+- gate_1 = [431, 1007]
+- crop_1 = [111, 1326]  →  gate_1 ⊂ crop_1  ✓
+
+Cualquier deteccion dentro del gate esta garantizadamente dentro del crop.
+El C-STACK es un tripwire, no una metrica discriminante. Valor real: evidencia visual de K.
+
+La "discrepancia 165 vs 413 de cara_1": los 413 son detecciones en toda la fuente
+(1201 frames con detector); los 165 son solo durante los turnos activos de cara_1
+(t=10-20, 30-40, 50-60 = 30s). Con el denominador correcto (413), C-STACK cara_1 = 100%
+de igual manera (gate_1 ⊂ crop_1).
+
+### Caveat C1
+
+C1 mide distancia cam vs face_x_asignada INCLUYENDO holds. En fuentes con cortes de
+escena que violan la precondicion, C1 puede aprobar frames donde la cara real esta lejos:
+
+Caso medido (t=54-60s noturnos podcast_test_60s):
+- cam=1182, track_fantasma=1134 → dist=48px → C1 PASS
+- cara real en cx~870-1010 del plano 7 (fuera del gate tras corte t=51.38s)
+- distancia real cara_real vs cam: |1182 - 940| ~ 242px → C1 FAIL si se midiera real
+
+Dentro de dominio (toma fija continua), holds son cortos y C1 ~= realidad.
+
+Metrica C1v2 propuesta: medir C1 solo sobre frames con conf_asignada (deteccion viva).
+Ver PREGUNTAS.md F4.2 completo para spec.
+
+### Ledger de tests s15→s18
+
+| Sesion | Tests finales | Delta | Nuevos |
+|--------|--------------|-------|--------|
+| s15 | 98 | +10 | calcular_alpha_adaptativo + ema_smooth_adaptativo (10 tests) |
+| s17 | 108 | +10 | calcular_bandas_stack (9) + fuente_angosta (1) — ESTADO.md decia 107, incorrecto |
+| s18 | 112 | +4 | _avisar_cortes (4) |
+
+NOTA: ESTADO.md sesion 17 reporto "107 tests" — corregido aqui a 108 (el test de
+fuente_angosta se agrego al resolver el bloqueante del revisor de s17).

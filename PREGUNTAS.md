@@ -243,33 +243,70 @@ El subagente revisor de la sesion 15 reporto 4 riesgos no bloqueantes:
    **Triage:** IGNORAR — comportamiento deseado: el log es de diagnostico y solo aparece
    cuando se pide el CSV de trayectoria.
 
-### 24. F4.2-LITE — IMPLEMENTANDO EN SESION 17
+### 24. F4.2-LITE — IMPLEMENTADO EN SESION 17, VALIDACION PENDIENTE
 
 **Voto del arquitecto (sesion 17):** F4.2-LITE AHORA, F5 despues.
+**Estado:** implementado. Pendiente validacion visual de K sobre fuente de toma fija.
 
-**SPEC DEL ARQUITECTO (no improvises implementacion):**
+**SPEC COMPLETADA:**
+- calcular_bandas_stack, renderizar_stack, reframe_stack_clip, --layout stack
+- Studio: selector Seguimiento|Stack en static/index.html:251-254
+- Criterio de cierre original: render sobre toma fija N=2 + ffprobe + ojo K
 
-**SPEC COMPLETA (no improvises implementacion — abre preguntas si hay ambiguedad):**
+**Aprendizaje de la fuente editada (sesion 18-19):**
+- Precondicion de dominio: fuente DEBE ser toma continua (un solo plano) N hablantes
+- N_CORTES_WARN=2 implementado como check automatico (fail-open)
+- Fuente valida para validar: K aporta toma fija con 2 personas
 
-Objetivo: modo alternativo al tracking para podcast N=2/3: crops ESTATICOS por cara
-apilados verticalmente en 1080x1920. Sin tracking, sin turnos, sin EMA.
+**DEUDA F4.2 COMPLETO — Spec adicional del arquitecto (sesion 19):**
 
-**Deteccion:** reutiliza el scan inicial de anclas (detectar_caras_video). Crop por cara
-centrado en su ancla.
+### 24a. C1v2 — metrica mejorada para F4.2 completo
 
-**Layout:**
-- N=2: dos bandas de 1080x960 (720px original escalado; crop = ancho fuente, h=fuente_h/2 aprox)
-- N=3: tres bandas de 1080x640
-- Orden vertical: izquierda->derecha en la fuente (ancla de menor cx arriba)
+**Propuesta del arquitecto:** C1v2 = C1 medido SOLO sobre frames con deteccion viva
+(conf_asignada presente en el CSV, no en hold/interpolacion).
 
-**CLI:** `reframe.py --layout stack` (default sigue siendo `tracking`).
-**Studio:** selector "Seguimiento | Stack" en la seccion Reencuadrar 9:16.
-**Audio y pipeline:** identicos al modo tracking (pipe FFmpeg, yuv420p, salida 1080x1920).
+**Racional:** C1 actual incluye holds; en fuentes editadas, holds con track fantasma
+aprueban como "cerca" aunque la cara real este lejos. Dentro de dominio los holds son
+cortos y C1 ~= realidad; fuera de dominio C1 es optimista. C1v2 discrimina ambos casos.
 
-**Criterio de cierre:** render de podcast_test_60s en stack con ambas caras siempre
-visibles y centradas + ffprobe limpio + ojo de K.
+**Implementacion:** la columna conf_asignada del CSV ya permite calcularla sin cambio de
+codigo. C1v2 = % de filas CON conf_asignada donde distancia <= 80px. Agregar a la
+funcion de analisis del CSV. No es criterio de aceptacion de F4.2-lite pero si de F4.2
+completo.
 
-**1 sesion Sonnet. Dudas de implementacion -> abrir en PREGUNTAS.md, no improvisar.**
+### 24b. Seleccion manual de caras (pedido de K, prioridad justo despues de F5)
+
+**Spec del arquitecto (no implementar en esta sesion):**
+
+Antes del render, el Studio muestra los thumbnails de las caras detectadas. K puede:
+- Excluir una cara (no entra al tracking ni al stack)
+- Anadir una manualmente (click sobre el frame del video en el Studio)
+- Arrastrar el ancla de cada cara para corregir su posicion de referencia
+
+Tracking y stack consumen las anclas CONFIRMADAS, no las autodetectadas crudas.
+El flujo automatico (anclas de detectar_caras_video sin editar) sigue siendo el default
+de un click — la seleccion manual es opt-in cuando el auto falla.
+
+**Motivacion:** el stack con fuentes de baja separacion de anclas produce intrusion cruzada
+(caso prueba2personasenmedio: sep=293px < crop_w=540px). La seleccion manual permite al
+usuario excluir la intrusion o ajustar las anclas antes del render.
+
+**Bloqueos a resolver antes de implementar:**
+- Define la API de seleccion (POST /api/clips/{stem}/anclas con body de anclas editadas)
+- Thumbs de cara ya existen en thumbs/{stem}_cara{id}.jpg — reutilizables
+- Click sobre frame necesita canvas o video+overlay en el Studio
+
+**Prioridad:** justo despues de F5 (emojis). F4.2 completo incluye seleccion manual.
+
+### 24c. Precondicion de fuente — check ampliado F4.2 completo
+
+El check _contar_cortes_escena actual (threshold=0.3) tiene falsos positivos:
+- Primer frame siempre dispara (artefacto scdet, t~0s score=1.0)
+- Movimientos rapidos/autoexposicion en toma fija disparan con score 0.6-0.7
+
+**Para F4.2 completo:** filtrar el primer corte (t < 1s) y usar threshold=0.5 para
+separar "corte de edicion real" (score>0.8) de "fluctuacion de toma fija" (score<0.7).
+Actualizar N_CORTES_WARN si se cambia el threshold.
 
 ---
 

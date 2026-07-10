@@ -76,9 +76,19 @@ La mejora de confianza (+0.35) no compensa el ruido extra.
 **Veredicto visual de K:** APROBADO 90/100 (desde 70/100 en s12)
 - Observacion: descuadre visible en reposo (~t=57s, cara cargada a la izquierda) en modo
   noturnos. Diagnostico: cam=1182, face=1134, dist=48px, regimen=LENTO, 100% HOLD en
-  t=54-60s. La cara esta dentro de la deadzone (48px < 76px dz_half) y sin detecciones en
-  ese tramo — la camara no puede corregir. No bloquea el cierre; deuda registrada en
-  PREGUNTAS.md.
+  t=54-60s. Causa raiz real (sesion 18): corte de escena en t=51.38s saca cara del gate.
+  No bloquea el cierre; deuda registrada en PREGUNTAS.md.
+
+**CAVEAT DE C1 (sesion 19):** C1 mide distancia cam vs face_x_asignada INCLUYENDO holds.
+En fuentes con cortes de escena (violacion de precondicion), C1 aprueba frames donde la
+cara real esta lejos (caso medido: t=54-60s noturnos — cámara=1182 vs track fantasma=1134
+contado como 48px PASS, cara real en cx~870-1010 del plano 7). Dentro de dominio (toma
+fija continua), holds son cortos y C1 ~= realidad. Metrica C1v2 pendiente de spec: medir
+C1 solo sobre frames con deteccion viva (ver PREGUNTAS.md F4.2 completo).
+
+**Tracks NO preservan identidad entre cortes:** en el forense s18, track_0 siguio a quien
+cayera en su gate en cada plano (persona en posicion ~1090 en plano 3, fantasma en plano 7).
+El gate filtra por geometria, no por identidad de la persona.
 - Modo turnos: sin observaciones.
 
 **Punch-in:** PENDIENTE DE VEREDICTO EDITORIAL. Feature congelada en opt-in default off.

@@ -74,6 +74,8 @@
 11. **Evidencia por fase en `revision/fase-N/`:** frames, capturas, reportes .md. Sin evidencia no hay DoD.
 12. **Renders y tareas largas en el Studio = background tasks** con progreso consultable; la UI nunca se congela.
 13. **Benchmark permanente:** al cierre de toda fase que cambie el output visual, renderizar `input/tacosjuan.mp4` con lo nuevo y componer una comparación de frames lado a lado contra `revision/benchmark/referencia_captions.mp4` (la versión hecha por Captions AI), guardada en `revision/fase-N/benchmark.png`. Si el archivo de referencia no existe, documentar en PREGUNTAS.md y continuar sin bloquearse.
+14. **Registro de hallazgos del revisor:** todo reporte de sesión NOMBRA los hallazgos del revisor — bloqueantes y no bloqueantes — con una línea cada uno. Un "bloqueante resuelto" sin nombre no es registro. (Precedente: s15 y s18 lo omitieron.)
+15. **ARQUITECTURA DE CAPAS (vinculante para todas las fases):** (1) toda función nueva nace como capa opcional, apagada por default, activable desde el Studio; (2) ninguna capa puede eliminar, reemplazar ni alterar el output de una capa existente — solo añadir encima; (3) el mínimo siempre disponible es el video limpio de cada estación; (4) las estaciones (depurar, clipear, reencuadrar, captions, emojis) son herramientas independientes y combinables — usar una no obliga a usar otra. Precedentes ya firmados: #14 punch-in opt-in default off, #16 CLIs independientes, selector Seguimiento|Stack.
 
 ---
 
