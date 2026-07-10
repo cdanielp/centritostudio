@@ -57,13 +57,19 @@ def test_estilo_inexistente_lanza_error():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_pop_suave_y_fuerte():
-    assert styles.get_style("hormozi", "suave").pop_scale == pytest.approx(1.08)
-    assert styles.get_style("hormozi", "fuerte").pop_scale == pytest.approx(1.15)
-
-
-def test_pop_off_desactiva():
+def test_pop_niveles_resuelven():
+    # Los 4 niveles vigentes (D19): off/suave/medio/fuerte.
     assert styles.get_style("hormozi", "off").pop_scale == pytest.approx(1.0)
+    assert styles.get_style("hormozi", "suave").pop_scale == pytest.approx(1.08)
+    assert styles.get_style("hormozi", "medio").pop_scale == pytest.approx(1.30)
+    assert styles.get_style("hormozi", "fuerte").pop_scale == pytest.approx(1.45)
+
+
+def test_hormozi_default_es_medio_con_rebote():
+    # Default del autopiloto tras D19: medio 1.30 con overshoot ON.
+    cfg = styles.get_style("hormozi")
+    assert cfg.pop_scale == pytest.approx(1.30)
+    assert cfg.overshoot is True
 
 
 def test_pop_float_directo():
@@ -89,18 +95,38 @@ def test_get_style_no_muta_el_registro():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_animacion_activable_hormozi_pop_scale_pop():
-    cfg = styles.get_style("hormozi", "suave")  # pop 1.08
+def test_rebote_hormozi_medio_dos_tramos():
+    # hormozi default: medio 1.30 con rebote ON -> reposo 130, pico 146 (130*1.12), dos \t.
+    cfg = styles.get_style("hormozi", "medio")
     txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
-    # Palabra activa NO-keyword: scale-pop con \t y peak 108.
-    assert "\\t(" in txt
-    assert "\\fscx108" in txt
+    assert txt.count("\\t(") == 2  # rebote = dos tramos
+    assert "\\fscx146" in txt  # pico (overshoot)
+    assert "\\fscx130" in txt  # reposo del énfasis (más grande que los vecinos)
 
 
-def test_animacion_fuerte_peak_115():
-    cfg = styles.get_style("hormozi", "fuerte")  # pop 1.15
+def test_rebote_fuerte_pico_162():
+    cfg = styles.get_style("hormozi", "fuerte")  # 1.45 con rebote (default hormozi)
     txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
-    assert "\\fscx115" in txt
+    assert "\\fscx162" in txt  # 145*1.12
+    assert "\\fscx145" in txt  # reposo
+
+
+def test_rebote_desactivable_por_estilo():
+    from dataclasses import replace
+
+    cfg = replace(styles.get_style("hormozi", "medio"), overshoot=False)
+    txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
+    assert txt.count("\\t(") == 1  # pop simple: un solo tramo, crece y se queda
+    assert "\\fscx130" in txt  # reposo del énfasis
+    assert "\\fscx146" not in txt  # sin overshoot no hay pico
+
+
+def test_pop_off_byte_identico_al_estatico():
+    # off (pop 1.0) = caption estático: solo color, sin transform \t.
+    cfg = styles.get_style("hormozi", "off")
+    txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
+    assert "\\t(" not in txt
+    assert "{\\c" + cfg.highlight_color + "}HOLA{\\r}" in txt
 
 
 def test_animacion_desactivable_clean_sin_pop():
@@ -154,6 +180,23 @@ def test_merge_por_campo_aplica_validos_ignora_invalidos():
 def test_merge_sin_overrides_devuelve_base():
     base = styles.STYLES["clean"]
     assert styles._merge_style(base, {}) is base
+
+
+def test_styles_json_sin_overshoot_default_false(monkeypatch, tmp_path):
+    # Estilo nuevo en JSON sin 'overshoot' -> default False (pop simple, fail-safe).
+    p = tmp_path / "styles.json"
+    p.write_text(json.dumps({"marca_x": {"pop_scale": 1.4}}), encoding="utf-8")
+    monkeypatch.setattr(styles, "_STYLES_JSON", p)
+    built = styles._build_styles()
+    assert built["marca_x"].pop_scale == pytest.approx(1.4)
+    assert built["marca_x"].overshoot is False
+
+
+def test_styles_json_overshoot_configurable(monkeypatch, tmp_path):
+    p = tmp_path / "styles.json"
+    p.write_text(json.dumps({"clean": {"overshoot": True}}), encoding="utf-8")
+    monkeypatch.setattr(styles, "_STYLES_JSON", p)
+    assert styles._build_styles()["clean"].overshoot is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

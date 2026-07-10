@@ -38,8 +38,15 @@ PMS_MARGIN_PCT = 0.12  # Distancia desde abajo (fracción de alto)
 # ═══════════════════════════════════════════════════════════════════════
 
 # Intensidad del "pop" de la palabra activa (escala del scale-pop word-by-word).
-# 1.0 = sin pop (solo cambio de color); >1.0 = scale-pop con \t sobre el ASS existente.
-POP_LEVELS: dict[str, float] = {"off": 1.0, "suave": 1.08, "fuerte": 1.15}
+# 1.0 = sin pop (solo cambio de color); >1.0 = la palabra reposa a ese tamaño mientras
+# está activa (más grande que sus vecinos). suave/fuerte(1.15) de s28A quedaron por
+# compatibilidad pero K los descartó por sutiles (D19); medio/fuerte son los vigentes.
+POP_LEVELS: dict[str, float] = {
+    "off": 1.0,
+    "suave": 1.08,  # legado s28A (descartado por K, se conserva por compat)
+    "medio": 1.30,  # default hormozi del autopiloto (D19)
+    "fuerte": 1.45,  # intensidad alta (D19)
+}
 
 
 @dataclass
@@ -62,7 +69,8 @@ class StyleConfig:
     max_chars_per_line: int = 18
     max_lines: int = 2
     margin_pct: float = 0.12  # Margen inferior como fracción del alto del video
-    pop_scale: float = 1.0  # Intensidad del scale-pop de la palabra activa (1.0 = off)
+    pop_scale: float = 1.0  # Tamaño de reposo del énfasis de la palabra activa (1.0 = off)
+    overshoot: bool = False  # Rebote: overshoot al pico y baja al reposo (False = pop simple)
 
 
 # Notas de colores ASS: formato &HAABBGGRR
@@ -93,7 +101,8 @@ _BUILTIN: dict[str, StyleConfig] = {
         keyword_color="&H0047FF00",  # Verde-lima brillante
         max_chars_per_line=18,
         margin_pct=0.10,
-        pop_scale=1.08,  # pop suave por default (override con --pop fuerte/off)
+        pop_scale=1.30,  # medio por default del autopiloto (D19); override con --pop
+        overshoot=True,  # rebote ON: sensación premium (D19)
     ),
     "clean": StyleConfig(
         name="clean",
@@ -163,7 +172,8 @@ _BUILTIN: dict[str, StyleConfig] = {
         keyword_color=PMS_KEYWORD_COLOR,  # Dorado
         max_chars_per_line=PMS_MAX_CHARS,
         margin_pct=PMS_MARGIN_PCT,
-        pop_scale=1.08,  # pop suave por default
+        pop_scale=1.30,  # medio con rebote (mismo criterio que hormozi, D19)
+        overshoot=True,
     ),
 }
 
@@ -233,6 +243,7 @@ _FIELD_VALIDATORS = {
     "max_lines": _is_pos_int,
     "margin_pct": _is_margin,
     "pop_scale": _is_pop,
+    "overshoot": _is_bool,
 }
 
 

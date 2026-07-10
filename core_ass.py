@@ -43,6 +43,38 @@ def _join_parts(parts: list[str]) -> str:
     return "".join(result)
 
 
+# Timing del rebote (ms). Derivados del brief D19: sube en ~70ms, asienta hasta ~200ms.
+_OVERSHOOT_FACTOR = 1.12  # cuanto se pasa del reposo antes de asentar
+_OVERSHOOT_RISE_MS = 70
+_OVERSHOOT_SETTLE_MS = 200
+_POP_SIMPLE_RISE_MS = 90  # sin rebote: crece y se queda en el reposo
+
+
+def _active_highlight_tag(
+    style_cfg: StyleConfig, is_kw: bool, active_color: str, kw_sc: str, esc: str
+) -> str:
+    """Tag ASS de la palabra activa en modo highlight.
+
+    pop_scale<=1.0: solo color (byte-identico al caption estatico). >1.0: scale-pop con
+    reposo del enfasis en `rest` (mas grande que los vecinos). Con overshoot, rebota al pico.
+    """
+    pop = getattr(style_cfg, "pop_scale", 1.0)
+    if pop <= 1.0:
+        return f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
+
+    base = 122 if is_kw else 100
+    rest = int(round(base * pop))  # tamaño de reposo del enfasis mientras la palabra activa
+    if getattr(style_cfg, "overshoot", False):
+        peak = int(round(rest * _OVERSHOOT_FACTOR))
+        anim = (
+            f"\\t(0,{_OVERSHOOT_RISE_MS},\\fscx{peak}\\fscy{peak})"
+            f"\\t({_OVERSHOOT_RISE_MS},{_OVERSHOOT_SETTLE_MS},\\fscx{rest}\\fscy{rest})"
+        )
+    else:
+        anim = f"\\t(0,{_POP_SIMPLE_RISE_MS},\\fscx{rest}\\fscy{rest})"
+    return f"{{{anim}\\c{active_color}}}{esc}{{\\r}}"
+
+
 def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleConfig) -> str:
     """Construye texto ASS con animacion word-by-word y keyword_color persistente al 122%."""
     parts: list[str] = []
@@ -78,18 +110,11 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
                 tag = f"{{\\fscx{sc}\\fscy{sc}\\c{active_color}}}{esc}{{\\r}}"
             else:
                 # highlight: cambio de color + scale-pop opcional de la palabra activa.
-                # pop_scale>1.0 -> \t(sube al peak, vuelve al settle) sobre el ASS existente,
-                # reutilizando el timing por-palabra (el evento dura lo que la palabra activa).
-                pop = getattr(style_cfg, "pop_scale", 1.0)
-                if pop > 1.0:
-                    settle = 122 if is_kw else 100
-                    peak = int(round(settle * pop))
-                    tag = (
-                        f"{{\\t(0,90,\\fscx{peak}\\fscy{peak})"
-                        f"\\t(90,180,\\fscx{settle}\\fscy{settle})\\c{active_color}}}{esc}{{\\r}}"
-                    )
-                else:
-                    tag = f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
+                # pop_scale>1.0 -> la palabra REPOSA a ese tamaño mientras esta activa (mas
+                # grande que sus vecinos, no vuelve a 100 como en s28A). Con overshoot hace
+                # rebote: sube al pico (~pop*1.12) y baja al reposo. Reutiliza el timing por-
+                # palabra (el evento dura lo que la palabra activa). \t sobre el ASS existente.
+                tag = _active_highlight_tag(style_cfg, is_kw, active_color, kw_sc, esc)
             parts.append(tag)
         elif is_kw:
             # Persistente: keyword_color + 122% durante toda la duracion del grupo

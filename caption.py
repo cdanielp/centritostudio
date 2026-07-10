@@ -157,9 +157,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--pop",
-        choices=["suave", "fuerte", "off"],
+        choices=["off", "suave", "medio", "fuerte"],
         default=None,
-        help="Intensidad del scale-pop de la palabra activa (suave=1.08, fuerte=1.15, off=1.0)",
+        help="Intensidad del pop (off=1.0, suave=1.08, medio=1.30, fuerte=1.45)",
     )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")

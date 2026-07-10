@@ -333,3 +333,15 @@ F7 queda despues de v1.
 que formalizarlo no infla el numero; lo que cambia es que el alcance de v1 queda cerrado y
 claro. Con el loop nucleo ya funcional y F5-s2 (motor) entregado, el avance pasa a 82/100
 (F5-s2 pulido + F6 + reframe v2 son lo que resta para v1).
+
+## D19: Veredicto de K sobre captions cineticos s28A (sesion 28C)
+
+- **pop 1.08 (suave) y 1.15 (fuerte de s28A): DESCARTADOS.** Demasiado sutiles: "saltan las
+  letras pero nada se ve mas grande que lo demas". Causa raiz: en s28A la palabra activa
+  volvia a 100% (tamano de los vecinos) tras el salto; solo popeaba 180ms y el pico era bajo.
+- **Estilo clean: APROBADO tal cual.**
+- **Decision:** subir intensidad (medio 1.30, fuerte 1.45) y agregar REBOTE/OVERSHOOT — la
+  palabra hace overshoot al pico (~pop*1.12) y baja al TAMANO DE REPOSO DEL ENFASIS (pop, no
+  100), de modo que queda mas grande que los vecinos mientras esta activa. Default hormozi del
+  autopiloto: medio 1.30 con rebote ON (K juzgara si sube a 1.45 con los renders de s28C).
+  Implementado en s28C BLOQUE 1.
