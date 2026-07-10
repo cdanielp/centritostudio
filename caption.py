@@ -47,6 +47,7 @@ def process_video(
     max_words: int | None = None,
     out_stem: str | None = None,
     use_emojis: bool = False,
+    pop: str | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -55,10 +56,12 @@ def process_video(
     model_path, label = core.resolve_model(model_arg)
     print(f"[model] {label} | {device} | {compute}")
 
-    style_cfg = get_style(style)
+    style_cfg = get_style(style, pop)
     stem = out_stem or video_path.stem
-    ass_path = output_dir / f"{stem}_{style}.ass"
-    suffix = f"_{style}_emojis" if use_emojis else f"_{style}"
+    # El pop entra en el nombre para que las 3 versiones (suave/fuerte/off) no se pisen.
+    pop_tag = f"_{pop}" if pop else ""
+    ass_path = output_dir / f"{stem}_{style}{pop_tag}.ass"
+    suffix = f"_{style}{pop_tag}" + ("_emojis" if use_emojis else "")
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
@@ -150,7 +153,13 @@ def main() -> None:
     )
     parser.add_argument("input", help="Video .mp4 de entrada, o carpeta para batch")
     parser.add_argument(
-        "--style", default="hormozi", choices=["hormozi", "karaoke", "bounce", "pms"]
+        "--style", default="hormozi", choices=["hormozi", "clean", "karaoke", "bounce", "pms"]
+    )
+    parser.add_argument(
+        "--pop",
+        choices=["suave", "fuerte", "off"],
+        default=None,
+        help="Intensidad del scale-pop de la palabra activa (suave=1.08, fuerte=1.15, off=1.0)",
     )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")
@@ -204,6 +213,7 @@ def main() -> None:
                 args.model,
                 args.words_per_group,
                 use_emojis=args.emojis,
+                pop=args.pop,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -217,6 +227,7 @@ def main() -> None:
             args.words_per_group,
             args.out_stem,
             use_emojis=args.emojis,
+            pop=args.pop,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

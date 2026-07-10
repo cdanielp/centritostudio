@@ -592,6 +592,13 @@ suciedad de directorio.
 deuda con hipotesis y riesgo documentados para una sesion dedicada. Cuando se aborde:
 reproducir, localizar la redireccion culpable, y blindar (comillas/validacion de variable).
 
+**REPRODUCIDO EN VIVO (s28A):** durante el BLOQUE 1 aparecio en la raiz un archivo `cae`
+de 0 bytes (mtime 17:08, coincide con la extraccion de frames de referencia + escrituras de
+archivos). El token `cae` es una palabra del dominio (aparece en textos que se estaban
+escribiendo). Refuerza la hipotesis de redireccion/hook disparado por escritura de archivos.
+Se elimino manualmente para que no contaminara el commit. Pista para la sesion dedicada:
+revisar hooks en `.claude/` que corran en PostToolUse/Stop sobre Write.
+
 ---
 
 ### 31. SESION 28B — Direccion de Producto / "dos modos" formal (PENDIENTE, NO cancelada)

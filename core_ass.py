@@ -77,7 +77,19 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
                 sc = 122 if is_kw else 115
                 tag = f"{{\\fscx{sc}\\fscy{sc}\\c{active_color}}}{esc}{{\\r}}"
             else:
-                tag = f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
+                # highlight: cambio de color + scale-pop opcional de la palabra activa.
+                # pop_scale>1.0 -> \t(sube al peak, vuelve al settle) sobre el ASS existente,
+                # reutilizando el timing por-palabra (el evento dura lo que la palabra activa).
+                pop = getattr(style_cfg, "pop_scale", 1.0)
+                if pop > 1.0:
+                    settle = 122 if is_kw else 100
+                    peak = int(round(settle * pop))
+                    tag = (
+                        f"{{\\t(0,90,\\fscx{peak}\\fscy{peak})"
+                        f"\\t(90,180,\\fscx{settle}\\fscy{settle})\\c{active_color}}}{esc}{{\\r}}"
+                    )
+                else:
+                    tag = f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
             parts.append(tag)
         elif is_kw:
             # Persistente: keyword_color + 122% durante toda la duracion del grupo
