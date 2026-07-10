@@ -244,8 +244,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       Los clips salen sin captions — pasalos por Render con el estilo que quieras.
     </div>
     <div style="background:var(--surface);border:var(--border);border-radius:10px;padding:14px 20px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Opciones de reencuadre 9:16</div>
-      <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <div style="font-size:13px;font-weight:500;margin-bottom:10px">Opciones de reencuadre 9:16</div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Modo</div>
+        <div style="display:flex;gap:0;border:var(--border);border-radius:6px;overflow:hidden;width:fit-content">
+          <button id="layout-btn-tracking" onclick="setLayoutMode('tracking')"
+            style="font-size:12px;padding:5px 14px;background:var(--purple);color:#fff;border:none;cursor:pointer">Seguimiento</button>
+          <button id="layout-btn-stack" onclick="setLayoutMode('stack')"
+            style="font-size:12px;padding:5px 14px;background:transparent;color:var(--muted);border:none;cursor:pointer">Stack</button>
+        </div>
+        <input type="hidden" id="layout-mode" value="tracking">
+      </div>
+      <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer" id="punch-in-row">
         <input type="checkbox" id="punch-in-cb">
         Punch-ins en keywords (zoom sutil en palabras clave)
       </label>
@@ -838,16 +848,59 @@ function renderClipsCards(data) {
   document.getElementById('clips-note').style.display = 'block';
 }
 
+function setLayoutMode(mode) {
+  document.getElementById('layout-mode').value = mode;
+  const base    = 'font-size:12px;padding:5px 14px;border:none;cursor:pointer;';
+  const active  = base + 'background:var(--purple);color:#fff';
+  const idle    = base + 'background:transparent;color:var(--muted)';
+  document.getElementById('layout-btn-tracking').style.cssText = mode==='tracking' ? active : idle;
+  document.getElementById('layout-btn-stack').style.cssText    = mode==='stack'    ? active : idle;
+  document.getElementById('punch-in-row').style.display = mode==='stack' ? 'none' : 'flex';
+}
+
+async function _pollReframe(jobId, stem, btn, statusDiv, outFile) {
+  const poll = setInterval(async () => {
+    const j = await (await fetch(`/api/jobs/${jobId}`)).json();
+    statusDiv.textContent = j.message || '...';
+    if (j.status === 'done') {
+      clearInterval(poll);
+      btn.disabled = false;
+      const out = j.result?.output ? j.result.output.split(/[/\\]/).pop() : outFile;
+      statusDiv.innerHTML = `Listo: <a href="/clips/${out}" download style="color:var(--purple)">Descargar 9:16</a>`;
+    } else if (j.status === 'error') {
+      clearInterval(poll);
+      btn.disabled = false;
+      statusDiv.innerHTML = `<span style="color:#e55">Error: ${j.message || j.error}</span>`;
+    }
+  }, 2000);
+}
+
 async function startReframe(stem, btn) {
   const statusDiv = document.getElementById('reframe-status-' + stem);
+  const layout = document.getElementById('layout-mode')?.value || 'tracking';
   btn.disabled = true;
+
+  if (layout === 'stack') {
+    statusDiv.textContent = 'Generando stack...';
+    try {
+      const res = await fetch(`/api/clips/${stem}/reframe?layout=stack`, {method:'POST'});
+      const data = await res.json();
+      if (!res.ok) { throw new Error(data.detail || JSON.stringify(data)); }
+      await _pollReframe(data.job_id, stem, btn, statusDiv, stem + '_stack_9x16.mp4');
+    } catch(e) {
+      statusDiv.innerHTML = `<span style="color:#e55">Error: ${e.message}</span>`;
+      btn.disabled = false;
+    }
+    return;
+  }
+
   statusDiv.textContent = 'Detectando caras...';
   try {
     const det = await fetch(`/api/clips/${stem}/detectar`, {method:'POST'});
     const detData = await det.json();
     if (!det.ok) { throw new Error(detData.detail || JSON.stringify(detData)); }
     if (detData.n_caras >= 2) {
-      statusDiv.innerHTML = `<span style="color:var(--muted)">${detData.n_caras} caras detectadas — asigna turnos manualmente (ver PREGUNTAS #multi-cara)</span>`;
+      statusDiv.innerHTML = `<span style="color:var(--muted)">${detData.n_caras} caras — asigna turnos o usa modo Stack</span>`;
       btn.disabled = false;
       return;
     }
@@ -856,20 +909,7 @@ async function startReframe(stem, btn) {
     const data = await res.json();
     if (!res.ok) { throw new Error(data.detail || JSON.stringify(data)); }
     statusDiv.textContent = 'Procesando...';
-    const poll = setInterval(async () => {
-      const j = await (await fetch(`/api/jobs/${data.job_id}`)).json();
-      statusDiv.textContent = j.message || '...';
-      if (j.status === 'done') {
-        clearInterval(poll);
-        btn.disabled = false;
-        const out = stem + '_9x16.mp4';
-        statusDiv.innerHTML = `Listo: <a href="/clips/${out}" download style="color:var(--purple)">Descargar 9:16</a>`;
-      } else if (j.status === 'error') {
-        clearInterval(poll);
-        btn.disabled = false;
-        statusDiv.innerHTML = `<span style="color:#e55">Error: ${j.message || j.error}</span>`;
-      }
-    }, 2000);
+    await _pollReframe(data.job_id, stem, btn, statusDiv, stem + '_9x16.mp4');
   } catch(e) {
     statusDiv.innerHTML = `<span style="color:#e55">Error: ${e.message}</span>`;
     btn.disabled = false;

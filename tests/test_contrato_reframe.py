@@ -397,3 +397,81 @@ def test_aplanar_conf_por_turnos_vacio_sin_crash():
     # Sin detecciones: devuelve dict vacio
     result = rt.aplanar_conf_por_turnos({0: {}, 1: {}}, _TURNOS_CONF, 30.0, 60)
     assert result == {}
+
+
+# ── calcular_bandas_stack ────────────────────────────────────────────────────
+
+_CARAS_2 = [{"center_x": 1362.0}, {"center_x": 719.0}]   # podcast 1920x1080
+_CARAS_3 = [{"center_x": 500.0}, {"center_x": 960.0}, {"center_x": 1400.0}]
+
+
+def test_bandas_stack_n2_cantidad():
+    bandas = rt.calcular_bandas_stack(_CARAS_2, 1920, 1080)
+    assert len(bandas) == 2
+
+
+def test_bandas_stack_n2_orden_izq_der():
+    # La banda 0 debe centrar en cx=719 (izquierda), banda 1 en cx=1362 (derecha)
+    bandas = rt.calcular_bandas_stack(_CARAS_2, 1920, 1080)
+    assert bandas[0][0] < bandas[1][0]  # x_banda0 < x_banda1
+
+
+def test_bandas_stack_n2_crop_w():
+    # N=2: band_h=960, crop_w = 1080 * 1080/960 = 1215
+    bandas = rt.calcular_bandas_stack(_CARAS_2, 1920, 1080)
+    for _x, _y, cw, ch in bandas:
+        assert cw == 1215
+        assert ch == 1080
+        assert _y == 0
+
+
+def test_bandas_stack_n3_crop_w():
+    # N=3: band_h=640, crop_w = 1080 * 1080/640 = 1822
+    bandas = rt.calcular_bandas_stack(_CARAS_3, 1920, 1080)
+    assert len(bandas) == 3
+    for _x, _y, cw, ch in bandas:
+        assert cw == 1822
+        assert ch == 1080
+
+
+def test_bandas_stack_clamp_borde_derecho():
+    # cara en x=1900 con crop_w=1215: x_raw=1900-607=1293 > max_x=705 -> clamp a 705
+    caras = [{"center_x": 1900.0}, {"center_x": 500.0}]
+    bandas = rt.calcular_bandas_stack(caras, 1920, 1080)
+    x1 = next(x for x, *_ in bandas if x > 300)  # la banda derecha
+    assert x1 == 705  # max_x = 1920 - 1215 = 705
+
+
+def test_bandas_stack_clamp_borde_izquierdo():
+    # cara en x=50 con crop_w=1215: x_raw=50-607=-557 -> clamp a 0
+    caras = [{"center_x": 50.0}, {"center_x": 1500.0}]
+    bandas = rt.calcular_bandas_stack(caras, 1920, 1080)
+    x0 = bandas[0][0]  # la banda izquierda (cx=50 es la menor)
+    assert x0 == 0
+
+
+def test_bandas_stack_n1_error():
+    with pytest.raises(ValueError, match="stack requiere 2-3 caras"):
+        rt.calcular_bandas_stack([{"center_x": 960.0}], 1920, 1080)
+
+
+def test_bandas_stack_n4_error():
+    caras = [{"center_x": float(i * 400)} for i in range(4)]
+    with pytest.raises(ValueError, match="stack requiere 2-3 caras"):
+        rt.calcular_bandas_stack(caras, 1920, 1080)
+
+
+def test_bandas_stack_dentro_de_fuente():
+    # x >= 0 y x + crop_w <= src_w para todos
+    bandas = rt.calcular_bandas_stack(_CARAS_2, 1920, 1080)
+    for x, _y, cw, _ch in bandas:
+        assert x >= 0
+        assert x + cw <= 1920
+
+
+def test_bandas_stack_fuente_angosta_error():
+    # fuente mas estrecha que crop_w -> ValueError explicito (no output incorrecto silencioso)
+    # N=2, src_h=320, crop_w = 320 * 1080/960 = 360 > src_w=320
+    caras_ang = [{"center_x": 80.0}, {"center_x": 240.0}]
+    with pytest.raises(ValueError, match="fuente demasiado angosta"):
+        rt.calcular_bandas_stack(caras_ang, src_w=320, src_h=320)

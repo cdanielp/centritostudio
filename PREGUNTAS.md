@@ -156,16 +156,30 @@ Voto #17 fue render directo. Si los renders de 20-40s empiezan a ser un friccion
 
 ## PREGUNTAS F4.1 — Cierre (sesion 16)
 
-### 20. Veredicto de densidad de punch-in — PENDIENTE
+### 20. Veredicto de densidad de punch-in — NO VOTABLE HOY (por diseño)
 
 La feature de punch-ins (9 zooms/31s en el clip de prueba, opt-in default off) queda
 congelada hasta que K valide los renders de F5 con captions+emojis activos — contexto real
 de juicio. En ese momento el arquitecto decide si la densidad de punch-ins (frecuencia,
 intensidad PUNCH_ZOOM=1.12) es la correcta o hay que calibrar.
 
+**Voto del arquitecto (sesion 17):** NO VOTABLE HOY por diseño. El voto se toma con
+renders de F5 completos. Sigue pendiente.
+
 Pregunta binaria cuando llegue el momento: densidad actual OK / necesita reduccion.
 
-### 21. Descuadre en reposo — DEUDA (no bloquea F4.1)
+### 21. Descuadre en reposo — DEUDA RECLASIFICADA (sesion 17)
+
+**Voto del arquitecto (sesion 17):** ESPERAR. Reclasificacion del orden de fix:
+1. PRIMERO: evaluar detector full-range para cara debil (#22) — el diagnostico t=57s
+   muestra que el descuadre es un HOLD de 6s (100% hold, 0 detecciones). El creep NO
+   funciona durante HOLD porque no hay cara detectada hacia donde ir, solo posicion vieja.
+   Full-range mejora cara_1 de 34.4% a 41.2% de deteccion — menos holds, menos descuadre.
+2. SEGUNDO: creep lento solo si el descuadre persiste CON detecciones frescas (no HOLDs).
+3. TERCERO: stack (F4.2-LITE) cubre el caso podcast de raiz.
+Trigger sin cambio: cuando moleste en renders reales.
+
+**Descripcion original:**
 
 **Descripcion:** en modo noturnos a t=54-60s, la camara queda en cam=1182 con cara en 1134
 (dist=48px), dentro de la deadzone (dz_half=76px). 100% hold — MediaPipe no detecto la cara
@@ -227,7 +241,11 @@ El subagente revisor de la sesion 15 reporto 4 riesgos no bloqueantes:
    **Triage:** IGNORAR — comportamiento deseado: el log es de diagnostico y solo aparece
    cuando se pide el CSV de trayectoria.
 
-### 24. F4.2-LITE — LAYOUT STACK (SPEC DEL ARQUITECTO)
+### 24. F4.2-LITE — IMPLEMENTANDO EN SESION 17
+
+**Voto del arquitecto (sesion 17):** F4.2-LITE AHORA, F5 despues.
+
+**SPEC DEL ARQUITECTO (no improvises implementacion):**
 
 **SPEC COMPLETA (no improvises implementacion — abre preguntas si hay ambiguedad):**
 

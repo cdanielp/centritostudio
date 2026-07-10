@@ -1,8 +1,9 @@
-"""reframe.py — Reframe vertical: convierte clips 16:9 en 9:16 con face tracking.
+"""reframe.py — Reframe vertical: convierte clips 16:9 en 9:16.
 
-Disenio: revision/fase-4.1/DISENO_REFRAME.md
-Orden del pipeline: clipper -> reframe (9:16 + punch-ins) -> captions.
-CLI: python reframe.py output/clips/clip.mp4 [--turnos transcripts/clip_turnos.json] [--punch-in]
+Modos:
+  tracking (default): face tracking EMA adaptativo + deadzone + punch-ins opcionales
+  stack: bandas estaticas apiladas verticalmente (N=2 o N=3 caras)
+CLI: python reframe.py <clip.mp4> [--layout tracking|stack] [--turnos ...] [--punch-in]
 """
 
 from __future__ import annotations
@@ -355,26 +356,103 @@ def reframe_clip(
     }
 
 
+# ── Stack layout ─────────────────────────────────────────────────────────────
+
+SUFFIX_STACK = "_stack_9x16"
+
+
+def renderizar_stack(
+    input_path: Path,
+    bandas: list[tuple[int, int, int, int]],
+    output_path: Path,
+    fps: float,
+    has_audio: bool,
+) -> float:
+    """Render en modo stack: N bandas estaticas apiladas verticalmente."""
+    n = len(bandas)
+    assert OUTPUT_H % n == 0, f"OUTPUT_H={OUTPUT_H} no divisible por n={n}"
+    band_h = OUTPUT_H // n
+    t0 = time.time()
+    cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio)
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    cap = cv2.VideoCapture(str(input_path))
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            strips = []
+            for x, y, cw, ch in bandas:
+                crop = frame[y : y + ch, x : x + cw]
+                interp = cv2.INTER_AREA if cw > OUTPUT_W else cv2.INTER_LANCZOS4
+                strips.append(cv2.resize(crop, (OUTPUT_W, band_h), interpolation=interp))
+            proc.stdin.write(cv2.vconcat(strips).tobytes())
+    finally:
+        cap.release()
+        if proc.stdin:
+            proc.stdin.close()
+    _, err = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"FFmpeg returncode {proc.returncode}: "
+            + (err or b"").decode("utf-8", errors="replace")[-2000:]
+        )
+    return time.time() - t0
+
+
+def reframe_stack_clip(input_path: Path, output_path: Path) -> dict:
+    """Reencuadra en modo stack: N=2 o N=3 bandas estaticas, cero EMA/turnos."""
+    from core import get_video_info
+
+    info = get_video_info(input_path)
+    src_w, src_h = info["width"], info["height"]
+    has_audio = bool(info.get("has_audio", True))
+    cap = cv2.VideoCapture(str(input_path))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap.release()
+    caras = detectar_caras_video(input_path)
+    bandas = rt.calcular_bandas_stack(caras, src_w, src_h)  # raises ValueError si N<2 o N>3
+    n = len(bandas)
+    ordered = sorted(caras, key=lambda c: c["center_x"])
+    for i, (x, _, cw, ch) in enumerate(bandas):
+        cx = ordered[i]["center_x"]
+        print(f"[reframe] stack banda {i}: cx_ancla={cx:.0f}  crop_x={x}  {cw}x{ch}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    elapsed = renderizar_stack(input_path, bandas, output_path, fps, has_audio)
+    print(f"[reframe] stack {n} bandas  {input_path.name} -> {output_path.name} en {elapsed:.1f}s")
+    return {"output": str(output_path), "dur_s": round(elapsed, 2), "n_caras": n, "modo": "stack"}
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
 def _build_parser():
     import argparse
 
-    p = argparse.ArgumentParser(description="Reframe vertical 16:9 -> 9:16 con face tracking")
+    p = argparse.ArgumentParser(description="Reframe vertical 16:9 -> 9:16")
     p.add_argument("input", type=Path, help="Clip MP4 de entrada")
-    p.add_argument("--turnos", type=Path, default=None, help="Archivo _turnos.json")
-    p.add_argument("--punch-in", action="store_true", help="Activar punch-ins en keywords")
+    p.add_argument(
+        "--layout",
+        choices=["tracking", "stack"],
+        default="tracking",
+        help="tracking (default, EMA+deadzone) o stack (bandas estaticas N=2-3)",
+    )
+    p.add_argument("--turnos", type=Path, default=None, help="Archivo _turnos.json (tracking)")
+    p.add_argument("--punch-in", action="store_true", help="Punch-ins en keywords (tracking)")
     p.add_argument("--out", type=Path, default=None, help="Ruta de salida")
-    p.add_argument("--tray-dir", type=Path, default=None, help="Directorio para CSV de trayectoria")
+    p.add_argument("--tray-dir", type=Path, default=None, help="CSV de trayectoria (tracking)")
     return p
 
 
 if __name__ == "__main__":
     args = _build_parser().parse_args()
-    output = args.out or args.input.with_stem(args.input.stem + SUFFIX_9X16)
-    turnos = json.loads(args.turnos.read_text(encoding="utf-8")) if args.turnos else None
-    result = reframe_clip(
-        args.input, output, turnos=turnos, punch_in=args.punch_in, tray_dir=args.tray_dir
-    )
+    if args.layout == "stack":
+        output = args.out or args.input.with_stem(args.input.stem + SUFFIX_STACK)
+        result = reframe_stack_clip(args.input, output)
+    else:
+        output = args.out or args.input.with_stem(args.input.stem + SUFFIX_9X16)
+        turnos = json.loads(args.turnos.read_text(encoding="utf-8")) if args.turnos else None
+        result = reframe_clip(
+            args.input, output, turnos=turnos, punch_in=args.punch_in, tray_dir=args.tray_dir
+        )
     print(f"Output: {result['output']}")

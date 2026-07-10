@@ -66,6 +66,10 @@ La mejora de confianza (+0.35) no compensa el ruido extra.
 **Veredicto numerico (criterios de aceptacion):**
 - C1 dist<=80px >=95%: PASS x3 — noturnos 96.2%, turnos 97.5%, videolargo 100% (tracking-only)
 - C2v2 (cam en [900,1100] Y sin cara <=80px) <=2%: PASS — noturnos 0.19%, turnos 0.53%
+- Multi-cara con turnos: PASS — evidencia en `revision/fase-4.1/trayectoria_podcast_test_60s_turnos_s15.csv`
+  (97.5% C1, 6 switches, renders CON turnos). Frames de corte seco: podcast_switch_t*_pre/post.jpg.
+  (Nota s16: el paquete de cierre citaba s15_noturnos_tramo*.jpg — esos son frames del modo
+  noturnos sin turnos; la evidencia de conmutacion real esta en los archivos de turnos).
 - Tests: 98 pasando (ruff limpio)
 - Decisiones D1-D5: todas FIRMES
 

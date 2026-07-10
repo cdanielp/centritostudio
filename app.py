@@ -268,18 +268,22 @@ def save_turnos_clip(name: str, body: dict = Body(...)):
 
 
 @app.post("/api/clips/{name}/reframe")
-def start_reframe(name: str, punch_in: bool = False):
-    """Inicia el reencuadre 9:16 de un clip en background."""
+def start_reframe(name: str, punch_in: bool = False, layout: str = "tracking"):
+    """Inicia el reencuadre 9:16: tracking (default) o stack (bandas estaticas)."""
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
-    turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
-    turnos = json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None
-    output_path = CLIPS_DIR / f"{name}_9x16.mp4"
-    jid = jobs.new_job(f"Reencuadrando {name} a 9:16...")
+    if layout == "stack":
+        output_path = CLIPS_DIR / f"{name}_stack_9x16.mp4"
+        jid = jobs.new_job(f"Stack {name} ...")
+    else:
+        turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
+        turnos = json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None  # noqa: E501
+        output_path = CLIPS_DIR / f"{name}_9x16.mp4"
+        jid = jobs.new_job(f"Reencuadrando {name} a 9:16...")
     threading.Thread(
         target=jobs.run_reframe,
-        args=(jid, clip_path, output_path, turnos, punch_in),
+        args=(jid, clip_path, output_path, None if layout == "stack" else turnos, punch_in, layout),
         daemon=True,
     ).start()
     return {"job_id": jid}

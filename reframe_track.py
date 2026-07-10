@@ -293,6 +293,36 @@ def calcular_crops_por_turnos(
     return [c if c is not None else default_crop for c in result]
 
 
+def calcular_bandas_stack(
+    caras: list[dict],
+    src_w: int,
+    src_h: int,
+    output_w: int = 1080,
+    output_h: int = 1920,
+) -> list[tuple[int, int, int, int]]:
+    """Crops estaticos para modo stack apilado. Puro math, sin I/O.
+
+    Ordena caras izq->der por center_x. N debe ser 2 o 3.
+    Devuelve [(x, 0, crop_w, src_h)] clampeado a [0, src_w - crop_w].
+    crop_w = src_h * (output_w / band_h); crop puede solaparse entre bandas.
+    Raises ValueError con mensaje exacto si N != 2 o 3.
+    """
+    n = len(caras)
+    if n < 2 or n > 3:
+        raise ValueError("stack requiere 2-3 caras detectadas; usa el modo seguimiento")
+    band_h = output_h // n
+    crop_w = int(src_h * output_w / band_h)
+    if crop_w > src_w:
+        raise ValueError(f"stack: crop_w={crop_w} supera src_w={src_w}; fuente demasiado angosta")
+    ordered = sorted(caras, key=lambda c: c["center_x"])
+    result = []
+    for cara in ordered:
+        x = int(cara["center_x"]) - crop_w // 2
+        x = max(0, min(x, src_w - crop_w))
+        result.append((x, 0, crop_w, src_h))
+    return result
+
+
 def aplanar_conf_por_turnos(
     conf_multi: dict[int, dict[int, float]],
     turnos_list: list[dict],

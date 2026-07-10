@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 16
+Actualizado: 2026-07-09 · Sesión: 17
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -39,3 +39,4 @@ Actualizado: 2026-07-09 · Sesión: 16
 - 2026-07-09: Sesión 14 — F4.1 RE-VALIDACION. C2v2 criterio oficial (D1). full_range descargado y comparado: RECHAZADO (fuera_gate +62, D4). EMA fix ^30/fps aplicado (alpha 0.041@60fps). Re-renders noturnos+turnos s14: C2v2=0.2%/0.5% PASS; C1 noturnos 94.9% FAIL marginal (retune pendiente D5). CSV con confianza. DECISIONES.md creado. 88 tests.
 - 2026-07-09: Sesión 15 — F4.1 RETUNE D5. Alpha adaptativo 2 regimenes: ALPHA_BASE_LENTO=0.08, ALPHA_BASE_RAPIDO=0.28, rampa lineal dz_half a 3xdz_half. C1 PASS: noturnos 96.2%, turnos 97.5%, videolargo 100% (tracking-only). C2v2 PASS: 0.19/0.53%. 10 tests nuevos (98 total). Correcciones model_selection.md (4a/4b/4c). DECISIONES.md D5 cerrado.
 - 2026-07-09: Sesión 16 — F4.1 CIERRE FORMAL. DoD completo verificado. DECISIONES.md D6 (cierre K 90/100). Diagnostico descuadre t=57s (cam=1182 face=1134 dist=48px HOLD). PREGUNTAS.md: puntos 20-24 (punch-in veredicto, deuda descuadre, full-range, riesgos revisor, F4.2-LITE spec). ESTADO.md: F4.1 cerrada, avance 65/100. Siguiente: F4.2-LITE.
+- 2026-07-09: Sesión 17 — F4.2-LITE. calcular_bandas_stack (math puro, 9 tests), renderizar_stack, reframe_stack_clip, --layout stack CLI. Studio: selector Seguimiento|Stack. Render podcast_test_60s stack OK (39.1s, 1080x1920 yuv420p AAC). C-STACK cara_0 100% cara_1 100%. 107 tests. Votos #20/21/24. Paquete en revision/fase-4.2-lite/. Pendiente: ojo de K y /cerrar-fase.

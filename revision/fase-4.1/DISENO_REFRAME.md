@@ -315,9 +315,10 @@ reframe.py          (≤400L)  Orquestación + CLI  [estado: sesion 11]
   _calcular_crops(input_path, caras, turnos_list, fps, total_frames, src_w, src_h) → list
   renderizar_reframe(input_path, crop_frames, output_path, fps, has_audio) → float
   _cargar_o_generar_brain(clip_path) → dict | None
-  CLI: python reframe.py {clip.mp4} [--turnos {turnos.json}] [--punch-in]
+  CLI: python reframe.py {clip.mp4} [--layout tracking|stack] [--turnos ...] [--punch-in]
+  Stack: reframe_stack_clip + renderizar_stack (sesion 17)
 
-reframe_track.py    (≤400L)  Detección + matemáticas puras  [estado: sesion 11]
+reframe_track.py    Deteccion + matematicas puras  [estado: sesion 17]
   Constantes: EMA_ALPHA, DEADZONE_PCT, DETECT_EVERY_N, FACE_MIN_CONFIDENCE, etc.
   calcular_ventana_crop(face_center_x, source_w, source_h) → (x, y, w, h)
   ema_smooth(positions, alpha) → list[float]
@@ -393,3 +394,41 @@ from mediapipe.tasks.python import vision as mp_vision
 
 Todas las decisiones de los §1–§9 fueron tomadas en esta sesión de diseño con justificación.
 Las PREGUNTAS #14–#17 quedan abiertas para el arquitecto antes de implementar.
+
+---
+
+## §8 Modo Stack (F4.2-LITE, sesion 17)
+
+Alternativa al face tracking para podcasts N=2/3. Crops ESTATICOS calculados una vez del
+scan inicial, apilados verticalmente en 1080x1920. Sin EMA, sin turnos, sin hold.
+
+### Geometria de bandas
+
+```
+N=2 -> banda 1080x960 por cara
+  crop_w = src_h * (1080/960) = src_h * 1.125
+  ejemplo 1920x1080: crop_w=1215px, max_x=705px
+
+N=3 -> banda 1080x640 por cara
+  crop_w = src_h * (1080/640) = src_h * 1.6875
+  ejemplo 1920x1080: crop_w=1822px, max_x=98px
+
+Escalado: INTER_AREA si crop_w > 1080, INTER_LANCZOS4 si crop_w < 1080
+Orden vertical: izquierda->derecha segun center_x de cada ancla
+Los crops PUEDEN solaparse en la fuente: correcto por diseno.
+```
+
+### N=1 o N>=4
+
+Error: "stack requiere 2-3 caras detectadas; usa el modo seguimiento"
+
+### Validacion podcast_test_60s 1920x1080 (sesion 17)
+
+| Criterio | Valor |
+|----------|-------|
+| Resolucion output | 1080x1920 |
+| pix_fmt | yuv420p |
+| Audio | AAC 60.01s |
+| C-STACK cara_0 crop=[705,1920] | 934/934 = 100% |
+| C-STACK cara_1 crop=[111,1326] | 165/165 = 100% |
+| Render | 39.1s |
