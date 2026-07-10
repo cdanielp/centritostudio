@@ -120,8 +120,13 @@ def generar_reporte_md(name: str, clips_info: list[dict], meta: dict) -> str:
         if avisos:
             lineas.append("- Calidad por tramos:")
             lineas += [f"  - {a['texto']}" for a in avisos]
-        else:
+        elif c.get("tramos_disponibles", True):
             lineas.append("- Calidad por tramos: OK en todo el clip")
+        else:
+            lineas.append(
+                "- Calidad por tramos: no disponible (clip reutilizado de una corrida "
+                "previa; no se re-renderizo para recuperar las metricas)"
+            )
         lineas.append("")
     lineas += [
         "## Telemetria",
@@ -160,6 +165,70 @@ def _asegurar_transcript(video_path: Path, name: str, lang: str = "es") -> tuple
     return result["words"], False
 
 
+def _asegurar_clips(video_path: Path, words: list, name: str) -> tuple[dict, bool]:
+    """Devuelve (resultado_clipper, reutilizado). Reusa {name}_clips.json si es
+    posterior al video: evita re-gastar LLM al reanudar (voto #10 extendido al
+    analisis del clipper). El clipper ya persiste el resultado completo a disco.
+    """
+    import clipper  # noqa: PLC0415
+
+    clips_json = CLIPS_DIR / f"{name}_clips.json"
+    if clips_json.exists() and clips_json.stat().st_mtime >= video_path.stat().st_mtime:
+        return json.loads(clips_json.read_text(encoding="utf-8")), True
+    return clipper.generar_clips(video_path, words, "ambos"), False
+
+
+def _paquete_dir(name: str) -> tuple[Path, bool]:
+    """(paquete_dir, reanudado). Reanuda el paquete incompleto mas reciente del
+    video (sin paquete.json = corrida interrumpida); si no hay, crea uno nuevo.
+    Un autopiloto debe sobrevivir a un cierre de ventana / corte de luz (incidente
+    s27): cada clip ya renderizado es un checkpoint que no se vuelve a pagar.
+    """
+    PAQUETES_DIR.mkdir(parents=True, exist_ok=True)
+    incompletos = sorted(
+        d
+        for d in PAQUETES_DIR.glob(f"{name}_*")
+        if d.is_dir() and not (d / "paquete.json").exists()
+    )
+    if incompletos:
+        return incompletos[-1], True
+    fecha = time.strftime("%Y%m%d-%H%M")
+    nuevo = PAQUETES_DIR / f"{name}_{fecha}"
+    nuevo.mkdir(parents=True, exist_ok=True)
+    return nuevo, False
+
+
+def _final_path(clip: dict, paquete_dir: Path) -> tuple[str, Path]:
+    """Nombre canonico del clip final dentro del paquete. Puro. Fuente unica del
+    nombre para el render y para la deteccion de checkpoint en la reanudacion."""
+    stem_9x16 = f"{clip['archivo'].replace('.mp4', '')}_9x16"
+    return stem_9x16, paquete_dir / f"{stem_9x16}_{STYLE_AUTO}.mp4"
+
+
+def _sidecar_path(final_path: Path) -> Path:
+    """Checkpoint de metadata junto al clip final. Puro."""
+    return final_path.with_name(final_path.stem + ".info.json")
+
+
+def _info_orfano(clip: dict, final_path: Path) -> dict:
+    """Reconstruye el info de un clip final ya renderizado que no tiene sidecar
+    (paquete de una corrida previa a la reanudacion). Reusa el MP4 tal cual: los
+    avisos por tramos no se pueden recuperar sin re-renderizar el reframe (motor
+    intacto esta sesion), asi que se marcan como no disponibles en vez de repetir
+    el render. Cero desperdicio.
+    """
+    return {
+        "archivo": final_path.name,
+        "titulo": clip.get("titulo", ""),
+        "razon": clip.get("razon", ""),
+        "score": clip.get("score"),
+        "dur_s": clip.get("dur_s", 0),
+        "avisos": [],
+        "tramos_disponibles": False,
+        "emojis_msg": "reutilizado de corrida previa",
+    }
+
+
 def _brain_fail_open(groups: list[dict], stem: str) -> dict | None:
     """Analisis IA del clip. Fail-open: sin brain el paquete sigue (regla #8)."""
     try:
@@ -183,7 +252,7 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
     from styles import get_style  # noqa: PLC0415
 
     stem = clip["archivo"].replace(".mp4", "")
-    stem_9x16 = f"{stem}_9x16"
+    stem_9x16, final_path = _final_path(clip, paquete_dir)
     clip_path = CLIPS_DIR / clip["archivo"]
 
     rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_9x16}.mp4", tracker="escenas")
@@ -211,7 +280,6 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
     ass_path = ROOT / "output" / f"{stem_9x16}_{STYLE_AUTO}.ass"
     core.build_ass(groups, info["width"], info["height"], style_cfg, ass_path)
 
-    final_path = paquete_dir / f"{stem_9x16}_{STYLE_AUTO}.mp4"
     core.burn_video_with_emojis(clip_9x16, ass_path, final_path, overlays, style_cfg)
 
     return {
@@ -235,9 +303,11 @@ def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "c
     Pipeline (identico a s26 RUTA A): transcripcion -> clipper (analisis IA +
     corte, hasta MAX_CLIPS) -> reframe escenas -> captions hormozi + emojis
     fail-open. Devuelve {paquete, resumen, clips, meta}.
-    """
-    import clipper  # noqa: PLC0415
 
+    Reanudable: si una corrida previa quedo a medias (cierre de ventana, corte de
+    luz), reusa transcript, analisis del clipper y clips ya renderizados; solo
+    completa lo que falta. Cada clip final es un checkpoint (regla MAESTRO #20).
+    """
     if objetivo not in OBJETIVOS:
         raise ValueError(f"Objetivo '{objetivo}' no soportado. Opciones: {OBJETIVOS}")
     progress = progress or _progress_nulo
@@ -250,31 +320,44 @@ def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "c
 
     progress(20, "Etapa 2/4: analisis IA + clipper...")
     t1 = time.time()
-    resultado = clipper.generar_clips(video_path, words, "ambos")
+    resultado, analisis_reutilizado = _asegurar_clips(video_path, words, name)
     t_clip = time.time() - t1
     if resultado.get("error"):
         raise RuntimeError(resultado["error"])
     clips = resultado.get("clips", [])
 
-    fecha = time.strftime("%Y%m%d-%H%M")
-    paquete_dir = PAQUETES_DIR / f"{name}_{fecha}"
-    paquete_dir.mkdir(parents=True, exist_ok=True)
+    paquete_dir, reanudado = _paquete_dir(name)
+    fecha = paquete_dir.name[len(name) + 1 :]
+    if reanudado:
+        progress(28, f"Reanudando paquete {paquete_dir.name} (clips ya listos se conservan)...")
 
     clips_info: list[dict] = []
     t1 = time.time()
     for i, clip in enumerate(clips, 1):
-        progress(
-            30 + int(60 * (i - 1) / max(len(clips), 1)),
-            f"Etapa 3-4/4: reencuadre + captions (clip {i}/{len(clips)})...",
-        )
-        clips_info.append(_procesar_clip(clip, paquete_dir))
+        pct = 30 + int(60 * (i - 1) / max(len(clips), 1))
+        _stem, final_path = _final_path(clip, paquete_dir)
+        sidecar = _sidecar_path(final_path)
+        if sidecar.exists():
+            progress(pct, f"Clip {i}/{len(clips)}: ya listo (reanudacion, sin re-render)")
+            clips_info.append(json.loads(sidecar.read_text(encoding="utf-8")))
+            continue
+        if final_path.exists():
+            progress(pct, f"Clip {i}/{len(clips)}: reutilizando render previo")
+            info = _info_orfano(clip, final_path)
+        else:
+            progress(pct, f"Etapa 3-4/4: reencuadre + captions (clip {i}/{len(clips)})...")
+            info = _procesar_clip(clip, paquete_dir)
+        sidecar.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+        clips_info.append(info)
     t_render = time.time() - t1
 
     progress(95, "Armando paquete...")
     meta = {
         "fecha": fecha,
         "objetivo": objetivo,
+        "reanudado": reanudado,
         "transcript_reutilizado": reutilizado,
+        "analisis_reutilizado": analisis_reutilizado,
         "t_transcripcion_s": round(t_tx, 1),
         "t_clipper_s": round(t_clip, 1),
         "t_render_s": round(t_render, 1),

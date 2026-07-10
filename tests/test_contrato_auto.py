@@ -292,3 +292,101 @@ def test_objetivo_invalido_rechazado():
 
     with pytest.raises(ValueError, match="no soportado"):
         auto.ejecutar_auto(None, "x", objetivo="karaoke-3d")
+
+
+# ── Reanudacion: paquete a medias + re-corrida (regla MAESTRO #20) ────────────
+
+
+def test_reanuda_sin_regenerar_clip_con_checkpoint(entorno_auto, monkeypatch):
+    import auto
+
+    llamadas = []
+    _mock_motor(monkeypatch, llamadas)
+    # Corrida previa interrumpida: clip1 final + su sidecar de checkpoint ya existen
+    prev = auto.PAQUETES_DIR / "vid_20260101-0000"
+    prev.mkdir()
+    final = prev / "vid_clip1_corto_9x16_hormozi.mp4"
+    final.write_bytes(b"ya-renderizado")
+    sidecar = final.with_name(final.stem + ".info.json")
+    sidecar.write_text(
+        json.dumps(
+            {
+                "archivo": final.name,
+                "titulo": "T",
+                "razon": "R",
+                "score": 88,
+                "dur_s": 30.0,
+                "avisos": [],
+                "emojis_msg": "3 overlay(s)",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = auto.ejecutar_auto(entorno_auto["video"], "vid")
+
+    # el clip con checkpoint NO se re-renderiza: cero reframe/burn
+    nombres = [c[0] for c in llamadas]
+    assert "reframe.reframe_clip" not in nombres
+    assert "core.burn_video_with_emojis" not in nombres
+    # el paquete se completa EN EL MISMO dir de la corrida previa
+    assert result["paquete"].endswith("vid_20260101-0000")
+    assert result["meta"]["reanudado"] is True
+    assert (prev / "paquete.json").exists()
+    assert (prev / "REPORTE.md").exists()
+    # el info del clip proviene del checkpoint intacto
+    assert result["clips"][0]["score"] == 88
+
+
+def test_reanuda_orfano_reutiliza_render_sin_avisos(entorno_auto, monkeypatch):
+    import auto
+
+    llamadas = []
+    _mock_motor(monkeypatch, llamadas)
+    # Clip final de una corrida previa SIN sidecar (paquete pre-reanudacion)
+    prev = auto.PAQUETES_DIR / "vid_20260101-0000"
+    prev.mkdir()
+    final = prev / "vid_clip1_corto_9x16_hormozi.mp4"
+    final.write_bytes(b"ya-renderizado")
+
+    result = auto.ejecutar_auto(entorno_auto["video"], "vid")
+
+    # se reutiliza el render existente: no se vuelve a quemar
+    assert "core.burn_video_with_emojis" not in [c[0] for c in llamadas]
+    # se crea el sidecar faltante como checkpoint para futuras reanudaciones
+    assert final.with_name(final.stem + ".info.json").exists()
+    assert result["clips"][0]["tramos_disponibles"] is False
+    md = (prev / "REPORTE.md").read_text(encoding="utf-8")
+    assert "no disponible" in md
+    assert result["meta"]["reanudado"] is True
+
+
+def test_analisis_reutilizado_no_regasta_llm(entorno_auto, monkeypatch):
+    import auto
+
+    llamadas = []
+    _mock_motor(monkeypatch, llamadas)
+    # clips.json fresco de una corrida previa -> el clipper (LLM) no se vuelve a llamar
+    (auto.CLIPS_DIR / "vid_clips.json").write_text(
+        json.dumps(
+            {
+                "clips": [
+                    {
+                        "archivo": "vid_clip1_corto.mp4",
+                        "titulo": "T",
+                        "razon": "R",
+                        "score": 88,
+                        "dur_s": 30.0,
+                    }
+                ],
+                "casi": [],
+                "telemetria_resumen": {"costo_usd": 0.001},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = auto.ejecutar_auto(entorno_auto["video"], "vid")
+
+    assert "clipper.generar_clips" not in [c[0] for c in llamadas]
+    assert result["meta"]["analisis_reutilizado"] is True
