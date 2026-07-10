@@ -4,6 +4,26 @@ Registro de decisiones del arquitecto. No reabrir los items marcados [FIRME].
 
 ---
 
+## D7 — Veredicto fuente prueba2personasenmedio.mov [FIRME — sesion 20]
+
+**Sesion:** 20
+**Decision del arquitecto:** la fuente es podcast EDITADO multicamara (480p), NO toma fija.
+
+**Cortes confirmados:**
+- t=0.067s, score=1.0: ARTEFACTO primer frame (filtrar con t<1.0s)
+- t=54.03s, score=0.663: REAL — corte a close-up hablante izquierdo (cambia encuadre Y decoracion)
+- t=56.70s, score=0.651: REAL — regresa al plano abierto
+
+**Leccion de calibracion:**
+Cortes reales en mismo set puntuan 0.65-0.66; en set diferente 0.88+. El score NO es un
+discriminante confiable para filtrar. El unico filtro valido es temporal (t<1.0s).
+La propuesta #24c de usar threshold=0.5 queda REVOCADA — no filtra cortes reales de bajo score.
+
+**Aplicacion:** plano 1 de la fuente (t~1.0-54.0s, ~53s continuo) SI cumple la precondicion.
+Extracto en `input/stack_test_estatico.mp4` (48.5s, keyframe-aligned).
+
+---
+
 ## D1 — C2v2 reemplaza a C2 como criterio oficial [FIRME]
 
 **Sesion:** 14

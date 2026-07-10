@@ -64,3 +64,47 @@ Todas las detecciones post-corte son rechazadas por el gate => HOLD desde t=51.3
 La distancia cam=1182, face=1134 vista en el diagnostico es residual de la posicion
 pre-corte. La causa NO es la deteccion debil de cara_1; es la falta de detecciones
 validas de cara_0 porque la cara migro fuera del gate tras el corte de escena.
+
+---
+
+# Inventario de planos — prueba2personasenmedio.mov (sesion 19-20)
+
+**Fuente:** `input/prueba2personasenmedio.mov` (96s, 854x480, 30fps)
+**Nota:** K subio como .mov; spec decia .mp4. Mismo archivo, distinto contenedor.
+**Veredicto del arquitecto (sesion 20):** podcast editado multicamara a 480p.
+  NO es toma fija. Plano 1 (t~1-54s) si es continuo con 2 personas.
+
+## Cortes detectados (threshold=0.3, filtro t>=1.0s aplicado)
+
+| # | t | score | tipo CONFIRMADO por K |
+|---|---|-------|----------------------|
+| 1 | 0.067s | 1.000 | ARTEFACTO primer frame (filtrado) |
+| 2 | 54.03s | 0.663 | REAL — plano abierto a close-up hablante izquierdo, distinta camara y decoracion |
+| 3 | 56.70s | 0.651 | REAL — regresa al plano abierto |
+
+**Cortes reales: 2 (con filtro artefacto). Fuente multicamara editada.**
+
+**Leccion de calibracion:** cortes reales en mismo set puntuan 0.65-0.66; en fuentes
+con set diferente puntuan 0.88+. El score NO es discriminante confiable. Ver cortes_dataset.md.
+
+## Planos
+
+| # | t_ini | t_fin | dur | tipo | n_caras |
+|---|-------|-------|-----|------|---------|
+| 0 | 0.00s | 1.00s | ~1s | inicio/artefacto | — |
+| **1** | **1.00s** | **54.03s** | **~53s** | **CONTINUO — 2 personas sentadas, toma fija** | **2** |
+| 2 | 54.03s | 56.70s | 2.67s | insert close-up hablante izquierdo | 1 (close-up) |
+| 3 | 56.70s | 96.0s | ~39.3s | plano abierto de regreso | 2 (probablemente) |
+
+## Anclas (scan sobre extracto plano 1, stack_test_estatico.mp4)
+
+| cara_id | cx | conf_media | n_det_muestra |
+|---------|-----|------------|---------------|
+| 1 (izq) | 298px | 0.3632 | 10/10 |
+| 0 (der) | 607px | 0.4201 | 9/10 |
+
+Separacion: 309px < crop_w=540px (N=2, src_h=480) → intrusion cruzada esperada.
+
+## Extracto plano 1: stack_test_estatico.mp4
+
+`ffmpeg -ss 1.0 -to 53.5 -c copy` → 48.5s (keyframe alignment, margen OK antes del corte en 54.03s)

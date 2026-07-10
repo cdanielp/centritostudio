@@ -298,15 +298,18 @@ usuario excluir la intrusion o ajustar las anclas antes del render.
 
 **Prioridad:** justo despues de F5 (emojis). F4.2 completo incluye seleccion manual.
 
-### 24c. Precondicion de fuente — check ampliado F4.2 completo
+### 24c. Precondicion de fuente — check ampliado [REVOCADO PARCIALMENTE]
 
-El check _contar_cortes_escena actual (threshold=0.3) tiene falsos positivos:
-- Primer frame siempre dispara (artefacto scdet, t~0s score=1.0)
-- Movimientos rapidos/autoexposicion en toma fija disparan con score 0.6-0.7
+**REVOCADO (arquitecto s20):** la propuesta de usar threshold=0.5 para filtrar
+por score queda REVOCADA. Cortes reales en mismo set puntuan 0.65 (ver fuente 2
+en cortes_dataset.md); un threshold=0.5 habria filtrado cortes REALES.
 
-**Para F4.2 completo:** filtrar el primer corte (t < 1s) y usar threshold=0.5 para
-separar "corte de edicion real" (score>0.8) de "fluctuacion de toma fija" (score<0.7).
-Actualizar N_CORTES_WARN si se cambia el threshold.
+**VIGENTE (implementado en s20):** filtro temporal t<1.0s — el artefacto del
+primer frame de scdet siempre ocurre en t~0s con score=1.0; se filtra como
+artefacto conocido. Ver `_filtrar_artefactos_cortes` en reframe.py.
+
+Dataset de calibracion: `revision/fase-4.2-lite/cortes_dataset.md` — 3 fuentes,
+9 cortes etiquetados. Cualquier nuevo umbral se valida contra este dataset.
 
 ---
 

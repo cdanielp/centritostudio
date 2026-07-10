@@ -39,8 +39,29 @@ N_CORTES_WARN = 2  # mas de este numero de cortes de escena emite WARNING
 # ── Precondicion de fuente ────────────────────────────────────────────────────
 
 
+def _parsear_cortes_escena(stdout: str) -> list[float]:
+    """Extrae timestamps de cortes del stdout del filtro scdet de FFmpeg. Puro."""
+    times = []
+    for line in stdout.splitlines():
+        if "pts_time:" in line:
+            try:
+                times.append(float(line.split("pts_time:")[1].split()[0]))
+            except (ValueError, IndexError):
+                pass
+    return times
+
+
+def _filtrar_artefactos_cortes(timestamps: list[float], min_t: float = 1.0) -> list[float]:
+    """Filtra el artefacto de primer frame de scdet (t < min_t). Puro."""
+    return [t for t in timestamps if t >= min_t]
+
+
 def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
-    """Cuenta cortes de escena con FFmpeg scdet. Retorna 0 si FFmpeg falla (fail-open)."""
+    """Cuenta cortes de escena reales con FFmpeg scdet (excluye artefacto primer frame).
+
+    Retorna 0 si FFmpeg falla (fail-open). El primer frame siempre dispara scdet
+    (score=1.0, t~0s) — se filtra como artefacto conocido.
+    """
     try:
         r = subprocess.run(
             [
@@ -50,7 +71,7 @@ def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
             ],
             capture_output=True, text=True, timeout=60, errors="replace",
         )
-        return r.stdout.count("pts_time:")
+        return len(_filtrar_artefactos_cortes(_parsear_cortes_escena(r.stdout)))
     except Exception:
         return 0
 

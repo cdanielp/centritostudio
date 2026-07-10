@@ -513,3 +513,52 @@ def test_avisar_cortes_cero_sin_alerta(capsys):
     rf._avisar_cortes(0)
     out = capsys.readouterr().out
     assert "WARNING" not in out
+
+
+# ── _filtrar_artefactos_cortes + _parsear_cortes_escena (puro) ──────────────
+
+
+def test_filtrar_artefactos_cortes_elimina_primer_frame():
+    # t=0.067s es artefacto del primer frame (scdet siempre dispara ahi)
+    import reframe as rf  # noqa: PLC0415
+
+    result = rf._filtrar_artefactos_cortes([0.067, 54.03, 56.70])
+    assert result == [54.03, 56.70]
+
+
+def test_filtrar_artefactos_cortes_preserva_sobre_umbral():
+    import reframe as rf  # noqa: PLC0415
+
+    result = rf._filtrar_artefactos_cortes([2.0, 10.0, 50.0])
+    assert result == [2.0, 10.0, 50.0]
+
+
+def test_filtrar_artefactos_cortes_vacio():
+    import reframe as rf  # noqa: PLC0415
+
+    assert rf._filtrar_artefactos_cortes([]) == []
+
+
+def test_filtrar_artefactos_cortes_solo_artefacto():
+    import reframe as rf  # noqa: PLC0415
+
+    assert rf._filtrar_artefactos_cortes([0.067]) == []
+
+
+def test_parsear_cortes_escena_extrae_timestamps():
+    import reframe as rf  # noqa: PLC0415
+
+    stdout = "frame:0    pts:4    pts_time:0.0666667\n" \
+             "lavfi.scene_score=1.000000\n" \
+             "frame:1    pts:3240 pts_time:54.033333\n" \
+             "lavfi.scene_score=0.662516\n"
+    result = rf._parsear_cortes_escena(stdout)
+    assert len(result) == 2
+    assert abs(result[0] - 0.067) < 0.001
+    assert abs(result[1] - 54.033) < 0.001
+
+
+def test_parsear_cortes_escena_vacio():
+    import reframe as rf  # noqa: PLC0415
+
+    assert rf._parsear_cortes_escena("") == []
