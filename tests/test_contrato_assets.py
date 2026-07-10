@@ -150,6 +150,8 @@ def test_resolver_overlays_sin_keywords(tmp_path, monkeypatch):
 def test_resolver_overlays_con_cache(tmp_path, monkeypatch):
     """Si el PNG esta cacheado, resolver_overlays lo devuelve sin llamar ComfyUI."""
     monkeypatch.setattr(ac, "ASSETS_GENERADOS", tmp_path)
+    # Mockear _probe_comfy_url para no intentar conectar a ComfyUI en CI
+    monkeypatch.setattr(ac, "_probe_comfy_url", lambda: "http://127.0.0.1:8188")
 
     keywords = {"nodo": "a glowing node"}
     kw_path = tmp_path / "keywords.json"
@@ -174,3 +176,56 @@ def test_resolver_overlays_con_cache(tmp_path, monkeypatch):
     assert found_path == png
     assert abs(t_start - 1.0) < 0.01
     assert abs(t_end - (1.0 + ac.EMOJI_DURATION_S)) < 0.01
+
+
+# ── _extraer_brain_kws — tests de casos borde ─────────────────────────────────
+
+
+def test_extraer_brain_kws_happy_path():
+    groups = [{"words": [{"text": "nodo", "start": 1.0, "end": 1.5}]}]
+    brain = {"groups": [{"g": 0, "kw": 0, "kw_ts": 1.0}]}
+    result = ac._extraer_brain_kws(groups, brain)
+    assert result == [("nodo", 1.0)]
+
+
+def test_extraer_brain_kws_g_idx_fuera_de_rango():
+    groups: list = []  # sin grupos
+    brain = {"groups": [{"g": 5, "kw": 0, "kw_ts": 1.0}]}
+    result = ac._extraer_brain_kws(groups, brain)
+    assert result == []
+
+
+def test_extraer_brain_kws_kw_ts_ausente_usa_word_start():
+    groups = [{"words": [{"text": "taco", "start": 3.5, "end": 4.0}]}]
+    brain = {"groups": [{"g": 0, "kw": 0}]}  # sin kw_ts
+    result = ac._extraer_brain_kws(groups, brain)
+    assert len(result) == 1
+    assert result[0][0] == "taco"
+    assert abs(result[0][1] - 3.5) < 0.001
+
+
+def test_extraer_brain_kws_kw_idx_fuera_de_rango():
+    groups = [{"words": [{"text": "solo_una", "start": 1.0, "end": 1.5}]}]
+    brain = {"groups": [{"g": 0, "kw": 99, "kw_ts": 1.0}]}  # kw 99 no existe
+    result = ac._extraer_brain_kws(groups, brain)
+    assert result == []
+
+
+def test_resolver_overlays_sin_match_devuelve_vacio(tmp_path, monkeypatch):
+    """Cuando hay brain kws pero ninguna matchea el mapa, devuelve [] sin llamar a ComfyUI."""
+    monkeypatch.setattr(ac, "KEYWORDS_PATH", tmp_path / "kw.json")
+    (tmp_path / "kw.json").write_text(json.dumps({"nodo": "prompt nodo"}), encoding="utf-8")
+
+    groups = [{"words": [{"text": "tacos", "start": 1.0, "end": 1.5}]}]
+    brain = {"groups": [{"g": 0, "kw": 0, "kw_ts": 1.0}]}
+    g_path = tmp_path / "g.json"
+    b_path = tmp_path / "b.json"
+    g_path.write_text(json.dumps(groups), encoding="utf-8")
+    b_path.write_text(json.dumps(brain), encoding="utf-8")
+
+    # _probe_comfy_url NO debe llamarse — si se llamara en CI bloquearia 6s
+    probe_calls = []
+    monkeypatch.setattr(ac, "_probe_comfy_url", lambda: probe_calls.append(1) or "x")
+    result = ac.resolver_overlays(g_path, b_path)
+    assert result == []
+    assert not probe_calls, "_probe_comfy_url no debe llamarse si no hay keywords matcheadas"
