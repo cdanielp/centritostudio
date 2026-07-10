@@ -13,37 +13,24 @@ import time
 from pathlib import Path
 
 import cv2
-from mediapipe.tasks import python as _mp_python
-from mediapipe.tasks.python import vision as _mp_vision
 
 import reframe_track as rt
+from reframe_detect import (
+    ACTIVE_MODEL_PATH,
+    _crear_detector,
+    _detectar_trayectoria,
+    _detectar_trayectorias_multi,
+)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 THUMBS_DIR = Path(__file__).parent / "thumbs"
-MODEL_PATH = Path(__file__).parent / "models" / "blaze_face_short_range.tflite"
 
 SUFFIX_9X16 = "_9x16"
 OUTPUT_W, OUTPUT_H = 1080, 1920
 FACE_CLUSTER_DIST = 80  # px: umbral para agrupar caras del scan inicial
 PUNCH_KW_DUR_S = 0.8  # duracion de cada punch-in en segundos
-
-
-# ── Detector MediaPipe ────────────────────────────────────────────────────────
-
-
-def _crear_detector():
-    """Crea un FaceDetector MediaPipe Tasks en modo IMAGE."""
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Modelo MediaPipe no encontrado: {MODEL_PATH}")
-    base = _mp_python.BaseOptions(model_asset_path=str(MODEL_PATH))
-    opts = _mp_vision.FaceDetectorOptions(
-        base_options=base,
-        running_mode=_mp_vision.RunningMode.IMAGE,
-        min_detection_confidence=rt.FACE_MIN_CONFIDENCE,
-    )
-    return _mp_vision.FaceDetector.create_from_options(opts)
 
 
 # ── Deteccion inicial de caras ────────────────────────────────────────────────
@@ -106,92 +93,32 @@ def extraer_thumb_cara(frame, bbox: list[int], out_path: Path) -> Path:
     return out_path
 
 
-# ── Deteccion de trayectoria ──────────────────────────────────────────────────
-
-
-def _detectar_trayectoria(video_path: Path, total_frames: int) -> dict[int, float]:
-    """Detecta center_x de la cara principal cada DETECT_EVERY_N frames."""
-    cap = cv2.VideoCapture(str(video_path))
-    detector = _crear_detector()
-    sparsa: dict[int, float] = {}
-    n_det = n_sin = 0
-    try:
-        for fi in range(total_frames):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if fi % rt.DETECT_EVERY_N != 0:
-                continue
-            det = rt.detectar_cara_frame(frame, detector)
-            if det is not None:
-                sparsa[fi] = det["center_x"]
-                n_det += 1
-            else:
-                n_sin += 1
-    finally:
-        cap.release()
-        detector.close()
-    if n_sin > n_det:
-        print(f"[reframe] cara perdida en {n_sin}/{n_det + n_sin} detecciones, recentrando")
-    return sparsa
-
-
-def _asignar_detecciones_a_caras(
-    all_dets: list[dict], caras: list[dict], sparsa: dict[int, dict[int, float]], fi: int
-) -> None:
-    """Para cada cara conocida, asigna la deteccion mas cercana si esta dentro del rango."""
-    for cara in caras:
-        ref = cara["center_x"]
-        best = min(all_dets, key=lambda d: abs(d["center_x"] - ref))
-        if abs(best["center_x"] - ref) < FACE_CLUSTER_DIST * 2:
-            sparsa[cara["id"]][fi] = best["center_x"]
-
-
-def _detectar_trayectorias_multi(
-    video_path: Path, total_frames: int, caras: list[dict]
-) -> dict[int, dict[int, float]]:
-    """Detecta, por cara, el center_x cada DETECT_EVERY_N frames.
-
-    Devuelve {cara_id: {frame_idx: center_x}}.
-    """
-    cap = cv2.VideoCapture(str(video_path))
-    detector = _crear_detector()
-    sparsa: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
-    try:
-        for fi in range(total_frames):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if fi % rt.DETECT_EVERY_N != 0:
-                continue
-            all_dets = rt.detectar_todas_caras_frame(frame, detector)
-            if all_dets:
-                _asignar_detecciones_a_caras(all_dets, caras, sparsa, fi)
-    finally:
-        cap.release()
-        detector.close()
-    return sparsa
-
-
 # ── Calculo de secuencia de crops ────────────────────────────────────────────
 
 
 def _calcular_crop_secuencia(
-    sparsa: dict[int, float], total_frames: int, src_w: int, src_h: int
-) -> list[tuple[int, int, int, int]]:
-    """Convierte detecciones sparsa en lista de (x, y, w, h) por frame."""
+    sparsa: dict[int, float],
+    total_frames: int,
+    src_w: int,
+    src_h: int,
+    fps: float,
+    sparsa_conf: dict[int, float] | None = None,
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None]:
+    """Convierte detecciones sparsa en crops por frame; devuelve (crops, filled, sparsa_conf)."""
     src_center = src_w / 2
-    deadzone_w = rt.DEADZONE_PCT * src_w
+    crop_w = src_h * 9 // 16
+    deadzone_w = rt.DEADZONE_PCT * crop_w  # sobre crop_w, no source_w
     if not sparsa:
         print("[reframe] no se detectaron caras -- center-crop aplicado")
-        cw = src_h * 9 // 16
-        cx = (src_w - cw) // 2
-        return [(cx, 0, cw, src_h)] * total_frames
+        cx = (src_w - crop_w) // 2
+        crops = [(cx, 0, crop_w, src_h)] * total_frames
+        return crops, [src_center] * total_frames, sparsa_conf
     raw = rt.interpolar_detecciones(sparsa, total_frames)
-    filled = rt.manejar_cara_perdida(raw, rt.FACE_LOST_PATIENCE, src_center)
+    filled = rt.manejar_cara_perdida(raw, src_center)
     targets = rt.aplicar_deadzone_secuencia(filled, deadzone_w)
-    smooth = rt.ema_smooth(targets, rt.EMA_ALPHA)
-    return [rt.calcular_ventana_crop(x, src_w, src_h) for x in smooth]
+    smooth = rt.ema_smooth_adaptativo(targets, fps, deadzone_w)
+    crops = [rt.calcular_ventana_crop(x, src_w, src_h) for x in smooth]
+    return crops, filled, sparsa_conf
 
 
 # ── Punch-ins en keywords ─────────────────────────────────────────────────────
@@ -316,6 +243,42 @@ def _contar_punch_ins(brain_data: dict | None) -> int:
     return sum(1 for g in (brain_data or {}).get("groups", []) if g.get("kw_ts") is not None)
 
 
+def _exportar_trayectoria_csv(
+    stem: str,
+    crops: list[tuple[int, int, int, int]],
+    filled: list[float],
+    fps: float,
+    out_dir: Path,
+    sparsa_conf: dict[int, float] | None = None,
+) -> Path:
+    """Exporta trayectoria frame-a-frame a CSV para diagnostico de tracking.
+
+    sparsa_conf: {frame_idx: score} para los frames donde corrio el detector;
+    None o ausente => columna conf_asignada omitida (backward-compat).
+    """
+    import csv
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / f"trayectoria_{stem}.csv"
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        header = ["t", "cam_center_x", "face_x_asignada", "distancia"]
+        if sparsa_conf is not None:
+            header.append("conf_asignada")
+        w.writerow(header)
+        for fi, (x, _y, cw, _ch) in enumerate(crops):
+            t = fi / fps
+            cam_cx = x + cw / 2
+            face_x = filled[fi] if fi < len(filled) else cam_cx
+            dist = abs(cam_cx - face_x)
+            row = [f"{t:.4f}", f"{cam_cx:.1f}", f"{face_x:.1f}", f"{dist:.1f}"]
+            if sparsa_conf is not None:
+                row.append(f"{sparsa_conf[fi]:.4f}" if fi in sparsa_conf else "")
+            w.writerow(row)
+    print(f"[reframe] trayectoria -> {csv_path.name}")
+    return csv_path
+
+
 def _calcular_crops(
     input_path: Path,
     caras: list[dict],
@@ -324,19 +287,28 @@ def _calcular_crops(
     total_frames: int,
     src_w: int,
     src_h: int,
-) -> list[tuple[int, int, int, int]]:
-    """Elige ruta single-face o multi-cara y devuelve la secuencia de crops."""
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None]:
+    """Elige ruta single-face o multi-cara; devuelve (crops, filled_por_frame, sparsa_conf)."""
     if len(caras) >= 2 and turnos_list:
         n_t = len(turnos_list)
         print(f"[reframe] {len(caras)} caras con turnos -- conmutacion activada ({n_t} turnos)")
-        sparsa_multi = _detectar_trayectorias_multi(input_path, total_frames, caras)
-        return rt.calcular_crops_por_turnos(
+        sparsa_multi, conf_multi = _detectar_trayectorias_multi(
+            input_path, total_frames, caras, src_w
+        )
+        crops = rt.calcular_crops_por_turnos(
             sparsa_multi, turnos_list, fps, total_frames, src_w, src_h
         )
+        filled = rt.reconstruir_filled_por_turnos(
+            sparsa_multi, turnos_list, fps, total_frames, src_w
+        )
+        # Flatten conf: frame_idx -> score del cara activo en ese turno
+        flat_conf = rt.aplanar_conf_por_turnos(conf_multi, turnos_list, fps, total_frames)
+        return crops, filled, flat_conf
     if len(caras) >= 2:
         print(f"[reframe] {len(caras)} caras -- cara principal; asigna turnos para conmutar")
-    sparsa = _detectar_trayectoria(input_path, total_frames)
-    return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h)
+    ancla_x = caras[0]["center_x"] if caras else src_w / 2
+    sparsa, sparsa_conf = _detectar_trayectoria(input_path, total_frames, src_w, ancla_x)
+    return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h, fps, sparsa_conf)
 
 
 def reframe_clip(
@@ -345,6 +317,7 @@ def reframe_clip(
     turnos: dict | None = None,
     brain_data: dict | None = None,
     punch_in: bool = False,
+    tray_dir: Path | None = None,
 ) -> dict:
     """Reencuadra clip 16:9 a 9:16 con face tracking EMA+deadzone y conmutacion por turnos."""
     from core import get_video_info
@@ -362,9 +335,14 @@ def reframe_clip(
     if punch_in and brain_data is None:
         brain_data = _cargar_o_generar_brain(input_path)
     turnos_list = (turnos or {}).get("turnos", [])
-    crops = _calcular_crops(input_path, caras, turnos_list, fps, total_frames, src_w, src_h)
+    crops, filled, sparsa_conf = _calcular_crops(
+        input_path, caras, turnos_list, fps, total_frames, src_w, src_h
+    )
     if punch_in and brain_data:
         crops = _aplicar_punch_ins(crops, brain_data, fps, src_w, src_h)
+    if tray_dir is not None:
+        _exportar_trayectoria_csv(output_path.stem, crops, filled, fps, tray_dir, sparsa_conf)
+        print(f"[reframe] modelo: {ACTIVE_MODEL_PATH.name}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     elapsed = renderizar_reframe(input_path, crops, output_path, fps, has_audio)
@@ -388,6 +366,7 @@ def _build_parser():
     p.add_argument("--turnos", type=Path, default=None, help="Archivo _turnos.json")
     p.add_argument("--punch-in", action="store_true", help="Activar punch-ins en keywords")
     p.add_argument("--out", type=Path, default=None, help="Ruta de salida")
+    p.add_argument("--tray-dir", type=Path, default=None, help="Directorio para CSV de trayectoria")
     return p
 
 
@@ -395,5 +374,7 @@ if __name__ == "__main__":
     args = _build_parser().parse_args()
     output = args.out or args.input.with_stem(args.input.stem + SUFFIX_9X16)
     turnos = json.loads(args.turnos.read_text(encoding="utf-8")) if args.turnos else None
-    result = reframe_clip(args.input, output, turnos=turnos, punch_in=args.punch_in)
+    result = reframe_clip(
+        args.input, output, turnos=turnos, punch_in=args.punch_in, tray_dir=args.tray_dir
+    )
     print(f"Output: {result['output']}")

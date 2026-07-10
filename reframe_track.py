@@ -11,13 +11,20 @@ from __future__ import annotations
 # ── Parametros calibrables ────────────────────────────────────────────────────
 # Ver tabla en DISENO_REFRAME.md §2 para rango sensato de cada constante.
 
-EMA_ALPHA = 0.08  # suavizado: menor = mas suave y lento, mayor = mas reactivo
-DEADZONE_PCT = 0.30  # zona muerta como fraccion de source_w
+EMA_ALPHA = 0.08  # alias de ALPHA_BASE_LENTO (backward-compat)
+ALPHA_BASE_LENTO = 0.08   # tau ~0.41s a 30fps: reposo y movimientos suaves
+ALPHA_BASE_RAPIDO = 0.28  # tau ~0.11s a 30fps; equivale al alpha efectivo de s13 @60fps
+                           # (1-(1-0.08)^2 = 0.1536 ≈ 1-(1-0.28)^0.5 = 0.1515)
+RAMP_LENTO_FACTOR = 1.0   # umbral_lento  = deadzone_half × 1.0 (borde de la deadzone)
+RAMP_RAPIDO_FACTOR = 3.0  # umbral_rapido = deadzone_half × 3.0 (3x el borde)
+                           # => podcast 1920x1080: umbral_lento=76px  umbral_rapido=228px
+                           # => videolargo 854x480: umbral_lento=34px  umbral_rapido=101px
+
+DEADZONE_PCT = 0.25  # zona muerta como fraccion de CROP_W (corregido s12; era 0.30 de source_w)
 DETECT_EVERY_N = 3  # detectar cara cada N fotogramas
-FACE_LOST_PATIENCE = 30  # fotogramas antes de iniciar recentrado gradual
+GATE_ANCLA_PCT = 0.15  # radio del ancla: deteccion >15% source_w del ancla => ignorar
 PUNCH_ZOOM = 1.12  # factor de zoom punch-in (112% = crop 11% mas estrecho)
 PUNCH_TRANS_FRAMES = 4  # fotogramas de rampa entrada/salida del punch-in
-RECENTER_ALPHA = 0.05  # EMA hacia centro cuando cara perdida > patience
 FACE_MIN_CONFIDENCE = 0.20  # confianza minima del detector (0.5 es alto para videos 480p)
 
 
@@ -51,6 +58,55 @@ def ema_smooth(positions: list[float], alpha: float) -> list[float]:
         return []
     smooth = [positions[0]]
     for p in positions[1:]:
+        smooth.append(alpha * p + (1 - alpha) * smooth[-1])
+    return smooth
+
+
+def calcular_alpha_fps(alpha_base: float, fps: float, fps_ref: float = 30.0) -> float:
+    """Alpha EMA efectivo normalizado por fps: comportamiento identico en 30 y 60fps.
+
+    Derivacion: tau (segundos) = constante => alpha = 1-(1-alpha_ref)^(fps_ref/fps).
+    A 60fps hay mas frames/s, cada frame mueve menos para el mismo tau real.
+    """
+    return 1 - (1 - alpha_base) ** (fps_ref / fps)
+
+
+def calcular_alpha_adaptativo(
+    error_px: float, deadzone_w: float, fps: float, fps_ref: float = 30.0
+) -> float:
+    """Alpha EMA adaptativo segun el error camara->target por frame.
+
+    Regimenes:
+      - Lento (ALPHA_BASE_LENTO):  error <= deadzone_half * RAMP_LENTO_FACTOR  (borde deadzone)
+      - Rapido (ALPHA_BASE_RAPIDO): error >= deadzone_half * RAMP_RAPIDO_FACTOR (3x borde)
+      - Intermedio: rampa lineal entre ambos umbrales.
+
+    Invariante: error <= deadzone_w/2 SIEMPRE produce ALPHA_BASE_LENTO (reposo garantizado).
+    Ambas bases pasan por calcular_alpha_fps (^(fps_ref/fps)).
+    """
+    dz_half = deadzone_w / 2
+    umbral_lento = dz_half * RAMP_LENTO_FACTOR
+    umbral_rapido = dz_half * RAMP_RAPIDO_FACTOR
+    if error_px <= umbral_lento:
+        alpha_base = ALPHA_BASE_LENTO
+    elif error_px >= umbral_rapido:
+        alpha_base = ALPHA_BASE_RAPIDO
+    else:
+        t = (error_px - umbral_lento) / (umbral_rapido - umbral_lento)
+        alpha_base = ALPHA_BASE_LENTO + t * (ALPHA_BASE_RAPIDO - ALPHA_BASE_LENTO)
+    return calcular_alpha_fps(alpha_base, fps, fps_ref)
+
+
+def ema_smooth_adaptativo(
+    positions: list[float], fps: float, deadzone_w: float
+) -> list[float]:
+    """EMA con alpha adaptativo por frame segun |target - camara_anterior|."""
+    if not positions:
+        return []
+    smooth = [positions[0]]
+    for p in positions[1:]:
+        error = abs(p - smooth[-1])
+        alpha = calcular_alpha_adaptativo(error, deadzone_w, fps)
         smooth.append(alpha * p + (1 - alpha) * smooth[-1])
     return smooth
 
@@ -100,26 +156,19 @@ def interpolar_detecciones(sparsa: dict[int, float], total_frames: int) -> list[
 
 def manejar_cara_perdida(
     raw_centers: list[float | None],
-    patience: int,
     source_center_x: float,
-    recenter_alpha: float = RECENTER_ALPHA,
 ) -> list[float]:
-    """Rellena Nones: mantiene ultimo conocido patience frames; luego EMA hacia centro."""
+    """Rellena Nones manteniendo la ultima posicion conocida (hold indefinido).
+
+    El recentrado al source_center_x solo aplica como valor inicial; si jamas se
+    detecto cara en el video, el caller retorna center-crop sin llamar esta funcion.
+    """
     filled: list[float] = []
     last_known = source_center_x
-    frames_perdidos = 0
     for cx in raw_centers:
         if cx is not None:
             last_known = cx
-            frames_perdidos = 0
-            filled.append(cx)
-        else:
-            frames_perdidos += 1
-            if frames_perdidos <= patience:
-                filled.append(last_known)
-            else:
-                last_known = last_known * (1 - recenter_alpha) + source_center_x * recenter_alpha
-                filled.append(last_known)
+        filled.append(last_known)
     return filled
 
 
@@ -141,7 +190,7 @@ def cara_en_frame(frame_idx: int, fps: float, turnos: list[dict]) -> int:
 def detectar_cara_frame(frame, detector) -> dict | None:
     """Detecta la cara mas prominente en un fotograma numpy (BGR) con MediaPipe Tasks.
 
-    Devuelve {'center_x': float, 'center_y': float, 'bbox': [x, y, w, h]} o None.
+    Devuelve {'center_x': float, 'center_y': float, 'bbox': [x, y, w, h], 'score': float} o None.
     detector: FaceDetector creado con mediapipe.tasks.python.vision.FaceDetector.
     """
     import cv2
@@ -163,6 +212,7 @@ def detectar_cara_frame(frame, detector) -> dict | None:
         "center_x": float(x + bw / 2),
         "center_y": float(y + bh / 2),
         "bbox": [x, y, bw, bh],
+        "score": float(best.categories[0].score),
     }
 
 
@@ -215,8 +265,8 @@ def calcular_crops_por_turnos(
     Cada segmento aplica EMA+deadzone independientemente — no hay suavizado entre turnos.
     """
     src_center = src_w / 2
-    deadzone_w = DEADZONE_PCT * src_w
     cw_def = src_h * 9 // 16
+    deadzone_w = DEADZONE_PCT * cw_def  # sobre crop_w, no source_w
     default_crop: tuple[int, int, int, int] = ((src_w - cw_def) // 2, 0, cw_def, src_h)
     result: list[tuple[int, int, int, int] | None] = [None] * total_frames
 
@@ -234,10 +284,66 @@ def calcular_crops_por_turnos(
             if f_ini <= fi <= f_fin
         }
         raw = interpolar_detecciones(sparsa_seg, n_seg)
-        filled = manejar_cara_perdida(raw, FACE_LOST_PATIENCE, src_center)
+        filled = manejar_cara_perdida(raw, src_center)
         targets = aplicar_deadzone_secuencia(filled, deadzone_w)
-        smooth = ema_smooth(targets, EMA_ALPHA)
+        smooth = ema_smooth_adaptativo(targets, fps, deadzone_w)
         for j, cx_val in enumerate(smooth):
             result[f_ini + j] = calcular_ventana_crop(cx_val, src_w, src_h)
 
     return [c if c is not None else default_crop for c in result]
+
+
+def aplanar_conf_por_turnos(
+    conf_multi: dict[int, dict[int, float]],
+    turnos_list: list[dict],
+    fps: float,
+    total_frames: int,
+) -> dict[int, float]:
+    """Aplana conf_multi al cara activo por turno. Puro math, sin I/O.
+
+    Devuelve {frame_idx: score} para los frames donde corrio el detector
+    y la deteccion fue asignada al cara activo en ese turno.
+    """
+    result: dict[int, float] = {}
+    for i, turno in enumerate(turnos_list):
+        f_ini = int(turno["t_ini"] * fps)
+        next_t = turnos_list[i + 1]["t_ini"] if i + 1 < len(turnos_list) else total_frames / fps
+        f_fin = min(int(next_t * fps) - 1, total_frames - 1)
+        cara_id = int(turno["cara_id"])
+        for fi, score in conf_multi.get(cara_id, {}).items():
+            if f_ini <= fi <= f_fin:
+                result[fi] = score
+    return result
+
+
+def reconstruir_filled_por_turnos(
+    sparsa_multi: dict[int, dict[int, float]],
+    turnos_list: list[dict],
+    fps: float,
+    total_frames: int,
+    src_w: int,
+) -> list[float]:
+    """Devuelve filled (interpolar+hold) por frame para CSV de trayectoria.
+
+    Misma segmentacion que calcular_crops_por_turnos pero sin EMA/deadzone/crop.
+    """
+    src_center = src_w / 2
+    result: list[float] = [src_center] * total_frames
+    for i, turno in enumerate(turnos_list):
+        f_ini = int(turno["t_ini"] * fps)
+        next_t = turnos_list[i + 1]["t_ini"] if i + 1 < len(turnos_list) else total_frames / fps
+        f_fin = min(int(next_t * fps) - 1, total_frames - 1)
+        n_seg = f_fin - f_ini + 1
+        if n_seg <= 0:
+            continue
+        cara_id = int(turno["cara_id"])
+        sparsa_seg = {
+            fi - f_ini: cx
+            for fi, cx in sparsa_multi.get(cara_id, {}).items()
+            if f_ini <= fi <= f_fin
+        }
+        raw = interpolar_detecciones(sparsa_seg, n_seg)
+        filled_seg = manejar_cara_perdida(raw, src_center)
+        for j, fx in enumerate(filled_seg):
+            result[f_ini + j] = fx
+    return result

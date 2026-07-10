@@ -73,6 +73,9 @@ brain.py            Cerebro LLM (Fase 2+) — chat_json alias publico
 clipper.py          Clipper viral F4: segmenta, puntua, selecciona, corta SIN captions
 clipper_brain.py    Etapas LLM del clipper: segmentar_transcript + puntuar_candidatos
 depurador.py        Depurador de silencios/muletillas (modos seguro/agresivo)
+reframe.py          Reframe 16:9->9:16 con face tracking (F4.1) — CLI independiente
+reframe_track.py    Matematicas puras del tracker (EMA adaptativo, deadzone, crops)
+reframe_detect.py   Deteccion de cara con MediaPipe Tasks API (I/O video, OpenCV)
 app.py              FastAPI server (puerto 8787)
 static/index.html   UI del Studio (1 archivo, JS vanilla)
 arranque.bat        Doble-click para iniciar el Studio
@@ -86,10 +89,45 @@ output/             Videos con captions quemados + .ass
 output/clips/       Clips virales MP4 cortados (F4) + {stem}_clips.json
 transcripts/        {video}_words.json, {video}_groups.json, {video}.brain.json
                     {clip}_words.json y _groups.json re-basados a t=0 (F4)
-thumbs/             Miniaturas para la UI
+                    {clip}_turnos.json — turnos multi-cara para reframe (F4.1)
+thumbs/             Miniaturas para la UI + thumbnails de caras (reframe)
 models/medium/      Modelo Whisper local (symlinks=False)
+models/blaze_face_short_range.tflite   Detector MediaPipe activo (F4.1)
+models/blaze_face_full_range.tflite    Detector alternativo (disponible, no activo)
 revision/           Evidencia visual por fase
+revision/fase-4.1/  CSVs de trayectoria + frames + decisiones + REFRAME_REPORT.md
 references/         Repos clonados solo para estudio (NO tocar)
+```
+
+## Comandos F4.1 — Reframe vertical
+
+```powershell
+# Reframe de un clip (single-face, sin turnos)
+.\venv\Scripts\python reframe.py output\clips\clip.mp4 --tray-dir revision\fase-4.1
+
+# Con turnos multi-cara (requiere transcripts\{stem}_turnos.json)
+.\venv\Scripts\python reframe.py output\clips\clip.mp4 --turnos transcripts\clip_turnos.json
+
+# Con punch-ins en keywords (opt-in)
+.\venv\Scripts\python reframe.py output\clips\clip.mp4 --punch-in
+```
+
+## Contratos F4.1 — reframe_track.py (math puro)
+
+```python
+# Alpha EMA adaptativo (D5): regimen lento/rapido segun error camara->target
+ALPHA_BASE_LENTO  = 0.08   # tau ~0.41s @ 30fps
+ALPHA_BASE_RAPIDO = 0.28   # tau ~0.11s @ 30fps
+RAMP_LENTO_FACTOR = 1.0    # umbral_lento  = dz_half * 1.0
+RAMP_RAPIDO_FACTOR = 3.0   # umbral_rapido = dz_half * 3.0
+
+calcular_alpha_adaptativo(error_px, deadzone_w, fps) -> float
+ema_smooth_adaptativo(positions, fps, deadzone_w) -> list[float]
+calcular_alpha_fps(alpha_base, fps, fps_ref=30.0) -> float  # ^(fps_ref/fps) CORRECTO
+aplanar_conf_por_turnos(conf_multi, turnos_list, fps, total_frames) -> dict[int, float]
+
+# CSV de trayectoria generado en cada render con --tray-dir:
+# t, cam_center_x, face_x_asignada, distancia, conf_asignada
 ```
 
 ## Arquitectura core.py — funciones públicas

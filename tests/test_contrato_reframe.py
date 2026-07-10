@@ -165,43 +165,144 @@ def test_interpolar_longitud():
 
 
 def test_cara_perdida_dentro_de_patience():
-    # Cara conocida en 0, perdida frames 1-5, patience=10 -> mantener ultimo
+    # Cara conocida en frame 0, perdida frames 1-5 -> hold en 100.0
     raw: list[float | None] = [100.0] + [None] * 5
-    result = rt.manejar_cara_perdida(raw, patience=10, source_center_x=960.0)
+    result = rt.manejar_cara_perdida(raw, source_center_x=960.0)
     assert len(result) == 6
     for v in result[1:]:
         assert v == pytest.approx(100.0)
 
 
-def test_cara_perdida_supera_patience_recentra():
-    # Cara conocida en 0.0, perdida 20 frames, patience=5 -> EMA hacia 960
+def test_cara_perdida_hold_indefinido():
+    # Cara conocida en 0.0, perdida 20 frames -> hold en 0.0 siempre (sin recentrado)
     raw: list[float | None] = [0.0] + [None] * 20
-    result = rt.manejar_cara_perdida(raw, patience=5, source_center_x=960.0)
+    result = rt.manejar_cara_perdida(raw, source_center_x=960.0)
     assert len(result) == 21
-    assert result[5] == pytest.approx(0.0)  # todavia dentro de patience
-    assert result[6] > 0.0  # primer frame de recentrado
-    assert result[20] > result[10]  # se acerca monotonicamente al centro
+    for v in result:
+        assert v == pytest.approx(0.0)  # jamas se mueve hacia el centro
 
 
 def test_cara_perdida_recover():
     # Cara perdida y luego reaparece: el ultimo valor es el de la nueva deteccion
     raw: list[float | None] = [500.0] + [None] * 5 + [800.0]
-    result = rt.manejar_cara_perdida(raw, patience=10, source_center_x=960.0)
+    result = rt.manejar_cara_perdida(raw, source_center_x=960.0)
     assert result[0] == 500.0
     assert result[-1] == 800.0
 
 
 def test_cara_perdida_lista_sin_none():
     raw: list[float | None] = [100.0, 200.0, 300.0]
-    result = rt.manejar_cara_perdida(raw, patience=10, source_center_x=960.0)
+    result = rt.manejar_cara_perdida(raw, source_center_x=960.0)
     assert result == [100.0, 200.0, 300.0]
 
 
-def test_cara_perdida_recenter_alpha_parametrizable():
-    # recenter_alpha=1.0 debe saltar al centro en el primer frame post-patience
-    raw: list[float | None] = [0.0] + [None] * 10
-    result = rt.manejar_cara_perdida(raw, patience=2, source_center_x=960.0, recenter_alpha=1.0)
-    assert result[3] == pytest.approx(960.0)  # primer frame post-patience con alpha=1
+def test_cara_perdida_hold_nunca_recentra():
+    # Incluso con muchos frames perdidos, la posicion se mantiene en la ultima conocida
+    raw: list[float | None] = [100.0] + [None] * 50
+    result = rt.manejar_cara_perdida(raw, source_center_x=960.0)
+    assert all(v == pytest.approx(100.0) for v in result)
+
+
+# ── calcular_alpha_fps (normalizacion por fps) ───────────────────────────────
+
+
+def test_calcular_alpha_fps_en_referencia():
+    # A 30fps (fps_ref), alpha efectivo debe ser identico al base
+    assert rt.calcular_alpha_fps(0.08, 30.0) == pytest.approx(0.08)
+
+
+def test_calcular_alpha_fps_60fps_menor():
+    # A 60fps hay mas frames/s => alpha por frame debe ser MENOR para mantener el mismo tau real
+    alpha_30 = rt.calcular_alpha_fps(0.08, 30.0)
+    alpha_60 = rt.calcular_alpha_fps(0.08, 60.0)
+    assert alpha_60 < alpha_30
+
+
+def test_calcular_alpha_fps_nunca_supera_1():
+    # Alpha efectivo siempre <= 1 para cualquier fps razonable
+    assert rt.calcular_alpha_fps(0.08, 120.0) < 1.0
+    assert rt.calcular_alpha_fps(1.0, 60.0) == pytest.approx(1.0)
+
+
+# ── calcular_alpha_adaptativo + ema_smooth_adaptativo ────────────────────────
+
+_DZ_W = 150.0   # deadzone_w de referencia (podcast 1920x1080 aprox)
+_DZ_HALF = _DZ_W / 2  # 75.0
+
+
+def test_alpha_adaptativo_invariante_reposo():
+    # error <= dz_half => SIEMPRE alpha_base_lento (invariante de reposo)
+    for error in [0.0, _DZ_HALF / 2, _DZ_HALF]:
+        alpha = rt.calcular_alpha_adaptativo(error, _DZ_W, 30.0)
+        assert alpha == pytest.approx(rt.calcular_alpha_fps(rt.ALPHA_BASE_LENTO, 30.0))
+
+
+def test_alpha_adaptativo_maximo_en_umbral_rapido():
+    # error = dz_half * RAMP_RAPIDO_FACTOR => alpha_base_rapido
+    umbral_rapido = _DZ_HALF * rt.RAMP_RAPIDO_FACTOR
+    alpha = rt.calcular_alpha_adaptativo(umbral_rapido, _DZ_W, 30.0)
+    assert alpha == pytest.approx(rt.calcular_alpha_fps(rt.ALPHA_BASE_RAPIDO, 30.0))
+
+
+def test_alpha_adaptativo_monotono():
+    # alpha no decrece al aumentar el error
+    errores = [0.0, 30.0, _DZ_HALF, _DZ_HALF * 1.5, _DZ_HALF * 2.0, _DZ_HALF * 3.0, 400.0]
+    alphas = [rt.calcular_alpha_adaptativo(e, _DZ_W, 30.0) for e in errores]
+    for i in range(len(alphas) - 1):
+        assert alphas[i] <= alphas[i + 1] + 1e-9
+
+
+def test_alpha_adaptativo_continuidad_borde_lento():
+    # En el borde lento, limite izq e inter producen el mismo alpha (sin salto)
+    e = _DZ_HALF * rt.RAMP_LENTO_FACTOR
+    alpha_borde = rt.calcular_alpha_adaptativo(e, _DZ_W, 30.0)
+    alpha_lento = rt.calcular_alpha_fps(rt.ALPHA_BASE_LENTO, 30.0)
+    assert alpha_borde == pytest.approx(alpha_lento, rel=1e-6)
+
+
+def test_alpha_adaptativo_continuidad_borde_rapido():
+    # En el borde rapido, limite inter y regimen rapido producen el mismo alpha
+    e = _DZ_HALF * rt.RAMP_RAPIDO_FACTOR
+    alpha_borde = rt.calcular_alpha_adaptativo(e, _DZ_W, 30.0)
+    alpha_rapido = rt.calcular_alpha_fps(rt.ALPHA_BASE_RAPIDO, 30.0)
+    assert alpha_borde == pytest.approx(alpha_rapido, rel=1e-6)
+
+
+def test_alpha_adaptativo_tau_fps():
+    # El mismo error en distinto fps debe dar taus similares en segundos
+    # (ambas bases normalizadas correctamente por calcular_alpha_fps)
+    error = _DZ_HALF * 2.0  # en zona intermedia
+    for fps in [24.0, 30.0, 60.0]:
+        a = rt.calcular_alpha_adaptativo(error, _DZ_W, fps)
+        tau_s = (1.0 / a) / fps
+        # tau debe estar entre los taus de lento y rapido con ~10% tolerancia
+        tau_lento = (1.0 / rt.calcular_alpha_fps(rt.ALPHA_BASE_LENTO, 30.0)) / 30.0
+        tau_rapido = (1.0 / rt.calcular_alpha_fps(rt.ALPHA_BASE_RAPIDO, 30.0)) / 30.0
+        assert tau_rapido * 0.9 <= tau_s <= tau_lento * 1.1
+
+
+def test_ema_smooth_adaptativo_vacio():
+    assert rt.ema_smooth_adaptativo([], 60.0, _DZ_W) == []
+
+
+def test_ema_smooth_adaptativo_un_elemento():
+    result = rt.ema_smooth_adaptativo([500.0], 30.0, _DZ_W)
+    assert result == [500.0]
+
+
+def test_ema_smooth_adaptativo_sin_movimiento():
+    # Posiciones identicas: smooth permanece igual
+    result = rt.ema_smooth_adaptativo([300.0] * 10, 30.0, _DZ_W)
+    assert all(v == pytest.approx(300.0) for v in result)
+
+
+def test_ema_smooth_adaptativo_gran_salto_converge():
+    # Salto grande: el adaptativo debe converger mas rapido que el EMA fijo lento
+    pos_lento = [0.0] + [500.0] * 30
+    smooth_adapt = rt.ema_smooth_adaptativo(pos_lento, 60.0, _DZ_W)
+    smooth_fijo = rt.ema_smooth(pos_lento, rt.calcular_alpha_fps(rt.ALPHA_BASE_LENTO, 60.0))
+    # A mitad de la secuencia, adaptativo debe estar mas cerca del target
+    assert smooth_adapt[15] > smooth_fijo[15]
 
 
 # ── cara_en_frame (logica de turnos multi-cara) ──────────────────────────────
@@ -263,3 +364,36 @@ def test_calcular_crops_por_turnos_sin_datos_usa_default():
     assert len(crops) == 60
     for c in crops:
         assert len(c) == 4
+
+
+# ── aplanar_conf_por_turnos (math puro) ──────────────────────────────────────
+
+_TURNOS_CONF = [
+    {"t_ini": 0.0, "t_fin": 1.0, "cara_id": 0},
+    {"t_ini": 1.0, "t_fin": 2.0, "cara_id": 1},
+]
+_CONF_MULTI_EJ = {
+    0: {0: 0.5, 3: 0.6, 27: 0.7},   # frames en turno 0 (f=0..29 a 30fps)
+    1: {30: 0.8, 33: 0.9},            # frames en turno 1 (f=30..59)
+}
+
+
+def test_aplanar_conf_por_turnos_cara_correcta():
+    # Frames del turno 0 usan confs de cara_id=0; turno 1 usa cara_id=1
+    result = rt.aplanar_conf_por_turnos(_CONF_MULTI_EJ, _TURNOS_CONF, 30.0, 60)
+    assert result[0] == pytest.approx(0.5)
+    assert result[3] == pytest.approx(0.6)
+    assert result[30] == pytest.approx(0.8)
+    assert result[33] == pytest.approx(0.9)
+
+
+def test_aplanar_conf_por_turnos_no_filtra_entre_turnos():
+    # frame 27 pertenece al turno 0 (f_ini=0, f_fin=29 a 30fps) -- debe estar
+    result = rt.aplanar_conf_por_turnos(_CONF_MULTI_EJ, _TURNOS_CONF, 30.0, 60)
+    assert 27 in result
+
+
+def test_aplanar_conf_por_turnos_vacio_sin_crash():
+    # Sin detecciones: devuelve dict vacio
+    result = rt.aplanar_conf_por_turnos({0: {}, 1: {}}, _TURNOS_CONF, 30.0, 60)
+    assert result == {}

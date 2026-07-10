@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 11
+Actualizado: 2026-07-09 · Sesión: 16
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -8,7 +8,7 @@ Actualizado: 2026-07-09 · Sesión: 11
 - [x] F3 Depurador de clases — CERRADA. Validada con TTS (4 cortes, -3.84s) y voz humana OBS (7 cortes, -15.74s, 20.9%). Aprobación auditiva del arquitecto. _eval_joins diagnóstico operativo (6/15dB, sin loop de ajuste). Render único: 44s V1, 12s V2.
 - [x] Refactor app.py→jobs.py — CERRADO. app.py 243L, jobs.py 185L (deuda PREGUNTAS #7 saldada). E2E smoke OK (render+enfasis en 2.9s).
 - [x] F4 Clipper viral — CERRADA. Smoke test pruebaedicionvideoyo.mov: 1 clip score=63 OK. Calibración videolargo.mov (57 min): 3 clips (86/78/77), $0.0094, 45s wall. SCORE_MIN=60 y MAX_CLIPS=3 confirmados por arquitecto. Bug dotenv fix incluido. Evidencia: revision/fase-4/DISENO_CLIPPER.md + CALIBRACION_CLIPPER.md + frames clip1-3.
-- [ ] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — SESION 11: fix pix_fmt (yuv420p) + conmutacion multi-cara real + validacion podcast 2 personas. 82 tests. Pendiente: veredicto visual del arquitecto.
+- [x] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — CERRADA s16. C1 PASS ×3 (96.2/97.5/100%), C2v2 PASS (0.19/0.53%), 98 tests, D1-D5+D6 firmes. Aprobado K 90/100. Deudas: descuadre reposo (#21), full_range cara débil (#22), F4.2-LITE (#24). Avance 65/100.
 - [ ] F5 Assets: emojis PNG + ComfyUI
 - [ ] F6 Motor B: HyperFrames
 - [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ])
@@ -34,3 +34,8 @@ Actualizado: 2026-07-09 · Sesión: 11
 - 2026-07-09: Sesión 9 — F4.1 SESIÓN DE DISEÑO COMPLETA. Votos #12/#13 registrados. DISENO_REFRAME.md completo. Esqueleto reframe.py + reframe_track.py. 27 tests de contrato. mediapipe en requirements. Pendiente: votos #14-17 → sesión de implementación.
 - 2026-07-09: Sesión 10 — F4.1 IMPLEMENTACIÓN. Votos #14-17. FACE_MIN_CONFIDENCE=0.20. 4 clips validados, punch-ins x9, run_reframe/API/UI. 79 tests. Multi-cara pendiente.
 - 2026-07-09: Sesión 11 — F4.1 FIX + CONMUTACION. Fix critico pix_fmt yuv420p (todos los outputs eran yuv444p). Conmutacion multi-cara real: calcular_crops_por_turnos (puro math), detectar_trayectorias_multi, detectar_todas_caras_frame. 2+ caras sin turnos: WARNING (no error). Validacion podcast 2 personas: 2 caras detectadas (cx=1362/719, score=0.40/0.24), 6 turnos test, renders OK, frames pre/post corte extraidos. 82 tests verdes.
+- 2026-07-09: Sesión 12 — F4.1 FIX TRACKING. 7 correcciones: DEADZONE_PCT=0.25 sobre crop_w (era 0.30 source_w), HOLD indefinido (elimina RECENTER_ALPHA), FACE_LOST_PATIENCE_S=1.0s, gate asignacion 20% source_w, alpha normalizado fps (0.154@60fps), model_selection=short_range unico disponible en Tasks API. CSV trayectoria exportado por render. 85 tests. C1 PASS 99.1-99.3%. C2 FAIL noturnos: cam 67% en zona vacia (drift via gate 384px). Detenido per protocolo.
+- 2026-07-09: Sesión 13 — F4.1 ANCLA ESTATICA. GATE_ANCLA_PCT=0.15 (era FACE_GATE_PCT=0.20). Asignacion exclusiva por frame (greedy bipartita). C1 PASS 99.2-99.8%. C2 FAIL residual 42% (cam_min 942->1082, +140px mejora). Causa: solapamiento 26px entre zona ancla [1074,1650] y zona C2 [900-1100]. Cara derecha orbita en [1082-1122] = dentro del ancla pero en C2. Opciones: gate 0.12 o C2 relativo. Model_selection: short_range unico disponible en Tasks API 0.10.x. No parchar; paquete de cierre preparado.
+- 2026-07-09: Sesión 14 — F4.1 RE-VALIDACION. C2v2 criterio oficial (D1). full_range descargado y comparado: RECHAZADO (fuera_gate +62, D4). EMA fix ^30/fps aplicado (alpha 0.041@60fps). Re-renders noturnos+turnos s14: C2v2=0.2%/0.5% PASS; C1 noturnos 94.9% FAIL marginal (retune pendiente D5). CSV con confianza. DECISIONES.md creado. 88 tests.
+- 2026-07-09: Sesión 15 — F4.1 RETUNE D5. Alpha adaptativo 2 regimenes: ALPHA_BASE_LENTO=0.08, ALPHA_BASE_RAPIDO=0.28, rampa lineal dz_half a 3xdz_half. C1 PASS: noturnos 96.2%, turnos 97.5%, videolargo 100% (tracking-only). C2v2 PASS: 0.19/0.53%. 10 tests nuevos (98 total). Correcciones model_selection.md (4a/4b/4c). DECISIONES.md D5 cerrado.
+- 2026-07-09: Sesión 16 — F4.1 CIERRE FORMAL. DoD completo verificado. DECISIONES.md D6 (cierre K 90/100). Diagnostico descuadre t=57s (cam=1182 face=1134 dist=48px HOLD). PREGUNTAS.md: puntos 20-24 (punch-in veredicto, deuda descuadre, full-range, riesgos revisor, F4.2-LITE spec). ESTADO.md: F4.1 cerrada, avance 65/100. Siguiente: F4.2-LITE.

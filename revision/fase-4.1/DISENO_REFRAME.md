@@ -79,25 +79,99 @@ Windows Media Player y plataformas de social media. Verificado con ffprobe.
 
 ### Parámetros calibrables (constantes al inicio de `reframe_track.py`)
 
-| Constante | Valor inicial | Rango sensato | Descripción |
-|-----------|--------------|---------------|-------------|
-| `EMA_ALPHA` | 0.08 | 0.03–0.20 | Suavizado EMA: menor = más suave y lento, mayor = más reactivo |
-| `DEADZONE_PCT` | 0.30 | 0.15–0.45 | Zona muerta como fracción de source_w |
+| Constante | Valor | Rango sensato | Descripción |
+|-----------|-------|---------------|-------------|
+| `EMA_ALPHA` | 0.08 | 0.03–0.20 | Suavizado EMA a 30fps; se normaliza por fps en runtime |
+| `DEADZONE_PCT` | 0.25 | 0.10–0.40 | Zona muerta como fracción de **crop_w** (s12; antes 0.30×source_w) |
 | `DETECT_EVERY_N` | 3 | 1–5 | Frecuencia de detección (fotogramas entre llamadas a MediaPipe) |
-| `FACE_LOST_PATIENCE` | 30 | 15–60 | Fotogramas sin cara antes de iniciar recentrado gradual |
+| `GATE_ANCLA_PCT` | 0.15 | 0.10–0.20 | Radio del ancla estática por track (s13; antes FACE_GATE_PCT=0.20 de última pos) |
 | `PUNCH_ZOOM` | 1.12 | 1.08–1.18 | Factor de zoom punch-in (112% = crop 11% más estrecho) |
 | `PUNCH_TRANS_FRAMES` | 4 | 2–8 | Fotogramas de rampa entrada/salida del punch-in |
-| `RECENTER_ALPHA` | 0.05 | 0.02–0.10 | EMA hacia centro cuando cara perdida > patience |
 
-### Deadzone — detalle
+**Constantes eliminadas en sesión 12:** `FACE_LOST_PATIENCE=30` (fijo, asumía 30fps),
+`RECENTER_ALPHA=0.05` (flujo de recentrado eliminado), `FACE_LOST_PATIENCE_S=1.0` (declarada
+pero nunca consumida — eliminada como letra muerta).
+
+**Constante renombrada en sesión 13:** `FACE_GATE_PCT=0.20` (gate de última posición)
+→ `GATE_ANCLA_PCT=0.15` (gate de ancla estática — ver corrección de ancla abajo).
+
+### Deadzone — corrección sesión 12
 
 ```
-deadzone_w = DEADZONE_PCT × source_w   (ej. 576px para source_w=1920)
+deadzone_w = DEADZONE_PCT × crop_w   (ej. ~152px para crop_w=607px en fuente 1080p)
 ```
 
-El encuadre solo se mueve si `|face_center_x − crop_center_x| > deadzone_w / 2` (288px).
+**Bug original:** `deadzone_w = 0.30 × source_w = 576px` (half = 288px). Para source_w=1920 el borde
+del crop está a sólo ~303px del centro. Una cara a 13px del borde del crop quedaba dentro de
+tolerancia → cámara aparcada 51/60s en zona vacía (x≈1072, entre dos personas).
+
+**Fix:** `deadzone_w = 0.25 × crop_w ≈ 152px` (half ≈ 76px). Cara a más de 76px del centro del crop
+activa el movimiento.
+
+El encuadre solo se mueve si `|face_center_x − crop_center_x| > deadzone_w / 2` (~76px).
 Cara quieta dentro de la deadzone = cámara completamente inmóvil.
 Este es el **criterio de calidad #1**: si el encuadre tiembla con una persona estática, la fase falla.
+
+### Cara perdida — corrección sesión 12
+
+**Comportamiento anterior (bug):** al superar `FACE_LOST_PATIENCE` frames sin cara, la cámara
+iniciaba EMA gradual hacia `source_center_x` (RECENTER_ALPHA). En un podcast de 2 personas,
+`source_center_x = 960` = zona vacía entre los hablantes → cámara se iba al espacio vacío.
+
+**Comportamiento corregido:** cara perdida = **HOLD indefinido** en la última posición conocida.
+El único `source_center_x` inicial se usa si *nunca* se detectó cara (center-crop directo,
+manejado antes de llamar a `manejar_cara_perdida`).
+
+### Gate de ancla estática — corrección sesión 13
+
+**Bug anterior (s12):** gate medía `|new_x - last_known_x| > 20% source_w`. Con referencia
+dinámica (última posición conocida), el tracker podía derivar gradualmente de ancla=1362 hasta
+x=942 en pasos menores al umbral (trinquete gradual).
+
+**Fix:** ancla estática fija por track = `cara["center_x"]` del escaneo inicial
+(`detectar_caras_video`). Cada detección se asigna al track cuya ancla esté más cerca,
+solo si la distancia al ancla ≤ `GATE_ANCLA_PCT × source_w`. Referencia NUNCA se mueve.
+
+**Asignación exclusiva:** una detección → un track (el de ancla más cercana dentro del gate).
+Implementado como matching greedy (menor distancia primero) para evitar doble asignación.
+
+```
+GATE_ANCLA_PCT = 0.15  →  gate = 288px para source_w=1920
+
+Cara 0 (ancla=1362): zona_aceptable = [1074, 1650]
+Cara 1 (ancla= 719): zona_aceptable = [431,  1007]
+Gap entre zonas: 67px (espacio sin asignar)
+```
+
+**Limitación documentada de dominio:** hablante que abandona su radio (se levanta, camina
+>288px de su ancla) = cara perdida → HOLD. Aceptable para clips ≤100s de conversación
+en cámara fija. Para eventos de movimiento amplio, aumentar `GATE_ANCLA_PCT` o redefinir
+el ancla manualmente en `_turnos.json`.
+
+**Solapamiento residual — nota historica:** la zona aceptable del track [1074,1650] se
+solapa 26px con el rango [900-1100]. El cruce C2xCARA de sesion 14 confirmo que en el
+100% de frames donde la camara entra en esa zona hay una cara a <=20px: no es drift.
+El criterio C2 fue REEMPLAZADO por C2v2 (decision del arquitecto, sesion 14).
+
+### Alpha EMA normalizado por FPS — corregido sesión 14
+
+```
+alpha_eff = 1 - (1 - EMA_ALPHA)^(30 / fps)   [CORRECTO — sesion 14]
+```
+
+Sesiones 12-13 usaban `^(fps/30)` (invertido): a 60fps daba alpha=0.154 (camara 3.8x
+mas reactiva que el valor tuneado). La formula correcta mantiene tau constante en
+segundos (~0.41s) para cualquier fps.
+
+| fps | alpha_eff correcto | tau real |
+|-----|--------------------|----------|
+| 24  | 0.0990 | 0.42s |
+| 30  | 0.0800 | 0.42s |
+| 60  | 0.0408 | 0.41s |
+
+`EMA_ALPHA = 0.08` es la referencia a 30fps. Con la correccion, a 60fps alpha=0.041 en
+lugar de 0.154. Esto produce una camara mas suave — C1 cae a 94.9% en noturnos (bajo el
+umbral 95%): retune pendiente de decision del arquitecto (sesion 14).
 
 ### Punch-in — detalle
 
@@ -121,10 +195,9 @@ MediaPipe face detection ──► face_center_x o None  (diccionario sparso {fr
          ▼ interpolar_detecciones(sparsa, total_frames)
 Lista [float | None] por frame   (lineal entre detecciones; None en extremos sin datos)
          │
-         ▼ manejar_cara_perdida(raw, patience, source_center_x)
+         ▼ manejar_cara_perdida(raw, source_center_x)
 Lista [float] por frame
-  ├── ≤ patience: último center_x conocido (cámara quieta)
-  └── > patience: EMA gradual hacia source_center_x (RECENTER_ALPHA)
+  └── hold en ultima posicion conocida (indefinido — s12 elimino patience y RECENTER_ALPHA)
          │
          ▼ aplicar_deadzone_secuencia(face_centers, deadzone_w)
 Lista de targets [float]   (el target solo cambia si la cara sale de la zona muerta)
@@ -148,8 +221,7 @@ output/clips/{stem}_9x16.mp4
 
 | Caso | Comportamiento | Log explícito |
 |------|---------------|---------------|
-| Cara perdida ≤ `FACE_LOST_PATIENCE` frames | Mantener última posición conocida | — |
-| Cara perdida > `FACE_LOST_PATIENCE` frames | EMA gradual hacia center-crop | `"cara perdida en frame {n}, recentrando"` |
+| Cara perdida (cualquier duración) | Hold en última posición conocida indefinidamente | — |
 | Sin caras en todo el video | Center-crop (`x = source_w//2 − crop_w//2`) sin fallar | `"no se detectaron caras — center-crop aplicado"` |
 | 2+ caras, sin turnos | **WARNING** + render con cara principal (sesion 11: ya no es error) | `"N caras -- cara principal; asigna turnos para conmutar"` |
 | 2+ caras, con turnos | Conmutacion real con CORTE SECO en frame exacto de cada t_ini | `"N caras con turnos -- conmutacion activada (M turnos)"` |

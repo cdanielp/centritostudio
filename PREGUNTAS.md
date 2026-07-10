@@ -152,6 +152,107 @@ Voto #17 fue render directo. Si los renders de 20-40s empiezan a ser un friccion
 
 ---
 
+---
+
+## PREGUNTAS F4.1 — Cierre (sesion 16)
+
+### 20. Veredicto de densidad de punch-in — PENDIENTE
+
+La feature de punch-ins (9 zooms/31s en el clip de prueba, opt-in default off) queda
+congelada hasta que K valide los renders de F5 con captions+emojis activos — contexto real
+de juicio. En ese momento el arquitecto decide si la densidad de punch-ins (frecuencia,
+intensidad PUNCH_ZOOM=1.12) es la correcta o hay que calibrar.
+
+Pregunta binaria cuando llegue el momento: densidad actual OK / necesita reduccion.
+
+### 21. Descuadre en reposo — DEUDA (no bloquea F4.1)
+
+**Descripcion:** en modo noturnos a t=54-60s, la camara queda en cam=1182 con cara en 1134
+(dist=48px), dentro de la deadzone (dz_half=76px). 100% hold — MediaPipe no detecto la cara
+en ese tramo. La cara aparece 48px a la izquierda del centro del crop (7.9% del crop_w=607).
+
+**Diagnostico a t=57s:** cam=1182 face=1134 dist=48px regimen=LENTO conf=HOLD.
+El descuadre no lo genera el adaptativo — la camara actua correctamente (deadzone activa).
+Lo genera la combinacion de: (a) dz_half=76px permite un desfase de hasta 76px sin corregir,
+(b) la cara debil tiene solo 34.4% de tasa de deteccion — muchos holds.
+
+**Candidatos de fix (no implementar sin decision):**
+- (a) Creep lento HACIA LA CARA dentro de la deadzone: alpha minimo ~0.005 aplicado siempre,
+  solo cuando error > 0. NUNCA hacia el source_center (ese era el bug viejo de
+  manejar_cara_perdida que creaba drift al vacio). El target del creep es face_x, no source_x.
+- (b) Reducir dz_half: DEADZONE_PCT de 0.25 a 0.18 aprox, umbral_lento a ~55px. Riesgo:
+  mas temblor con persona estatica.
+- (c) En podcasts, resolver por F4.2-LITE layout stack: sin tracking, las caras siempre
+  centradas en sus bandas.
+
+**Trigger:** si el descuadre molesta en renders reales de clases. No parchear antes.
+
+### 22. Evaluar detector full-range para cara debil — DEUDA
+
+cara_1 = 34.4% de tasa de deteccion con short_range (vs 78.2% cara_0). full_range mejora
+su confianza media de 0.43 a 0.73 y su deteccion a 41.2% (segun comparativa sesion 14).
+
+El rechazo de full_range fue por razones correctas (no meter segunda variable durante el
+retune del alpha). Ahora que el alpha esta estabilizado, full_range es un candidato para
+mejorar la cara debil en modo turnos.
+
+.tflite ya en `models/blaze_face_full_range.tflite`. Data en `revision/fase-4.1/model_selection.md`.
+
+**Trigger:** si el ojo detecta encuadre pobre de la cara debil en renders reales. Conecta
+con la deuda de descuadre (#21).
+
+### 23. Riesgos del revisor de s15 — triage (sesion 16)
+
+El subagente revisor de la sesion 15 reporto 4 riesgos no bloqueantes:
+
+1. **EMA_ALPHA como alias publico** — `EMA_ALPHA=0.08` sigue exportado en reframe_track.py
+   aunque ya no lo usa el codigo de produccion. Un script externo podria usarlo como
+   argumento de `ema_smooth()` y obtener el alpha base sin correccion por fps.
+   **Triage:** IGNORAR (patron de uso incorrecto desde antes; la constante existe como
+   alias de ALPHA_BASE_LENTO para backward-compat explicito).
+
+2. **`import csv` dentro del cuerpo de `_exportar_trayectoria_csv`** (reframe.py:259) —
+   inconsistente con imports al inicio del modulo.
+   **Triage:** DEUDA BAJA — no afecta runtime ni tests. Mover al tope en F4.2 si se toca
+   el archivo.
+
+3. **`tau = (1/alpha)/fps` como aproximacion** en `test_alpha_adaptativo_tau_fps` — la
+   formula exacta es `tau = -1/(fps*ln(1-alpha))`. Con la tolerancia del 10% el test pasa
+   para todos los valores actuales.
+   **Triage:** IGNORAR — la aproximacion es suficiente para el rango de alpha del proyecto
+   (0.04-0.28). Si se sube ALPHA_BASE_RAPIDO a >0.5 en el futuro, revisar.
+
+4. **Log `[reframe] modelo: blaze_face_short_range.tflite`** condicionado a `tray_dir != None`
+   en lugar de a un flag --verbose.
+   **Triage:** IGNORAR — comportamiento deseado: el log es de diagnostico y solo aparece
+   cuando se pide el CSV de trayectoria.
+
+### 24. F4.2-LITE — LAYOUT STACK (SPEC DEL ARQUITECTO)
+
+**SPEC COMPLETA (no improvises implementacion — abre preguntas si hay ambiguedad):**
+
+Objetivo: modo alternativo al tracking para podcast N=2/3: crops ESTATICOS por cara
+apilados verticalmente en 1080x1920. Sin tracking, sin turnos, sin EMA.
+
+**Deteccion:** reutiliza el scan inicial de anclas (detectar_caras_video). Crop por cara
+centrado en su ancla.
+
+**Layout:**
+- N=2: dos bandas de 1080x960 (720px original escalado; crop = ancho fuente, h=fuente_h/2 aprox)
+- N=3: tres bandas de 1080x640
+- Orden vertical: izquierda->derecha en la fuente (ancla de menor cx arriba)
+
+**CLI:** `reframe.py --layout stack` (default sigue siendo `tracking`).
+**Studio:** selector "Seguimiento | Stack" en la seccion Reencuadrar 9:16.
+**Audio y pipeline:** identicos al modo tracking (pipe FFmpeg, yuv420p, salida 1080x1920).
+
+**Criterio de cierre:** render de podcast_test_60s en stack con ambas caras siempre
+visibles y centradas + ffprobe limpio + ojo de K.
+
+**1 sesion Sonnet. Dudas de implementacion -> abrir en PREGUNTAS.md, no improvisar.**
+
+---
+
 ### 8. Umbrales de diagnostico _eval_joins — RESUELTO
 - **Decision del arquitecto:** el loop de ajuste fue eliminado. La medicion voz-a-voz queda
   como diagnostico puro: DELTA_CLEAN_DB = 6, DELTA_NOTABLE_DB = 15.
