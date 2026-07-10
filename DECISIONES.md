@@ -188,3 +188,40 @@ Decision del arquitecto: se implementa ya en sesion 11 porque hay material de va
 - `_detectar_trayectorias_multi()` en reframe.py (con cv2, por cara activa del turno).
 - `cargar_o_crear_turnos()` eliminada (codigo muerto detectado por el revisor).
 - Validado con input/pruebapodcast2personas.mp4 (60s test clip).
+
+---
+
+## Fase 5 — Assets ComfyUI + Emojis PNG (sesion 23, pre-firmadas)
+
+### D9: Generacion de assets via workflows/asset_base.json
+
+Se usa el workflow existente TAL CUAL (Z-Image Turbo, Lumina2, nodo PROMPT_CENTRITO id="67").
+Solo se sustituye el campo `text` del nodo "67" con el prompt del asset.
+Justificacion: el workflow ya funciona localmente con los modelos de K; no reinventar.
+
+### D10: Modulo assets_comfy.py — puente ComfyUI con cache por hash
+
+Archivo: `assets_comfy.py`. Cache local en `assets/generados/{sha256[:16]}.png`.
+Mismo prompt = mismo hash = cero regeneracion.
+Fallback fail-open: si ComfyUI no esta corriendo, se omite la capa y el render sale limpio.
+URL configurable via env var `COMFY_URL` (default `http://127.0.0.1:8188`).
+
+### D11: Mapa keyword→prompt en assets/keywords.json
+
+10 entradas de dominio de K. Prompts EN INGLES, texto dentro de imagen EN ESPANOL.
+La palabra clave (lowercase) es la clave; el valor es el prompt de generacion.
+Editable a mano por K sin tocar codigo.
+
+### D12: Overlay como filtro FFmpeg — constantes nombradas
+
+- Posicion: esquina superior derecha (W - w - MARGIN, MARGIN)
+- Tamano: 18% del ancho del video (EMOJI_SIZE_PCT = 0.18)
+- Duracion: 1.2s (EMOJI_DURATION_S = 1.2)
+- Margen: 2% del ancho (EMOJI_MARGIN_PCT = 0.02)
+- Disparo: kw_ts del brain.json (timestamp de la palabra clave)
+- Capa: opt-in, default OFF. Checkbox "Emojis IA" en Studio > Render.
+
+### D13: Arquitectura de capas — emojis no bloquean el pipeline
+
+Si ComfyUI no corre o el keyword no tiene prompt: la capa se salta silenciosamente.
+El video limpio y el video con solo captions siguen disponibles siempre (regla #15).

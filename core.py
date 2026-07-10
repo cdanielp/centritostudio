@@ -12,7 +12,13 @@ from pathlib import Path
 from typing import Any
 
 # Re-exportar funciones de core_ass para mantener compatibilidad de imports
-from core_ass import apply_brain, build_ass, burn_video, extract_thumb  # noqa: F401
+from core_ass import (  # noqa: F401
+    apply_brain,
+    build_ass,
+    burn_video,
+    burn_video_with_emojis,
+    extract_thumb,
+)
 
 LOCAL_MEDIUM_PATH = Path(__file__).parent / "models" / "medium"
 PUNCT_SENTENCE = frozenset(".!?…")  # Pausa obligatoria después de estas

@@ -315,6 +315,7 @@ def start_render(
     style: str = "hormozi",
     words_per_group: int | None = None,
     use_emphasis: bool = False,
+    use_emojis: bool = False,
 ):
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -327,7 +328,7 @@ def start_render(
     jid = jobs.new_job(f"Renderizando {name} en {style}...")
     threading.Thread(
         target=jobs.run_render,
-        args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis),
+        args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis),
         daemon=True,
     ).start()
     return {"job_id": jid}

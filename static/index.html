@@ -216,6 +216,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <label for="use-emphasis">Énfasis IA — keywords destacadas</label>
       <span class="msg" id="emphasis-hint" style="margin:0"></span>
     </div>
+    <div class="emphasis-row">
+      <input type="checkbox" id="use-emojis">
+      <label for="use-emojis">Emojis IA — assets ComfyUI sobre keywords</label>
+      <span class="msg" style="margin:0;color:var(--muted);font-size:11px">(requiere ComfyUI corriendo)</span>
+    </div>
     <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
     <div id="render-status"></div>
   </div>
@@ -765,6 +770,7 @@ async function startRender() {
   const params = new URLSearchParams({style});
   if (wpg) params.append('words_per_group', wpg);
   if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
+  if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
 
   const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
   if (!res.ok) {

@@ -275,6 +275,7 @@ def run_render(
     style: str,
     words_per_group: int | None,
     use_emphasis: bool = False,
+    use_emojis: bool = False,
 ) -> None:
     """Worker: genera ASS con captions y quema el video de salida."""
     try:
@@ -297,15 +298,37 @@ def run_render(
         w, h = info["width"], info["height"]
 
         style_cfg = get_style(style)
-        suffix = f"_{style}_enfasis" if use_emphasis else f"_{style}"
-        ass_path = OUTPUT_DIR / f"{name}{suffix}.ass"
+        suffix_parts = [f"_{style}"]
+        if use_emphasis:
+            suffix_parts.append("_enfasis")
+        if use_emojis:
+            suffix_parts.append("_emojis")
+        suffix = "".join(suffix_parts)
+        ass_path = OUTPUT_DIR / f"{name}_{style}.ass"
         out_path = OUTPUT_DIR / f"{name}{suffix}.mp4"
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")
         core.build_ass(groups, w, h, style_cfg, ass_path)
 
-        update_job(jid, progress=50, message="Quemando con FFmpeg...")
-        elapsed = core.burn_video(mp4, ass_path, out_path)
+        if use_emojis:
+            import assets_comfy as ac  # noqa: PLC0415
+
+            update_job(jid, progress=48, message="Generando assets IA (ComfyUI)...")
+            groups_path = TRANSCRIPTS / f"{name}_groups.json"
+            brain_path = TRANSCRIPTS / f"{name}.brain.json"
+            overlays = ac.resolver_overlays(groups_path, brain_path)
+            n_ov = len(overlays)
+            update_job(jid, progress=52, message=f"Quemando con FFmpeg + {n_ov} overlay(s)...")
+            elapsed = core.burn_video_with_emojis(mp4, ass_path, out_path, overlays)
+            emojis_result = (
+                f"{n_ov} overlays aplicados"
+                if n_ov
+                else "Sin overlays (ComfyUI apagado o sin keywords)"
+            )
+        else:
+            update_job(jid, progress=50, message="Quemando con FFmpeg...")
+            elapsed = core.burn_video(mp4, ass_path, out_path)
+            emojis_result = None
 
         emphasis_result = enfasis_msg if use_emphasis else None
         update_job(
@@ -313,7 +336,12 @@ def run_render(
             status="done",
             progress=100,
             message=f"Listo en {elapsed:.1f}s",
-            result={"output": out_path.name, "elapsed": elapsed, "emphasis_msg": emphasis_result},
+            result={
+                "output": out_path.name,
+                "elapsed": elapsed,
+                "emphasis_msg": emphasis_result,
+                "emojis_msg": emojis_result,
+            },
         )
     except Exception as exc:
         update_job(jid, status="error", message=str(exc), error=str(exc))

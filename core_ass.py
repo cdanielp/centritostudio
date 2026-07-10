@@ -226,6 +226,65 @@ def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
     return round(time.time() - t0, 2)
 
 
+def burn_video_with_emojis(
+    input_video: Path,
+    ass_path: Path,
+    output_video: Path,
+    emoji_overlays: list[tuple[Path, float, float]],
+) -> float:
+    """Quema ASS + overlays PNG en un solo pase FFmpeg.
+
+    emoji_overlays: lista de (png_path, t_start_s, t_end_s).
+    Si la lista está vacía delega en burn_video normal.
+    Las constantes de posición y tamaño viven en assets_comfy.py.
+    """
+    if not emoji_overlays:
+        return burn_video(input_video, ass_path, output_video)
+
+    # Calcular dimensiones en Python (NO en expresiones FFmpeg) para evitar
+    # que `iw` en el filtro scale referencie el PNG y no el video principal.
+    import core  # noqa: PLC0415
+    from assets_comfy import EMOJI_MARGIN_PCT, EMOJI_SIZE_PCT  # noqa: PLC0415
+
+    info = core.get_video_info(input_video)
+    video_w = info["width"]
+    size_px = max(int(video_w * EMOJI_SIZE_PCT), 2)
+    size_px -= size_px % 2  # forzar par para evitar errores libx264
+    margin_px = max(int(video_w * EMOJI_MARGIN_PCT), 4)
+
+    ass_esc = _ffmpeg_ass_path(ass_path)
+
+    # Inputs de FFmpeg: primero el video, luego cada PNG
+    cmd: list[str] = ["ffmpeg", "-y", "-i", str(input_video)]
+    for png, _s, _e in emoji_overlays:
+        cmd += ["-i", str(png)]
+
+    # filter_complex: ASS → escalar PNGs a tamanio fijo → overlay en cadena
+    fc_parts: list[str] = [f"[0:v]ass={ass_esc}[vcap]"]
+    for i in range(len(emoji_overlays)):
+        fc_parts.append(f"[{i + 1}:v]scale={size_px}:-2[ovs{i}]")
+
+    current = "[vcap]"
+    for i, (_png, t_start, t_end) in enumerate(emoji_overlays):
+        next_label = f"[vo{i}]"
+        enable = f"between(t,{t_start:.3f},{t_end:.3f})"
+        x = f"W-{size_px}-{margin_px}"
+        y = str(margin_px)
+        fc_parts.append(f"{current}[ovs{i}]overlay=x={x}:y={y}:enable='{enable}'{next_label}")
+        current = next_label
+
+    cmd += ["-filter_complex", ";".join(fc_parts)]
+    cmd += ["-map", current, "-map", "0:a"]
+    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"]
+    cmd.append(str(output_video))
+
+    t0 = time.time()
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
+    return round(time.time() - t0, 2)
+
+
 def extract_thumb(video_path: Path, output_path: Path, at_sec: float = 1.0) -> None:
     """Extrae un frame del video como miniatura."""
     subprocess.run(

@@ -46,6 +46,7 @@ def process_video(
     model_arg: str = "auto",
     max_words: int | None = None,
     out_stem: str | None = None,
+    use_emojis: bool = False,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -57,7 +58,8 @@ def process_video(
     style_cfg = get_style(style)
     stem = out_stem or video_path.stem
     ass_path = output_dir / f"{stem}_{style}.ass"
-    out_path = output_dir / f"{stem}_{style}.mp4"
+    suffix = f"_{style}_emojis" if use_emojis else f"_{style}"
+    out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
 
@@ -71,7 +73,20 @@ def process_video(
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
 
-    core.burn_video(video_path, ass_path, out_path)
+    if use_emojis:
+        import assets_comfy as ac  # noqa: PLC0415
+
+        groups_path = _TRANSCRIPTS_DIR / f"{stem}_groups.json"
+        brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
+        overlays = ac.resolver_overlays(groups_path, brain_path)
+        if overlays:
+            print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
+        else:
+            print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
+        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays)
+    else:
+        core.burn_video(video_path, ass_path, out_path)
+
     total = time.time() - t0
     print(f"[ok] {video_path.name} -> {out_path.name} en {total:.1f}s\n")
     return total, transcript
@@ -154,6 +169,12 @@ def main() -> None:
         default=None,
         help="Generar clips virales con IA (cortos|largos|ambos)",
     )
+    parser.add_argument(
+        "--emojis",
+        action="store_true",
+        default=False,
+        help="Overlay de assets IA (ComfyUI) sobre palabras clave del brain.json",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -176,7 +197,13 @@ def main() -> None:
         total = 0.0
         for v in videos:
             t, _ = process_video(
-                v, args.style, args.lang, output_dir, args.model, args.words_per_group
+                v,
+                args.style,
+                args.lang,
+                output_dir,
+                args.model,
+                args.words_per_group,
+                use_emojis=args.emojis,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -189,6 +216,7 @@ def main() -> None:
             args.model,
             args.words_per_group,
             args.out_stem,
+            use_emojis=args.emojis,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")
