@@ -567,3 +567,37 @@ Roadmap futuro (cada item se disena/vota antes de implementarse):
 **Insight de K (s26, clips 95/100):** "cada usuario podria sugerir o revisar — expectativas
 distintas". Consecuencia adoptada en MAESTRO regla #19: el paquete SIEMPRE termina en
 revision humana antes de publicar; la aprobacion de F7 (Telegram) es la misma compuerta.
+
+---
+
+### 30. GREMLIN 0-BYTE — archivos vacios con nombres de palabras del dominio (deuda real, s28A)
+
+**Sintoma:** aparecen en la raiz del repo archivos de 0 bytes cuyos nombres son palabras
+sueltas del dominio: `captions`, `crop`, `paquete`, `dict`, `el`, `completado` (lista no
+exhaustiva; el conjunto varia entre corridas). En el snapshot de arranque de s28A la raiz
+estaba limpia de ellos, pero han reaparecido en sesiones previas.
+
+**Hipotesis (NO investigada hoy, por decision de bloque):** redireccion o escritura con una
+variable vacia o mal expandida en algun script/hook/comando. Un patron tipo `> $VAR archivo`
+o `comando > palabra` donde `palabra` es un token que iba a ser argumento y termino como
+destino de redireccion. Candidatos a auditar cuando se aborde: hooks en `.claude/`, `.bat`
+del repo (arranque/check), y cualquier one-liner de PowerShell que use `>` con variables.
+
+**Riesgo (por lo que es deuda REAL, no cosmetica):** si alguna vez el token mal expandido
+coincide con el nombre de un archivo REAL del proyecto (p.ej. `core`, `styles`), la
+redireccion lo truncaria a 0 bytes silenciosamente. Es una bomba de perdida de datos, no
+suciedad de directorio.
+
+**Decision s28A:** NO es cosmetica (no va a .gitignore), NO se investiga hoy. Queda como
+deuda con hipotesis y riesgo documentados para una sesion dedicada. Cuando se aborde:
+reproducir, localizar la redireccion culpable, y blindar (comillas/validacion de variable).
+
+---
+
+### 31. SESION 28B — Direccion de Producto / "dos modos" formal (PENDIENTE, NO cancelada)
+
+La discusion de Direccion de Producto y la formalizacion del modelo "dos modos, un motor"
+(hoy vive como MAESTRO regla #19 + D17) se saca de s28A y queda agendada como **SESION 28B**,
+en documento aparte. NO esta cancelada: es un bloque de trabajo propio (vision de producto,
+posicionamiento vs OpusClip/Captions, roadmap de recetas #29). Registrada aqui para que no
+se pierda al haber priorizado s28A en cierre de cabos + F5-s2 captions cineticos.
