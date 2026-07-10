@@ -262,14 +262,14 @@ def get_clips(name: str):
 
 
 @app.post("/api/clips/{name}/detectar")
-def detectar_caras_clip(name: str):
+def detectar_caras_clip(name: str, detector: str = "yunet"):
     """Detecta caras en un clip y devuelve la lista con thumbnails."""
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
     import reframe  # noqa: PLC0415
 
-    caras = reframe.detectar_caras_video(clip_path)
+    caras = reframe.detectar_caras_video(clip_path, detector_type=detector)
     return {"n_caras": len(caras), "caras": caras}
 
 
@@ -285,7 +285,9 @@ def save_turnos_clip(name: str, body: dict = Body(...)):
 
 
 @app.post("/api/clips/{name}/reframe")
-def start_reframe(name: str, punch_in: bool = False, layout: str = "tracking"):
+def start_reframe(
+    name: str, punch_in: bool = False, layout: str = "tracking", detector: str = "yunet"
+):
     """Inicia el reencuadre 9:16: tracking (default) o stack (bandas estaticas)."""
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
@@ -297,12 +299,20 @@ def start_reframe(name: str, punch_in: bool = False, layout: str = "tracking"):
         turnos_path = TRANSCRIPTS / f"{name}_turnos.json"
         turnos = (
             json.loads(turnos_path.read_text(encoding="utf-8")) if turnos_path.exists() else None
-        )  # noqa: E501
+        )
         output_path = CLIPS_DIR / f"{name}_9x16.mp4"
         jid = jobs.new_job(f"Reencuadrando {name} a 9:16...")
     threading.Thread(
         target=jobs.run_reframe,
-        args=(jid, clip_path, output_path, None if layout == "stack" else turnos, punch_in, layout),
+        args=(
+            jid,
+            clip_path,
+            output_path,
+            None if layout == "stack" else turnos,
+            punch_in,
+            layout,
+            detector,
+        ),
         daemon=True,
     ).start()
     return {"job_id": jid}

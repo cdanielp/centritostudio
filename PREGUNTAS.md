@@ -376,3 +376,86 @@ Extracto `stack_test_estatico.mp4` tiene audio 52.5s vs video 48.5s (cola por -c
 Benigno en test. Regla nueva de higiene para extractos de validacion:
 generarlos con `-shortest` o re-encode completo para que la compuerta "AAC identico"
 no pase con asteriscos silenciosos. Aplicar en proxima sesion de extractos.
+
+---
+
+### 26. F4.2-CORTES — ADELANTADA (re-priorizacion arquitecto s24)
+
+**Razon con datos:** los 3 videos reales probados (podcast_test_60s editado 7 cortes,
+prueba2personasenmedio multicam 3 cortes, pruebaparaedicion 2K 3 cortes) tienen cortes
+de escena. La precondicion de toma continua no describe el material de produccion de K
+(OBS/edicion). La queja de "falla el enfoque" es este mecanismo, no el detector.
+Nota: C1=93% de s23 queda CORREGIDO a "C1 ilegible fuera de dominio" — con cortes,
+C1 cuenta frames de hold fantasma entre planos distintos (caveat D6 de DECISIONES.md).
+
+**Orden actualizado:** A/B YuNet (s24) → F4.2-CORTES (sesion inmediata) → F5-s2.
+
+**Diseno de referencia F4.2-CORTES** (credito: proyecto de referencia `referencia/yunet/`,
+estudiado en s24 — SOLO LECTURA, reimplementacion propia):
+
+#### 26a. Cortes-primero con frame representativo
+
+1. Detectar cortes de escena: `ffmpeg -vf "select='gt(scene,0.4)',showinfo"` (umbral 0.4
+   validado contra video de referencia: cortes reales 0.91-1.00, max no-corte 0.024, ~40x
+   separacion — cualquier valor entre 0.05 y 0.85 da el mismo resultado en switching ATEM).
+2. Por cada segmento `[start, end)`: extraer frame en `(start+end)/2` (frame representativo).
+3. Detectar caras UNA VEZ en ese frame → clasificar segmento: `single`/`split`/`none`/`wide-fallback`.
+4. Trackear DENTRO del segmento con muestreo periodico (no EMA continuo).
+
+Fallbacks: `none` → crop centrado fijo sin tracking; `wide-fallback` (3+ caras) → igual.
+
+#### 26b. Waypoints + paneo interpolado (reemplaza EMA adaptativo para cam fija)
+
+Dentro de cada segmento ya clasificado:
+- Muestrear posicion horizontal cada 500ms (`single`) / 200ms (`split`).
+- Mantener `crop_x_actual` (inicializado en primera deteccion, no en t=0 del segmento).
+- Si no se detecta cara: conservar ultimo `crop_x_actual`, no disparar nada.
+- Si desplazamiento < deadzone (18% del ancho del recorte de salida): no mover nada.
+- Si desplazamiento >= deadzone: crear waypoint y panes 500ms hacia la posicion nueva.
+- Con la lista de waypoints, armar expresion FFmpeg de `x` dinamico para el filtro crop
+  (interpolacion lineal en cada ventana de transicion, valor fijo fuera de ellas).
+
+**Candidato a reemplazar EMA para clases OBS de K** (camara fija → cuadro clavado en reposo,
+sin deriva EMA). Requiere A/B de render comparativo sobre clase real antes de decidir.
+
+Constantes a parametrizar: `--deadzone-pct 18`, `--pan-duration-ms 500`,
+`--sample-interval-single-ms 500`, `--sample-interval-split-ms 200`.
+
+#### 26c. Identidad por continuidad + debounce (para split)
+
+Mecanismo de una capa gateada por debounce (`last_cx["top"]` / `last_cx["bottom"]` ES
+la identidad, no un estado derivado):
+- `cost_keep` vs `cost_swap` en cada muestra.
+- Si `cost_keep <= cost_swap`: confirmar inmediato, reset contador a 0.
+- Si `cost_swap < cost_keep`: incrementar contador; solo al llegar a N muestras
+  consecutivas (default 3) se acepta el swap y se actualiza `last_cx`.
+- Con 0 caras: no actualizar nada. Con 1 cara: nearest-neighbor sin tocar el contador.
+- La salida SIEMPRE es `last_cx` despues del procesamiento — ningun frame intermedio
+  puede reflejar una identidad no confirmada.
+
+**Leccion de testing para MAESTRO.md** (nota del arquitecto s24): las aserciones deben
+verificar la SALIDA DE CADA MUESTRA INTERMEDIA, no solo el estado final — el bug del
+proyecto de referencia (2 frames de identidad erronea que ningun test detectaba) fue
+encontrado solo con aserciones frame a frame, no con aserciones de estado final.
+
+#### 26d. Trucos con datos del proyecto de referencia
+
+- **Umbral score 0.75**: validado contra busto y punos en prueba2personasenmedio.mov
+  (nuestro video). Busto 0.65-0.69, punos 0.73 → filtrados. Caras reales 0.90-0.92.
+  Adoptar como default en F4.2-CORTES.
+- **Filtro de area** (`FACE_MAX_AREA_FRAC_DEFAULT = 0.02056`): derivado de 3260
+  detecciones en video de referencia real; ninguna cara real (score>=0.9) supero ese
+  valor. Manos compactas distintas (misma area que cara, indistinguibles — area no
+  es señal unica).
+- **Override manual por segmento** (JSON `{start_s, end_s, label, reason}`): version
+  minima de nuestra #24b seleccion manual de caras — escape pragmatico por episodio.
+  Implementar junto con #24b, no antes.
+- **Score 0.75 vs busto nuestro video**: verificado en s24 con YuNet sobre
+  prueba2personasenmedio.mov en el A/B (ver reporte s24).
+
+#### 26e. Nota de testing obligatoria (MAESTRO.md #17 propuesto)
+
+Tests de tracking deben tener aserciones en cada muestra intermedia, no solo estado final.
+Referencia: el bug de SplitIdentityTracker del proyecto de referencia fue invisible a
+aserciones de estado final pero detectable con aserciones frame a frame.
+Propuesta para MAESTRO.md regla #17 (a registrar al abrir F4.2-CORTES).

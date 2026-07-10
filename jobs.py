@@ -217,6 +217,7 @@ def run_reframe(
     turnos: dict | None,
     punch_in: bool,
     layout: str = "tracking",
+    detector_type: str = "yunet",
 ) -> None:
     """Worker: reencuadra un clip de 16:9 a 9:16 (tracking o stack)."""
     try:
@@ -224,7 +225,7 @@ def run_reframe(
 
         update_job(jid, status="running", progress=10, message="Detectando caras...")
         if layout == "stack":
-            result = reframe.reframe_stack_clip(clip_path, output_path)
+            result = reframe.reframe_stack_clip(clip_path, output_path, detector_type=detector_type)
             update_job(
                 jid,
                 status="done",
@@ -233,7 +234,13 @@ def run_reframe(
                 result=result,
             )
         else:
-            result = reframe.reframe_clip(clip_path, output_path, turnos=turnos, punch_in=punch_in)
+            result = reframe.reframe_clip(
+                clip_path,
+                output_path,
+                turnos=turnos,
+                punch_in=punch_in,
+                detector_type=detector_type,
+            )
             update_job(
                 jid,
                 status="done",

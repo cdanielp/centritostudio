@@ -186,41 +186,28 @@ def cara_en_frame(frame_idx: int, fps: float, turnos: list[dict]) -> int:
 
 
 def detectar_cara_frame(frame, detector) -> dict | None:
-    """Detecta la cara mas prominente en un fotograma numpy (BGR) con MediaPipe Tasks.
+    """Detecta la cara mas prominente en un fotograma numpy (BGR).
 
     Devuelve {'center_x': float, 'center_y': float, 'bbox': [x, y, w, h], 'score': float} o None.
-    detector: FaceDetector creado con mediapipe.tasks.python.vision.FaceDetector.
+    Acepta tanto YuNetDetector como MediaPipe FaceDetector (dispatch por duck-typing).
     """
-    import cv2
-    import mediapipe as _mp
-
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    mp_img = _mp.Image(image_format=_mp.ImageFormat.SRGB, data=rgb)
-    result = detector.detect(mp_img)
-    if not result.detections:
-        return None
-    best = max(result.detections, key=lambda d: d.categories[0].score)
-    bb = best.bounding_box
-    h, w = frame.shape[:2]
-    x = max(0, bb.origin_x)
-    y = max(0, bb.origin_y)
-    bw = min(bb.width, w - x)
-    bh = min(bb.height, h - y)
-    return {
-        "center_x": float(x + bw / 2),
-        "center_y": float(y + bh / 2),
-        "bbox": [x, y, bw, bh],
-        "score": float(best.categories[0].score),
-    }
+    dets = detectar_todas_caras_frame(frame, detector)
+    return dets[0] if dets else None
 
 
 def detectar_todas_caras_frame(frame, detector) -> list[dict]:
     """Detecta todas las caras en un fotograma numpy (BGR); devuelve lista ordenada por score desc.
 
     Cada elemento: {'center_x': float, 'center_y': float, 'bbox': list, 'score': float}.
+    Acepta tanto YuNetDetector (detect_all) como MediaPipe FaceDetector (detect con mp.Image).
     """
-    import cv2
-    import mediapipe as _mp
+    # YuNet wrapper: interfaz detect_all(frame) -> list[dict]
+    if hasattr(detector, "detect_all"):
+        return detector.detect_all(frame)
+
+    # BlazeFace / MediaPipe path
+    import cv2  # noqa: PLC0415
+    import mediapipe as _mp  # noqa: PLC0415
 
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_img = _mp.Image(image_format=_mp.ImageFormat.SRGB, data=rgb)

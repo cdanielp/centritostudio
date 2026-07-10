@@ -1,7 +1,14 @@
 """reframe_detect.py — Deteccion de cara y trayectoria para el reframe 9:16.
 
-Contiene las funciones con I/O de video (OpenCV + MediaPipe) separadas de la
+Contiene las funciones con I/O de video (OpenCV + MediaPipe/YuNet) separadas de la
 orquestacion principal. Importado exclusivamente por reframe.py.
+
+Detectores disponibles:
+  yunet    (default): cv2.FaceDetectorYN con modelo ONNX — alta confianza en 480p/1080p.
+             Umbral 0.75 validado contra busto decorativo y punos en nuestro video.
+             Downscale automatico a YUNET_MAX_INPUT_W si el frame es muy ancho.
+  blazeface (fallback): MediaPipe FaceDetector short-range .tflite.
+             Activar con --detector blazeface. Confianza baja (~0.40) en 480p.
 """
 
 from __future__ import annotations
@@ -9,20 +16,128 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-from mediapipe.tasks import python as _mp_python
-from mediapipe.tasks.python import vision as _mp_vision
 
 import reframe_track as rt
 
+# ── Rutas de modelos ──────────────────────────────────────────────────────────
+
 MODEL_PATH_SHORT = Path(__file__).parent / "models" / "blaze_face_short_range.tflite"
 MODEL_PATH_FULL = Path(__file__).parent / "models" / "blaze_face_full_range.tflite"
+YUNET_MODEL_PATH = (
+    Path(__file__).parent / "referencia" / "yunet" / "face_detection_yunet_2023mar.onnx"
+)
 
-# Detector activo: cambiar a MODEL_PATH_FULL si la comparativa lo adopta
-ACTIVE_MODEL_PATH = MODEL_PATH_SHORT
+# ── Constantes YuNet ──────────────────────────────────────────────────────────
+
+YUNET_SCORE_THRESHOLD = (
+    0.75  # validado contra busto(0.65-0.69) y punos(0.73) en prueba2personasenmedio.mov
+)
+YUNET_MAX_INPUT_W = 1920  # downscale frames mas anchos para mantener precision
+YUNET_FACE_MAX_AREA_FRAC = 0.02056  # filtro de area: derivado de proyecto referencia
+
+ACTIVE_MODEL_PATH = (
+    MODEL_PATH_SHORT  # BlazeFace (para compatibilidad con flag --detector blazeface)
+)
 
 
-def _crear_detector(model_path: Path | None = None):
-    """Crea un FaceDetector MediaPipe Tasks en modo IMAGE."""
+# ── Detector YuNet ────────────────────────────────────────────────────────────
+
+
+class YuNetDetector:
+    """Wrapper de cv2.FaceDetectorYN con cache de input_size y downscale automatico.
+
+    Interfaz: close() + detect_all(frame) -> list[dict] compatible con
+    detectar_todas_caras_frame en reframe_track.py.
+    """
+
+    def __init__(
+        self,
+        model_path: Path = YUNET_MODEL_PATH,
+        score_threshold: float = YUNET_SCORE_THRESHOLD,
+        max_input_w: int = YUNET_MAX_INPUT_W,
+        face_max_area_frac: float = YUNET_FACE_MAX_AREA_FRAC,
+    ) -> None:
+        self._model_path = model_path
+        self._score_threshold = score_threshold
+        self._max_input_w = max_input_w
+        self._face_max_area_frac = face_max_area_frac
+        self._det: cv2.FaceDetectorYN | None = None
+        self._input_size: tuple[int, int] | None = None
+
+    def _get_det(self, w: int, h: int) -> cv2.FaceDetectorYN:
+        if self._input_size != (w, h) or self._det is None:
+            self._det = cv2.FaceDetectorYN_create(
+                str(self._model_path),
+                "",
+                (w, h),
+                score_threshold=self._score_threshold,
+                nms_threshold=0.3,
+                top_k=5000,
+            )
+            self._det.setInputSize((w, h))
+            self._input_size = (w, h)
+        return self._det
+
+    def detect_all(self, frame) -> list[dict]:
+        """Detecta todas las caras. Devuelve lista ordenada por score desc.
+
+        Cada elemento: {'center_x', 'center_y', 'bbox': [x,y,w,h], 'score'}.
+        Coordenadas en el espacio del frame original (antes del downscale).
+        """
+        h_orig, w_orig = frame.shape[:2]
+
+        # Downscale si el frame es mas ancho que el umbral
+        if w_orig > self._max_input_w:
+            scale = self._max_input_w / w_orig
+            w_in = self._max_input_w
+            h_in = int(h_orig * scale)
+            frame_in = cv2.resize(frame, (w_in, h_in))
+        else:
+            scale = 1.0
+            w_in, h_in = w_orig, h_orig
+            frame_in = frame
+
+        det = self._get_det(w_in, h_in)
+        _, faces = det.detect(frame_in)
+        if faces is None:
+            return []
+
+        results = []
+        for f in faces:
+            x_d, y_d, fw_d, fh_d = f[0:4].astype(int).tolist()
+            score = float(f[14])
+            # Filtro de area sobre las coords DETECCION (frame downscaleado)
+            area_frac = (fw_d * fh_d) / (w_in * h_in)
+            if area_frac > self._face_max_area_frac:
+                continue
+            # Proyectar coordenadas al espacio del frame original
+            inv = 1.0 / scale
+            x = x_d * inv
+            y = y_d * inv
+            fw = fw_d * inv
+            fh = fh_d * inv
+            results.append(
+                {
+                    "center_x": x + fw / 2,
+                    "center_y": y + fh / 2,
+                    "bbox": [int(x), int(y), int(fw), int(fh)],
+                    "score": score,
+                }
+            )
+        return sorted(results, key=lambda d: -d["score"])
+
+    def close(self) -> None:
+        self._det = None
+
+
+# ── Detector BlazeFace (fallback) ─────────────────────────────────────────────
+
+
+def _crear_detector_blazeface(model_path: Path | None = None):
+    """Crea un FaceDetector MediaPipe Tasks en modo IMAGE (BlazeFace)."""
+    from mediapipe.tasks import python as _mp_python  # noqa: PLC0415
+    from mediapipe.tasks.python import vision as _mp_vision  # noqa: PLC0415
+
     path = model_path or ACTIVE_MODEL_PATH
     if not path.exists():
         raise FileNotFoundError(f"Modelo MediaPipe no encontrado: {path}")
@@ -35,17 +150,45 @@ def _crear_detector(model_path: Path | None = None):
     return _mp_vision.FaceDetector.create_from_options(opts)
 
 
+# ── Factory publica ────────────────────────────────────────────────────────────
+
+
+def _crear_detector(
+    detector_type: str = "yunet",
+    model_path: Path | None = None,
+):
+    """Crea el detector segun el tipo pedido.
+
+    detector_type: 'yunet' (default) | 'blazeface'
+    model_path: override de ruta del modelo (BlazeFace solamente).
+    """
+    if detector_type == "yunet":
+        yn_path = YUNET_MODEL_PATH
+        if not yn_path.exists():
+            print(f"[reframe] YuNet no encontrado en {yn_path} -- fallback a BlazeFace")
+            return _crear_detector_blazeface(model_path)
+        return YuNetDetector(model_path=yn_path)
+    return _crear_detector_blazeface(model_path)
+
+
+# ── Trayectoria (funciones de alto nivel usadas por reframe.py) ───────────────
+
+
 def _detectar_trayectoria(
-    video_path: Path, total_frames: int, src_w: int, ancla_x: float
+    video_path: Path,
+    total_frames: int,
+    src_w: int,
+    ancla_x: float,
+    detector_type: str = "yunet",
 ) -> tuple[dict[int, float], dict[int, float]]:
     """Detecta center_x de la cara principal usando ancla estatica.
 
-    Devuelve (sparsa, sparsa_conf) donde sparsa_conf[frame_idx] = score MediaPipe.
+    Devuelve (sparsa, sparsa_conf) donde sparsa_conf[frame_idx] = score.
     Solo acepta detecciones dentro de GATE_ANCLA_PCT x src_w del ancla.
     """
     gate_ancla_w = rt.GATE_ANCLA_PCT * src_w
     cap = cv2.VideoCapture(str(video_path))
-    detector = _crear_detector()
+    detector = _crear_detector(detector_type)
     sparsa: dict[int, float] = {}
     sparsa_conf: dict[int, float] = {}
     n_det = n_sin = n_gated = 0
@@ -56,16 +199,17 @@ def _detectar_trayectoria(
                 break
             if fi % rt.DETECT_EVERY_N != 0:
                 continue
-            det = rt.detectar_cara_frame(frame, detector)
-            if det is None:
+            det_list = rt.detectar_todas_caras_frame(frame, detector)
+            if not det_list:
                 n_sin += 1
                 continue
-            new_x = det["center_x"]
+            best = det_list[0]
+            new_x = best["center_x"]
             if abs(new_x - ancla_x) > gate_ancla_w:
                 n_gated += 1
                 continue
             sparsa[fi] = new_x
-            sparsa_conf[fi] = det["score"]
+            sparsa_conf[fi] = best["score"]
             n_det += 1
     finally:
         cap.release()
@@ -108,7 +252,11 @@ def _asignar_detecciones_a_caras(
 
 
 def _detectar_trayectorias_multi(
-    video_path: Path, total_frames: int, caras: list[dict], src_w: int
+    video_path: Path,
+    total_frames: int,
+    caras: list[dict],
+    src_w: int,
+    detector_type: str = "yunet",
 ) -> tuple[dict[int, dict[int, float]], dict[int, dict[int, float]]]:
     """Detecta center_x por cara cada DETECT_EVERY_N frames con ancla estatica.
 
@@ -118,7 +266,7 @@ def _detectar_trayectorias_multi(
     """
     gate_ancla_w = rt.GATE_ANCLA_PCT * src_w
     cap = cv2.VideoCapture(str(video_path))
-    detector = _crear_detector()
+    detector = _crear_detector(detector_type)
     sparsa: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
     sparsa_conf: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
     try:

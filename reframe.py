@@ -17,7 +17,6 @@ import cv2
 
 import reframe_track as rt
 from reframe_detect import (
-    ACTIVE_MODEL_PATH,
     _crear_detector,
     _detectar_trayectoria,
     _detectar_trayectorias_multi,
@@ -117,7 +116,9 @@ def _registrar_cara_nueva(
     )
 
 
-def detectar_caras_video(video_path: Path, muestra_frames: int = 30) -> list[dict]:
+def detectar_caras_video(
+    video_path: Path, muestra_frames: int = 30, detector_type: str = "yunet"
+) -> list[dict]:
     """Detecta caras en los primeros muestra_frames fotogramas; guarda thumbnails.
 
     Devuelve lista de {'id', 'center_x', 'thumb', 'primera_vez_s'}.
@@ -125,7 +126,7 @@ def detectar_caras_video(video_path: Path, muestra_frames: int = 30) -> list[dic
     THUMBS_DIR.mkdir(exist_ok=True)
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    detector = _crear_detector()
+    detector = _crear_detector(detector_type)
     caras: list[dict] = []
     stem = video_path.stem
     try:
@@ -348,13 +349,14 @@ def _calcular_crops(
     total_frames: int,
     src_w: int,
     src_h: int,
+    detector_type: str = "yunet",
 ) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None]:
     """Elige ruta single-face o multi-cara; devuelve (crops, filled_por_frame, sparsa_conf)."""
     if len(caras) >= 2 and turnos_list:
         n_t = len(turnos_list)
         print(f"[reframe] {len(caras)} caras con turnos -- conmutacion activada ({n_t} turnos)")
         sparsa_multi, conf_multi = _detectar_trayectorias_multi(
-            input_path, total_frames, caras, src_w
+            input_path, total_frames, caras, src_w, detector_type
         )
         crops = rt.calcular_crops_por_turnos(
             sparsa_multi, turnos_list, fps, total_frames, src_w, src_h
@@ -368,7 +370,9 @@ def _calcular_crops(
     if len(caras) >= 2:
         print(f"[reframe] {len(caras)} caras -- cara principal; asigna turnos para conmutar")
     ancla_x = caras[0]["center_x"] if caras else src_w / 2
-    sparsa, sparsa_conf = _detectar_trayectoria(input_path, total_frames, src_w, ancla_x)
+    sparsa, sparsa_conf = _detectar_trayectoria(
+        input_path, total_frames, src_w, ancla_x, detector_type
+    )
     return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h, fps, sparsa_conf)
 
 
@@ -379,6 +383,7 @@ def reframe_clip(
     brain_data: dict | None = None,
     punch_in: bool = False,
     tray_dir: Path | None = None,
+    detector_type: str = "yunet",
 ) -> dict:
     """Reencuadra clip 16:9 a 9:16 con face tracking EMA+deadzone y conmutacion por turnos."""
     from core import get_video_info
@@ -393,18 +398,18 @@ def reframe_clip(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    caras = detectar_caras_video(input_path)
+    caras = detectar_caras_video(input_path, detector_type=detector_type)
     if punch_in and brain_data is None:
         brain_data = _cargar_o_generar_brain(input_path)
     turnos_list = (turnos or {}).get("turnos", [])
     crops, filled, sparsa_conf = _calcular_crops(
-        input_path, caras, turnos_list, fps, total_frames, src_w, src_h
+        input_path, caras, turnos_list, fps, total_frames, src_w, src_h, detector_type
     )
     if punch_in and brain_data:
         crops = _aplicar_punch_ins(crops, brain_data, fps, src_w, src_h)
     if tray_dir is not None:
         _exportar_trayectoria_csv(output_path.stem, crops, filled, fps, tray_dir, sparsa_conf)
-        print(f"[reframe] modelo: {ACTIVE_MODEL_PATH.name}")
+        print(f"[reframe] detector: {detector_type}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     elapsed = renderizar_reframe(input_path, crops, output_path, fps, has_audio)
@@ -459,7 +464,7 @@ def renderizar_stack(
     return time.time() - t0
 
 
-def reframe_stack_clip(input_path: Path, output_path: Path) -> dict:
+def reframe_stack_clip(input_path: Path, output_path: Path, detector_type: str = "yunet") -> dict:
     """Reencuadra en modo stack: N=2 o N=3 bandas estaticas, cero EMA/turnos."""
     from core import get_video_info
 
@@ -470,7 +475,7 @@ def reframe_stack_clip(input_path: Path, output_path: Path) -> dict:
     cap = cv2.VideoCapture(str(input_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     cap.release()
-    caras = detectar_caras_video(input_path)
+    caras = detectar_caras_video(input_path, detector_type=detector_type)
     bandas = rt.calcular_bandas_stack(caras, src_w, src_h)  # raises ValueError si N<2 o N>3
     n = len(bandas)
     ordered = sorted(caras, key=lambda c: c["center_x"])
@@ -501,6 +506,12 @@ def _build_parser():
     p.add_argument("--punch-in", action="store_true", help="Punch-ins en keywords (tracking)")
     p.add_argument("--out", type=Path, default=None, help="Ruta de salida")
     p.add_argument("--tray-dir", type=Path, default=None, help="CSV de trayectoria (tracking)")
+    p.add_argument(
+        "--detector",
+        choices=["yunet", "blazeface"],
+        default="yunet",
+        help="Detector: yunet (default, mayor confianza) o blazeface (MediaPipe, fallback)",
+    )
     return p
 
 
@@ -513,6 +524,11 @@ if __name__ == "__main__":
         output = args.out or args.input.with_stem(args.input.stem + SUFFIX_9X16)
         turnos = json.loads(args.turnos.read_text(encoding="utf-8")) if args.turnos else None
         result = reframe_clip(
-            args.input, output, turnos=turnos, punch_in=args.punch_in, tray_dir=args.tray_dir
+            args.input,
+            output,
+            turnos=turnos,
+            punch_in=args.punch_in,
+            tray_dir=args.tray_dir,
+            detector_type=args.detector,
         )
     print(f"Output: {result['output']}")

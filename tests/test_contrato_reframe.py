@@ -564,3 +564,84 @@ def test_parsear_cortes_escena_vacio():
     import reframe as rf  # noqa: PLC0415
 
     assert rf._parsear_cortes_escena("") == []
+
+
+# ── YuNetDetector — contratos sin video ni .onnx real ────────────────────────
+
+
+def test_yunet_detector_interface():
+    """YuNetDetector expone detect_all y close (duck-typing para detectar_todas_caras_frame)."""
+    from reframe_detect import YuNetDetector  # noqa: PLC0415
+
+    det = YuNetDetector.__new__(YuNetDetector)
+    assert callable(getattr(det, "detect_all", None))
+    assert callable(getattr(det, "close", None))
+
+
+def test_detectar_todas_caras_frame_despacha_yunet(monkeypatch):
+    """Con un detector que tiene detect_all, la funcion lo llama sin tocar MediaPipe."""
+    import numpy as np
+
+    import reframe_track as rt  # noqa: PLC0415
+
+    dummy_faces = [{"center_x": 100.0, "center_y": 50.0, "bbox": [80, 30, 40, 40], "score": 0.90}]
+
+    class FakeYuNet:
+        def detect_all(self, frame):
+            return dummy_faces
+
+    frame = np.zeros((480, 854, 3), dtype=np.uint8)
+    result = rt.detectar_todas_caras_frame(frame, FakeYuNet())
+    assert result == dummy_faces
+
+
+def test_detectar_cara_frame_despacha_yunet(monkeypatch):
+    """detectar_cara_frame delega en detectar_todas_caras_frame y devuelve el primer resultado."""
+    import numpy as np
+
+    import reframe_track as rt  # noqa: PLC0415
+
+    class FakeYuNet:
+        def detect_all(self, frame):
+            return [
+                {"center_x": 100.0, "center_y": 50.0, "bbox": [80, 30, 40, 40], "score": 0.92},
+                {"center_x": 600.0, "center_y": 50.0, "bbox": [580, 30, 40, 40], "score": 0.85},
+            ]
+
+    frame = np.zeros((480, 854, 3), dtype=np.uint8)
+    result = rt.detectar_cara_frame(frame, FakeYuNet())
+    assert result is not None
+    assert result["score"] == 0.92  # primera (mayor score)
+
+
+def test_yunet_score_threshold_valor():
+    """YUNET_SCORE_THRESHOLD == 0.75 (validado contra busto 0.65-0.69 en prueba2personasenmedio)."""
+    from reframe_detect import YUNET_SCORE_THRESHOLD  # noqa: PLC0415
+
+    assert YUNET_SCORE_THRESHOLD == 0.75
+
+
+def test_crear_detector_tipo_yunet_sin_onnx(monkeypatch, tmp_path):
+    """Si el .onnx no existe, _crear_detector('yunet') intenta fallback a blazeface."""
+    # Sobreescribir YUNET_MODEL_PATH a una ruta inexistente
+    import reframe_detect as rd  # noqa: PLC0415
+    from reframe_detect import _crear_detector  # noqa: PLC0415
+
+    monkeypatch.setattr(rd, "YUNET_MODEL_PATH", tmp_path / "no_existe.onnx")
+
+    blazeface_calls = []
+
+    def fake_blazeface(model_path=None):
+        blazeface_calls.append(1)
+        return object()
+
+    monkeypatch.setattr(rd, "_crear_detector_blazeface", fake_blazeface)
+    _crear_detector("yunet")
+    assert blazeface_calls, "Debe hacer fallback a BlazeFace si YuNet no existe"
+
+
+def test_yunet_area_filter_constante():
+    """YUNET_FACE_MAX_AREA_FRAC = 0.02056 (del proyecto de referencia, 3260 detecciones)."""
+    from reframe_detect import YUNET_FACE_MAX_AREA_FRAC  # noqa: PLC0415
+
+    assert abs(YUNET_FACE_MAX_AREA_FRAC - 0.02056) < 1e-6
