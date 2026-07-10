@@ -198,11 +198,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <div class="field">
       <label>Estilo</label>
       <select id="render-style">
+        <!-- Se puebla desde /api/styles al cargar (estilos nuevos aparecen solos). -->
         <option value="hormozi">Hormozi — blanco + amarillo</option>
-        <option value="clean">Clean — blanco sobrio</option>
-        <option value="karaoke">Karaoke — relleno cian</option>
-        <option value="bounce">Bounce — naranja animado</option>
-        <option value="pms">PMS — morado de marca</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Intensidad del pop (palabra activa)</label>
+      <select id="render-pop">
+        <option value="">Default del estilo</option>
+        <option value="off">Off — sin pop (estático)</option>
+        <option value="suave">Suave 1.08</option>
+        <option value="medio">Medio 1.30 (con rebote)</option>
+        <option value="fuerte">Fuerte 1.45 (con rebote)</option>
       </select>
     </div>
     <div class="field">
@@ -364,6 +371,21 @@ function showTab(id, btn) {
 
 // esc(): escapa comillas simples para uso seguro en atributos onclick inline
 function esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+// loadStyles(): puebla el dropdown de estilos desde /api/styles (estilos nuevos
+// aparecen solos, sin editar el HTML). Fail-safe: si falla, conserva el fallback estatico.
+async function loadStyles() {
+  try {
+    const res = await fetch('/api/styles');
+    if (!res.ok) return;
+    const styles = await res.json();
+    if (!Array.isArray(styles) || styles.length === 0) return;
+    const sel = document.getElementById('render-style');
+    const prev = sel.value;
+    sel.innerHTML = styles.map(s => `<option value="${s.id}">${s.label || s.name || s.id}</option>`).join('');
+    if (styles.some(s => s.id === prev)) sel.value = prev;
+  } catch (e) { /* fail-safe: se queda el <option> hardcodeado de respaldo */ }
+}
 
 // ═══════════════════════════════════════════════════════
 // TAB VIDEOS — carga y render de lista
@@ -809,6 +831,8 @@ async function startRender() {
   btn.disabled = true;
 
   const params = new URLSearchParams({style});
+  const pop = document.getElementById('render-pop').value;
+  if (pop) params.append('pop', pop);
   if (wpg) params.append('words_per_group', wpg);
   if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
   if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
@@ -1332,6 +1356,7 @@ async function transcribeAndGenerateClips(name) {
 // Init
 // ═══════════════════════════════════════════════════════
 loadVideos();
+loadStyles();
 </script>
 </body>
 </html>

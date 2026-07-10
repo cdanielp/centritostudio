@@ -312,6 +312,7 @@ def run_render(
     words_per_group: int | None,
     use_emphasis: bool = False,
     use_emojis: bool = False,
+    pop: str | None = None,
 ) -> None:
     """Worker: genera ASS con captions y quema el video de salida."""
     try:
@@ -333,14 +334,16 @@ def run_render(
         info = core.get_video_info(mp4)
         w, h = info["width"], info["height"]
 
-        style_cfg = get_style(style)
-        suffix_parts = [f"_{style}"]
+        style_cfg = get_style(style, pop)
+        # El pop entra en el nombre para no pisar renders de distinta intensidad.
+        pop_tag = f"_{pop}" if pop else ""
+        suffix_parts = [f"_{style}{pop_tag}"]
         if use_emphasis:
             suffix_parts.append("_enfasis")
         if use_emojis:
             suffix_parts.append("_emojis")
         suffix = "".join(suffix_parts)
-        ass_path = OUTPUT_DIR / f"{name}_{style}.ass"
+        ass_path = OUTPUT_DIR / f"{name}_{style}{pop_tag}.ass"
         out_path = OUTPUT_DIR / f"{name}{suffix}.mp4"
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")

@@ -336,6 +336,7 @@ def start_render(
     words_per_group: int | None = None,
     use_emphasis: bool = False,
     use_emojis: bool = False,
+    pop: str | None = None,
 ):
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -345,10 +346,11 @@ def start_render(
         raise HTTPException(400, "Transcribe el video antes de renderizar")
     if style not in STYLES:
         raise HTTPException(400, f"Estilo invalido. Opciones: {', '.join(STYLES)}")
+    # pop invalido es fail-safe en get_style (usa el del estilo); no bloqueamos aqui.
     jid = jobs.new_job(f"Renderizando {name} en {style}...")
     threading.Thread(
         target=jobs.run_render,
-        args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis),
+        args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis, pop),
         daemon=True,
     ).start()
     return {"job_id": jid}
@@ -388,9 +390,27 @@ def get_job(job_id: str):
     return job
 
 
+# Descripciones legibles para el dropdown del Studio (fallback: el id crudo).
+_STYLE_LABELS = {
+    "hormozi": "Hormozi — blanco + amarillo",
+    "clean": "Clean — blanco sobrio",
+    "karaoke": "Karaoke — relleno cian",
+    "bounce": "Bounce — naranja animado",
+    "pms": "PMS — morado de marca",
+}
+
+
 @app.get("/api/styles")
 def list_styles():
-    return [{"id": k, "name": v.name, "animation": v.animation_type} for k, v in STYLES.items()]
+    return [
+        {
+            "id": k,
+            "name": v.name,
+            "animation": v.animation_type,
+            "label": _STYLE_LABELS.get(k, k),
+        }
+        for k, v in STYLES.items()
+    ]
 
 
 if __name__ == "__main__":
