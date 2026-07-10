@@ -1,0 +1,1878 @@
+[
+  {
+    "id": 0,
+    "start": 0.0,
+    "end": 1.92,
+    "text": "ahora multiplica eso por miles de",
+    "words": [
+      {
+        "text": "ahora",
+        "start": 0.0,
+        "end": 0.4,
+        "line_idx": 0
+      },
+      {
+        "text": "multiplica",
+        "start": 0.4,
+        "end": 1.02,
+        "line_idx": 0
+      },
+      {
+        "text": "eso",
+        "start": 1.02,
+        "end": 1.24,
+        "line_idx": 1
+      },
+      {
+        "text": "por",
+        "start": 1.24,
+        "end": 1.5,
+        "line_idx": 1
+      },
+      {
+        "text": "miles",
+        "start": 1.5,
+        "end": 1.72,
+        "line_idx": 1
+      },
+      {
+        "text": "de",
+        "start": 1.72,
+        "end": 1.92,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 1,
+    "start": 1.92,
+    "end": 3.9,
+    "text": "millones de veces, es enorme, por eso",
+    "words": [
+      {
+        "text": "millones",
+        "start": 1.92,
+        "end": 2.18,
+        "line_idx": 0
+      },
+      {
+        "text": "de",
+        "start": 2.18,
+        "end": 2.42,
+        "line_idx": 0
+      },
+      {
+        "text": "veces,",
+        "start": 2.42,
+        "end": 2.72,
+        "line_idx": 0
+      },
+      {
+        "text": "es",
+        "start": 2.8,
+        "end": 3.0,
+        "line_idx": 1
+      },
+      {
+        "text": "enorme,",
+        "start": 3.0,
+        "end": 3.38,
+        "line_idx": 1
+      },
+      {
+        "text": "por",
+        "start": 3.66,
+        "end": 3.76,
+        "line_idx": 1
+      },
+      {
+        "text": "eso",
+        "start": 3.76,
+        "end": 3.9,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "start": 3.9,
+    "end": 5.22,
+    "text": "entrenar desde cero cuesta",
+    "words": [
+      {
+        "text": "entrenar",
+        "start": 3.9,
+        "end": 4.32,
+        "line_idx": 0
+      },
+      {
+        "text": "desde",
+        "start": 4.32,
+        "end": 4.56,
+        "line_idx": 0
+      },
+      {
+        "text": "cero",
+        "start": 4.56,
+        "end": 4.9,
+        "line_idx": 1
+      },
+      {
+        "text": "cuesta",
+        "start": 4.9,
+        "end": 5.22,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "start": 5.22,
+    "end": 6.56,
+    "text": "carísimo, semanas de",
+    "words": [
+      {
+        "text": "carísimo,",
+        "start": 5.22,
+        "end": 5.82,
+        "line_idx": 0
+      },
+      {
+        "text": "semanas",
+        "start": 6.1,
+        "end": 6.32,
+        "line_idx": 0
+      },
+      {
+        "text": "de",
+        "start": 6.32,
+        "end": 6.56,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "start": 6.56,
+    "end": 8.62,
+    "text": "supercomputadoras, montañas de",
+    "words": [
+      {
+        "text": "supercomputadoras,",
+        "start": 6.56,
+        "end": 7.78,
+        "line_idx": 0
+      },
+      {
+        "text": "montañas",
+        "start": 8.02,
+        "end": 8.38,
+        "line_idx": 1
+      },
+      {
+        "text": "de",
+        "start": 8.38,
+        "end": 8.62,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "start": 8.62,
+    "end": 9.9,
+    "text": "imágenes, mucho dinero,",
+    "words": [
+      {
+        "text": "imágenes,",
+        "start": 8.62,
+        "end": 9.04,
+        "line_idx": 0
+      },
+      {
+        "text": "mucho",
+        "start": 9.28,
+        "end": 9.44,
+        "line_idx": 0
+      },
+      {
+        "text": "dinero,",
+        "start": 9.44,
+        "end": 9.9,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "start": 10.32,
+    "end": 11.52,
+    "text": "no lo hace cualquiera, lo",
+    "words": [
+      {
+        "text": "no",
+        "start": 10.32,
+        "end": 10.44,
+        "line_idx": 0
+      },
+      {
+        "text": "lo",
+        "start": 10.44,
+        "end": 10.6,
+        "line_idx": 0
+      },
+      {
+        "text": "hace",
+        "start": 10.6,
+        "end": 10.78,
+        "line_idx": 0
+      },
+      {
+        "text": "cualquiera,",
+        "start": 10.78,
+        "end": 11.26,
+        "line_idx": 1
+      },
+      {
+        "text": "lo",
+        "start": 11.3,
+        "end": 11.52,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "start": 11.52,
+    "end": 13.24,
+    "text": "hacen grandes laboratorios o la",
+    "words": [
+      {
+        "text": "hacen",
+        "start": 11.52,
+        "end": 11.74,
+        "line_idx": 0
+      },
+      {
+        "text": "grandes",
+        "start": 11.74,
+        "end": 12.12,
+        "line_idx": 0
+      },
+      {
+        "text": "laboratorios",
+        "start": 12.12,
+        "end": 12.84,
+        "line_idx": 1
+      },
+      {
+        "text": "o",
+        "start": 12.84,
+        "end": 13.04,
+        "line_idx": 1
+      },
+      {
+        "text": "la",
+        "start": 13.04,
+        "end": 13.24,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "start": 13.24,
+    "end": 15.46,
+    "text": "comunidad, y lo mejor para ti, ese",
+    "words": [
+      {
+        "text": "comunidad,",
+        "start": 13.24,
+        "end": 13.7,
+        "line_idx": 0
+      },
+      {
+        "text": "y",
+        "start": 14.0,
+        "end": 14.1,
+        "line_idx": 0
+      },
+      {
+        "text": "lo",
+        "start": 14.1,
+        "end": 14.28,
+        "line_idx": 0
+      },
+      {
+        "text": "mejor",
+        "start": 14.28,
+        "end": 14.46,
+        "line_idx": 1
+      },
+      {
+        "text": "para",
+        "start": 14.46,
+        "end": 14.72,
+        "line_idx": 1
+      },
+      {
+        "text": "ti,",
+        "start": 14.72,
+        "end": 15.02,
+        "line_idx": 1
+      },
+      {
+        "text": "ese",
+        "start": 15.32,
+        "end": 15.46,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "start": 15.46,
+    "end": 16.5,
+    "text": "trabajo ya está hecho.",
+    "words": [
+      {
+        "text": "trabajo",
+        "start": 15.46,
+        "end": 15.84,
+        "line_idx": 0
+      },
+      {
+        "text": "ya",
+        "start": 15.84,
+        "end": 16.08,
+        "line_idx": 0
+      },
+      {
+        "text": "está",
+        "start": 16.08,
+        "end": 16.22,
+        "line_idx": 0
+      },
+      {
+        "text": "hecho.",
+        "start": 16.22,
+        "end": 16.5,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "start": 17.56,
+    "end": 19.58,
+    "text": "En ConfyUI tu no entrenas el modelo",
+    "words": [
+      {
+        "text": "En",
+        "start": 17.56,
+        "end": 17.78,
+        "line_idx": 0
+      },
+      {
+        "text": "ConfyUI",
+        "start": 17.78,
+        "end": 18.32,
+        "line_idx": 0
+      },
+      {
+        "text": "tu",
+        "start": 18.32,
+        "end": 18.58,
+        "line_idx": 0
+      },
+      {
+        "text": "no",
+        "start": 18.58,
+        "end": 18.8,
+        "line_idx": 0
+      },
+      {
+        "text": "entrenas",
+        "start": 18.8,
+        "end": 19.16,
+        "line_idx": 1
+      },
+      {
+        "text": "el",
+        "start": 19.16,
+        "end": 19.32,
+        "line_idx": 1
+      },
+      {
+        "text": "modelo",
+        "start": 19.32,
+        "end": 19.58,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "start": 19.58,
+    "end": 19.92,
+    "text": "base,",
+    "words": [
+      {
+        "text": "base,",
+        "start": 19.58,
+        "end": 19.92,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "start": 20.36,
+    "end": 21.66,
+    "text": "eso ya lo pagaron otros,",
+    "words": [
+      {
+        "text": "eso",
+        "start": 20.36,
+        "end": 20.54,
+        "line_idx": 0
+      },
+      {
+        "text": "ya",
+        "start": 20.54,
+        "end": 20.72,
+        "line_idx": 0
+      },
+      {
+        "text": "lo",
+        "start": 20.72,
+        "end": 20.88,
+        "line_idx": 0
+      },
+      {
+        "text": "pagaron",
+        "start": 20.88,
+        "end": 21.22,
+        "line_idx": 0
+      },
+      {
+        "text": "otros,",
+        "start": 21.22,
+        "end": 21.66,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "start": 22.24,
+    "end": 23.46,
+    "text": "descargas al artista ya",
+    "words": [
+      {
+        "text": "descargas",
+        "start": 22.24,
+        "end": 22.62,
+        "line_idx": 0
+      },
+      {
+        "text": "al",
+        "start": 22.62,
+        "end": 22.84,
+        "line_idx": 0
+      },
+      {
+        "text": "artista",
+        "start": 22.84,
+        "end": 23.22,
+        "line_idx": 1
+      },
+      {
+        "text": "ya",
+        "start": 23.22,
+        "end": 23.46,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "start": 23.46,
+    "end": 25.74,
+    "text": "entrenado ese archivo 6tensors y",
+    "words": [
+      {
+        "text": "entrenado",
+        "start": 23.46,
+        "end": 23.98,
+        "line_idx": 0
+      },
+      {
+        "text": "ese",
+        "start": 23.98,
+        "end": 24.34,
+        "line_idx": 0
+      },
+      {
+        "text": "archivo",
+        "start": 24.34,
+        "end": 24.76,
+        "line_idx": 1
+      },
+      {
+        "text": "6tensors",
+        "start": 24.76,
+        "end": 25.48,
+        "line_idx": 1
+      },
+      {
+        "text": "y",
+        "start": 25.48,
+        "end": 25.74,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "start": 25.74,
+    "end": 27.88,
+    "text": "lo usas gratis, generar no es",
+    "words": [
+      {
+        "text": "lo",
+        "start": 25.74,
+        "end": 25.96,
+        "line_idx": 0
+      },
+      {
+        "text": "usas",
+        "start": 25.96,
+        "end": 26.18,
+        "line_idx": 0
+      },
+      {
+        "text": "gratis,",
+        "start": 26.18,
+        "end": 26.94,
+        "line_idx": 0
+      },
+      {
+        "text": "generar",
+        "start": 27.22,
+        "end": 27.54,
+        "line_idx": 1
+      },
+      {
+        "text": "no",
+        "start": 27.54,
+        "end": 27.74,
+        "line_idx": 1
+      },
+      {
+        "text": "es",
+        "start": 27.74,
+        "end": 27.88,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "start": 27.88,
+    "end": 29.82,
+    "text": "entrenar, cuando generas El",
+    "words": [
+      {
+        "text": "entrenar,",
+        "start": 27.88,
+        "end": 28.5,
+        "line_idx": 0
+      },
+      {
+        "text": "cuando",
+        "start": 28.76,
+        "end": 29.04,
+        "line_idx": 0
+      },
+      {
+        "text": "generas",
+        "start": 29.04,
+        "end": 29.62,
+        "line_idx": 1
+      },
+      {
+        "text": "El",
+        "start": 29.62,
+        "end": 29.82,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "start": 29.82,
+    "end": 31.92,
+    "text": "aprendizaje ya ocurrió, solo lo",
+    "words": [
+      {
+        "text": "aprendizaje",
+        "start": 29.82,
+        "end": 30.38,
+        "line_idx": 0
+      },
+      {
+        "text": "ya",
+        "start": 30.38,
+        "end": 30.58,
+        "line_idx": 0
+      },
+      {
+        "text": "ocurrió,",
+        "start": 30.58,
+        "end": 31.12,
+        "line_idx": 1
+      },
+      {
+        "text": "solo",
+        "start": 31.44,
+        "end": 31.68,
+        "line_idx": 1
+      },
+      {
+        "text": "lo",
+        "start": 31.68,
+        "end": 31.92,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "start": 31.92,
+    "end": 32.5,
+    "text": "aprovechas.",
+    "words": [
+      {
+        "text": "aprovechas.",
+        "start": 31.92,
+        "end": 32.5,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "start": 32.9,
+    "end": 34.38,
+    "text": "Más adelante aprenderás a",
+    "words": [
+      {
+        "text": "Más",
+        "start": 32.9,
+        "end": 33.16,
+        "line_idx": 0
+      },
+      {
+        "text": "adelante",
+        "start": 33.16,
+        "end": 33.56,
+        "line_idx": 0
+      },
+      {
+        "text": "aprenderás",
+        "start": 33.56,
+        "end": 34.16,
+        "line_idx": 1
+      },
+      {
+        "text": "a",
+        "start": 34.16,
+        "end": 34.38,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "start": 34.38,
+    "end": 35.94,
+    "text": "enseñarle trucos sin entrenar desde",
+    "words": [
+      {
+        "text": "enseñarle",
+        "start": 34.38,
+        "end": 34.64,
+        "line_idx": 0
+      },
+      {
+        "text": "trucos",
+        "start": 34.64,
+        "end": 34.98,
+        "line_idx": 0
+      },
+      {
+        "text": "sin",
+        "start": 34.98,
+        "end": 35.22,
+        "line_idx": 1
+      },
+      {
+        "text": "entrenar",
+        "start": 35.22,
+        "end": 35.66,
+        "line_idx": 1
+      },
+      {
+        "text": "desde",
+        "start": 35.66,
+        "end": 35.94,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 21,
+    "start": 35.94,
+    "end": 36.32,
+    "text": "cero.",
+    "words": [
+      {
+        "text": "cero.",
+        "start": 35.94,
+        "end": 36.32,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 22,
+    "start": 37.61,
+    "end": 39.11,
+    "text": "En una línea, entrenar es",
+    "words": [
+      {
+        "text": "En",
+        "start": 37.61,
+        "end": 37.69,
+        "line_idx": 0
+      },
+      {
+        "text": "una",
+        "start": 37.69,
+        "end": 37.93,
+        "line_idx": 0
+      },
+      {
+        "text": "línea,",
+        "start": 37.93,
+        "end": 38.27,
+        "line_idx": 0
+      },
+      {
+        "text": "entrenar",
+        "start": 38.53,
+        "end": 38.93,
+        "line_idx": 1
+      },
+      {
+        "text": "es",
+        "start": 38.93,
+        "end": 39.11,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "start": 39.11,
+    "end": 40.59,
+    "text": "enseñarle al modelo practicando",
+    "words": [
+      {
+        "text": "enseñarle",
+        "start": 39.11,
+        "end": 39.53,
+        "line_idx": 0
+      },
+      {
+        "text": "al",
+        "start": 39.53,
+        "end": 39.73,
+        "line_idx": 0
+      },
+      {
+        "text": "modelo",
+        "start": 39.73,
+        "end": 39.97,
+        "line_idx": 1
+      },
+      {
+        "text": "practicando",
+        "start": 39.97,
+        "end": 40.59,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 24,
+    "start": 40.59,
+    "end": 42.57,
+    "text": "millones de veces, ajustando sus",
+    "words": [
+      {
+        "text": "millones",
+        "start": 40.59,
+        "end": 40.99,
+        "line_idx": 0
+      },
+      {
+        "text": "de",
+        "start": 40.99,
+        "end": 41.23,
+        "line_idx": 0
+      },
+      {
+        "text": "veces,",
+        "start": 41.23,
+        "end": 41.65,
+        "line_idx": 0
+      },
+      {
+        "text": "ajustando",
+        "start": 41.91,
+        "end": 42.31,
+        "line_idx": 1
+      },
+      {
+        "text": "sus",
+        "start": 42.31,
+        "end": 42.57,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "start": 42.57,
+    "end": 44.11,
+    "text": "conexiones hasta que domina.",
+    "words": [
+      {
+        "text": "conexiones",
+        "start": 42.57,
+        "end": 43.13,
+        "line_idx": 0
+      },
+      {
+        "text": "hasta",
+        "start": 43.13,
+        "end": 43.47,
+        "line_idx": 0
+      },
+      {
+        "text": "que",
+        "start": 43.47,
+        "end": 43.69,
+        "line_idx": 1
+      },
+      {
+        "text": "domina.",
+        "start": 43.69,
+        "end": 44.11,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "start": 44.43,
+    "end": 46.03,
+    "text": "Tú heredas a ese artista ya",
+    "words": [
+      {
+        "text": "Tú",
+        "start": 44.43,
+        "end": 44.59,
+        "line_idx": 0
+      },
+      {
+        "text": "heredas",
+        "start": 44.59,
+        "end": 44.97,
+        "line_idx": 0
+      },
+      {
+        "text": "a",
+        "start": 44.97,
+        "end": 45.07,
+        "line_idx": 0
+      },
+      {
+        "text": "ese",
+        "start": 45.07,
+        "end": 45.21,
+        "line_idx": 0
+      },
+      {
+        "text": "artista",
+        "start": 45.21,
+        "end": 45.65,
+        "line_idx": 1
+      },
+      {
+        "text": "ya",
+        "start": 45.65,
+        "end": 46.03,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 27,
+    "start": 46.03,
+    "end": 47.67,
+    "text": "entrenado y te dedicas a crear.",
+    "words": [
+      {
+        "text": "entrenado",
+        "start": 46.03,
+        "end": 46.51,
+        "line_idx": 0
+      },
+      {
+        "text": "y",
+        "start": 46.51,
+        "end": 46.67,
+        "line_idx": 0
+      },
+      {
+        "text": "te",
+        "start": 46.67,
+        "end": 46.89,
+        "line_idx": 0
+      },
+      {
+        "text": "dedicas",
+        "start": 46.89,
+        "end": 47.19,
+        "line_idx": 1
+      },
+      {
+        "text": "a",
+        "start": 47.19,
+        "end": 47.43,
+        "line_idx": 1
+      },
+      {
+        "text": "crear.",
+        "start": 47.43,
+        "end": 47.67,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "start": 48.05,
+    "end": 50.09,
+    "text": "Con esto cierran las bases, imagen,",
+    "words": [
+      {
+        "text": "Con",
+        "start": 48.05,
+        "end": 48.27,
+        "line_idx": 0
+      },
+      {
+        "text": "esto",
+        "start": 48.27,
+        "end": 48.45,
+        "line_idx": 0
+      },
+      {
+        "text": "cierran",
+        "start": 48.45,
+        "end": 48.79,
+        "line_idx": 0
+      },
+      {
+        "text": "las",
+        "start": 48.79,
+        "end": 49.03,
+        "line_idx": 1
+      },
+      {
+        "text": "bases,",
+        "start": 49.03,
+        "end": 49.35,
+        "line_idx": 1
+      },
+      {
+        "text": "imagen,",
+        "start": 49.69,
+        "end": 50.09,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "start": 50.47,
+    "end": 52.25,
+    "text": "modelo, red y entrenamiento.",
+    "words": [
+      {
+        "text": "modelo,",
+        "start": 50.47,
+        "end": 50.79,
+        "line_idx": 0
+      },
+      {
+        "text": "red",
+        "start": 51.07,
+        "end": 51.27,
+        "line_idx": 0
+      },
+      {
+        "text": "y",
+        "start": 51.27,
+        "end": 51.59,
+        "line_idx": 0
+      },
+      {
+        "text": "entrenamiento.",
+        "start": 51.59,
+        "end": 52.25,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "start": 52.51,
+    "end": 53.63,
+    "text": "Ya los entiendes.",
+    "words": [
+      {
+        "text": "Ya",
+        "start": 52.51,
+        "end": 52.67,
+        "line_idx": 0
+      },
+      {
+        "text": "los",
+        "start": 52.67,
+        "end": 52.91,
+        "line_idx": 0
+      },
+      {
+        "text": "entiendes.",
+        "start": 52.91,
+        "end": 53.63,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "start": 53.83,
+    "end": 55.55,
+    "text": "Ahora sí, manos a la obra.",
+    "words": [
+      {
+        "text": "Ahora",
+        "start": 53.83,
+        "end": 54.15,
+        "line_idx": 0
+      },
+      {
+        "text": "sí,",
+        "start": 54.15,
+        "end": 54.53,
+        "line_idx": 0
+      },
+      {
+        "text": "manos",
+        "start": 54.77,
+        "end": 54.97,
+        "line_idx": 0
+      },
+      {
+        "text": "a",
+        "start": 54.97,
+        "end": 55.17,
+        "line_idx": 0
+      },
+      {
+        "text": "la",
+        "start": 55.17,
+        "end": 55.33,
+        "line_idx": 1
+      },
+      {
+        "text": "obra.",
+        "start": 55.33,
+        "end": 55.55,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "start": 56.75,
+    "end": 58.45,
+    "text": "En ConfUI contratar a ese",
+    "words": [
+      {
+        "text": "En",
+        "start": 56.75,
+        "end": 57.03,
+        "line_idx": 0
+      },
+      {
+        "text": "ConfUI",
+        "start": 57.03,
+        "end": 57.51,
+        "line_idx": 0
+      },
+      {
+        "text": "contratar",
+        "start": 57.51,
+        "end": 58.13,
+        "line_idx": 1
+      },
+      {
+        "text": "a",
+        "start": 58.13,
+        "end": 58.27,
+        "line_idx": 1
+      },
+      {
+        "text": "ese",
+        "start": 58.27,
+        "end": 58.45,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 33,
+    "start": 58.45,
+    "end": 60.63,
+    "text": "artista es cargar un archivo Tensors",
+    "words": [
+      {
+        "text": "artista",
+        "start": 58.45,
+        "end": 58.85,
+        "line_idx": 0
+      },
+      {
+        "text": "es",
+        "start": 58.85,
+        "end": 59.09,
+        "line_idx": 0
+      },
+      {
+        "text": "cargar",
+        "start": 59.09,
+        "end": 59.43,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 59.43,
+        "end": 59.65,
+        "line_idx": 1
+      },
+      {
+        "text": "archivo",
+        "start": 59.65,
+        "end": 59.97,
+        "line_idx": 1
+      },
+      {
+        "text": "Tensors",
+        "start": 60.21,
+        "end": 60.63,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "start": 60.63,
+    "end": 61.69,
+    "text": "con un nodo.",
+    "words": [
+      {
+        "text": "con",
+        "start": 60.63,
+        "end": 60.85,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 60.85,
+        "end": 61.07,
+        "line_idx": 0
+      },
+      {
+        "text": "nodo.",
+        "start": 61.07,
+        "end": 61.69,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "start": 61.83,
+    "end": 63.47,
+    "text": "Es la pieza más importante de todo",
+    "words": [
+      {
+        "text": "Es",
+        "start": 61.83,
+        "end": 61.97,
+        "line_idx": 0
+      },
+      {
+        "text": "la",
+        "start": 61.97,
+        "end": 62.15,
+        "line_idx": 0
+      },
+      {
+        "text": "pieza",
+        "start": 62.15,
+        "end": 62.43,
+        "line_idx": 0
+      },
+      {
+        "text": "más",
+        "start": 62.43,
+        "end": 62.75,
+        "line_idx": 0
+      },
+      {
+        "text": "importante",
+        "start": 62.75,
+        "end": 63.07,
+        "line_idx": 1
+      },
+      {
+        "text": "de",
+        "start": 63.07,
+        "end": 63.33,
+        "line_idx": 1
+      },
+      {
+        "text": "todo",
+        "start": 63.33,
+        "end": 63.47,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 36,
+    "start": 63.47,
+    "end": 64.37,
+    "text": "tu flujo.",
+    "words": [
+      {
+        "text": "tu",
+        "start": 63.47,
+        "end": 63.69,
+        "line_idx": 0
+      },
+      {
+        "text": "flujo.",
+        "start": 63.69,
+        "end": 64.37,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "start": 64.39,
+    "end": 65.83,
+    "text": "Sin un modelo cargado no hay",
+    "words": [
+      {
+        "text": "Sin",
+        "start": 64.39,
+        "end": 64.55,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 64.55,
+        "end": 64.77,
+        "line_idx": 0
+      },
+      {
+        "text": "modelo",
+        "start": 64.77,
+        "end": 64.95,
+        "line_idx": 0
+      },
+      {
+        "text": "cargado",
+        "start": 64.95,
+        "end": 65.43,
+        "line_idx": 1
+      },
+      {
+        "text": "no",
+        "start": 65.43,
+        "end": 65.63,
+        "line_idx": 1
+      },
+      {
+        "text": "hay",
+        "start": 65.63,
+        "end": 65.83,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "start": 65.83,
+    "end": 67.39,
+    "text": "artista y no se dibuja nada.",
+    "words": [
+      {
+        "text": "artista",
+        "start": 65.83,
+        "end": 66.27,
+        "line_idx": 0
+      },
+      {
+        "text": "y",
+        "start": 66.27,
+        "end": 66.47,
+        "line_idx": 0
+      },
+      {
+        "text": "no",
+        "start": 66.47,
+        "end": 66.61,
+        "line_idx": 0
+      },
+      {
+        "text": "se",
+        "start": 66.61,
+        "end": 66.77,
+        "line_idx": 0
+      },
+      {
+        "text": "dibuja",
+        "start": 66.77,
+        "end": 67.05,
+        "line_idx": 1
+      },
+      {
+        "text": "nada.",
+        "start": 67.05,
+        "end": 67.39,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 39,
+    "start": 67.97,
+    "end": 69.41,
+    "text": "Y cambiar de modelo es como",
+    "words": [
+      {
+        "text": "Y",
+        "start": 67.97,
+        "end": 68.15,
+        "line_idx": 0
+      },
+      {
+        "text": "cambiar",
+        "start": 68.15,
+        "end": 68.33,
+        "line_idx": 0
+      },
+      {
+        "text": "de",
+        "start": 68.33,
+        "end": 68.59,
+        "line_idx": 0
+      },
+      {
+        "text": "modelo",
+        "start": 68.59,
+        "end": 68.85,
+        "line_idx": 1
+      },
+      {
+        "text": "es",
+        "start": 68.85,
+        "end": 69.13,
+        "line_idx": 1
+      },
+      {
+        "text": "como",
+        "start": 69.13,
+        "end": 69.41,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 40,
+    "start": 69.41,
+    "end": 71.03,
+    "text": "contratar a otro artista con su",
+    "words": [
+      {
+        "text": "contratar",
+        "start": 69.41,
+        "end": 69.83,
+        "line_idx": 0
+      },
+      {
+        "text": "a",
+        "start": 69.83,
+        "end": 70.01,
+        "line_idx": 0
+      },
+      {
+        "text": "otro",
+        "start": 70.01,
+        "end": 70.13,
+        "line_idx": 0
+      },
+      {
+        "text": "artista",
+        "start": 70.13,
+        "end": 70.63,
+        "line_idx": 1
+      },
+      {
+        "text": "con",
+        "start": 70.63,
+        "end": 70.85,
+        "line_idx": 1
+      },
+      {
+        "text": "su",
+        "start": 70.85,
+        "end": 71.03,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "start": 71.03,
+    "end": 71.71,
+    "text": "propio estilo.",
+    "words": [
+      {
+        "text": "propio",
+        "start": 71.03,
+        "end": 71.29,
+        "line_idx": 0
+      },
+      {
+        "text": "estilo.",
+        "start": 71.29,
+        "end": 71.71,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 42,
+    "start": 73.0,
+    "end": 74.4,
+    "text": "Piensa en un dibujante que",
+    "words": [
+      {
+        "text": "Piensa",
+        "start": 73.0,
+        "end": 73.42,
+        "line_idx": 0
+      },
+      {
+        "text": "en",
+        "start": 73.42,
+        "end": 73.62,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 73.62,
+        "end": 73.82,
+        "line_idx": 0
+      },
+      {
+        "text": "dibujante",
+        "start": 73.82,
+        "end": 74.2,
+        "line_idx": 1
+      },
+      {
+        "text": "que",
+        "start": 74.2,
+        "end": 74.4,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 43,
+    "start": 74.4,
+    "end": 76.16,
+    "text": "estudió tantísimo que ya puede",
+    "words": [
+      {
+        "text": "estudió",
+        "start": 74.4,
+        "end": 74.68,
+        "line_idx": 0
+      },
+      {
+        "text": "tantísimo",
+        "start": 74.68,
+        "end": 75.34,
+        "line_idx": 0
+      },
+      {
+        "text": "que",
+        "start": 75.34,
+        "end": 75.78,
+        "line_idx": 1
+      },
+      {
+        "text": "ya",
+        "start": 75.78,
+        "end": 75.96,
+        "line_idx": 1
+      },
+      {
+        "text": "puede",
+        "start": 75.96,
+        "end": 76.16,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "start": 76.16,
+    "end": 77.42,
+    "text": "dibujar lo que le pidas.",
+    "words": [
+      {
+        "text": "dibujar",
+        "start": 76.16,
+        "end": 76.64,
+        "line_idx": 0
+      },
+      {
+        "text": "lo",
+        "start": 76.64,
+        "end": 76.78,
+        "line_idx": 0
+      },
+      {
+        "text": "que",
+        "start": 76.78,
+        "end": 76.86,
+        "line_idx": 0
+      },
+      {
+        "text": "le",
+        "start": 76.86,
+        "end": 77.06,
+        "line_idx": 0
+      },
+      {
+        "text": "pidas.",
+        "start": 77.06,
+        "end": 77.42,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "start": 77.68,
+    "end": 79.66,
+    "text": "Un perro, un atardecer, un",
+    "words": [
+      {
+        "text": "Un",
+        "start": 77.68,
+        "end": 77.98,
+        "line_idx": 0
+      },
+      {
+        "text": "perro,",
+        "start": 77.98,
+        "end": 78.34,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 78.48,
+        "end": 78.66,
+        "line_idx": 0
+      },
+      {
+        "text": "atardecer,",
+        "start": 78.66,
+        "end": 79.26,
+        "line_idx": 1
+      },
+      {
+        "text": "un",
+        "start": 79.4,
+        "end": 79.66,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "start": 79.66,
+    "end": 80.06,
+    "text": "dragón.",
+    "words": [
+      {
+        "text": "dragón.",
+        "start": 79.66,
+        "end": 80.06,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "start": 80.6,
+    "end": 82.46,
+    "text": "No improvisa, tiene la mano",
+    "words": [
+      {
+        "text": "No",
+        "start": 80.6,
+        "end": 80.9,
+        "line_idx": 0
+      },
+      {
+        "text": "improvisa,",
+        "start": 80.9,
+        "end": 81.62,
+        "line_idx": 0
+      },
+      {
+        "text": "tiene",
+        "start": 81.78,
+        "end": 82.02,
+        "line_idx": 1
+      },
+      {
+        "text": "la",
+        "start": 82.02,
+        "end": 82.24,
+        "line_idx": 1
+      },
+      {
+        "text": "mano",
+        "start": 82.24,
+        "end": 82.46,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 48,
+    "start": 82.46,
+    "end": 82.92,
+    "text": "hecha.",
+    "words": [
+      {
+        "text": "hecha.",
+        "start": 82.46,
+        "end": 82.92,
+        "line_idx": 0
+      }
+    ]
+  },
+  {
+    "id": 49,
+    "start": 83.32,
+    "end": 85.6,
+    "text": "Un modelo es justo eso, pero esa",
+    "words": [
+      {
+        "text": "Un",
+        "start": 83.32,
+        "end": 83.54,
+        "line_idx": 0
+      },
+      {
+        "text": "modelo",
+        "start": 83.54,
+        "end": 83.88,
+        "line_idx": 0
+      },
+      {
+        "text": "es",
+        "start": 83.88,
+        "end": 84.24,
+        "line_idx": 0
+      },
+      {
+        "text": "justo",
+        "start": 84.24,
+        "end": 84.54,
+        "line_idx": 0
+      },
+      {
+        "text": "eso,",
+        "start": 84.54,
+        "end": 84.96,
+        "line_idx": 1
+      },
+      {
+        "text": "pero",
+        "start": 85.18,
+        "end": 85.38,
+        "line_idx": 1
+      },
+      {
+        "text": "esa",
+        "start": 85.38,
+        "end": 85.6,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "start": 85.6,
+    "end": 87.04,
+    "text": "experiencia entera está guardada",
+    "words": [
+      {
+        "text": "experiencia",
+        "start": 85.6,
+        "end": 86.06,
+        "line_idx": 0
+      },
+      {
+        "text": "entera",
+        "start": 86.06,
+        "end": 86.38,
+        "line_idx": 0
+      },
+      {
+        "text": "está",
+        "start": 86.38,
+        "end": 86.62,
+        "line_idx": 1
+      },
+      {
+        "text": "guardada",
+        "start": 86.62,
+        "end": 87.04,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 51,
+    "start": 87.04,
+    "end": 88.46,
+    "text": "dentro de un archivo.",
+    "words": [
+      {
+        "text": "dentro",
+        "start": 87.04,
+        "end": 87.32,
+        "line_idx": 0
+      },
+      {
+        "text": "de",
+        "start": 87.32,
+        "end": 87.5,
+        "line_idx": 0
+      },
+      {
+        "text": "un",
+        "start": 87.5,
+        "end": 87.68,
+        "line_idx": 0
+      },
+      {
+        "text": "archivo.",
+        "start": 87.68,
+        "end": 88.46,
+        "line_idx": 1
+      }
+    ]
+  },
+  {
+    "id": 52,
+    "start": 88.46,
+    "end": 90.92,
+    "text": "Tú lo describes y el artista dibuja.",
+    "words": [
+      {
+        "text": "Tú",
+        "start": 88.46,
+        "end": 88.72,
+        "line_idx": 0
+      },
+      {
+        "text": "lo",
+        "start": 88.72,
+        "end": 88.96,
+        "line_idx": 0
+      },
+      {
+        "text": "describes",
+        "start": 88.96,
+        "end": 89.54,
+        "line_idx": 0
+      },
+      {
+        "text": "y",
+        "start": 89.54,
+        "end": 89.9,
+        "line_idx": 0
+      },
+      {
+        "text": "el",
+        "start": 89.9,
+        "end": 90.08,
+        "line_idx": 1
+      },
+      {
+        "text": "artista",
+        "start": 90.08,
+        "end": 90.46,
+        "line_idx": 1
+      },
+      {
+        "text": "dibuja.",
+        "start": 90.46,
+        "end": 90.92,
+        "line_idx": 1
+      }
+    ]
+  }
+]

@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-10 · Sesión: 25
+Actualizado: 2026-07-10 · Sesión: 26 · **Avance real: 74/100**
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -10,9 +10,11 @@ Actualizado: 2026-07-10 · Sesión: 25
 - [x] F4 Clipper viral — CERRADA. Smoke test pruebaedicionvideoyo.mov: 1 clip score=63 OK. Calibración videolargo.mov (57 min): 3 clips (86/78/77), $0.0094, 45s wall. SCORE_MIN=60 y MAX_CLIPS=3 confirmados por arquitecto. Bug dotenv fix incluido. Evidencia: revision/fase-4/DISENO_CLIPPER.md + CALIBRACION_CLIPPER.md + frames clip1-3.
 - [x] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — CERRADA s16. C1 PASS ×3 (96.2/97.5/100%), C2v2 PASS (0.19/0.53%), 98 tests, D1-D5+D6 firmes. Aprobado K 90/100. Deudas: descuadre reposo (#21), full_range cara débil (#22), F4.2-LITE (#24). Avance 65/100.
 - [x] F4.2-LITE Layout Stack — CERRADA s21. calcular_bandas_stack + renderizar_stack + --layout stack CLI + selector Studio. Validado sobre extracto continuo (stack_test_estatico.mp4 48.5s 854x480): C-STACK 100%/100% vacuo, C1 tracking 100%, K 9/10. Intrusión cruzada tolerable. Deudas: ALTURA_CROP_PCT (#24d), full-range lentes oscuros (#22), selección manual caras (#24b). 118 tests. Avance 68/100.
-- [ ] F5 Assets: emojis PNG + ComfyUI
+- [x] F4.2-CORTES modo escenas — implementada s25 (default --tracker escenas); cierre formal pendiente de veredicto K EMA vs ESCENAS (revision/para-K/ #1)
+- [x] F5-s1 Assets: puente ComfyUI + emojis PNG (s23) + emojis v2 rembg/sticker/centrado (s25) — pendiente veredicto K (para-K #2)
+- [ ] F5-s2 Captions cinéticos + estilos de marca (necesita M2/M3 de K)
 - [ ] F6 Motor B: HyperFrames
-- [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ])
+- [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ]) (necesita M5 de K)
 
 ## Herramientas del agente
 - [x] Plugin /watch operativo (frame extraction + análisis visual multimodal — tacosjuan@5s verificado)
@@ -48,7 +50,44 @@ Actualizado: 2026-07-10 · Sesión: 25
 - 2026-07-09: Sesion 22 — UX STUDIO SIN CALLEJONES. Registro previo: #22 ESPERAR, #24b justo despues F5, #24d RESERVA ACTIVA. MAESTRO regla #16 (NINGUN ERROR SIN ACCION). app.py: campo stages por video (transcrito/depurado/clips_n/reencuadrado) desde artefactos en disco. index.html: badges de pipeline, panel depurar inline (sin window.prompt), dialogo encadenado transcribir+clips, transcribeAndGenerateClips, transcribeFromRender, goTranscribeVideo, progreso con tiempo en todas las ops, 0 alertas/prompts del sistema. 118 tests, ruff OK. Validacion visual de K en Studio: pendiente, no bloqueante — cualquier ajuste va como follow-up.
 - 2026-07-09: Sesion 23 — TRIPLE s23. Sello s22 (commit 8988124). Diagnostico tracking: pruebaparaedicion.mov 2618x1440 92s → C1=93.0% con 3 cortes de escena (C1 ILEGIBLE fuera de dominio por frames hold fantasma, caveat D6). Tabla: clase 2K C1=93%/det_viva=33.3%/conf=0.942 vs podcast 480p C1=100%/det_viva=20.2%/conf=0.490. F5-s1: assets_comfy.py + keywords.json + burn_video_with_emojis + --emojis CLI + Studio checkbox. 130 tests verdes. Commit c8d5fcf.
 - 2026-07-09: Sesion 24 — BLOQUE 0: re-priorizacion F4.2-CORTES adelantado (ver PREGUNTAS #26). BLOQUE A: A/B BlazeFace vs YuNet — resultados con regla de adopcion. BLOQUE B: diseño de referencia F4.2 registrado en PREGUNTAS #26. Fix rapido emojis: diagnostico separado (puerto 8188/8000 + keywords matcheadas) + tacos/pastor/salsa + validacion ComfyUI real (commit f590ef9).
-- 2026-07-10: Sesion 25 — BLOQUE A emojis v2 (commit 81a5b55): rembg RGBA + PROMPT_TEMPLATE sticker + centrado sobre captions + fade 120ms; validado con ComfyUI (cache 3.4s 2a corrida). BLOQUE B F4.2-CORTES: modo escenas implementado (reframe_escenas.py, waypoints, reinicio por corte, --tracker escenas default / ema fallback). BUG CAZADO POR A/B: filtro de area de un nivel descartaba la cara grande del talking-head 2K (4 segmentos "none"); fix = filtro dos niveles del proyecto referencia (score>=0.87 exime cap hasta 0.10). Regresion stack_test_estatico: 1 seg multi, 0 paneos, C1v2=100%. 156 tests.
+- 2026-07-10: Sesion 25 — BLOQUE A emojis v2 (commit 81a5b55): rembg RGBA + PROMPT_TEMPLATE sticker + centrado sobre captions + fade 120ms; validado con ComfyUI (cache 3.4s 2a corrida). BLOQUE B F4.2-CORTES: modo escenas implementado (reframe_escenas.py, waypoints, reinicio por corte, --tracker escenas default / ema fallback). BUG CAZADO POR A/B: filtro de area de un nivel descartaba la cara grande del talking-head 2K (4 segmentos "none"); fix = filtro dos niveles del proyecto referencia (score>=0.87 exime cap hasta 0.10). Regresion stack_test_estatico: 1 seg multi, 0 paneos, C1v2=100%. ~~156 tests~~ 157 tests (conteo corregido en s26).
+- 2026-07-10: Sesion 26 — BARRIDO GENERAL. B0: MAESTRO regla #17 (producto general) + #18 (aserciones intermedias, saldada #26e) + racionales #22/#26 actualizados. B1: inventario canonico 12 fuentes (revision/inventario/fuentes.md + scan_raw.json) — hallazgos: videolargo y 2c1b8978 son 854x480 (no 1080p); caras-de-contenido en 4 fuentes. B2: pruebaedicionvideoyo SIN webcam; reframe escenas trackea cara generada en pantalla con C1v2=96.7% (basura con metricas verdes) → PREGUNTAS #27 MODO PANTALLA (opciones a/b/c) + #28 MULTI V2. B3 RUTA A E2E pruebaparaedicion: transcripcion 9.9s → clipper 2 clips (81/72) $0.0010 → reframe escenas 52.8s → brain 7.1s → captions+emojis fail-open 24.6s; total ~2.5min, $0.0015. RUTA B: extracto 426-486s podcast → stack 41s → captions hormozi; publicable 0-36s, corte a close-up degrada (caso #28). B4: revision/para-K/README.md (4 veredictos + M1-M5), assets/keywords_draft.json (47 kw desde 8 transcripciones), ESTADO con cierre 3 columnas + mapa sesiones. Avance 74/100. Nota: RUTA A re-transcribio pruebaparaedicion DELIBERADAMENTE (E2E cronometrado); transcript previo respaldado en revision/inventario/backup_s26/, CSVs de trayectoria s26 en revision/inventario/. Revisor s26: APROBADO, 0 bloqueantes, 6 riesgos menores (2 corregidos: tachado #26b, returncode ffprobe en scan; 4 anotados: imports privados en script de evidencia, renders de para-K fuera de git, metricas no re-verificadas, entregables extra nombrados aqui).
+
+## QUÉ FALTA PARA CERRAR (s26)
+
+### (a) Espera veredicto de K — todo en `revision/para-K/README.md`
+| Ítem | Decide |
+|---|---|
+| EMA vs ESCENAS (`pruebaparaedicion_*_9x16.mp4`) | default del reframe y cierre formal F4.2-CORTES |
+| Emojis v2 (`tacosjuan_hormozi_emojis.mp4`) | cierre de F5-s1 o iteración |
+| Clips RUTA A (nota /100) | calidad E2E; abre o no calibración del clipper v2 (#12/#13) |
+| Render RUTA B (stack+captions) | prioridad real de multi v2 (#28) |
+| Punch-in (#20) | se vota con renders F5 completos — sigue congelado |
+
+### (b) Espera implementación (estimado en sesiones)
+| Ítem | Sesiones | Nota |
+|---|---|---|
+| #26f selector de tracker en Studio | 0.5 | diff chico, próxima sesión de Studio (junto a deuda #25 poll timeout) |
+| #24b selección manual de caras | 1-2 | prioridad firmada: justo después de F5 |
+| F5-s2 captions cinéticos + estilos marca | 1-2 | bloqueada parcialmente por M2/M3 de K |
+| #27 MODO PANTALLA | 2-3 | diseño (voto arquitecto entre opciones a/b/c) + impl |
+| Multi v2 (#28: stack/turnos por segmento) | 2 | requiere identidad entre planos (parcial con #24b) |
+| Modo AUTO en Studio (clasificador de fuente + ruteo) | 2 | semilla: `revision/inventario/fuentes.md`; depende de #27 y #28 |
+| F6 HyperFrames (2 plantillas) | 2 | independiente, puede intercalarse |
+| F7 Telegram/worker | 1 diseño + 2 despliegue | bloqueada por M5 de K y por uso personal real de F1-F4 |
+
+### (c) Espera material de K (detalle en `revision/para-K/README.md`)
+- M1: 2-3 videos completos de tipos distintos → `input/`
+- M2: logo PMS PNG transparente + colores hex → `assets/marca/`
+- M3: confirmar reel01-03 como referencias de estilo (o aportar 3-5)
+- M4: aprobar/tachar `assets/keywords_draft.json` (47 generadas en s26)
+- M5: canal/grupo de Telegram destino + quién aprueba
+
+### Mapa de sesiones hasta cierre (~10-13 sesiones)
+s27 (veredictos K + selector tracker + arranque #24b) → s28 (#24b cierre) →
+s29-30 (F5-s2 con M2/M3) → s31-32 (#27 modo pantalla) → s33-34 (multi v2) →
+s35-36 (modo AUTO v1 + F6) → s37+ (F7 si K la activa). El avance 74/100 asume
+cierre = F1-F6 + modo AUTO v1 en uso real; F7 desplegada suma aparte.
 
 ## Repriorización arquitecto (s24)
 

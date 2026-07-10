@@ -51,3 +51,4 @@ workflows/
 .vscode/
 .idea/
 *.swp
+revision/inventario/frames/pantalla_*

@@ -353,7 +353,11 @@ Dataset de calibracion: `revision/fase-4.2-lite/cortes_dataset.md` — 3 fuentes
 
 El .tflite de full-range esta descargado en `models/`. No activar aun.
 **Trigger:** cuando duela en renders reales de K (contenido 1080p talking-head sin lentes).
-El caso debil (lentes oscuros) es secundario en el flujo de produccion actual.
+~~El caso debil (lentes oscuros) es secundario en el flujo de produccion actual.~~
+**Racional actualizado s26 — producto general (MAESTRO regla #17):** ninguna fuente es
+secundaria por diseño. Lentes oscuros / baja resolucion son casos que el producto debe
+detectar y servir con fallback digno. El trigger operativo sigue siendo "cuando duela en
+renders reales", pero la justificacion ya no es "no es el flujo de K".
 Estado: PENDIENTE — sin trigger activo.
 
 ### 24b. Seleccion manual de caras — prioridad JUSTO DESPUES DE F5 (voto arquitecto s22)
@@ -385,6 +389,10 @@ no pase con asteriscos silenciosos. Aplicar en proxima sesion de extractos.
 prueba2personasenmedio multicam 3 cortes, pruebaparaedicion 2K 3 cortes) tienen cortes
 de escena. La precondicion de toma continua no describe el material de produccion de K
 (OBS/edicion). La queja de "falla el enfoque" es este mecanismo, no el detector.
+**Racional actualizado s26 — producto general (MAESTRO regla #17):** la evidencia de
+cortes aplica a CUALQUIER material editado, no solo al flujo de K. F4.2-CORTES no se
+justifica por "las clases OBS de K" sino porque el material editado es la norma del
+video real; las clases de K fueron el primer dato, no el dominio.
 Nota: C1=93% de s23 queda CORREGIDO a "C1 ilegible fuera de dominio" — con cortes,
 C1 cuenta frames de hold fantasma entre planos distintos (caveat D6 de DECISIONES.md).
 
@@ -415,8 +423,10 @@ Dentro de cada segmento ya clasificado:
 - Con la lista de waypoints, armar expresion FFmpeg de `x` dinamico para el filtro crop
   (interpolacion lineal en cada ventana de transicion, valor fijo fuera de ellas).
 
-**Candidato a reemplazar EMA para clases OBS de K** (camara fija → cuadro clavado en reposo,
-sin deriva EMA). Requiere A/B de render comparativo sobre clase real antes de decidir.
+~~**Candidato a reemplazar EMA para clases OBS de K**~~ **Candidato a reemplazar EMA para
+camara fija** (cuadro clavado en reposo, sin deriva EMA) — aplica a clases OBS y a cualquier
+fuente de camara estatica (racional actualizado s26 — producto general). Requiere A/B de
+render comparativo sobre clase real antes de decidir.
 
 Constantes a parametrizar: `--deadzone-pct 18`, `--pan-duration-ms 500`,
 `--sample-interval-single-ms 500`, `--sample-interval-split-ms 200`.
@@ -459,9 +469,73 @@ El Studio siempre usa el default (escenas). `--tracker ema` existe solo por CLI.
 Regla 15 pide "activable desde el Studio": pasar `tracker` por start_reframe →
 run_reframe + selector en la UI. Diff pequeno, proxima sesion de Studio.
 
-#### 26e. Nota de testing obligatoria (MAESTRO.md #17 propuesto)
+#### 26e. Nota de testing obligatoria — REGISTRADA como MAESTRO regla #18 (s26)
 
 Tests de tracking deben tener aserciones en cada muestra intermedia, no solo estado final.
 Referencia: el bug de SplitIdentityTracker del proyecto de referencia fue invisible a
 aserciones de estado final pero detectable con aserciones frame a frame.
-Propuesta para MAESTRO.md regla #17 (a registrar al abrir F4.2-CORTES).
+~~Propuesta para MAESTRO.md regla #17 (a registrar al abrir F4.2-CORTES).~~
+Registrada en s26 como regla #18 (el slot #17 lo tomó el principio de producto).
+
+---
+
+### 27. MODO PANTALLA — grabaciones de pantalla / tutoriales (GAP #1, s26)
+
+**Dato:** `pruebaedicionvideoyo.mov` (2560x1440, 75s, tutorial de ComfyUI grabado de
+pantalla, material real de K — y uno de los tipos de video mas comunes que existen).
+
+**Diagnostico s26 (evidencia en `revision/inventario/`):**
+1. **NO hay webcam.** Las 1-3 "caras" que YuNet detecta (conf 0.89-0.94, h=0.02-0.14)
+   son caras DENTRO del contenido de pantalla: previews de imagenes generadas en el
+   workflow. Posiciones coinciden con los paneles de la UI, no con una burbuja estable.
+2. **Reframe modo escenas hoy:** clasifica seg 0 (0-12s) como "multi 2 caras" y seg 1
+   (12-75s) como "single" con C1v2=96.7% — es decir, **trackea con exito una cara que
+   no es una persona**. El crop 9:16 queda centrado en los previews de imagenes; la UI
+   del workflow (nodos, textos) es ILEGIBLE en el output. Frames:
+   `frames/pantalla_reframe_t{5,20,40,65}.png`.
+3. No cae a none/center-crop: el detector SI encuentra caras (del contenido), asi que
+   la ruta single/multi se activa con confianza alta. Es el caso exacto de la regla #17:
+   hoy el sistema produce basura CON metricas verdes, sin avisar.
+
+**Opciones de diseno (decision del arquitecto DESPUES, no implementar):**
+
+- **(a) Crop de pantalla + burbuja webcam reposicionada.** Detectar si existe webcam
+  real (cara persistente en posicion fija de esquina, distinta del contenido); recortar
+  la region de pantalla relevante como banda principal y recolocar la webcam como
+  burbuja/banda inferior. Trade-offs: el resultado mas "producto" (equivale a lo que
+  hace captions.ai con tutoriales); requiere clasificador cara-real-vs-contenido +
+  deteccion de region activa; es la opcion mas cara. Sin webcam (este video) degrada
+  a (b) o (c).
+- **(b) Zoom a region activa de la pantalla.** Seguir la actividad (cursor, diffs de
+  pixeles entre frames) y hacer crop 9:16 con paneos waypoint sobre la zona activa.
+  Trade-offs: mantiene legible lo que importa; heuristica de actividad fragil (scroll
+  rapido = mareo); reusa la maquinaria de waypoints de F4.2-CORTES.
+- **(c) Solo captions, sin reframe.** Detectar "es grabacion de pantalla" y NO reencuadrar:
+  entregar 16:9 con captions, o 9:16 pillarbox con la pantalla completa y captions en la
+  banda libre. Trade-offs: cero riesgo de basura, siempre digno; no aprovecha el formato
+  vertical; es el fallback minimo que la regla #17 exige mientras (a)/(b) no existan.
+
+**Prerequisito transversal a las 3 opciones:** clasificador de fuente "pantalla vs camara"
+(senales: caras chicas y ancladas a paneles de UI, bordes rectos y texto denso, cortes
+casi nulos con scroll continuo). Es la primera neurona del modo AUTO.
+
+### 28. MULTI V2 — segmentos multi rutean a stack o turnos POR SEGMENTO (s26)
+
+**Estado v1 (D15):** en modo escenas, un segmento clasificado `multi` solo sigue la cara
+principal (mayor score del frame representativo). Caras que entran a mitad de segmento no
+generan track. Stack y turnos son rutas GLOBALES por video, no por segmento.
+
+**Dato s26:** `pruebapodcast2personas.mp4` (12.6 min multicam editado, 55 cortes): los
+planos alternan close-up single (mayoria) y plano abierto con 2 personas (tramo mas largo:
+426-462s, 36s). No existe ruta que sirva bien TODO el video: tracking-escenas trata los
+planos abiertos como "multi -> cara principal" (ignora al segundo hablante), y stack
+global arruina los close-ups (precedente s18: misma persona en ambas bandas).
+
+**Spec propuesta:** el clasificador por segmento de F4.2-CORTES ya distingue single/multi/
+none; multi v2 = poder rutear cada segmento a su layout: single->tracking, multi->stack
+(o turnos si hay brain/turnos), none->crop centrado. Transiciones = corte seco (precedente
+D-turnos). Con la regla #17 (producto general) esto es PRIORIDAD, no detalle: el podcast
+multicam es un formato de primera clase.
+
+**Dependencias:** identidad de personas entre planos (la persona A del plano 3 es la del
+plano 7) — hoy no existe; seleccion manual #24b puede aportar las anclas confirmadas.
