@@ -1,131 +1,119 @@
 # Centrito Studio
 
-Herramienta local para generar captions animados palabra por palabra (estilo Hormozi/CapCut/karaoke). Incluye UI web con editor de transcripción sincronizado y CLI para batch processing.
+Suite local de produccion de video con IA para Prompt Models Studio.
 
-Equivalente self-hosted de captions.ai. Sin suscripción, sin API externa, sin Docker.
+Sin Docker. Sin suscripcion. Sin API externa (salvo DeepSeek para analisis editorial y
+ComfyUI local para assets — ambos opcionales y configurables en `.env`).
 
-## Centrito Studio — UI Web (recomendado)
+## Que hace
 
-### Arranque en 1 clic
+| Herramienta | Descripcion |
+|---|---|
+| **Captions** | Captions animados word-by-word (Hormozi / karaoke / bounce / PMS) sobre cualquier video |
+| **Depurador** | Elimina silencios y muletillas de clases grabadas |
+| **Clipper** | Extrae los mejores momentos virales de un video largo (analisis con LLM) |
+| **Reframe** | Convierte clips 16:9 a 9:16 con face tracking — modo escenas (cortes-primero + waypoints) y modo EMA |
+| **Stack** | Layout vertical para podcast de 2-3 personas (bandas estaticas) |
+| **Emojis IA** | Overlays PNG generados por ComfyUI sincronizados a keywords del brain |
+| **Studio** | UI web (FastAPI + HTML vanilla) que orquesta todo en el navegador |
 
-Doble clic en **`arranque.bat`** — levanta el server y abre el navegador automáticamente.
+## Arranque rapido
 
-### Flujo en 5 pasos
+```powershell
+# 1. Crear entorno y dependencias
+python -m venv venv
+.\venv\Scripts\pip install -r requirements.txt
 
-1. **Videos** → arrastra tu .mp4 o haz clic para seleccionar
-2. **Transcribir** → haz clic en el botón "Transcribir" del video; espera la barra de progreso
-3. **Editor** → abre el Editor, haz clic en cualquier grupo para saltar al timestamp; edita el texto si Whisper se equivocó
-4. **Guardar** → "Guardar cambios" preserva tus ediciones; "Restaurar original" vuelve a la transcripción automática
-5. **Render** → elige estilo y palabras por grupo → "Renderizar" → preview + Descargar
+# 2. Copiar y llenar secretos (solo DeepSeek si quieres clips/enfasis IA)
+copy .env.example .env
+# editar .env: DEEPSEEK_API_KEY=sk-...
 
-### Características del editor
+# 3. Verificar que todo esta en orden
+.\check.bat
 
-- Click en grupo → el video salta a ese momento
-- El grupo activo se resalta automáticamente mientras se reproduce
-- "Unir con siguiente" fusiona grupos adyacentes
-- Los cambios solo afectan al texto; los timestamps se redistribuyen proporcionalmente
+# 4. Levantar Centrito Studio
+.\arranque.bat   # abre el navegador en http://localhost:8787
+```
+
+## CLI directa
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+
+# Captions sobre un video
+.\venv\Scripts\python caption.py input/video.mp4 --style hormozi --lang es
+
+# Captions + emojis IA (requiere ComfyUI encendido)
+.\venv\Scripts\python caption.py input/video.mp4 --style hormozi --emojis
+
+# Reframe 16:9 -> 9:16 (modo escenas por defecto)
+.\venv\Scripts\python reframe.py output/clips/clip.mp4
+.\venv\Scripts\python reframe.py output/clips/clip.mp4 --tracker ema  # EMA continuo (F4.1)
+
+# Depurar silencios
+.\venv\Scripts\python caption.py input/clase.mp4 --depurar seguro
+
+# Generar clips virales
+.\venv\Scripts\python caption.py input/clase_larga.mp4 --clips ambos
+```
+
+## Estilos de captions
+
+| ID | Look | Animacion |
+|---|---|---|
+| `hormozi` | Blanco bold + amarillo en palabra activa | Color highlight |
+| `karaoke` | Relleno progresivo cian | `\kf` fill |
+| `bounce` | Naranja, escala 122% al activarse | `\t()` scale |
+| `pms` | Morado #7C3AED, configurable en `styles.py` | Color highlight |
+
+## Donde vive la verdad
+
+| Archivo | Que contiene |
+|---|---|
+| `MAESTRO.md` | Spec completa de todas las fases, reglas de oro, decisiones de arquitectura |
+| `ESTADO.md` | Estado actual de cada fase, bitacora de sesiones |
+| `DECISIONES.md` | Registro de decisiones tecnicas con justificacion |
+| `PREGUNTAS.md` | Preguntas pendientes del arquitecto + deudas tecnicas |
+
+Lee `MAESTRO.md` antes de tocar cualquier cosa.
+
+## Estructura del proyecto
+
+```
+caption.py          CLI principal (captions, depurar, clips)
+reframe.py          CLI reframe 9:16 con face tracking
+reframe_escenas.py  Modo escenas: cortes-primero + waypoints
+reframe_track.py    Matematicas puras del tracker (EMA, deadzone, waypoints)
+reframe_detect.py   Deteccion de caras (YuNet default, BlazeFace fallback)
+core.py / core_ass.py  Pipeline de transcripcion, ASS y quemado FFmpeg
+brain.py            Cerebro editorial (DeepSeek / mock)
+depurador.py        Eliminacion de silencios y muletillas
+clipper.py          Extraccion de clips virales
+assets_comfy.py     Puente ComfyUI para assets PNG con transparencia (rembg)
+app.py              API FastAPI del Studio
+jobs.py             Workers de background con progreso
+static/index.html   UI del Studio (HTML vanilla)
+tests/              Suite de tests de contrato (157 tests, ruff limpio)
+revision/           Evidencia de validacion por fase (.jpg, .csv, .md)
+```
 
 ## Requisitos
 
-- Python 3.10+
-- FFmpeg en PATH (instalado con Chocolatey o Gyan.dev)
-- (Opcional) GPU NVIDIA con CUDA para mayor velocidad
+- Windows 11 (PowerShell o Git Bash)
+- Python 3.12
+- FFmpeg en PATH (`choco install ffmpeg` o Gyan.dev)
+- GPU NVIDIA + CUDA (opcional; fallback a CPU)
+- ComfyUI Desktop (opcional, para emojis IA — debe estar en `http://127.0.0.1:8188`)
 
-## Instalación
+## Regla de colaboracion
 
-```powershell
-cd C:\CLAUDECODE\ediciondevideo
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
-```
-
-## Uso básico
+> **Cambios por rama + pull request, nunca directo a main.**
+> `check.bat` debe estar verde antes de todo PR.
 
 ```powershell
-# Activar entorno (o prefijar comandos con .\venv\Scripts\python)
-$env:PYTHONIOENCODING="utf-8"
-
-# Un video
-.\venv\Scripts\python caption.py input/mi_video.mp4 --style hormozi --lang es
-
-# Modo batch: todos los .mp4 de una carpeta
-.\venv\Scripts\python caption.py input/ --style karaoke --lang es
+git checkout -b mi-feature
+# ... trabajar ...
+.\check.bat           # lint + format + tests — debe terminar "===== TODO OK ====="
+git push origin mi-feature
+# abrir PR en GitHub
 ```
-
-El archivo de salida se guarda en `output/` con el nombre `{original}_{estilo}.mp4`.
-
-## Estilos disponibles
-
-| Estilo | Descripcion | Animacion |
-|--------|-------------|-----------|
-| `hormozi` | Blanco bold + amarillo en palabra activa | Color change |
-| `karaoke` | Relleno progresivo cian por palabra | `\kf` fill |
-| `bounce` | Naranja con escala 122% al activarse | `\t()` scale |
-| `pms` | Marca PMS: morado configurable | Color change |
-
-## Parametros CLI
-
-```
-python caption.py <input> [--style ESTILO] [--lang IDIOMA] [--output-dir CARPETA]
-
-  input          Video .mp4 o carpeta para batch
-  --style        hormozi | karaoke | bounce | pms  (default: hormozi)
-  --lang         Codigo de idioma (default: es)
-  --output-dir   Carpeta de salida (default: output/)
-```
-
-## Personalizar el estilo PMS
-
-Abre `styles.py` y edita el bloque marcado al inicio:
-
-```python
-PMS_FONT            = "Arial"          # Cambia la fuente
-PMS_FONT_SIZE       = 85
-PMS_PRIMARY_COLOR   = "&H00FFFFFF"     # Blanco
-PMS_HIGHLIGHT_COLOR = "&H00ED3A7C"     # Morado #7C3AED (formato BGR invertido)
-PMS_OUTLINE_SIZE    = 3.5
-```
-
-Los colores usan formato ASS `&HAABBGGRR` (alpha, blue, green, red — NO es RGB directo).
-Conversor: RGB(R,G,B) -> `&H00{B:02X}{G:02X}{R:02X}`
-
-## Como agregar un nuevo estilo
-
-1. Abre `styles.py`
-2. Agrega una entrada en el dict `STYLES`:
-
-```python
-"mi_estilo": StyleConfig(
-    name="mi_estilo",
-    font_name="Impact",
-    font_size=88,
-    primary_color="&H00FFFFFF",
-    highlight_color="&H000000FF",  # Rojo
-    outline_color="&H00000000",
-    outline_size=5.0,
-    shadow_color="&H88000000",
-    shadow_depth=2.0,
-    bold=True,
-    uppercase=True,
-    animation_type="highlight",    # o "karaoke", "bounce", "scale"
-    max_chars_per_line=18,
-    margin_pct=0.10,
-),
-```
-
-3. Agrega `"mi_estilo"` a los `choices` en el argparse de `caption.py`
-
-## Rendimiento (RTX 5070 Ti, video de 15s)
-
-| Fase | Tiempo |
-|------|--------|
-| Carga del modelo (primera vez) | ~10s |
-| Transcripcion (GPU, small) | ~1.1s |
-| Generacion .ass | <0.1s |
-| Quemado FFmpeg | ~2.5s |
-| **Total (post-warmup)** | **~3.8s** |
-
-Para videos de 1 minuto: estimado 12-18s de procesamiento total.
-
-Para mejor precision de transcripcion, usa el modelo medium (requiere descargar ~1.5GB):
-edita `_detect_device()` en `caption.py` para retornar `"medium"` en vez de `"small"`.

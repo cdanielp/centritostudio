@@ -1,15 +1,53 @@
-﻿venv/
+venv/
 __pycache__/
 *.pyc
-output/*.mp4
-output/*.ass
-output/*.png
-input/audio_test.mp3
-input/*.mp4
-input/*.mov
-referencias/
+*.pyo
+
+# Secretos
 .env
 !.env.example
+
+# Media de entrada y salida (local, no en repo)
+input/
+output/
+transcripts/
 thumbs/
+
+# Assets generados por ComfyUI (cache local)
+assets/generados/
+
+# Modelos de IA (pesados, se descargan en primer uso)
+models/
+
+# Codigo de referencia de terceros (ver referencia/README.md)
+referencia/yunet/
+referencias/
+
+# Tipos de media (por si escapa de las carpetas anteriores)
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.ass
+
+# Build / cache
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Configuracion local de AI / agentes (no van al repo)
+.claude/
+.agents/
+hooks/
+skills-lock.json
+workflows/
+
+# Archivos de shortcuts de Windows
+*.lnk
+
+# IDE
+.vscode/
+.idea/
+*.swp
