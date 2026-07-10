@@ -112,7 +112,17 @@ references/         Repos clonados solo para estudio (NO tocar)
 .\venv\Scripts\python reframe.py output\clips\clip.mp4 --punch-in
 ```
 
-## Contratos F4.1 — reframe_track.py (math puro)
+## Comandos F4.2-LITE — Layout stack (CERRADA)
+
+```powershell
+# Stack N=2 o N=3 personas (toma fija, sin turnos, sin EMA)
+.\venv\Scripts\python reframe.py input\clip.mp4 --layout stack
+
+# Primero verificar precondicion de cortes (fail-open, no bloquea)
+# WARNING emitido si _contar_cortes_escena devuelve > N_CORTES_WARN=2
+```
+
+## Contratos F4.1/F4.2-LITE — reframe_track.py (math puro)
 
 ```python
 # Alpha EMA adaptativo (D5): regimen lento/rapido segun error camara->target
@@ -120,14 +130,21 @@ ALPHA_BASE_LENTO  = 0.08   # tau ~0.41s @ 30fps
 ALPHA_BASE_RAPIDO = 0.28   # tau ~0.11s @ 30fps
 RAMP_LENTO_FACTOR = 1.0    # umbral_lento  = dz_half * 1.0
 RAMP_RAPIDO_FACTOR = 3.0   # umbral_rapido = dz_half * 3.0
+N_CORTES_WARN = 2           # en reframe.py (no en reframe_track)
 
 calcular_alpha_adaptativo(error_px, deadzone_w, fps) -> float
 ema_smooth_adaptativo(positions, fps, deadzone_w) -> list[float]
 calcular_alpha_fps(alpha_base, fps, fps_ref=30.0) -> float  # ^(fps_ref/fps) CORRECTO
 aplanar_conf_por_turnos(conf_multi, turnos_list, fps, total_frames) -> dict[int, float]
+calcular_bandas_stack(caras, src_w, src_h, output_w=1080, output_h=1920) -> list[tuple[int,int,int,int]]  # (x,y,crop_w,src_h)
 
 # CSV de trayectoria generado en cada render con --tray-dir:
 # t, cam_center_x, face_x_asignada, distancia, conf_asignada
+# (conf_asignada vacío = frame interpolado/hold; presentes = deteccion viva)
+
+# Precondicion de dominio: fuente DEBE ser toma continua (sin cortes de escena)
+# Si es editada: check emite WARNING pero NO bloquea el render
+# Filtro de artefacto: _filtrar_artefactos_cortes(timestamps, min_t=1.0) -> list[float]
 ```
 
 ## Arquitectura core.py — funciones públicas

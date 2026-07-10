@@ -1,6 +1,79 @@
 # DECISIONES.md — F4.1 Reframe Vertical
 
 Registro de decisiones del arquitecto. No reabrir los items marcados [FIRME].
+**Orden de insercion: mas reciente al tope** (D-mayor aparece antes que D-menor).
+
+---
+
+## D8 — CIERRE FORMAL F4.2-LITE [FIRME — sesion 21]
+
+**Sesion:** 21
+**Decision:** F4.2-LITE (layout stack) CERRADA.
+
+### Compuertas (todas PASS)
+
+| Compuerta | Resultado |
+|-----------|-----------|
+| ffprobe 1080x1920 yuv420p AAC | PASS — h264 yuv420p 48.5s, aac 44100Hz |
+| C-STACK v2 >=99% por track | PASS (vacuo declarado, ver abajo) |
+| Precondicion extracto (0 cortes filtrados) | PASS — 0 cortes tras filtro t<1.0s |
+
+### Tabla numerica s20 completa
+
+**Fuente de validacion:** `input/stack_test_estatico.mp4`
+Plano 1 continuo extraido de `input/prueba2personasenmedio.mov` (t=1.0-~49.5s, 48.5s).
+
+**Stack render:**
+
+| Metrica | Valor |
+|---------|-------|
+| Resolucion | 1080x1920 |
+| pix_fmt | yuv420p |
+| Codec | h264 / aac |
+| Duracion | 48.5s (video) / 52.5s (audio, stream-copy mismatch aceptable) |
+| Render | 16.2s |
+| Factor de escala | crop 540x480 → banda 1080x960 = **2x upscale** → INTER_LANCZOS4 |
+| Anclas | cara_0 cx=607 / cara_1 cx=298; separacion=309px < crop_w=540px |
+| Intrusion cruzada | PRESENTE — sep 309px < crop_w 540px (ver deuda) |
+
+**C-STACK v2 (denominador = todas las detecciones gate-asignadas):**
+
+| Track | Denominador | Dentro crop | % |
+|-------|-------------|-------------|---|
+| cara_0 (cx=607) | 294 det. | 294 | 100% |
+| cara_1 (cx=298) | 187 det. | 187 | 100% |
+
+**VACUO declarado:** gate_0=[479,735] ⊂ crop_0=[314,854]; gate_1=[170,426] ⊂ crop_1=[28,568].
+Cualquier deteccion dentro del gate esta trivialmente en el crop.
+Valor del C-STACK: tripwire geometrico, no metrica discriminante. Evidencia real = ojo de K.
+
+**Tracking render (retro-evidencia F4.1 dentro de dominio):**
+
+| Metrica | cara_0 (cx=607) | cara_1 (cx=298) |
+|---------|-----------------|-----------------|
+| C1 (dist<=80px) | 1456/1456 = **100%** | N/A (solo cara_0 es principal sin turnos) |
+| Frames live (conf_asignada) | 294/1456 = 20.2% | 187/485 det.calls = 38.6% |
+| Frames hold/interpolacion | 1162/1456 = 79.8% | 61.4% de det.calls |
+
+Nota: el 79.8% "hold" incluye la interpolacion entre detecciones (2/3 de frames donde el detector no corre). En toma continua: holds cortos, C1 = 100% = realidad. Dentro de dominio funciona.
+
+### Veredicto visual de K: APROBADO 9/10
+
+- Stack: APROBADO 9/10. Intrusion cruzada en bordes de banda PRESENTE y ACEPTADA — "no molesta".
+- Tracking (anexo): K observo que sigue solo la cara principal — comportamiento de diseno del modo seguimiento sin turnos. K noto los lentes oscuros del hablante izquierdo como posible causa de la deteccion debil (conf 0.345). Registrado en PREGUNTAS.md.
+
+### Deudas de F4.2-lite
+
+| Deuda | Fix propuesto | Estado |
+|-------|--------------|--------|
+| Intrusion cruzada en stack | ALTURA_CROP_PCT parametro (reducir crop_h a < src_h, centrado vertical) | EN RESERVA — tolerable |
+| Deteccion debil cara_1 (conf 0.345, lentes oscuros, 480p) | full-range modelo o calibrar FACE_MIN_CONFIDENCE | PREGUNTAS #22 actualizado |
+| C-STACK vacuo como metrica | C-STACK es solo tripwire; evidencia real = ojo de K | DOCUMENTADO |
+
+### Fuente de validacion final
+
+`input/stack_test_estatico.mp4` — plano 1 continuo extraido del podcast editado de K.
+La grabacion propia de K (toma fija) quedo OPCIONAL; el extracto es suficiente para el DoD.
 
 ---
 

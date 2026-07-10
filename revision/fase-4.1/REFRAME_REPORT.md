@@ -739,3 +739,39 @@ Ver PREGUNTAS.md F4.2 completo para spec.
 
 NOTA: ESTADO.md sesion 17 reporto "107 tests" — corregido aqui a 108 (el test de
 fuente_angosta se agrego al resolver el bloqueante del revisor de s17).
+
+---
+
+## ANEXO — Tracking sobre fuente de dominio (sesion 21, retro-evidencia F4.1)
+
+**Fuente:** `input/stack_test_estatico.mp4` — extracto toma continua 48.5s, 854x480, 30fps.
+Esta es la evidencia de que C1 funciona dentro de dominio (toma fija, sin cortes de escena).
+
+### Resultados cara_0 (cara principal, cx=607)
+
+| Metrica | Valor |
+|---------|-------|
+| C1 (dist<=80px) | **1456/1456 = 100%** PASS |
+| Frames con deteccion viva | 294/1456 = 20.2% |
+| Frames hold/interpolacion | 1162/1456 = 79.8% (mayoria interpolacion entre detecciones) |
+| CSV | revision/fase-4.2-lite/trayectoria_stack_test_estatico_tracking_9x16.csv |
+
+### Resultados cara_1 (cx=298, con lentes oscuros)
+
+| Metrica | Valor |
+|---------|-------|
+| Tasa de deteccion | 187/485 det.calls = 38.6% |
+| Conf media | 0.3632 (debil — lentes oscuros + 480p) |
+| Hold detector-calls | 61.4% |
+
+**K observo** que el modo tracking sin turnos sigue solo la cara principal — comportamiento de diseno.
+Observacion sobre lentes oscuros: los lentes del hablante izquierdo explican la deteccion debil.
+(conf=0.345 en s19, 0.3632 en s20 — consistente). Ver PREGUNTAS.md deuda de deteccion.
+
+### Conclusion retro-evidencia
+
+C1 = 100% en toma fija continua (vs 94.9-96.2% en material editado s14-s15).
+El caveat de C1 (incluye holds) NO degrada la metrica dentro de dominio: los holds
+son cortos (interpolacion entre detecciones cada 3 frames), no tramos fantasma.
+El problema de C1 aplica SOLO a fuentes que violan la precondicion (cortes de escena
+con cara fuera del gate post-corte, como demostrado en s18).

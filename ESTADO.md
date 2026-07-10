@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 20
+Actualizado: 2026-07-09 · Sesión: 21
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -9,6 +9,7 @@ Actualizado: 2026-07-09 · Sesión: 20
 - [x] Refactor app.py→jobs.py — CERRADO. app.py 243L, jobs.py 185L (deuda PREGUNTAS #7 saldada). E2E smoke OK (render+enfasis en 2.9s).
 - [x] F4 Clipper viral — CERRADA. Smoke test pruebaedicionvideoyo.mov: 1 clip score=63 OK. Calibración videolargo.mov (57 min): 3 clips (86/78/77), $0.0094, 45s wall. SCORE_MIN=60 y MAX_CLIPS=3 confirmados por arquitecto. Bug dotenv fix incluido. Evidencia: revision/fase-4/DISENO_CLIPPER.md + CALIBRACION_CLIPPER.md + frames clip1-3.
 - [x] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — CERRADA s16. C1 PASS ×3 (96.2/97.5/100%), C2v2 PASS (0.19/0.53%), 98 tests, D1-D5+D6 firmes. Aprobado K 90/100. Deudas: descuadre reposo (#21), full_range cara débil (#22), F4.2-LITE (#24). Avance 65/100.
+- [x] F4.2-LITE Layout Stack — CERRADA s21. calcular_bandas_stack + renderizar_stack + --layout stack CLI + selector Studio. Validado sobre extracto continuo (stack_test_estatico.mp4 48.5s 854x480): C-STACK 100%/100% vacuo, C1 tracking 100%, K 9/10. Intrusión cruzada tolerable. Deudas: ALTURA_CROP_PCT (#24d), full-range lentes oscuros (#22), selección manual caras (#24b). 118 tests. Avance 68/100.
 - [ ] F5 Assets: emojis PNG + ComfyUI
 - [ ] F6 Motor B: HyperFrames
 - [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ])
@@ -43,3 +44,4 @@ Actualizado: 2026-07-09 · Sesión: 20
 - 2026-07-09: Sesión 18 — F4.2-LITE FORENSE. Hallazgo K: misma persona en ambas bandas. Causa: podcast_test_60s tiene 7 cortes de escena (material editado, NO toma fija). Inventario completo 8 planos: ningun plano tiene 2 caras distintas >=15s. HOLD t=57s re-diagnosticado: causa raiz = corte escena t=51.38s saca cara del gate. Check automatico N_CORTES_WARN=2. PREGUNTAS #21 causa raiz corregida. 112 tests. Pendiente: K aporta fuente toma fija para validar stack. Bloqueante revisor s18: import reframe as rf al tope arrastraba cv2 violando aislamiento del modulo de tests; fix = lazy import en cada test.
 - 2026-07-09: Sesión 19 — F4.2-LITE FUENTE NUEVA + REGISTRO. prueba2personasenmedio.mov (854x480 30fps 96s HORIZONTAL OK). 3 cortes detectados (0.067s/54.03s/56.7s, scores 1.0/0.663/0.651) > N_CORTES_WARN=2 → RENDERS PAUSADOS pendiente clarificacion K. Anclas: cx=269(conf 0.35)/562(conf 0.48), sep=293px < crop_w=540px (intrusion cruzada esperada). Caveat C1 + tracks sin identidad entre cortes → REFRAME_REPORT+DECISIONES D6. MAESTRO reglas 14+15. PREGUNTAS #24a (C1v2) + #24b (seleccion manual caras) + #24c (check cortes ampliado). Ledger tests corregido. 112 tests sin cambio.
 - 2026-07-09: Sesión 20 — F4.2-LITE EXTRACTO + RENDERS + CALIBRACION. Veredicto K: cortes reales (multicamara editado), score 0.65 invalida umbral de score. Filtro artefacto t<1.0s implementado (_filtrar_artefactos_cortes + _parsear_cortes_escena). Extracto plano 1: stack_test_estatico.mp4 (48.5s, 0 cortes filtrados). Stack: 1080x1920 yuv420p 16.2s. C-STACK 100%/100% VACUO (gate⊂crop). Tracking: C1=100%, cara_0 live=20.2%/hold=79.8% (mayoria interpolacion), cara_1 det=38.6%. cortes_dataset.md creado (3 fuentes, 9 cortes etiquetados). D7 en DECISIONES. #24c REVOCADO. 118 tests.
+- 2026-07-09: Sesion 21 — F4.2-LITE CIERRE FORMAL. K 9/10 stack, intrusion tolerable, tracking = diseno (cara principal sin turnos). DECISIONES.md D8 (tabla s20 completa). Retro-evidencia tracking en REFRAME_REPORT. PREGUNTAS: deuda lentes oscuros #22 + intrusion #24d. ESTADO.md: F4.2-lite cerrada avance 68/100. SKILL.md al dia. Siguiente: sesion UX Studio, luego F5.

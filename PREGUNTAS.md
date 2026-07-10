@@ -203,19 +203,30 @@ adaptarse a planos donde la misma persona esta en posicion diferente.
 **Warning automatico implementado (sesion 18):** `reframe.py` detecta cortes y emite
 WARNING si > N_CORTES_WARN=2. No bloquea, informa al usuario.
 
-### 22. Evaluar detector full-range para cara debil — DEUDA
+### 22. Evaluar detector full-range para cara debil — DEUDA (actualizado s21)
 
-cara_1 = 34.4% de tasa de deteccion con short_range (vs 78.2% cara_0). full_range mejora
-su confianza media de 0.43 a 0.73 y su deteccion a 41.2% (segun comparativa sesion 14).
+**Dato nuevo de K (s21):** K identifico visualmente los lentes oscuros del hablante izquierdo
+como posible causa de la deteccion debil — sin conocer las confianzas del detector.
+Correlacion confirmada:
+- cara_1 conf=0.345 (s19) / 0.3632 (s20): DEBIL
+- Causa probable: lentes oscuros + 480p + angulo — los lentes eliminan los ojos, que son
+  la feature mas discriminante de MediaPipe blaze_face.
 
-El rechazo de full_range fue por razones correctas (no meter segunda variable durante el
-retune del alpha). Ahora que el alpha esta estabilizado, full_range es un candidato para
-mejorar la cara debil en modo turnos.
+**Datos acumulados:**
+- short_range en podcast 1920x1080: cara_1 conf=0.43, det=34.4%
+- short_range en extracto 854x480: cara_1 conf=0.3632, det=38.6% (480p empeorar la conf)
+- full_range (comparativa s14): cara_1 conf=0.73, det=41.2% (mejora significativa)
 
-.tflite ya en `models/blaze_face_full_range.tflite`. Data en `revision/fase-4.1/model_selection.md`.
+**Analisis:** full_range detecta features mas robustas a variaciones de illuminacion/
+oclusiones parciales. Probablemente mas robusto a lentes oscuros. El .tflite ya esta en
+`models/blaze_face_full_range.tflite`. Data en `revision/fase-4.1/model_selection.md`.
 
-**Trigger:** si el ojo detecta encuadre pobre de la cara debil en renders reales. Conecta
-con la deuda de descuadre (#21).
+El rechazo de full_range en s14 fue correcto (no meter segunda variable durante el retune
+del alpha). Ahora el alpha esta estabilizado y full_range puede evaluarse con confianza.
+
+**Trigger:** si el ojo detecta encuadre pobre de la cara debil en renders reales. El dato
+de los lentes oscuros sube la prioridad — es un caso recurrente en contenido real de K.
+Conecta con la deuda de descuadre (#21).
 
 ### 23. Riesgos del revisor de s15 — triage (sesion 16)
 
@@ -257,6 +268,21 @@ El subagente revisor de la sesion 15 reporto 4 riesgos no bloqueantes:
 - Precondicion de dominio: fuente DEBE ser toma continua (un solo plano) N hablantes
 - N_CORTES_WARN=2 implementado como check automatico (fail-open)
 - Fuente valida para validar: K aporta toma fija con 2 personas
+
+### 24d. Intrusion cruzada en stack — deuda tolerable (sesion 21)
+
+K verifico el stack sobre `stack_test_estatico.mp4` y califico 9/10. La intrusion cruzada
+en bordes de banda (sep=309px < crop_w=540px) esta PRESENTE y K la acepta — "no molesta".
+
+**Fix en reserva:** parametro `ALTURA_CROP_PCT` que reduce el crop_h desde src_h hasta un
+porcentaje (ej. 0.90 * src_h) y centra verticalmente. Permite aumentar crop_w sin intrusion.
+Alternativa: dejar el crop de ancho completo (crop_w = band_w * src_h / band_h) como ahora,
+pero reducir la zona visible con un centrado vertical ajustado.
+
+**Trigger:** si la intrusion molesta visualmente en escenas donde los sujetos estan mas
+separados. No implementar aun.
+
+---
 
 **DEUDA F4.2 COMPLETO — Spec adicional del arquitecto (sesion 19):**
 
