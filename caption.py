@@ -48,6 +48,7 @@ def process_video(
     out_stem: str | None = None,
     use_emojis: bool = False,
     pop: str | None = None,
+    rebote: bool | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -56,12 +57,13 @@ def process_video(
     model_path, label = core.resolve_model(model_arg)
     print(f"[model] {label} | {device} | {compute}")
 
-    style_cfg = get_style(style, pop)
+    style_cfg = get_style(style, pop, rebote)
     stem = out_stem or video_path.stem
-    # El pop entra en el nombre para que las 3 versiones (suave/fuerte/off) no se pisen.
+    # pop y rebote entran en el nombre para que las variantes no se pisen.
     pop_tag = f"_{pop}" if pop else ""
-    ass_path = output_dir / f"{stem}_{style}{pop_tag}.ass"
-    suffix = f"_{style}{pop_tag}" + ("_emojis" if use_emojis else "")
+    reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
+    ass_path = output_dir / f"{stem}_{style}{pop_tag}{reb_tag}.ass"
+    suffix = f"_{style}{pop_tag}{reb_tag}" + ("_emojis" if use_emojis else "")
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
@@ -161,6 +163,12 @@ def main() -> None:
         default=None,
         help="Intensidad del pop (off=1.0, suave=1.08, medio=1.30, fuerte=1.45)",
     )
+    parser.add_argument(
+        "--rebote",
+        choices=["on", "off"],
+        default=None,
+        help="Rebote/overshoot de la palabra activa (on/off); default: el del estilo",
+    )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
@@ -188,6 +196,7 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     input_path = Path(args.input)
+    rebote = None if args.rebote is None else (args.rebote == "on")
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
@@ -214,6 +223,7 @@ def main() -> None:
                 args.words_per_group,
                 use_emojis=args.emojis,
                 pop=args.pop,
+                rebote=rebote,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -228,6 +238,7 @@ def main() -> None:
             args.out_stem,
             use_emojis=args.emojis,
             pop=args.pop,
+            rebote=rebote,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

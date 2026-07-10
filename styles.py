@@ -101,8 +101,8 @@ _BUILTIN: dict[str, StyleConfig] = {
         keyword_color="&H0047FF00",  # Verde-lima brillante
         max_chars_per_line=18,
         margin_pct=0.10,
-        pop_scale=1.30,  # medio por default del autopiloto (D19); override con --pop
-        overshoot=True,  # rebote ON: sensación premium (D19)
+        pop_scale=1.08,  # suave por default (D20: 1.30/1.45 muy fuertes para K)
+        overshoot=False,  # sabor provisional sin rebote; K fija con/sin con los renders s28D
     ),
     "clean": StyleConfig(
         name="clean",
@@ -172,8 +172,8 @@ _BUILTIN: dict[str, StyleConfig] = {
         keyword_color=PMS_KEYWORD_COLOR,  # Dorado
         max_chars_per_line=PMS_MAX_CHARS,
         margin_pct=PMS_MARGIN_PCT,
-        pop_scale=1.30,  # medio con rebote (mismo criterio que hormozi, D19)
-        overshoot=True,
+        pop_scale=1.08,  # suave, alineado con hormozi (D20); marca real pendiente M2/M3
+        overshoot=False,
     ),
 }
 
@@ -316,10 +316,12 @@ def _resolve_pop(pop: str | float | None) -> float | None:
     return None
 
 
-def get_style(name: str, pop: str | float | None = None) -> StyleConfig:
-    """Devuelve el estilo por nombre. `pop` (suave|fuerte|off|float) sobrescribe pop_scale.
-
-    Un `pop` inválido/desconocido es fail-safe: se ignora y se usa el pop_scale del estilo.
+def get_style(
+    name: str, pop: str | float | None = None, overshoot: bool | None = None
+) -> StyleConfig:
+    """Devuelve el estilo por nombre. `pop` (off|suave|medio|fuerte|float) sobrescribe
+    pop_scale; `overshoot` (True/False) sobrescribe el rebote. Ambos son fail-safe:
+    un valor inválido/None se ignora y se usa el del estilo.
     """
     key = name.lower().strip()
     if key not in STYLES:
@@ -329,6 +331,8 @@ def get_style(name: str, pop: str | float | None = None) -> StyleConfig:
     pv = _resolve_pop(pop)
     if pv is not None:
         cfg = replace(cfg, pop_scale=pv)
+    if overshoot is not None:
+        cfg = replace(cfg, overshoot=bool(overshoot))
     return cfg
 
 

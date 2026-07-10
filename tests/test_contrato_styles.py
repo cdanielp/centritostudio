@@ -65,11 +65,18 @@ def test_pop_niveles_resuelven():
     assert styles.get_style("hormozi", "fuerte").pop_scale == pytest.approx(1.45)
 
 
-def test_hormozi_default_es_medio_con_rebote():
-    # Default del autopiloto tras D19: medio 1.30 con overshoot ON.
+def test_hormozi_default_es_suave_sin_rebote():
+    # Default del autopiloto tras D20: suave 1.08 sin rebote (provisional; K fija el sabor).
     cfg = styles.get_style("hormozi")
-    assert cfg.pop_scale == pytest.approx(1.30)
-    assert cfg.overshoot is True
+    assert cfg.pop_scale == pytest.approx(1.08)
+    assert cfg.overshoot is False
+
+
+def test_overshoot_override_en_get_style():
+    # get_style permite sobrescribir el rebote (fail-safe: None usa el del estilo).
+    assert styles.get_style("hormozi", "suave", overshoot=True).overshoot is True
+    assert styles.get_style("hormozi", "suave", overshoot=False).overshoot is False
+    assert styles.get_style("hormozi", "suave").overshoot is False  # None -> el del estilo
 
 
 def test_pop_float_directo():
@@ -95,9 +102,9 @@ def test_get_style_no_muta_el_registro():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_rebote_hormozi_medio_dos_tramos():
-    # hormozi default: medio 1.30 con rebote ON -> reposo 130, pico 146 (130*1.12), dos \t.
-    cfg = styles.get_style("hormozi", "medio")
+def test_rebote_medio_dos_tramos():
+    # medio 1.30 con rebote ON -> reposo 130, pico 146 (130*1.12), dos \t.
+    cfg = styles.get_style("hormozi", "medio", overshoot=True)
     txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
     assert txt.count("\\t(") == 2  # rebote = dos tramos
     assert "\\fscx146" in txt  # pico (overshoot)
@@ -105,20 +112,28 @@ def test_rebote_hormozi_medio_dos_tramos():
 
 
 def test_rebote_fuerte_pico_162():
-    cfg = styles.get_style("hormozi", "fuerte")  # 1.45 con rebote (default hormozi)
+    cfg = styles.get_style("hormozi", "fuerte", overshoot=True)  # 1.45 con rebote
     txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
     assert "\\fscx162" in txt  # 145*1.12
     assert "\\fscx145" in txt  # reposo
 
 
 def test_rebote_desactivable_por_estilo():
-    from dataclasses import replace
-
-    cfg = replace(styles.get_style("hormozi", "medio"), overshoot=False)
+    cfg = styles.get_style("hormozi", "medio", overshoot=False)
     txt = core_ass._word_event_text(_grupo_demo(), active_idx=0, style_cfg=cfg)
     assert txt.count("\\t(") == 1  # pop simple: un solo tramo, crece y se queda
     assert "\\fscx130" in txt  # reposo del énfasis
     assert "\\fscx146" not in txt  # sin overshoot no hay pico
+
+
+def test_suave_con_y_sin_rebote():
+    # El A/B de s28D: suave 1.08, mismo reposo (108), difieren en el rebote.
+    plano = styles.get_style("hormozi", "suave", overshoot=False)
+    reb = styles.get_style("hormozi", "suave", overshoot=True)
+    t_plano = core_ass._word_event_text(_grupo_demo(), 0, plano)
+    t_reb = core_ass._word_event_text(_grupo_demo(), 0, reb)
+    assert t_plano.count("\\t(") == 1 and "\\fscx108" in t_plano  # crece y se queda
+    assert t_reb.count("\\t(") == 2 and "\\fscx121" in t_reb  # pico round(108*1.12)=121
 
 
 def test_pop_off_byte_identico_al_estatico():

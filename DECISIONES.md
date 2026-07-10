@@ -344,4 +344,19 @@ claro. Con el loop nucleo ya funcional y F5-s2 (motor) entregado, el avance pasa
   palabra hace overshoot al pico (~pop*1.12) y baja al TAMANO DE REPOSO DEL ENFASIS (pop, no
   100), de modo que queda mas grande que los vecinos mientras esta activa. Default hormozi del
   autopiloto: medio 1.30 con rebote ON (K juzgara si sube a 1.45 con los renders de s28C).
-  Implementado en s28C BLOQUE 1.
+  Implementado en s28C BLOQUE 1. **(SUPERADO por D20: K juzgo 1.30/1.45 demasiado fuertes; el
+  default volvio a suave 1.08. Los niveles medio/fuerte siguen disponibles como opcion.)**
+
+## D20: Default de captions vuelve a SUAVE 1.08 (veredicto de K sobre s28C)
+
+- **1.30 (medio) y 1.45 (fuerte): DEMASIADO FUERTES** para K. Prefiere las intensidades
+  suaves. Los 4 niveles se CONSERVAN todos (regla #15): off/suave/medio/fuerte siguen
+  disponibles en CLI y Studio; SOLO cambia el default.
+- **Default provisional del estilo hormozi (y del autopiloto): pop SUAVE 1.08.**
+- **PENDIENTE DE K — el sabor exacto del suave** (con o sin rebote) lo fija con 2 renders del
+  mismo clip de videolargo (s28D):
+  a. suave 1.08 SIN rebote (overshoot off) — animacion plana, como las de s28A.
+  b. suave 1.08 CON rebote (overshoot on) — poco crecimiento pero con el rebotecito vivo.
+  El default provisional se dejo SIN rebote (opcion a); K confirma o cambia a (b) viendo los
+  MP4 en movimiento. Motor (core_ass) NO tocado: solo cambio de config de estilos + override
+  de overshoot en get_style + flag --rebote en la CLI para producir el A/B.
