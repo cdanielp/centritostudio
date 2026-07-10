@@ -265,3 +265,47 @@ Veredicto de K sobre v1 (PNG cuadrado en esquina): "no me sirve". Fixes pre-firm
 - **Posicion**: centrado horizontal, arriba del bloque de captions (y derivada de
   margin_pct + fontsize escalado del ASS via _scaled_fontsize, fuente unica de la
   formula). Tamano 20% del ancho. Fade in/out 120ms via -loop 1 + fade alpha + setpts.
+
+---
+
+## D16: Veredictos de K sobre la sesion 26 (sesion 27)
+
+Sobre los 4 entregables de `revision/para-K/README.md`:
+
+1. **A/B reframe — ESCENAS gana.** K: "ya no pierde a la persona tras los cortes".
+   DECISION: modo escenas = DEFAULT de la ruta tracking (ya lo era en CLI desde s25;
+   ahora tambien es el default explicito del Studio). EMA queda disponible como
+   `--tracker ema` y como opcion del selector (regla 15: nada se elimina).
+   Cierre formal de F4.2-CORTES.
+2. **Emojis v2 — APROBADOS.** K: "ya parece emoji de app, posicion perfecta".
+   F5-s1 VALIDADA y cerrada.
+3. **Clips E2E — 95/100.** Los momentos elegidos por la IA son correctos.
+   Insight de K registrado en PREGUNTAS #29: cada usuario podria sugerir o revisar
+   (expectativas distintas) -> el paquete final SIEMPRE incluye paso de revision
+   humana antes de publicar. Conecta con la aprobacion de F7.
+4. **Stack — 0:00-0:36 publicable 100%.** El tramo duplicado es la limitacion
+   conocida multi v2 (#28). PEDIDO DE K ADOPTADO COMO FEATURE en s27: el paquete
+   avisa que tramos salieron bien y cuales revisar (reporte de calidad por tramos
+   del Modo Automatico).
+5. **Punch-in:** no aparecio en los renders (default off). Deuda #20 sigue esperando
+   F5-s2. **Materiales M1-M5:** pendientes de K; NO bloquean — el estilo de marca
+   usara placeholder hasta recibir M2/M3.
+
+## D17: DOS MODOS, UN MOTOR (arquitectura de producto, sesion 27)
+
+Registrada como MAESTRO regla #19 (vinculante). Resumen: Modo Automatico = capa
+delgada que orquesta las herramientas existentes; Modo Creador = las herramientas
+del Studio con control granular; toda funcion nueva nace como herramienta del motor
+usable desde ambos modos; prohibido duplicar logica en la capa automatica y prohibido
+convertir Centrito en editor generico de timeline. Roadmap de la capa en PREGUNTAS #29.
+
+### Implementacion v1 (s27): modulo auto.py + worker run_auto
+
+- `auto.py`: orquestador del objetivo "Clips virales" — llama core.transcribe_video
+  (solo si falta words.json, voto #10), clipper.generar_clips, reframe.reframe_clip
+  (tracker escenas), brain.analizar_grupos, assets_comfy.resolver_overlays y
+  core.burn_video_with_emojis. CERO logica de pipeline propia.
+- Reporte de calidad por tramos: traduccion 1:1 del seg_reporte que el modo escenas
+  YA devuelve (tipo/c1v2/n_caras por segmento) a avisos en lenguaje humano.
+  Umbral de aviso C1V2_AVISO=80.0 (heuristica inicial, ajustable con feedback de K).
+- Paquete: `output/paquetes/{video}_{fecha}/` con clips finales + REPORTE.md.

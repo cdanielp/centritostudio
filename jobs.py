@@ -218,6 +218,7 @@ def run_reframe(
     punch_in: bool,
     layout: str = "tracking",
     detector_type: str = "yunet",
+    tracker: str = "escenas",
 ) -> None:
     """Worker: reencuadra un clip de 16:9 a 9:16 (tracking o stack)."""
     try:
@@ -240,6 +241,7 @@ def run_reframe(
                 turnos=turnos,
                 punch_in=punch_in,
                 detector_type=detector_type,
+                tracker=tracker,
             )
             update_job(
                 jid,
@@ -250,6 +252,33 @@ def run_reframe(
             )
     except ValueError as exc:
         update_job(jid, status="error", progress=0, message=str(exc), error=str(exc))
+    except Exception as exc:
+        update_job(jid, status="error", message=str(exc), error=str(exc))
+
+
+# --- Worker: modo automatico ---------------------------------------------------
+
+
+def run_auto(jid: str, mp4: Path, name: str, objetivo: str = "clips") -> None:
+    """Worker: Modo Automatico v1 — capa delgada sobre auto.ejecutar_auto (regla #19)."""
+    try:
+        import auto  # noqa: PLC0415
+
+        update_job(jid, status="running", progress=2, message="Iniciando Modo Automatico...")
+
+        def _progress(pct: int, msg: str) -> None:
+            update_job(jid, progress=pct, message=msg)
+
+        result = auto.ejecutar_auto(mp4, name, progress=_progress, objetivo=objetivo)
+        n = len(result.get("clips", []))
+        msg = result.get("resumen", f"{n} clip(s) en el paquete")
+        if n == 0 and result.get("casi"):
+            mejor = max(result["casi"], key=lambda c: c.get("score", 0))
+            msg = (
+                "Ningun segmento supero el umbral del clipper. "
+                f'El mejor llego a {mejor.get("score", 0)}: "{mejor.get("titulo", "")}"'
+            )
+        update_job(jid, status="done", progress=100, message=msg, result=result)
     except Exception as exc:
         update_job(jid, status="error", message=str(exc), error=str(exc))
 

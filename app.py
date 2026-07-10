@@ -59,7 +59,10 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/api/videos")
 def list_videos():
     result = []
-    for mp4 in sorted(INPUT_DIR.glob("*.mp4")):
+    fuentes = sorted(
+        [*INPUT_DIR.glob("*.mp4"), *INPUT_DIR.glob("*.mov")], key=lambda p: p.name.lower()
+    )
+    for mp4 in fuentes:
         if mp4.stem.startswith("test_"):
             continue
         info_file = TRANSCRIPTS / f"{mp4.stem}_info.json"
@@ -286,12 +289,18 @@ def save_turnos_clip(name: str, body: dict = Body(...)):
 
 @app.post("/api/clips/{name}/reframe")
 def start_reframe(
-    name: str, punch_in: bool = False, layout: str = "tracking", detector: str = "yunet"
+    name: str,
+    punch_in: bool = False,
+    layout: str = "tracking",
+    detector: str = "yunet",
+    tracker: str = "escenas",
 ):
-    """Inicia el reencuadre 9:16: tracking (default) o stack (bandas estaticas)."""
+    """Inicia el reencuadre 9:16: tracking (escenas default | ema) o stack."""
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
+    if tracker not in ("escenas", "ema"):
+        raise HTTPException(400, "tracker debe ser 'escenas' o 'ema'")
     if layout == "stack":
         output_path = CLIPS_DIR / f"{name}_stack_9x16.mp4"
         jid = jobs.new_job(f"Stack {name} ...")
@@ -312,6 +321,7 @@ def start_reframe(
             punch_in,
             layout,
             detector,
+            tracker,
         ),
         daemon=True,
     ).start()
@@ -341,6 +351,31 @@ def start_render(
         args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis),
         daemon=True,
     ).start()
+    return {"job_id": jid}
+
+
+# ─── Modo Automatico ──────────────────────────────────────────────────────────
+
+
+def _resolver_video_input(name: str) -> Path | None:
+    """Busca el video en input/ probando extensiones (.mp4 primero, luego .mov)."""
+    for ext in (".mp4", ".mov", ".MP4", ".MOV"):
+        candidate = INPUT_DIR / f"{name}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+@app.post("/api/videos/{name}/auto")
+def start_auto(name: str, objetivo: str = "clips"):
+    """Modo Automatico v1: video + objetivo -> paquete listo para revisar (regla #19)."""
+    mp4 = _resolver_video_input(name)
+    if mp4 is None:
+        raise HTTPException(404, f"Video {name} no encontrado en input/")
+    if objetivo != "clips":
+        raise HTTPException(400, "objetivo debe ser 'clips' (unico soportado en v1)")
+    jid = jobs.new_job(f"Modo Automatico: {name}...")
+    threading.Thread(target=jobs.run_auto, args=(jid, mp4, name, objetivo), daemon=True).start()
     return {"job_id": jid}
 
 

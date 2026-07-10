@@ -539,3 +539,31 @@ multicam es un formato de primera clase.
 
 **Dependencias:** identidad de personas entre planos (la persona A del plano 3 es la del
 plano 7) — hoy no existe; seleccion manual #24b puede aportar las anclas confirmadas.
+
+---
+
+### 29. MODO AUTOMATICO — roadmap de la capa (registrado s27, NO implementar aun)
+
+Nota de numeracion: el arquitecto pidio registrar esto "a PREGUNTAS #28", pero #28 ya
+esta ocupado por MULTI V2 (s26); queda como #29.
+
+v1 (s27, implementada): objetivo unico "Clips virales" = pipeline probado en s26 RUTA A,
+paquete a output/paquetes/ con REPORTE.md de calidad por tramos.
+
+Roadmap futuro (cada item se disena/vota antes de implementarse):
+1. **Recetas/presets.json por objetivo:** cada objetivo (clips virales, clase depurada,
+   reel con marca...) es una receta declarativa que nombra herramientas del motor y sus
+   parametros. Anadir objetivo = anadir receta, no codigo.
+2. **Batch:** carpeta completa por el modo automatico con un solo click/comando.
+3. **Score de publicacion v2:** ponderar score IA del clipper con las metricas de calidad
+   de tramos (un clip 90/100 con 40% de tramos con aviso no debe salir primero).
+4. **Brand kit aplicado:** cuando exista M2/M3 de K (logo, colores, estilo de captions
+   de marca) la receta lo aplica automatico.
+5. **Headless:** ya existe via CLIs (caption.py/reframe.py); documentar la secuencia
+   equivalente al boton como script de una linea.
+6. **Agentes/MCP (fase futura):** exponer las herramientas del motor como tools para
+   agentes; el modo automatico se vuelve un agente con presupuesto.
+
+**Insight de K (s26, clips 95/100):** "cada usuario podria sugerir o revisar — expectativas
+distintas". Consecuencia adoptada en MAESTRO regla #19: el paquete SIEMPRE termina en
+revision humana antes de publicar; la aprobacion de F7 (Telegram) es la misma compuerta.

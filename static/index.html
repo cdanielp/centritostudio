@@ -137,6 +137,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <button onclick="showTab('editor',this)">Editor</button>
     <button onclick="showTab('render',this)">Render</button>
     <button onclick="showTab('clips',this)">Clips</button>
+    <button onclick="showTab('auto',this)">Automático</button>
   </nav>
 </div>
 
@@ -271,12 +272,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <div style="margin-bottom:10px">
         <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Modo</div>
         <div style="display:flex;gap:0;border:var(--border);border-radius:6px;overflow:hidden;width:fit-content">
-          <button id="layout-btn-tracking" onclick="setLayoutMode('tracking')"
-            style="font-size:12px;padding:5px 14px;background:var(--purple);color:#fff;border:none;cursor:pointer">Seguimiento</button>
+          <button id="layout-btn-escenas" onclick="setLayoutMode('escenas')"
+            style="font-size:12px;padding:5px 14px;background:var(--purple);color:#fff;border:none;cursor:pointer">Auto (escenas)</button>
+          <button id="layout-btn-ema" onclick="setLayoutMode('ema')"
+            style="font-size:12px;padding:5px 14px;background:transparent;color:var(--muted);border:none;cursor:pointer">EMA</button>
           <button id="layout-btn-stack" onclick="setLayoutMode('stack')"
             style="font-size:12px;padding:5px 14px;background:transparent;color:var(--muted);border:none;cursor:pointer">Stack</button>
         </div>
-        <input type="hidden" id="layout-mode" value="tracking">
+        <input type="hidden" id="layout-mode" value="escenas">
       </div>
       <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer" id="punch-in-row">
         <input type="checkbox" id="punch-in-cb">
@@ -286,11 +289,44 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   </div>
 </div>
 
+<!-- ════════════════ TAB: AUTOMATICO ════════════════ -->
+<div id="tab-auto" class="tab">
+  <div style="padding:20px;max-width:680px;display:flex;flex-direction:column;gap:16px">
+    <div style="background:var(--surface);border:var(--border);border-radius:10px;padding:20px">
+      <h2 style="font-size:15px;font-weight:500;margin-bottom:6px">Modo Automático</h2>
+      <div class="msg" style="font-size:12px;margin-bottom:16px">
+        Sube un video, elige el objetivo y recibe un paquete listo para revisar y publicar.
+        El paquete incluye un reporte de calidad por tramos — revísalo antes de publicar.
+      </div>
+      <div class="field">
+        <label>Video</label>
+        <select id="auto-video-select">
+          <option value="">— Elegir video —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Objetivo</label>
+        <select id="auto-objetivo">
+          <option value="clips">Clips virales (hasta 3, verticales, con captions)</option>
+        </select>
+      </div>
+      <button class="btn" id="auto-btn" onclick="startAuto()">Generar paquete</button>
+      <div id="auto-status" style="margin-top:10px"></div>
+    </div>
+    <div id="auto-result" style="display:none;background:var(--surface);border:var(--border);border-radius:10px;padding:20px">
+      <div id="auto-resumen" style="font-size:14px;font-weight:500;margin-bottom:12px"></div>
+      <div id="auto-clips" style="display:flex;flex-direction:column;gap:10px"></div>
+      <div id="auto-reporte-link" style="margin-top:12px;font-size:12px"></div>
+    </div>
+  </div>
+</div>
+
 <style>
 /* ══════════════════════════════════════════
    TAB 4: CLIPS
 ══════════════════════════════════════════ */
 #tab-clips{padding:0;overflow-y:auto}
+#tab-auto{padding:0;overflow-y:auto}
 .clip-card{background:var(--surface);border:var(--border);border-radius:10px;padding:16px;display:flex;gap:14px}
 .clip-card video{width:120px;height:auto;border-radius:6px;background:#111;flex-shrink:0}
 .clip-card .clip-info{flex:1;min-width:0}
@@ -403,6 +439,10 @@ function populateSelects() {
   if (clipsEl) {
     // Todos los videos — los sin transcript reciben notice accionable al seleccionarlos
     clipsEl.innerHTML = '<option value="">— Elegir video —</option>' + opts;
+  }
+  const autoEl = document.getElementById('auto-video-select');
+  if (autoEl) {
+    autoEl.innerHTML = '<option value="">— Elegir video —</option>' + opts;
   }
 }
 
@@ -987,8 +1027,9 @@ function setLayoutMode(mode) {
   const base    = 'font-size:12px;padding:5px 14px;border:none;cursor:pointer;';
   const active  = base + 'background:var(--purple);color:#fff';
   const idle    = base + 'background:transparent;color:var(--muted)';
-  document.getElementById('layout-btn-tracking').style.cssText = mode==='tracking' ? active : idle;
-  document.getElementById('layout-btn-stack').style.cssText    = mode==='stack'    ? active : idle;
+  for (const m of ['escenas', 'ema', 'stack']) {
+    document.getElementById('layout-btn-' + m).style.cssText = mode===m ? active : idle;
+  }
   document.getElementById('punch-in-row').style.display = mode==='stack' ? 'none' : 'flex';
 }
 
@@ -1014,7 +1055,8 @@ async function _pollReframe(jobId, stem, btn, statusDiv, outFile) {
 
 async function startReframe(stem, btn) {
   const statusDiv = document.getElementById('reframe-status-' + stem);
-  const layout = document.getElementById('layout-mode')?.value || 'tracking';
+  const mode = document.getElementById('layout-mode')?.value || 'escenas';
+  const layout = mode === 'stack' ? 'stack' : 'tracking';
   btn.disabled = true;
 
   if (layout === 'stack') {
@@ -1036,13 +1078,13 @@ async function startReframe(stem, btn) {
     const det = await fetch(`/api/clips/${stem}/detectar`, {method:'POST'});
     const detData = await det.json();
     if (!det.ok) { throw new Error(detData.detail || JSON.stringify(detData)); }
-    if (detData.n_caras >= 2) {
-      statusDiv.innerHTML = `<span style="color:var(--muted)">${detData.n_caras} caras — asigna turnos o usa modo Stack</span>`;
+    if (detData.n_caras >= 2 && mode === 'ema') {
+      statusDiv.innerHTML = `<span style="color:var(--muted)">${detData.n_caras} caras — asigna turnos, usa modo Stack o Auto (escenas)</span>`;
       btn.disabled = false;
       return;
     }
     const punchIn = document.getElementById('punch-in-cb')?.checked ? 'true' : 'false';
-    const res = await fetch(`/api/clips/${stem}/reframe?punch_in=${punchIn}`, {method:'POST'});
+    const res = await fetch(`/api/clips/${stem}/reframe?punch_in=${punchIn}&tracker=${mode}`, {method:'POST'});
     const data = await res.json();
     if (!res.ok) { throw new Error(data.detail || JSON.stringify(data)); }
     statusDiv.textContent = 'Procesando...';
@@ -1051,6 +1093,74 @@ async function startReframe(stem, btn) {
     statusDiv.innerHTML = `<span style="color:#e55">Error: ${e.message}</span>`;
     btn.disabled = false;
   }
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB AUTOMATICO — un boton, paquete completo (regla #19)
+// ═══════════════════════════════════════════════════════
+async function startAuto() {
+  const name = document.getElementById('auto-video-select').value;
+  const objetivo = document.getElementById('auto-objetivo').value;
+  const status = document.getElementById('auto-status');
+  const btn = document.getElementById('auto-btn');
+  if (!name) {
+    status.innerHTML = '<span class="msg err">Elige un video primero.</span>';
+    return;
+  }
+  btn.disabled = true;
+  document.getElementById('auto-result').style.display = 'none';
+  status.textContent = 'Iniciando...';
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`/api/videos/${name}/auto?objetivo=${objetivo}`, {method:'POST'});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    pollJob(data.job_id, (j) => {
+      const el = Math.round((Date.now() - t0) / 1000);
+      status.innerHTML = `<div class="msg">${j.message || '...'} (${el}s)</div>
+        <div class="progress-bar"><div class="fill" style="width:${j.progress || 0}%"></div></div>`;
+      if (j.status === 'done') {
+        btn.disabled = false;
+        status.innerHTML = '';
+        renderAutoResult(j.result || {});
+      } else if (j.status === 'error') {
+        btn.disabled = false;
+        status.innerHTML = `<span class="msg err">Error: ${j.message || j.error}</span>
+          <button class="btn secondary" style="margin-top:6px" onclick="startAuto()">Reintentar</button>`;
+      }
+    });
+  } catch (e) {
+    btn.disabled = false;
+    status.innerHTML = `<span class="msg err">Error: ${e.message}</span>`;
+  }
+}
+
+function renderAutoResult(result) {
+  const wrap = document.getElementById('auto-result');
+  document.getElementById('auto-resumen').textContent = result.resumen || 'Paquete generado';
+  const clipsEl = document.getElementById('auto-clips');
+  clipsEl.innerHTML = '';
+  (result.clips || []).forEach((c, i) => {
+    const avisos = (c.avisos || []).map(a =>
+      `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${a.texto}</div>`).join('');
+    const div = document.createElement('div');
+    div.style.cssText = 'border:var(--border);border-radius:8px;padding:12px';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:13px;font-weight:500">${i+1}. ${c.titulo || c.archivo}</span>
+        <span style="color:var(--purple);font-weight:500">${c.score ?? '—'}/100</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${c.emojis_msg || ''}</div>
+      ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
+      <a href="/output/${result.paquete ? result.paquete.replace(/^output\//,'') + '/' : ''}${c.archivo}" download
+         class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a>`;
+    clipsEl.appendChild(div);
+  });
+  const rep = result.paquete ? result.paquete.replace(/^output\//,'') : '';
+  document.getElementById('auto-reporte-link').innerHTML = rep
+    ? `Paquete completo en <code>${result.paquete}</code> · <a href="/output/${rep}/REPORTE.md" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a>`
+    : '';
+  wrap.style.display = 'block';
 }
 
 function openRenderClip(stem) {

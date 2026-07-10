@@ -10,8 +10,9 @@ Actualizado: 2026-07-10 · Sesión: 26 · **Avance real: 74/100**
 - [x] F4 Clipper viral — CERRADA. Smoke test pruebaedicionvideoyo.mov: 1 clip score=63 OK. Calibración videolargo.mov (57 min): 3 clips (86/78/77), $0.0094, 45s wall. SCORE_MIN=60 y MAX_CLIPS=3 confirmados por arquitecto. Bug dotenv fix incluido. Evidencia: revision/fase-4/DISENO_CLIPPER.md + CALIBRACION_CLIPPER.md + frames clip1-3.
 - [x] F4.1 Reframe Vertical (16:9 → 9:16 con face tracking) — CERRADA s16. C1 PASS ×3 (96.2/97.5/100%), C2v2 PASS (0.19/0.53%), 98 tests, D1-D5+D6 firmes. Aprobado K 90/100. Deudas: descuadre reposo (#21), full_range cara débil (#22), F4.2-LITE (#24). Avance 65/100.
 - [x] F4.2-LITE Layout Stack — CERRADA s21. calcular_bandas_stack + renderizar_stack + --layout stack CLI + selector Studio. Validado sobre extracto continuo (stack_test_estatico.mp4 48.5s 854x480): C-STACK 100%/100% vacuo, C1 tracking 100%, K 9/10. Intrusión cruzada tolerable. Deudas: ALTURA_CROP_PCT (#24d), full-range lentes oscuros (#22), selección manual caras (#24b). 118 tests. Avance 68/100.
-- [x] F4.2-CORTES modo escenas — implementada s25 (default --tracker escenas); cierre formal pendiente de veredicto K EMA vs ESCENAS (revision/para-K/ #1)
-- [x] F5-s1 Assets: puente ComfyUI + emojis PNG (s23) + emojis v2 rembg/sticker/centrado (s25) — pendiente veredicto K (para-K #2)
+- [x] F4.2-CORTES modo escenas — CERRADA s27 (veredicto K: ESCENAS gana, "ya no pierde a la persona tras los cortes", D16). Default en CLI y Studio; EMA disponible como opcion (regla 15)
+- [x] F5-s1 Assets: puente ComfyUI + emojis PNG (s23) + emojis v2 (s25) — VALIDADA s27 (K: "ya parece emoji de app, posicion perfecta", D16)
+- [x] Modo Automatico v1 (s27) — capa delgada auto.py + run_auto + pestana Automatico; objetivo "Clips virales"; paquete con REPORTE.md de calidad por tramos (D17, MAESTRO regla #19)
 - [ ] F5-s2 Captions cinéticos + estilos de marca (necesita M2/M3 de K)
 - [ ] F6 Motor B: HyperFrames
 - [ ] F7 Distribución Telegram (diseñada: [ ] · desplegada: [ ]) (necesita M5 de K)
@@ -56,18 +57,19 @@ Actualizado: 2026-07-10 · Sesión: 26 · **Avance real: 74/100**
 ## QUÉ FALTA PARA CERRAR (s26)
 
 ### (a) Espera veredicto de K — todo en `revision/para-K/README.md`
-| Ítem | Decide |
-|---|---|
-| EMA vs ESCENAS (`pruebaparaedicion_*_9x16.mp4`) | default del reframe y cierre formal F4.2-CORTES |
-| Emojis v2 (`tacosjuan_hormozi_emojis.mp4`) | cierre de F5-s1 o iteración |
-| Clips RUTA A (nota /100) | calidad E2E; abre o no calibración del clipper v2 (#12/#13) |
-| Render RUTA B (stack+captions) | prioridad real de multi v2 (#28) |
-| Punch-in (#20) | se vota con renders F5 completos — sigue congelado |
+| Ítem | Decide | Estado s27 |
+|---|---|---|
+| EMA vs ESCENAS | default del reframe y cierre F4.2-CORTES | ✔ RESUELTO: ESCENAS default (D16) |
+| Emojis v2 | cierre de F5-s1 o iteración | ✔ RESUELTO: aprobados (D16) |
+| Clips RUTA A | calidad E2E | ✔ 95/100; insight revisión humana → regla #19 |
+| Render RUTA B (stack) | prioridad de multi v2 (#28) | ✔ publicable 0-36s; aviso por tramos ya es feature (s27) |
+| Punch-in (#20) | se vota con renders F5-s2 completos | sigue congelado |
+| Paquete Modo Automático videolargo | calidad del autopiloto v1 | NUEVO — espera ojo de K |
 
 ### (b) Espera implementación (estimado en sesiones)
 | Ítem | Sesiones | Nota |
 |---|---|---|
-| #26f selector de tracker en Studio | 0.5 | diff chico, próxima sesión de Studio (junto a deuda #25 poll timeout) |
+| ~~#26f selector de tracker en Studio~~ | ~~0.5~~ | ✔ HECHO s27: selector Auto (escenas)/EMA/Stack. Deuda #25 (poll timeout) sigue pendiente |
 | #24b selección manual de caras | 1-2 | prioridad firmada: justo después de F5 |
 | F5-s2 captions cinéticos + estilos marca | 1-2 | bloqueada parcialmente por M2/M3 de K |
 | #27 MODO PANTALLA | 2-3 | diseño (voto arquitecto entre opciones a/b/c) + impl |
