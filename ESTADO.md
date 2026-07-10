@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-09 · Sesión: 24
+Actualizado: 2026-07-10 · Sesión: 25
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -47,7 +47,8 @@ Actualizado: 2026-07-09 · Sesión: 24
 - 2026-07-09: Sesion 21 — F4.2-LITE CIERRE FORMAL. K 9/10 stack, intrusion tolerable, tracking = diseno (cara principal sin turnos). DECISIONES.md D8 (tabla s20 completa). Retro-evidencia tracking en REFRAME_REPORT. PREGUNTAS: deuda lentes oscuros #22 + intrusion #24d. ESTADO.md: F4.2-lite cerrada avance 68/100. SKILL.md al dia. Siguiente: sesion UX Studio, luego F5.
 - 2026-07-09: Sesion 22 — UX STUDIO SIN CALLEJONES. Registro previo: #22 ESPERAR, #24b justo despues F5, #24d RESERVA ACTIVA. MAESTRO regla #16 (NINGUN ERROR SIN ACCION). app.py: campo stages por video (transcrito/depurado/clips_n/reencuadrado) desde artefactos en disco. index.html: badges de pipeline, panel depurar inline (sin window.prompt), dialogo encadenado transcribir+clips, transcribeAndGenerateClips, transcribeFromRender, goTranscribeVideo, progreso con tiempo en todas las ops, 0 alertas/prompts del sistema. 118 tests, ruff OK. Validacion visual de K en Studio: pendiente, no bloqueante — cualquier ajuste va como follow-up.
 - 2026-07-09: Sesion 23 — TRIPLE s23. Sello s22 (commit 8988124). Diagnostico tracking: pruebaparaedicion.mov 2618x1440 92s → C1=93.0% con 3 cortes de escena (C1 ILEGIBLE fuera de dominio por frames hold fantasma, caveat D6). Tabla: clase 2K C1=93%/det_viva=33.3%/conf=0.942 vs podcast 480p C1=100%/det_viva=20.2%/conf=0.490. F5-s1: assets_comfy.py + keywords.json + burn_video_with_emojis + --emojis CLI + Studio checkbox. 130 tests verdes. Commit c8d5fcf.
-- 2026-07-09: Sesion 24 — BLOQUE 0: re-priorizacion F4.2-CORTES adelantado (ver PREGUNTAS #26). BLOQUE A: A/B BlazeFace vs YuNet — resultados con regla de adopcion. BLOQUE B: diseño de referencia F4.2 registrado en PREGUNTAS #26.
+- 2026-07-09: Sesion 24 — BLOQUE 0: re-priorizacion F4.2-CORTES adelantado (ver PREGUNTAS #26). BLOQUE A: A/B BlazeFace vs YuNet — resultados con regla de adopcion. BLOQUE B: diseño de referencia F4.2 registrado en PREGUNTAS #26. Fix rapido emojis: diagnostico separado (puerto 8188/8000 + keywords matcheadas) + tacos/pastor/salsa + validacion ComfyUI real (commit f590ef9).
+- 2026-07-10: Sesion 25 — BLOQUE A emojis v2 (commit 81a5b55): rembg RGBA + PROMPT_TEMPLATE sticker + centrado sobre captions + fade 120ms; validado con ComfyUI (cache 3.4s 2a corrida). BLOQUE B F4.2-CORTES: modo escenas implementado (reframe_escenas.py, waypoints, reinicio por corte, --tracker escenas default / ema fallback). BUG CAZADO POR A/B: filtro de area de un nivel descartaba la cara grande del talking-head 2K (4 segmentos "none"); fix = filtro dos niveles del proyecto referencia (score>=0.87 exime cap hasta 0.10). Regresion stack_test_estatico: 1 seg multi, 0 paneos, C1v2=100%. 156 tests.
 
 ## Repriorización arquitecto (s24)
 

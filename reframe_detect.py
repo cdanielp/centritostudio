@@ -33,7 +33,13 @@ YUNET_SCORE_THRESHOLD = (
     0.75  # validado contra busto(0.65-0.69) y punos(0.73) en prueba2personasenmedio.mov
 )
 YUNET_MAX_INPUT_W = 1920  # downscale frames mas anchos para mantener precision
-YUNET_FACE_MAX_AREA_FRAC = 0.02056  # filtro de area: derivado de proyecto referencia
+# Filtro de area de DOS niveles (proyecto referencia): cajas sobre el cap base solo
+# se aceptan con score alto (cara real en primer plano/push-in, no una mano) y bajo
+# la cota de seguridad. Un solo nivel filtraba la cara GRANDE del talking-head 2K
+# (bug detectado en A/B s25: 4 segmentos "none" en pruebaparaedicion.mov).
+YUNET_FACE_MAX_AREA_FRAC = 0.02056  # cap base (podcast/planos abiertos)
+YUNET_HIGH_CONF_SCORE = 0.87  # score que exime del cap base
+YUNET_FACE_MAX_AREA_FRAC_HIGH_CONF = 0.10  # cota de seguridad para score alto
 
 ACTIVE_MODEL_PATH = (
     MODEL_PATH_SHORT  # BlazeFace (para compatibilidad con flag --detector blazeface)
@@ -41,6 +47,23 @@ ACTIVE_MODEL_PATH = (
 
 
 # ── Detector YuNet ────────────────────────────────────────────────────────────
+
+
+def deteccion_pasa_filtro_area(
+    score: float,
+    area_frac: float,
+    cap_base: float = YUNET_FACE_MAX_AREA_FRAC,
+    high_conf: float = YUNET_HIGH_CONF_SCORE,
+    cota_alta: float = YUNET_FACE_MAX_AREA_FRAC_HIGH_CONF,
+) -> bool:
+    """Filtro de area de dos niveles. Puro.
+
+    Bajo el cap base: pasa siempre. Sobre el cap: pasa SOLO con score alto
+    (cara real en primer plano, no una mano) y bajo la cota de seguridad.
+    """
+    if area_frac <= cap_base:
+        return True
+    return score >= high_conf and area_frac <= cota_alta
 
 
 class YuNetDetector:
@@ -106,9 +129,9 @@ class YuNetDetector:
         for f in faces:
             x_d, y_d, fw_d, fh_d = f[0:4].astype(int).tolist()
             score = float(f[14])
-            # Filtro de area sobre las coords DETECCION (frame downscaleado)
+            # Filtro de area de dos niveles sobre las coords de DETECCION
             area_frac = (fw_d * fh_d) / (w_in * h_in)
-            if area_frac > self._face_max_area_frac:
+            if not deteccion_pasa_filtro_area(score, area_frac, self._face_max_area_frac):
                 continue
             # Proyectar coordenadas al espacio del frame original
             inv = 1.0 / scale

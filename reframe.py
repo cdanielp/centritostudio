@@ -55,11 +55,11 @@ def _filtrar_artefactos_cortes(timestamps: list[float], min_t: float = 1.0) -> l
     return [t for t in timestamps if t >= min_t]
 
 
-def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
-    """Cuenta cortes de escena reales con FFmpeg scdet (excluye artefacto primer frame).
+def _detectar_cortes_ts(video_path: Path, threshold: float = 0.3) -> list[float]:
+    """Timestamps de cortes de escena reales (excluye artefacto de primer frame).
 
-    Retorna 0 si FFmpeg falla (fail-open). El primer frame siempre dispara scdet
-    (score=1.0, t~0s) — se filtra como artefacto conocido.
+    Retorna [] si FFmpeg falla (fail-open). Threshold 0.3: NUESTRO dataset
+    (cortes_dataset.md) probo que cortes reales bajan hasta 0.65 — no subir.
     """
     try:
         r = subprocess.run(
@@ -79,9 +79,15 @@ def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
             timeout=60,
             errors="replace",
         )
-        return len(_filtrar_artefactos_cortes(_parsear_cortes_escena(r.stdout)))
-    except Exception:
-        return 0
+        return _filtrar_artefactos_cortes(_parsear_cortes_escena(r.stdout))
+    except Exception as exc:
+        print(f"[reframe] AVISO: scdet fallo ({type(exc).__name__}) -- 0 cortes asumidos")
+        return []
+
+
+def _contar_cortes_escena(video_path: Path, threshold: float = 0.3) -> int:
+    """Cuenta cortes de escena reales (wrapper de _detectar_cortes_ts)."""
+    return len(_detectar_cortes_ts(video_path, threshold))
 
 
 def _avisar_cortes(n: int, umbral: int = N_CORTES_WARN) -> None:
@@ -384,11 +390,17 @@ def reframe_clip(
     punch_in: bool = False,
     tray_dir: Path | None = None,
     detector_type: str = "yunet",
+    tracker: str = "escenas",
 ) -> dict:
-    """Reencuadra clip 16:9 a 9:16 con face tracking EMA+deadzone y conmutacion por turnos."""
+    """Reencuadra clip 16:9 a 9:16.
+
+    tracker='escenas' (default): cortes-primero + waypoints por segmento (F4.2-CORTES).
+    tracker='ema': EMA adaptativo continuo (F4.1, intacto como fallback y comparacion).
+    Con turnos se usa siempre la ruta EMA (turnos son de tiempo global, incompatibles
+    con el re-escaneo por segmento en v1).
+    """
     from core import get_video_info
 
-    _avisar_cortes(_contar_cortes_escena(input_path))
     info = get_video_info(input_path)
     src_w, src_h = info["width"], info["height"]
     has_audio = bool(info.get("has_audio", True))
@@ -398,18 +410,34 @@ def reframe_clip(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    caras = detectar_caras_video(input_path, detector_type=detector_type)
     if punch_in and brain_data is None:
         brain_data = _cargar_o_generar_brain(input_path)
     turnos_list = (turnos or {}).get("turnos", [])
-    crops, filled, sparsa_conf = _calcular_crops(
-        input_path, caras, turnos_list, fps, total_frames, src_w, src_h, detector_type
-    )
+
+    seg_reporte: list[dict] = []
+    if tracker == "escenas" and not turnos_list:
+        import reframe_escenas  # noqa: PLC0415
+
+        cortes = _detectar_cortes_ts(input_path)
+        crops, filled, sparsa_conf, seg_reporte = reframe_escenas.calcular_crops_escenas(
+            input_path, fps, total_frames, src_w, src_h, cortes, detector_type
+        )
+        n_caras = max((s["n_caras"] for s in seg_reporte), default=0)
+    else:
+        if tracker == "escenas" and turnos_list:
+            print("[reframe] turnos presentes -- usando tracker ema (escenas v1 no soporta turnos)")
+        _avisar_cortes(_contar_cortes_escena(input_path))
+        caras = detectar_caras_video(input_path, detector_type=detector_type)
+        crops, filled, sparsa_conf = _calcular_crops(
+            input_path, caras, turnos_list, fps, total_frames, src_w, src_h, detector_type
+        )
+        n_caras = len(caras)
+
     if punch_in and brain_data:
         crops = _aplicar_punch_ins(crops, brain_data, fps, src_w, src_h)
     if tray_dir is not None:
         _exportar_trayectoria_csv(output_path.stem, crops, filled, fps, tray_dir, sparsa_conf)
-        print(f"[reframe] detector: {detector_type}")
+        print(f"[reframe] detector: {detector_type} | tracker: {tracker}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     elapsed = renderizar_reframe(input_path, crops, output_path, fps, has_audio)
@@ -417,8 +445,10 @@ def reframe_clip(
     return {
         "output": str(output_path),
         "dur_s": round(elapsed, 2),
-        "n_caras": len(caras),
+        "n_caras": n_caras,
         "punch_ins": _contar_punch_ins(brain_data if punch_in else None),
+        "tracker": tracker,
+        "segmentos": seg_reporte,
     }
 
 
@@ -512,6 +542,12 @@ def _build_parser():
         default="yunet",
         help="Detector: yunet (default, mayor confianza) o blazeface (MediaPipe, fallback)",
     )
+    p.add_argument(
+        "--tracker",
+        choices=["escenas", "ema"],
+        default="escenas",
+        help="escenas (default, cortes-primero + waypoints) o ema (F4.1 continuo)",
+    )
     return p
 
 
@@ -530,5 +566,6 @@ if __name__ == "__main__":
             punch_in=args.punch_in,
             tray_dir=args.tray_dir,
             detector_type=args.detector,
+            tracker=args.tracker,
         )
     print(f"Output: {result['output']}")

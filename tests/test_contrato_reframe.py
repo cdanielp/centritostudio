@@ -645,3 +645,164 @@ def test_yunet_area_filter_constante():
     from reframe_detect import YUNET_FACE_MAX_AREA_FRAC  # noqa: PLC0415
 
     assert abs(YUNET_FACE_MAX_AREA_FRAC - 0.02056) < 1e-6
+
+
+# ── Modo escenas (F4.2-CORTES) — contratos puros ──────────────────────────────
+
+_DZ_ESC = 0.18 * 607  # deadzone escenas para crop_w de 1080p = ~109px
+
+
+def test_segmentos_sin_cortes_un_segmento():
+    segs = rt.segmentos_desde_cortes([], 30.0, 900)
+    assert segs == [(0, 900)]
+
+
+def test_segmentos_dos_cortes_tres_segmentos():
+    segs = rt.segmentos_desde_cortes([10.0, 20.0], 30.0, 900)
+    assert segs == [(0, 300), (300, 600), (600, 900)]
+
+
+def test_segmentos_corte_fuera_de_rango_ignorado():
+    # Corte despues del final del video no genera segmento vacio
+    segs = rt.segmentos_desde_cortes([50.0], 30.0, 900)
+    assert segs == [(0, 900)]
+
+
+def test_segmentos_cubren_todo_el_video():
+    segs = rt.segmentos_desde_cortes([5.0, 15.0], 30.0, 600)
+    assert segs[0][0] == 0
+    assert segs[-1][1] == 600
+    for (_, fin_a), (ini_b, _) in zip(segs, segs[1:], strict=False):
+        assert fin_a == ini_b  # sin huecos ni solapes
+
+
+def test_clasificar_segmento():
+    assert rt.clasificar_segmento(0) == "none"
+    assert rt.clasificar_segmento(1) == "single"
+    assert rt.clasificar_segmento(2) == "multi"
+    assert rt.clasificar_segmento(5) == "multi"
+
+
+def test_waypoints_quieto_salto_quieto_un_paneo():
+    # Cara quieta en 500 (con jitter), salto real a 800, quieta en 800:
+    # exactamente 1 paneo y cero waypoints de ruido
+    samples = [(t * 0.5, 500.0 + (3 if t % 2 else -3)) for t in range(6)]
+    samples += [(3.0, 800.0)]
+    samples += [(3.5 + t * 0.5, 800.0 + (2 if t % 2 else -2)) for t in range(4)]
+    puntos, n_paneos = rt.construir_waypoints(samples, _DZ_ESC)
+    assert n_paneos == 1
+    # El paneo va de la posicion vieja a la nueva en PAN_DURACION_S
+    assert (3.0, 500.0) in [(round(t, 3), round(x, 1)) for t, x in puntos] or any(
+        abs(x - 500.0) < 5 and abs(t - 3.0) < 0.01 for t, x in puntos
+    )
+
+
+def test_waypoints_jitter_bajo_deadzone_cero_paneos():
+    samples = [(t * 0.5, 500.0 + (20 if t % 2 else -20)) for t in range(10)]
+    _puntos, n_paneos = rt.construir_waypoints(samples, _DZ_ESC)
+    assert n_paneos == 0
+
+
+def test_waypoints_oclusion_no_dispara():
+    # None (cara perdida) conserva el centro sin disparar paneo
+    samples = [(0.0, 500.0), (0.5, None), (1.0, None), (1.5, 505.0)]
+    _puntos, n_paneos = rt.construir_waypoints(samples, _DZ_ESC)
+    assert n_paneos == 0
+
+
+def test_waypoints_a_xs_estatico_antes_durante_despues():
+    # 1 paneo de 500->800 entre t=3.0 y t=3.5
+    puntos = [(0.0, 500.0), (3.0, 500.0), (3.5, 800.0)]
+    t_frames = [0.0, 1.0, 2.9, 3.25, 3.5, 4.0]
+    xs = rt.waypoints_a_xs(puntos, t_frames, 640.0)
+    assert xs[0] == 500.0  # antes: clavado
+    assert xs[1] == 500.0
+    assert xs[2] == 500.0
+    assert abs(xs[3] - 650.0) < 0.01  # mitad del paneo
+    assert xs[4] == 800.0  # fin del paneo
+    assert xs[5] == 800.0  # despues: clavado en la nueva posicion
+
+
+def test_waypoints_a_xs_vacio_usa_default():
+    xs = rt.waypoints_a_xs([], [0.0, 1.0, 2.0], 640.0)
+    assert xs == [640.0, 640.0, 640.0]
+
+
+def test_escenas_reset_estado_en_corte():
+    # Segmento 1 termina con la cara en x=800; segmento 2 arranca con cara en x=100.
+    # Al procesarse con llamadas independientes, el segmento 2 arranca clavado en 100
+    # (cero paneos heredados, cero arrastre del estado del segmento 1).
+    seg1 = [(0.0, 800.0), (0.5, 800.0)]
+    seg2 = [(2.0, 100.0), (2.5, 100.0)]
+    _p1, n1 = rt.construir_waypoints(seg1, _DZ_ESC)
+    p2, n2 = rt.construir_waypoints(seg2, _DZ_ESC)
+    assert n1 == 0 and n2 == 0  # ningun paneo fantasma cruzando el corte
+    xs2 = rt.waypoints_a_xs(p2, [2.0, 2.2, 2.5], 640.0)
+    assert all(x == 100.0 for x in xs2)  # seg2 clavado en SU cara, no en la del seg1
+
+
+def test_xs_segmento_single_integra_waypoints():
+    samples = [(0.0, 500.0), (0.5, 500.0), (1.0, 800.0), (1.5, 800.0)]
+    t_frames = [i / 30.0 for i in range(60)]  # 2s a 30fps
+    xs, n_paneos = rt.xs_segmento_single(samples, t_frames, _DZ_ESC, 640.0)
+    assert n_paneos == 1
+    assert xs[0] == 500.0
+    assert xs[-1] == 800.0
+
+
+def test_xs_segmento_single_sin_muestras_default():
+    xs, n_paneos = rt.xs_segmento_single([], [0.0, 0.5], _DZ_ESC, 427.0)
+    assert xs == [427.0, 427.0]
+    assert n_paneos == 0
+
+
+def test_waypoints_monotonicos_con_fps_fraccional():
+    # NTSC 29.97fps: paso de muestreo real 14/29.97=0.467s < pan_s=0.5s.
+    # Dos saltos en muestras consecutivas NO deben producir puntos desordenados.
+    dt = 14 / 29.97
+    samples = [
+        (0.0, 500.0),
+        (dt, 500.0),
+        (2 * dt, 800.0),  # salto 1
+        (3 * dt, 1100.0),  # salto 2 (arranca antes de que termine el paneo 1)
+    ]
+    puntos, n_paneos = rt.construir_waypoints(samples, _DZ_ESC)
+    assert n_paneos == 2
+    ts = [t for t, _ in puntos]
+    assert ts == sorted(ts), f"puntos de control desordenados: {ts}"
+    # La interpolacion no debe tener saltos discontinuos: verificar velocidad acotada
+    t_frames = [i / 29.97 for i in range(90)]
+    xs = rt.waypoints_a_xs(puntos, t_frames, 640.0)
+    for a, b in zip(xs, xs[1:], strict=False):
+        # velocidad maxima ~ (1100-800)px / 0.5s / 29.97fps ~= 20px/frame + margen
+        assert abs(b - a) < 25, f"tiron detectado: {abs(b - a):.1f}px en un frame"
+
+
+def test_yunet_filtro_area_dos_niveles():
+    """Caja sobre el cap base se acepta SOLO con score alto y bajo la cota de seguridad."""
+    from reframe_detect import (
+        YUNET_FACE_MAX_AREA_FRAC,
+        YUNET_FACE_MAX_AREA_FRAC_HIGH_CONF,
+        YUNET_HIGH_CONF_SCORE,
+    )
+
+    assert YUNET_FACE_MAX_AREA_FRAC == 0.02056
+    assert YUNET_HIGH_CONF_SCORE == 0.87
+    assert YUNET_FACE_MAX_AREA_FRAC_HIGH_CONF == 0.10
+    # La cota alta debe ser mayor que el cap base (si no, la exencion es vacua)
+    assert YUNET_FACE_MAX_AREA_FRAC_HIGH_CONF > YUNET_FACE_MAX_AREA_FRAC
+
+
+def test_filtro_area_cuatro_cuadrantes():
+    """Comportamiento del filtro de dos niveles: (chica/grande) x (score alto/bajo)."""
+    from reframe_detect import deteccion_pasa_filtro_area as pasa
+
+    # Caja chica: pasa con cualquier score
+    assert pasa(score=0.76, area_frac=0.01)
+    assert pasa(score=0.99, area_frac=0.01)
+    # Caja grande + score alto (talking-head 2K real: 0.919/0.047): exenta
+    assert pasa(score=0.919, area_frac=0.047)
+    # Caja grande + score bajo (mano hasta 0.825 en dataset referencia): descartada
+    assert not pasa(score=0.825, area_frac=0.047)
+    # Caja patologicamente grande: descartada aunque el score sea alto
+    assert not pasa(score=0.99, area_frac=0.15)

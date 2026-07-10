@@ -362,3 +362,106 @@ def reconstruir_filled_por_turnos(
         for j, fx in enumerate(filled_seg):
             result[f_ini + j] = fx
     return result
+
+
+# ── Modo escenas (F4.2-CORTES) — funciones puras ─────────────────────────────
+# Diseno: PREGUNTAS.md #26 (credito proyecto de referencia; reimplementacion propia).
+# Los tracks se REINICIAN en cada corte: cada segmento se procesa con una llamada
+# independiente a estas funciones — cero estado cruzando fronteras.
+
+DEADZONE_PCT_ESCENAS = 0.18  # % del ancho del crop de salida: DISPARADOR del paneo
+PAN_DURACION_S = 0.5  # duracion del paneo interpolado al exceder el deadzone
+MUESTREO_ESCENAS_S = 0.5  # intervalo de muestreo de cara dentro del segmento
+
+
+def segmentos_desde_cortes(
+    cortes_ts: list[float], fps: float, total_frames: int
+) -> list[tuple[int, int]]:
+    """Convierte timestamps de cortes en segmentos [f_ini, f_fin) que cubren el video."""
+    bounds = {0, total_frames}
+    for t in cortes_ts:
+        fi = int(t * fps)
+        if 0 < fi < total_frames:
+            bounds.add(fi)
+    ordenados = sorted(bounds)
+    return [(a, b) for a, b in zip(ordenados, ordenados[1:], strict=False) if b > a]
+
+
+def clasificar_segmento(n_caras: int) -> str:
+    """0 caras -> none (crop centrado), 1 -> single (waypoints), 2+ -> multi (anclas)."""
+    if n_caras == 0:
+        return "none"
+    return "single" if n_caras == 1 else "multi"
+
+
+def construir_waypoints(
+    samples: list[tuple[float, float | None]],
+    deadzone_w: float,
+    pan_s: float = PAN_DURACION_S,
+) -> tuple[list[tuple[float, float]], int]:
+    """Convierte muestras (t, face_x|None) en puntos de control (t, x) + n_paneos.
+
+    Cuadro CLAVADO en el centro comprometido; al exceder deadzone_w se agenda
+    UN paneo lineal de pan_s hacia la posicion nueva. None (oclusion) conserva
+    el centro actual sin disparar nada. Estado local a la llamada (reset por segmento).
+    """
+    puntos: list[tuple[float, float]] = []
+    n_paneos = 0
+    actual: float | None = None
+    for t, x in samples:
+        if x is None:
+            continue
+        if actual is None:
+            actual = x
+            puntos.append((t, x))
+            continue
+        if abs(x - actual) > deadzone_w:
+            # Clavar el inicio para garantizar monotonia en t: con muestreo real
+            # < pan_s (fps fraccional, ej. 29.97 -> paso 0.467s) dos saltos
+            # consecutivos producirian puntos desordenados y un tiron visible.
+            t_ini = max(t, puntos[-1][0]) if puntos else t
+            puntos.append((t_ini, actual))
+            puntos.append((t_ini + pan_s, x))
+            actual = x
+            n_paneos += 1
+    return puntos, n_paneos
+
+
+def waypoints_a_xs(
+    puntos: list[tuple[float, float]], t_frames: list[float], default_x: float
+) -> list[float]:
+    """Interpola x(t) piecewise-linear desde puntos de control. Sin puntos -> default_x.
+
+    Antes del primer punto: x del primer punto (camara arranca en la primera
+    deteccion). Despues del ultimo: x del ultimo. t_frames debe venir ordenado.
+    """
+    if not puntos:
+        return [default_x] * len(t_frames)
+    xs: list[float] = []
+    j = 0
+    for t in t_frames:
+        if t <= puntos[0][0]:
+            xs.append(puntos[0][1])
+            continue
+        if t >= puntos[-1][0]:
+            xs.append(puntos[-1][1])
+            continue
+        while j + 1 < len(puntos) and puntos[j + 1][0] <= t:
+            j += 1
+        t0, x0 = puntos[j]
+        t1, x1 = puntos[j + 1]
+        frac = (t - t0) / (t1 - t0) if t1 > t0 else 0.0
+        xs.append(x0 + frac * (x1 - x0))
+    return xs
+
+
+def xs_segmento_single(
+    samples: list[tuple[float, float | None]],
+    t_frames: list[float],
+    deadzone_w: float,
+    default_x: float,
+    pan_s: float = PAN_DURACION_S,
+) -> tuple[list[float], int]:
+    """Pipeline puro del segmento single: muestras -> waypoints -> x por frame."""
+    puntos, n_paneos = construir_waypoints(samples, deadzone_w, pan_s)
+    return waypoints_a_xs(puntos, t_frames, default_x), n_paneos

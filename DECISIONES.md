@@ -226,6 +226,32 @@ Editable a mano por K sin tocar codigo.
 Si ComfyUI no corre o el keyword no tiene prompt: la capa se salta silenciosamente.
 El video limpio y el video con solo captions siguen disponibles siempre (regla #15).
 
+### D15: F4.2-CORTES — modo escenas (sesion 25, pre-firmadas)
+
+Pipeline nuevo "modo escenas", DEFAULT del reframe tracking (--tracker escenas):
+1. Detectar cortes con el detector existente (threshold 0.3 + filtro artefacto t<1s;
+   NUESTRO dataset probo cortes reales a 0.65 — el threshold NO se sube).
+2. Por segmento: frame representativo en el punto medio -> YuNet -> clasificar
+   single / multi / none.
+3. single -> tracking por WAYPOINTS dentro del segmento; multi -> sistema de anclas
+   existente RE-ESCANEADO por segmento (EMA scoped); none -> crop estatico centrado.
+4. Los tracks se REINICIAN en cada corte — cero estado cruzando fronteras (cada
+   segmento es una llamada independiente a funciones puras sin estado de modulo).
+
+WAYPOINTS (reemplaza al EMA dentro de segmentos single del modo escenas):
+- Muestreo de cara cada 500ms (MUESTREO_ESCENAS_S).
+- Deadzone 18% del ancho del crop (DEADZONE_PCT_ESCENAS) como DISPARADOR.
+- Al excederse: UN paneo lineal de 500ms (PAN_DURACION_S). Cuadro CLAVADO el resto.
+- x piecewise-linear calculado en Python (nuestro renderer ya recibe crops por frame;
+  cero expresiones ffmpeg).
+
+El EMA adaptativo F4.1 queda INTACTO como --tracker ema (fallback y comparacion, regla 15).
+Turnos fuerzan la ruta EMA (tiempo global, incompatible con re-escaneo por segmento v1).
+Limitacion v1: en segmentos multi solo se sigue la cara principal (mayor score) del frame
+representativo; caras que entran a mitad del segmento no generan track propio.
+Metrica: C1v2 por segmento (solo detecciones vivas, spec #24a) + n_paneos por segmento;
+0 paneos esperados en tramos estaticos.
+
 ### D14: rembg para transparencia real (sesion 25)
 
 Veredicto de K sobre v1 (PNG cuadrado en esquina): "no me sirve". Fixes pre-firmados:

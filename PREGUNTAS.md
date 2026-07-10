@@ -453,6 +453,12 @@ encontrado solo con aserciones frame a frame, no con aserciones de estado final.
 - **Score 0.75 vs busto nuestro video**: verificado en s24 con YuNet sobre
   prueba2personasenmedio.mov en el A/B (ver reporte s24).
 
+#### 26f. Selector de tracker en Studio — deuda s25
+
+El Studio siempre usa el default (escenas). `--tracker ema` existe solo por CLI.
+Regla 15 pide "activable desde el Studio": pasar `tracker` por start_reframe →
+run_reframe + selector en la UI. Diff pequeno, proxima sesion de Studio.
+
 #### 26e. Nota de testing obligatoria (MAESTRO.md #17 propuesto)
 
 Tests de tracking deben tener aserciones en cada muestra intermedia, no solo estado final.
