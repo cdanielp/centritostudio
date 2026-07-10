@@ -83,7 +83,7 @@ def process_video(
             print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
         else:
             print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
-        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays)
+        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays, style_cfg)
     else:
         core.burn_video(video_path, ass_path, out_path)
 

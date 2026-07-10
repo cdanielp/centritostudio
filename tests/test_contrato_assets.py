@@ -158,8 +158,9 @@ def test_resolver_overlays_con_cache(tmp_path, monkeypatch):
     kw_path.write_text(json.dumps(keywords), encoding="utf-8")
     monkeypatch.setattr(ac, "KEYWORDS_PATH", kw_path)
 
-    # Pre-poblar cache
-    h = ac._hash_prompt("a glowing node")
+    # Pre-poblar cache: el hash se calcula sobre el prompt TEMPLADO
+    prompt_templado = ac.PROMPT_TEMPLATE.format(concept="a glowing node")
+    h = ac._hash_prompt(prompt_templado)
     png = tmp_path / f"{h}.png"
     png.write_bytes(b"\x89PNG mock")
 

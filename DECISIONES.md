@@ -225,3 +225,17 @@ Editable a mano por K sin tocar codigo.
 
 Si ComfyUI no corre o el keyword no tiene prompt: la capa se salta silenciosamente.
 El video limpio y el video con solo captions siguen disponibles siempre (regla #15).
+
+### D14: rembg para transparencia real (sesion 25)
+
+Veredicto de K sobre v1 (PNG cuadrado en esquina): "no me sirve". Fixes pre-firmados:
+- **rembg** (u2net via onnxruntime ya presente) quita el fondo tras generar; el cache
+  guarda la version RGBA. Alternativa descartada: chroma key por color (fragil con
+  sombras y bordes del sticker). Fail-open: sin rembg el PNG sale sin transparencia
+  pero el render no se cae. `U2NET_HOME=models/u2net` (Regla #6).
+- **PROMPT_TEMPLATE fijo** estilo sticker 3D con fondo blanco liso (ayuda a rembg).
+  keywords.json ahora mapea keyword→concepto; el hash se calcula sobre el prompt
+  templado → cambiar template o concepto invalida el cache automaticamente.
+- **Posicion**: centrado horizontal, arriba del bloque de captions (y derivada de
+  margin_pct + fontsize escalado del ASS via _scaled_fontsize, fuente unica de la
+  formula). Tamano 20% del ancho. Fade in/out 120ms via -loop 1 + fade alpha + setpts.

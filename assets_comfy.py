@@ -26,6 +26,9 @@ WORKFLOW_PATH = ROOT / "workflows" / "asset_base.json"
 ASSETS_GENERADOS = ROOT / "assets" / "generados"
 KEYWORDS_PATH = ROOT / "assets" / "keywords.json"
 
+# Modelo u2net de rembg dentro del repo (Regla #6: modelos en models/, no en home)
+os.environ.setdefault("U2NET_HOME", str(ROOT / "models" / "u2net"))
+
 COMFY_URL = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
 COMFY_PORTS_FALLBACK = [8188, 8000]  # ComfyUI Desktop suele usar 8000
 PROMPT_NODE_ID = "67"  # CLIPTextEncode con titulo PROMPT_CENTRITO
@@ -33,13 +36,40 @@ TIMEOUT_S = 120  # segundos maximos de espera por imagen
 POLL_INTERVAL_S = 2
 
 # Constantes de overlay (usadas por core_ass.burn_video_with_emojis)
-EMOJI_SIZE_PCT = 0.18  # ancho del PNG respecto al ancho del video
+EMOJI_SIZE_PCT = 0.20  # ancho del PNG respecto al ancho del video
 EMOJI_MARGIN_PCT = 0.02  # margen desde los bordes
 EMOJI_DURATION_S = 1.2  # duracion en pantalla (segundos)
+EMOJI_FADE_S = 0.12  # fade in/out del overlay (segundos)
+
+# Template de estilo sticker: fondo blanco liso ayuda a rembg a recortar limpio.
+# keywords.json mapea keyword -> concepto; el template envuelve el concepto.
+PROMPT_TEMPLATE = (
+    "single {concept} emoji sticker, 3D glossy cartoon style, thick white outline, "
+    "vibrant colors, centered, isolated on plain white background, no text, no watermark"
+)
 
 
 def _hash_prompt(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+
+
+def _quitar_fondo(png_bytes: bytes) -> bytes:
+    """Quita el fondo del PNG con rembg; devuelve bytes RGBA.
+
+    Fail-open: si rembg no esta instalado o falla, devuelve los bytes originales
+    con un aviso (el overlay saldra con fondo, pero el render no se cae).
+    """
+    try:
+        from rembg import remove  # noqa: PLC0415
+
+        return remove(png_bytes)
+    except ImportError:
+        print("[assets_comfy] rembg no instalado - PNG sin transparencia")
+        print("  -> Accion: .\\venv\\Scripts\\pip install rembg")
+        return png_bytes
+    except Exception as e:
+        print(f"[assets_comfy] rembg fallo ({e}) - PNG sin transparencia")
+        return png_bytes
 
 
 def asset_exists(prompt: str) -> Path | None:
@@ -144,8 +174,9 @@ def _poll_history(
             qstr += f"&subfolder={subfolder}"
         try:
             img_bytes = _http_get(f"{url}/view?{qstr}")
-            out_path.write_bytes(img_bytes)
-            print(f"[assets_comfy] Generado: {out_path.name}")
+            # El cache guarda la version RGBA (fondo removido), no la cruda
+            out_path.write_bytes(_quitar_fondo(img_bytes))
+            print(f"[assets_comfy] Generado (RGBA): {out_path.name}")
             return out_path
         except Exception as e:
             print(f"[assets_comfy] Error descargando imagen: {e}")
@@ -259,7 +290,11 @@ def resolver_overlays(
 
     overlays: list[tuple[Path, float, float]] = []
     for kw_text, t_start in matched:
-        png = generar_asset(keywords_map[kw_text], comfy_url=active_url)
+        # keywords.json da el CONCEPTO; el template fija el estilo sticker.
+        # El hash se calcula sobre el prompt templado -> cambiar template o
+        # concepto invalida el cache automaticamente.
+        prompt = PROMPT_TEMPLATE.format(concept=keywords_map[kw_text])
+        png = generar_asset(prompt, comfy_url=active_url)
         if png:
             overlays.append((png, t_start, t_start + EMOJI_DURATION_S))
 

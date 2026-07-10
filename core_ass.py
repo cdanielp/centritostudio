@@ -126,6 +126,13 @@ def apply_brain(groups: list[dict], brain_data: dict) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _scaled_fontsize(video_width: int, video_height: int, style_cfg: StyleConfig) -> int:
+    """Fontsize del ASS escalado a la resolucion (fuente unica de la formula)."""
+    ref_h = 1920 if video_height >= video_width else 1080
+    dim_scale = max(video_height / ref_h, 0.40)
+    return max(int(style_cfg.font_size * dim_scale), 20)
+
+
 def _make_ass_style(
     subs: pysubs2.SSAFile, video_width: int, video_height: int, style_cfg: StyleConfig
 ) -> None:
@@ -143,7 +150,7 @@ def _make_ass_style(
     )
     base = pysubs2.SSAStyle()
     base.fontname = style_cfg.font_name
-    base.fontsize = max(int(style_cfg.font_size * dim_scale), 20)
+    base.fontsize = _scaled_fontsize(video_width, video_height, style_cfg)
     base.primarycolor = _ass_to_pysubs2(style_cfg.primary_color)
     base.bold = style_cfg.bold
     base.outline = round(style_cfg.outline_size * dim_scale, 1)
@@ -226,51 +233,82 @@ def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
     return round(time.time() - t0, 2)
 
 
+def _emoji_y_sobre_captions(
+    video_w: int, video_h: int, size_px: int, style_cfg: StyleConfig | None
+) -> int:
+    """Calcula la y del emoji: centrado justo ARRIBA del bloque de captions.
+
+    Deriva la posicion del ASS: marginv = H * margin_pct (anclado abajo),
+    bloque de captions ~2 lineas a fontsize escalado. Fallback sin estilo:
+    35% desde abajo.
+    """
+    if style_cfg is None:
+        return max(0, video_h - int(0.35 * video_h) - size_px)
+    fontsize = _scaled_fontsize(video_w, video_h, style_cfg)
+    marginv = int(video_h * style_cfg.margin_pct)
+    # 2 lineas con interlineado + outline ~ 2.6x fontsize
+    caption_top = video_h - marginv - int(2.6 * fontsize)
+    gap = int(0.015 * video_h)
+    return max(0, caption_top - size_px - gap)
+
+
 def burn_video_with_emojis(
     input_video: Path,
     ass_path: Path,
     output_video: Path,
     emoji_overlays: list[tuple[Path, float, float]],
+    style_cfg: StyleConfig | None = None,
 ) -> float:
-    """Quema ASS + overlays PNG en un solo pase FFmpeg.
+    """Quema ASS + overlays PNG RGBA en un solo pase FFmpeg.
 
     emoji_overlays: lista de (png_path, t_start_s, t_end_s).
-    Si la lista está vacía delega en burn_video normal.
-    Las constantes de posición y tamaño viven en assets_comfy.py.
+    Posicion: centrado horizontal, arriba del bloque de captions (via style_cfg).
+    Entrada/salida con fade de EMOJI_FADE_S. Lista vacia delega en burn_video.
     """
     if not emoji_overlays:
         return burn_video(input_video, ass_path, output_video)
 
-    # Calcular dimensiones en Python (NO en expresiones FFmpeg) para evitar
+    # Dimensiones calculadas en Python (NO en expresiones FFmpeg) para evitar
     # que `iw` en el filtro scale referencie el PNG y no el video principal.
     import core  # noqa: PLC0415
-    from assets_comfy import EMOJI_MARGIN_PCT, EMOJI_SIZE_PCT  # noqa: PLC0415
+    from assets_comfy import EMOJI_FADE_S, EMOJI_SIZE_PCT  # noqa: PLC0415
 
     info = core.get_video_info(input_video)
-    video_w = info["width"]
+    video_w, video_h = info["width"], info["height"]
     size_px = max(int(video_w * EMOJI_SIZE_PCT), 2)
     size_px -= size_px % 2  # forzar par para evitar errores libx264
-    margin_px = max(int(video_w * EMOJI_MARGIN_PCT), 4)
+    y_px = _emoji_y_sobre_captions(video_w, video_h, size_px, style_cfg)
 
     ass_esc = _ffmpeg_ass_path(ass_path)
 
-    # Inputs de FFmpeg: primero el video, luego cada PNG
+    # Inputs: video primero; cada PNG como stream en loop con duracion fija
+    # (necesario para poder aplicar fade con timeline propio)
     cmd: list[str] = ["ffmpeg", "-y", "-i", str(input_video)]
-    for png, _s, _e in emoji_overlays:
-        cmd += ["-i", str(png)]
+    for png, t_start, t_end in emoji_overlays:
+        dur = max(t_end - t_start, 0.1)
+        cmd += ["-loop", "1", "-t", f"{dur:.3f}", "-i", str(png)]
 
-    # filter_complex: ASS → escalar PNGs a tamanio fijo → overlay en cadena
+    # filter_complex: ASS -> escalar+fade cada PNG -> overlay centrado en cadena
     fc_parts: list[str] = [f"[0:v]ass={ass_esc}[vcap]"]
-    for i in range(len(emoji_overlays)):
-        fc_parts.append(f"[{i + 1}:v]scale={size_px}:-2[ovs{i}]")
+    fade = EMOJI_FADE_S
+    for i, (_png, t_start, t_end) in enumerate(emoji_overlays):
+        dur = max(t_end - t_start, 0.1)
+        fade_out_st = max(dur - fade, 0.0)
+        fc_parts.append(
+            f"[{i + 1}:v]format=rgba,scale={size_px}:-2,"
+            f"fade=t=in:st=0:d={fade:.3f}:alpha=1,"
+            f"fade=t=out:st={fade_out_st:.3f}:d={fade:.3f}:alpha=1,"
+            f"setpts=PTS-STARTPTS+{t_start:.3f}/TB[ovs{i}]"
+        )
 
     current = "[vcap]"
     for i, (_png, t_start, t_end) in enumerate(emoji_overlays):
         next_label = f"[vo{i}]"
         enable = f"between(t,{t_start:.3f},{t_end:.3f})"
-        x = f"W-{size_px}-{margin_px}"
-        y = str(margin_px)
-        fc_parts.append(f"{current}[ovs{i}]overlay=x={x}:y={y}:enable='{enable}'{next_label}")
+        fc_parts.append(
+            f"{current}[ovs{i}]overlay=x=(W-w)/2:y={y_px}:"
+            f"eof_action=pass:enable='{enable}'{next_label}"
+        )
         current = next_label
 
     cmd += ["-filter_complex", ";".join(fc_parts)]

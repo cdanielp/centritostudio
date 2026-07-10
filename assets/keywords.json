@@ -1,15 +1,15 @@
 {
-  "workflow": "A glowing digital blueprint with interconnected nodes and purple neon edges, dark tech background, minimal icon style, 4K sharp",
-  "nodo": "A luminous hexagonal tech node pulsing with cyan energy connections, sci-fi interface, dark background with purple glow",
-  "modelo": "A neural network visualization with interconnected spheres in gradient purple to cyan, futuristic data sphere, clean digital art",
-  "gpu": "A powerful graphics card glowing with electric blue energy, circuit board close-up, tech aesthetic with dark background",
-  "prompt": "A glowing text cursor inside a magic portal, sparks of creativity exploding, digital art, purple and gold color palette",
-  "agente": "A sleek geometric AI entity with glowing cyan eyes, minimal robot face, dark background, tech art",
-  "bot": "A small robotic assistant floating in a digital void, circuit patterns visible, neon purple and cyan, friendly design",
-  "render": "A futuristic server farm with glowing racks, streams of light particles flowing, digital production studio, cinematic",
-  "viral": "A rocket launching from a glowing smartphone screen, hearts and stars exploding outward, vibrant social media energy",
-  "dinero": "Gold coins transforming into glowing data streams, wealth meets digital technology, abstract finance art, warm and vibrant",
-  "tacos": "Three delicious tacos with colorful toppings, cilantro, onion and lime, vibrant food photography style, appetizing 3D sticker on transparent background",
-  "pastor": "Spinning trompo al pastor with golden pineapple on top, smoky street food atmosphere, appetizing 3D sticker style, transparent background",
-  "salsa": "Vibrant red salsa in a stone molcajete with fresh chilies and tomatoes, Mexican street food style, appetizing 3D sticker, transparent background"
+  "workflow": "glowing blueprint with connected nodes",
+  "nodo": "luminous hexagonal tech node",
+  "modelo": "neural network of connected spheres",
+  "gpu": "powerful glowing graphics card",
+  "prompt": "magic glowing text cursor",
+  "agente": "friendly geometric AI robot face",
+  "bot": "small floating robot assistant",
+  "render": "futuristic glowing server rack",
+  "viral": "rocket launching from a smartphone",
+  "dinero": "pile of shiny gold coins",
+  "tacos": "delicious mexican tacos with cilantro and lime",
+  "pastor": "trompo al pastor with golden pineapple",
+  "salsa": "red salsa in a stone molcajete with chilies"
 }

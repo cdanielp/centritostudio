@@ -9,3 +9,4 @@ requests>=2.31
 openai>=1.0
 python-dotenv>=1.0
 mediapipe==0.10.35  # F4.1: detector de caras para reframe 9:16 (CPU, sin torch; 0.10.14 no disponible en pip)
+rembg>=2.0  # F5: remocion de fondo de assets ComfyUI (u2net; usa onnxruntime ya presente)

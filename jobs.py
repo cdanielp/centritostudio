@@ -326,7 +326,7 @@ def run_render(
             overlays = ac.resolver_overlays(groups_path, brain_path)
             n_ov = len(overlays)
             update_job(jid, progress=52, message=f"Quemando con FFmpeg + {n_ov} overlay(s)...")
-            elapsed = core.burn_video_with_emojis(mp4, ass_path, out_path, overlays)
+            elapsed = core.burn_video_with_emojis(mp4, ass_path, out_path, overlays, style_cfg)
             emojis_result = (
                 f"{n_ov} overlays aplicados"
                 if n_ov
