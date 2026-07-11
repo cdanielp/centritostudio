@@ -1759,7 +1759,32 @@ async function loadHomeStats() {
       </div>
     </div>`;
 }
-function renderCreadorCards() { /* B7 */ }
+// Modo Creador: cada card es una PUERTA a una herramienta existente (no la
+// reimplementa). El onclick solo navega a su tab; las funciones actuales quedan
+// intactas y accesibles. Lo que depende de ComfyUI lleva su nota.
+const CREADOR_TOOLS = [
+  {ic:'📚', t:'Biblioteca de videos', d:'Sube, administra y transcribe los videos de entrada.', tab:'videos'},
+  {ic:'✍️', t:'Subtítulos (Editor)', d:'Edita la transcripción por grupos y marca el énfasis IA.', tab:'editor'},
+  {ic:'✂️', t:'Clipper viral', d:'Corta un video largo en clips seleccionados por score de IA.', tab:'clips'},
+  {ic:'🖼️', t:'Reframe 9:16', d:'Reencuadre vertical con seguimiento de cara (escenas o EMA).', tab:'clips'},
+  {ic:'👥', t:'Stack (2-3 personas)', d:'Layout apilado cuando hay varias caras en cuadro.', tab:'clips'},
+  {ic:'🅰️', t:'Captions / Render', d:'Quema subtítulos con un estilo o un preset viral.', tab:'render'},
+  {ic:'🔎', t:'Caption QA', d:'Revisa y corrige la transcripción antes de quemar los captions.', tab:'render'},
+  {ic:'⚡', t:'Keyword Punch', d:'Preset de keywords gigantes con glow sobre las palabras clave.', tab:'render'},
+  {ic:'✨', t:'Popups / Emojis', d:'Assets generados en ComfyUI sobre las keywords.', tab:'render', note:'requiere ComfyUI'},
+  {ic:'🧹', t:'Depurador', d:'Quita silencios y muletillas del video (modo seguro o agresivo).', tab:'videos'},
+];
+function renderCreadorCards() {
+  const el = document.getElementById('creador-cards');
+  if (!el) return;
+  el.innerHTML = CREADOR_TOOLS.map(x => `
+    <div class="mode-card" onclick="showTab('${x.tab}')">
+      <div class="ic">${x.ic}</div>
+      <div class="t">${x.t}</div>
+      <div class="d">${x.d}</div>
+      <div class="go">${x.note ? '<span style="color:var(--muted)">'+x.note+'</span> · ' : ''}Abrir →</div>
+    </div>`).join('');
+}
 
 function renderAjustes() {
   const el = document.getElementById('ajustes-panel');
