@@ -10,16 +10,18 @@
   --bg:#08080f;--surface:#0d0d14;--border:0.5px solid #1e1e2e;
   --purple:#7C3AED;--purple-dim:#4c1d95;--text:#e2e2f0;--muted:#6b6b8a;
   --yellow:#FFD700;--cyan:#00FFFF;--orange:#FF8000;--red:#ef4444;--green:#22c55e;
+  /* S35-b responsive scale: ancho comodo en pantallas grandes sin estirarse infinito */
+  --maxw:1320px;--pad-x:clamp(20px,4vw,56px);
 }
-body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:15px;height:100vh;display:flex;flex-direction:column}
 a{color:var(--purple);text-decoration:none}
 
 /* ── Header ── */
-#header{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:var(--border);background:var(--surface)}
-#header h1{font-size:16px;font-weight:500;letter-spacing:.5px;color:var(--text)}
-#header span{color:var(--purple);font-size:20px}
-nav{display:flex;gap:4px;margin-left:auto}
-nav button{background:none;border:var(--border);border-radius:6px;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px;transition:all .15s}
+#header{display:flex;align-items:center;gap:14px;padding:12px clamp(16px,3vw,32px);border-bottom:var(--border);background:var(--surface)}
+#header h1{font-size:18px;font-weight:500;letter-spacing:.5px;color:var(--text)}
+#header span{color:var(--purple);font-size:22px}
+nav{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+nav button{background:none;border:var(--border);border-radius:7px;color:var(--muted);padding:8px 18px;cursor:pointer;font-size:14px;transition:all .15s}
 nav button.active{background:var(--purple-dim);border-color:var(--purple);color:var(--text)}
 nav button:hover:not(.active){color:var(--text);border-color:var(--muted)}
 
@@ -374,7 +376,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
 <!-- ════════════════ TAB: AUTOMATICO ════════════════ -->
 <div id="tab-auto" class="tab">
-  <div class="home-wrap" style="max-width:760px">
+  <div class="home-wrap" style="max-width:920px">
     <h2 class="section-title">Modo Automático</h2>
     <div class="msg" style="margin-bottom:16px">De un video largo a un paquete de clips verticales listo para revisar. Cinco pasos; el pipeline hace el resto.</div>
 
@@ -436,39 +438,43 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
    S35 — Vistas premium: Home / Editor de Paquete / Paquetes / Creador
 ══════════════════════════════════════════ */
 #tab-home,#tab-paquetes,#tab-creador,#tab-ajustes{padding:0;overflow-y:auto}
-.home-wrap,.pkg-wrap{max-width:1000px;margin:0 auto;padding:28px 24px;width:100%}
-.section-title{font-size:16px;font-weight:500;letter-spacing:.3px;margin-bottom:6px}
+.home-wrap,.pkg-wrap{max-width:var(--maxw);margin:0 auto;padding:34px var(--pad-x);width:100%}
+.section-title{font-size:18px;font-weight:500;letter-spacing:.3px;margin-bottom:6px}
 
 /* Hero del dashboard */
 .hero{background:linear-gradient(135deg,#0d0d1a 0%,#120a24 60%,#0a1420 100%);
-  border:var(--border);border-radius:16px;padding:28px 26px;margin-bottom:22px;position:relative;overflow:hidden}
-.hero::after{content:"";position:absolute;top:-40%;right:-10%;width:340px;height:340px;
+  border:var(--border);border-radius:16px;padding:36px 34px;margin-bottom:26px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;top:-40%;right:-10%;width:420px;height:420px;
   background:radial-gradient(circle,rgba(124,58,237,.20),transparent 70%);pointer-events:none}
-.hero h1{font-size:26px;font-weight:500;letter-spacing:.4px;margin-bottom:6px}
+.hero h1{font-size:30px;font-weight:500;letter-spacing:.4px;margin-bottom:8px}
 .hero .accent{background:linear-gradient(90deg,var(--cyan),var(--purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero p{color:var(--muted);font-size:13px;max-width:560px}
-.hero .pill{display:inline-flex;align-items:center;gap:6px;margin-top:14px;font-size:11px;color:var(--cyan);
-  border:0.5px solid #1c3a44;background:#08161a;border-radius:999px;padding:4px 12px}
+.hero p{color:var(--muted);font-size:14px;max-width:640px;line-height:1.55}
+.hero .pill{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-size:12px;color:var(--cyan);
+  border:0.5px solid #1c3a44;background:#08161a;border-radius:999px;padding:5px 14px}
 
-/* Grid de cards de modo/herramienta */
-.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:24px}
-.mode-card{display:flex;flex-direction:column;gap:8px;text-align:left;
-  background:var(--surface);border:var(--border);border-radius:14px;padding:18px;cursor:pointer;
+/* Grid de cards de herramienta (Creador): tantas columnas como quepan, cards amplias */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:24px}
+/* Grid de los 3 modos del Home: 3 -> 2 -> 1 columnas segun ancho */
+.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:26px}
+@media (max-width:960px){.mode-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.mode-grid{grid-template-columns:1fr}}
+.mode-card{display:flex;flex-direction:column;gap:9px;text-align:left;
+  background:var(--surface);border:var(--border);border-radius:14px;padding:22px;cursor:pointer;
   transition:border-color .18s,transform .18s,background .18s}
 .mode-card:hover{border-color:var(--purple);transform:translateY(-2px);background:#100d1c}
-.mode-card .ic{font-size:22px}
-.mode-card .t{font-size:14px;font-weight:500}
-.mode-card .d{font-size:12px;color:var(--muted);line-height:1.45}
-.mode-card .go{margin-top:auto;font-size:11px;color:var(--cyan)}
+.mode-card .ic{font-size:24px}
+.mode-card .t{font-size:15px;font-weight:500}
+.mode-card .d{font-size:13px;color:var(--muted);line-height:1.5}
+.mode-card .go{margin-top:auto;font-size:12px;color:var(--cyan)}
 .mode-card.soon{cursor:default;opacity:.55}
 .mode-card.soon:hover{transform:none;border-color:#1e1e2e;background:var(--surface)}
 
 /* Panel de capacidades */
-.cap-panel{background:var(--surface);border:var(--border);border-radius:14px;padding:18px 20px}
-.cap-panel h3{font-size:13px;font-weight:500;margin-bottom:12px;color:var(--text)}
-.cap-grid{display:flex;flex-wrap:wrap;gap:8px}
-.cap-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text);
-  background:#0f0f1c;border:0.5px solid #23233a;border-radius:8px;padding:6px 11px}
+.cap-panel{background:var(--surface);border:var(--border);border-radius:14px;padding:20px 22px}
+.cap-panel h3{font-size:14px;font-weight:500;margin-bottom:14px;color:var(--text)}
+.cap-grid{display:flex;flex-wrap:wrap;gap:10px}
+.cap-chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--text);
+  background:#0f0f1c;border:0.5px solid #23233a;border-radius:8px;padding:8px 13px}
 .cap-chip .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
 .cap-chip .dot.off{background:var(--muted)}
 .ajustes-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid #1a1a2a;font-size:13px}
@@ -502,12 +508,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .rev-clip .rc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .rev-clip .rc-title{font-size:13px;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rev-clip .rc-sub{font-size:11px;color:var(--muted)}
-#rev-right{flex:1;display:flex;flex-direction:column;padding:18px;gap:14px;overflow-y:auto}
+#rev-right{flex:1;display:flex;flex-direction:column;padding:20px clamp(18px,2.5vw,32px);gap:14px;overflow-y:auto}
+/* Detalle del clip: en pantallas anchas, media a la izquierda y panel a la derecha */
+.rev-cols{display:grid;grid-template-columns:1fr;gap:16px}
+.rev-col-media,.rev-col-panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (min-width:1120px){
+  .rev-cols{grid-template-columns:minmax(360px,44%) 1fr;align-items:start}
+  .rev-col-media{position:sticky;top:0}
+  .rev-video-wrap,.rev-video-wrap video{max-height:60vh}
+}
 .rev-video-wrap{background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;max-height:46vh}
 .rev-video-wrap video{max-width:100%;max-height:46vh;display:block}
-.rev-block{background:var(--surface);border:var(--border);border-radius:12px;padding:14px 16px}
+.rev-block{background:var(--surface);border:var(--border);border-radius:12px;padding:16px 18px}
 .rev-block h4{font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
-.rev-kv{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+.rev-kv{display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
 .rev-kv b{color:var(--purple);font-weight:500}
 .rev-alert{font-size:12px;padding:6px 0;border-bottom:0.5px solid #1a1a2a;display:flex;gap:8px;align-items:baseline}
 .rev-alert:last-child{border-bottom:none}
@@ -1751,7 +1765,7 @@ async function loadHomeStats() {
     </div>
     <h2 class="section-title">¿Qué quieres hacer?</h2>
     <div class="msg" style="margin-bottom:14px">Automático genera · Editor revisa · Creador controla.</div>
-    <div class="card-grid">
+    <div class="mode-grid">
       ${modos.map(m => `
         <div class="mode-card" onclick="showTab('${m.tab}')">
           <div class="ic">${m.ic}</div>
@@ -1946,37 +1960,43 @@ function selectRevClip(i) {
     <div id="rev-toast" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
       background:#12121e;border:0.5px solid var(--purple);border-radius:8px;padding:8px 16px;
       font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:50"></div>
-    <div class="rev-video-wrap">
-      <video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>
-    </div>
-    <div class="rev-block">
-      <div class="rev-kv">
-        <span>Estado: ${estadoBadge(c.estado)}</span>
-        <span>Score IA: <b>${c.score ?? '—'}/100</b></span>
-        <span>Duración: <b>${fmtTime(c.dur_s||0)}</b></span>
-        <span style="color:var(--muted)">${escHtml(c.emojis_msg||'')}</span>
+    <div class="rev-cols">
+      <div class="rev-col-media">
+        <div class="rev-video-wrap">
+          <video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>
+        </div>
+        <div id="rev-timeline-slot"></div>
       </div>
-      <div class="msg" style="margin-top:8px">${escHtml(c.razon||'')}</div>
-    </div>
-    <div id="rev-timeline-slot"></div>
-    <div class="rev-block">
-      <h4>Alertas Caption QA</h4>${alertasHtml}
-    </div>
-    <div class="rev-block">
-      <h4>Calidad por tramos</h4>${tramosHtml}
-    </div>
-    <div class="rev-block">
-      <h4>Recomendación del paquete</h4>
-      <ul style="margin:0 0 0 16px;font-size:13px;line-height:1.7">${rec}</ul>
-    </div>
-    <div class="rev-actions">
-      <a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>
-      <button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>
-      <a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>
-      <button class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')">
-        ${aprobado?'✅ Aprobado (quitar)':'Marcar como aprobado'}</button>
+      <div class="rev-col-panel">
+        <div class="rev-block">
+          <div class="rev-kv">
+            <span>Estado: ${estadoBadge(c.estado)}</span>
+            <span>Score IA: <b>${c.score ?? '—'}/100</b></span>
+            <span>Duración: <b>${fmtTime(c.dur_s||0)}</b></span>
+            <span style="color:var(--muted)">${escHtml(c.emojis_msg||'')}</span>
+          </div>
+          <div class="msg" style="margin-top:8px">${escHtml(c.razon||'')}</div>
+        </div>
+        <div class="rev-block">
+          <h4>Alertas Caption QA</h4>${alertasHtml}
+        </div>
+        <div class="rev-block">
+          <h4>Calidad por tramos</h4>${tramosHtml}
+        </div>
+        <div class="rev-block">
+          <h4>Recomendación del paquete</h4>
+          <ul style="margin:0 0 0 16px;font-size:13px;line-height:1.7">${rec}</ul>
+        </div>
+        <div class="rev-actions">
+          <a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>
+          <button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>
+          <a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>
+          <button class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')">
+            ${aprobado?'✅ Aprobado (quitar)':'Marcar como aprobado'}</button>
+        </div>
+      </div>
     </div>`;
-  renderTimeline(c);  // B5 (no-op hasta que exista)
+  renderTimeline(c);
 }
 
 // Timeline simple de revision: barra de duracion + markers leidos de los sidecars
