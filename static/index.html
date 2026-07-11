@@ -1662,12 +1662,57 @@ function estadoBadge(estado) {
   return `<span class="estado ${estadoClass(estado)}">${estado || 'LISTO'}</span>`;
 }
 
-function loadHomeStats() {
+// Cockpit del Home: hero + cards de los 3 modos + capacidades. Los conteos
+// (videos/paquetes) son dinamicos y fail-safe (0 si el backend no responde).
+async function loadHomeStats() {
   const el = document.getElementById('home-wrap');
-  if (el && !el.dataset.ready) {
-    el.innerHTML = `<div class="hero"><h1><span class="accent">Centrito Studio</span></h1>
-      <p>Fábrica local de clips con IA.</p></div>`;
-  }
+  if (!el) return;
+  let nPkg = paquetesCache.length;
+  try {
+    const res = await fetch('/api/paquetes');
+    if (res.ok) { paquetesCache = await res.json(); nPkg = paquetesCache.length; }
+  } catch (e) { /* fail-safe: conserva el conteo previo */ }
+  const nVid = (videos || []).length;
+
+  const modos = [
+    {ic:'⚡', t:'Modo Automático', d:'Sube un video y recibe un paquete de clips verticales con captions, listo para revisar.',
+     go:'Generar paquete →', tab:'auto'},
+    {ic:'🔎', t:'Editor de Paquete', d:'Revisa los clips generados: estados, alertas de subtítulos y calidad por tramos.',
+     go:'Abrir Editor →', tab:'revision'},
+    {ic:'🛠️', t:'Modo Creador', d:'Herramientas sueltas con control granular: captions, clipper, reframe, stack y más.',
+     go:'Abrir herramientas →', tab:'creador'},
+  ];
+  const caps = [
+    {n:'Clipper IA', on:true}, {n:'Reframe 9:16', on:true}, {n:'Captions', on:true},
+    {n:'Caption QA', on:true}, {n:'Popups / Emojis', on:true, note:'requiere ComfyUI'},
+    {n:'Reporte de calidad', on:true},
+  ];
+
+  el.dataset.ready = '1';
+  el.innerHTML = `
+    <div class="hero">
+      <h1><span class="accent">Centrito Studio</span></h1>
+      <p>Fábrica local de clips con IA — de un video largo a clips verticales con subtítulos,
+         reencuadre y revisión de calidad, todo en tu máquina.</p>
+      <span class="pill">◆ ${nVid} video(s) en biblioteca · ${nPkg} paquete(s) generado(s)</span>
+    </div>
+    <h2 class="section-title">¿Qué quieres hacer?</h2>
+    <div class="msg" style="margin-bottom:14px">Automático genera · Editor revisa · Creador controla.</div>
+    <div class="card-grid">
+      ${modos.map(m => `
+        <div class="mode-card" onclick="showTab('${m.tab}')">
+          <div class="ic">${m.ic}</div>
+          <div class="t">${m.t}</div>
+          <div class="d">${m.d}</div>
+          <div class="go">${m.go}</div>
+        </div>`).join('')}
+    </div>
+    <div class="cap-panel">
+      <h3>Capacidades del pipeline</h3>
+      <div class="cap-grid">
+        ${caps.map(c => `<span class="cap-chip"><span class="dot ${c.on?'':'off'}"></span>${c.n}${c.note?` <span style="color:var(--muted);font-size:11px">(${c.note})</span>`:''}</span>`).join('')}
+      </div>
+    </div>`;
 }
 function renderCreadorCards() { /* B7 */ }
 
