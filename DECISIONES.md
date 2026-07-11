@@ -403,3 +403,59 @@ grupo y frase, regla que la eligio (R1-R7 | brain | manual), fuente
 (fuente unica `cve.escribir_sidecar_seleccion`, fail-open: su fallo jamas tumba
 el render). Mostrarlo en el Studio es opcional/no bloqueante; el sidecar SI es
 obligatorio.
+
+---
+
+## D22: Veredicto K sobre s31-bis + perfil visual keyword_punch + filtro debil + manual v1 (s32)
+
+### Veredicto K (revisado sobre los renders de s31-bis)
+
+1. **image_popups — APROBADO.** Video revisado:
+   `output/videolargo_clip1_largo_9x16_hormozi_popups.mp4`. Los popups estan bien,
+   no requieren ajuste urgente. Cierra la validacion de la rebanada image_popups v1.
+2. **keyword_punch: K prefiere el VIEJO (`_keyword_punch.mp4`), NO el clean
+   (`_keyword_punch_clean.mp4`).** El clean NO reemplaza al viejo. El render viejo
+   se mantiene como referencia visual preferida — **no borrar ni sobrescribir**.
+
+   **Interpretacion:** el problema de keyword_punch NO es solo visual — la ENERGIA
+   del viejo gusta mas. El problema real sigue siendo la SELECCION automatica de
+   palabras debiles/arbitrarias (consistente con D21: "seleccion + amplificacion,
+   no solo intensidad"). Objetivo S32: conservar la energia visual del viejo como
+   opcion, pero mejorar CONTROL (marcado manual) y SELECCION (filtro anti-stopword).
+
+### Perfil visual keyword_punch (ajuste a D21, sin romper lo hecho)
+
+- keyword_punch sigue **opt-in, nunca default universal** (D21 intacto).
+- **`keyword_punch` (clasico/viejo) = perfil visual PRINCIPAL** para quien elige ese
+  preset: energia clasica preferida por K. El default calibrado del preset (130,
+  densidad baja, sin glow) sigue vigente como punto de entrada sobrio; **145+glow**
+  (`--intensidad viral`) recupera la energia fuerte del viejo (regla #15: nada se
+  elimina). El render viejo `_keyword_punch.mp4` NO se sobrescribe.
+- **`keyword_punch_clean` = variante SOBRIA, no reemplazo.** Es un render de
+  comparacion producido con `--intensidad clean` explicito; se conserva pero NO se
+  impone como default sobre el gusto de K por el viejo.
+- **`viral_bounce` sigue como default short-form/CVE** cuando no se elige punch (D21).
+
+### Filtro de keywords debiles (BLOQUE 2, s32)
+
+El sidecar de s31 mostro que el brain elegia palabras debiles ("en", "un") con
+score 100. Causa: `candidatos_brain` reancla por `kw_ts` sin filtrar stopwords
+(a diferencia de las reglas R1-R7, que ya las saltan). Fix:
+
+- **`es_keyword_debil(palabra)`**: True si la palabra normalizada es stopword o
+  demasiado corta (< `LARGO_MIN_CONTENIDO`), EXCEPTO si dispara una senal fuerte
+  (dinero/numeros/negaciones/fechas via `_regla_por_palabra`). Reusa STOPWORDS.
+- El filtro se aplica **solo a las AUTOMATICAS del brain** (`candidatos_brain`).
+  Las reglas ya filtran. **Manual SIEMPRE gana y jamas se filtra** (voto #34).
+- Las descartadas se registran en `keyword_selection.json` (campo `descartadas`
+  con palabra, timestamp, grupo, razon, fuente) — transparencia barata (D21).
+
+### Marcado manual v1 (BLOQUE 3, s32)
+
+Sidecar `{stem}_keywords.json` junto al transcript (ademas del marcado inline
+`[strong]`/`[big]`/`[center]` ya existente). Permite destacar palabra exacta o
+frase corta, opcional grupo/timestamp/intensidad, con **prioridad sobre reglas y
+brain** (SCORE_MANUAL). En el sidecar aparece `fuente="manual"`, `regla="manual"`
+(o `manual_big`) y **no se filtra por stopwords**. Fail-open: manual invalido
+(JSON roto, palabra inexistente) jamas rompe el render. NO se crea editor visual
+ni timeline (fuera de alcance v1).
