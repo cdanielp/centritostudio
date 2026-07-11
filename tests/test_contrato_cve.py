@@ -126,6 +126,27 @@ def test_karaoke_sin_past_color_byte_identico():
     assert "\\kf" in activa
 
 
+def test_karaoke_past_secundario_es_el_primario(tmp_path):
+    # Con past color, el SecondaryColour del .ass = primario (futuras EN BASE, no rojas);
+    # el estilo karaoke clasico conserva el default (byte-identico, aprobado en s1).
+    import pysubs2
+
+    plan = cve.resolve_preset("karaoke_highlight")
+    g = _grupo(["una", "dos"])
+    con = tmp_path / "con.ass"
+    core_ass.build_ass([g], 1080, 1920, plan.style_cfg, con)
+    estilo = pysubs2.load(str(con)).styles["Default"]
+    assert (estilo.secondarycolor.r, estilo.secondarycolor.g, estilo.secondarycolor.b) == (
+        255,
+        255,
+        255,
+    )  # primario blanco
+    sin = tmp_path / "sin.ass"
+    core_ass.build_ass([g], 1080, 1920, get_style("karaoke"), sin)
+    clasico = pysubs2.load(str(sin)).styles["Default"]
+    assert clasico.secondarycolor == pysubs2.SSAStyle().secondarycolor  # default intacto
+
+
 def test_karaoke_fallback_sin_timing_cae_a_highlight():
     plan = cve.resolve_preset("karaoke_highlight")
     sin_timing = [{"id": 0, "text": "hola mundo", "words": [{"text": "hola"}, {"text": "mundo"}]}]

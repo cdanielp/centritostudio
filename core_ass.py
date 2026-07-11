@@ -197,6 +197,12 @@ def _make_ass_style(
     base.marginl = int(50 * dim_scale)
     base.marginr = int(50 * dim_scale)
     base.marginv = int(video_height * style_cfg.margin_pct)
+    if getattr(style_cfg, "karaoke_past_color", None):
+        # Con \kf en la linea, libass pinta el texto posterior como "silaba futura"
+        # usando SecondaryColour (default pysubs2: ROJO). El karaoke moderno exige
+        # las siguientes EN BASE -> secundario = primario. Solo con past color ON:
+        # el estilo karaoke clasico (aprobado) queda byte-identico.
+        base.secondarycolor = _ass_to_pysubs2(style_cfg.primary_color)
     subs.styles["Default"] = base
 
 

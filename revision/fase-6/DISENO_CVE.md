@@ -426,7 +426,7 @@ Ficha técnica de las 3 vías:
 
 | Sesión | Entregable | Criterios de cierre |
 |---|---|---|
-| **S30 — karaoke_highlight + Studio** | Preset `karaoke_highlight` registrado (envoltura del modo karaoke). `/api/presets` + dropdown de presets en Studio (patrón /api/styles de s28C). Selector de intensidad. Deuda #25 (poll timeout) si cabe. | Preset rinde por CLI y Studio; render karaoke byte-equivalente al actual con preset default; tests de contrato del endpoint; check.bat verde. |
+| **S30 — karaoke_highlight + Studio** — **HECHA (s30, Fable)** | Preset `karaoke_highlight` registrado (envoltura del modo karaoke + past color aditivo + fix SecondaryColour). `/api/presets` + dropdown de presets + selector de intensidad en Studio. Deuda #25 NO cupo (sigue pendiente). | CUMPLIDOS: preset rinde por CLI (demo videolargo) y Studio (screenshot dropdown); estilo karaoke clásico byte-idéntico (test); tests de contrato del endpoint; check verde (255 tests). |
 | **S31 — image_popups** | Cadena generalizada: `assets/biblioteca/`, `{stem}_popups.json`, posición paramétrica en `burn_video_with_emojis` (default intacto), cascada manual→biblioteca→ComfyUI, safe zones + cadena reducir→mover→desactivar para overlays. | Demo con ≥2 PNGs de biblioteca + 1 manual sobre el clip videolargo; entrada inválida no rompe (test); ruta emojis actual byte-idéntica sin popups; frames de evidencia. |
 | **S32 — marcado manual E2E** | Parser ya existe (s29); esta sesión lo cablea al Editor del Studio (las marcas se escriben en el texto del grupo y sobreviven el guardado), + `[center]` por grupo en build_ass (posición por-evento `\an`/marginv), + SPANS de frase con regla pre-firmada del voto #34 (efecto a cada palabra del span; marcas manuales exentas de kw_max_por_grupo), + garantía de no-fuga de marcas en la ruta clásica sin preset. | E2E: editar grupo con `[big]` en Studio → render con la palabra grande; marca inválida visible como texto plano en el editor pero ausente del render; span `[strong]frase[/strong]` marca todas las palabras del span; tests parser+persistencia. |
 | **S33 — config usuario + intensidades completas** | `cve_presets.json` end-to-end (hoy solo se especifica el esquema y el loader mínimo), matriz de intensidades completa aplicada a los 5 presets, documentación de usuario. | cve_presets.json roto/ausente → built-ins (tests por campo); preset custom del usuario rinde; matriz validada con 1 render por intensidad. |
@@ -453,5 +453,6 @@ registra lo que realmente quedó implementado (esa es la fuente de verdad del es
 | CLI `--preset` + `--intensidad` | IMPLEMENTADO s29 |
 | Demos 3 presets sobre clip videolargo + 32 tests de contrato (241 total) | IMPLEMENTADO s29 (evidencia: revision/fase-6/s29_demo/) |
 | avoid_faces: señal `hay_cara_en_rango` (CSV) | IMPLEMENTADO s29 la señal + tests; SIN CONSUMIDOR aún (los 3 presets usan position=bottom) — se cablea al render en S32 junto con `[center]` |
-| karaoke_highlight, image_popups, Studio, cve_presets.json loader completo | SESIONES SONNET (S30-S33) |
+| karaoke_highlight + Studio (/api/presets, dropdown, intensidades) | IMPLEMENTADO s30 |
+| image_popups, marcado E2E + spans (#34), cve_presets.json loader completo | SESIONES SONNET (S31-S33) |
 | Presets 6-12 (spec s30, clasificados en §9.1), high_energy/experimental, compositing | BACKLOG post-v1 |
