@@ -599,6 +599,17 @@ escribiendo). Refuerza la hipotesis de redireccion/hook disparado por escritura 
 Se elimino manualmente para que no contaminara el commit. Pista para la sesion dedicada:
 revisar hooks en `.claude/` que corran en PostToolUse/Stop sobre Write.
 
+**EVIDENCIA FUERTE (s29, 5 reproducciones en una sesion):** aparecieron `el` (18:21),
+`desactivar` (18:29), `bool` (18:39), `la` (18:41) y `list[tuple[int` (18:45). Los tres
+ultimos NO son palabras del dominio: son FRAGMENTOS DEL CODIGO PYTHON que se estaba
+escribiendo con el tool Write en ese momento (`bool` y `la` de docstrings/firmas,
+`list[tuple[int` es un pedazo de anotacion de tipo de cve_keywords.py). Conclusion casi
+segura: un hook post-escritura procesa el CONTENIDO del archivo escrito a traves de un
+shell sin comillas, y tokens con `>` o expansiones crean archivos por redireccion. El
+nombre `list[tuple[int` (corchetes crudos) descarta que sea un script Python nuestro y
+apunta a un one-liner de shell (PowerShell/cmd) en un hook de `.claude/`. Todos borrados
+antes de sus commits. La sesion dedicada deberia empezar listando los hooks activos.
+
 ---
 
 ### 31. SESION 28B — Direccion de Producto / "dos modos" formal (PENDIENTE, NO cancelada)

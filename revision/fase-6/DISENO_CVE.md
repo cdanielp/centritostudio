@@ -379,13 +379,13 @@ registra lo que realmente quedó implementado (esa es la fuente de verdad del es
 
 | Pieza | Destino |
 |---|---|
-| cve.py: registro de presets, resolve fail-safe, fallback total | BLOQUE 2 (s29) |
-| cve_keywords.py: reglas R1-R7 + merge brain + parser marcas + fit safe-zone | BLOQUE 2 (s29) |
-| Presets clean_podcast, viral_bounce (envolturas) | BLOQUE 2 (s29) |
-| Preset keyword_punch completo (detección + punch_scale + glow + safe zones) | BLOQUE 2 (s29) |
-| Extensión core_ass: punch_scale por-palabra + kw_glow doble capa (default off) | BLOQUE 2 (s29) |
-| CLI `--preset` | BLOQUE 2 (s29) |
-| Demos 3 presets sobre clip videolargo + tests de contrato | BLOQUE 2 (s29) |
-| avoid_faces (lectura CSV; señal binaria por rango) | BLOQUE 2 (s29) si el contexto alcanza; si no → S31 |
+| cve.py: registro de presets, resolve fail-safe, fallback total | IMPLEMENTADO s29 (commit 4e94630) |
+| cve_keywords.py: reglas R1-R7 + merge brain + parser marcas + fit safe-zone | IMPLEMENTADO s29 |
+| Presets clean_podcast, viral_bounce (envolturas) | IMPLEMENTADO s29 |
+| Preset keyword_punch completo (detección + punch_scale + glow + safe zones) | IMPLEMENTADO s29 |
+| Extensión motor: punch_scale + kw_glow en `core_ass_fx.py` (nuevo, default off; core_ass re-exporta y queda en 385 líneas) | IMPLEMENTADO s29 |
+| CLI `--preset` + `--intensidad` | IMPLEMENTADO s29 |
+| Demos 3 presets sobre clip videolargo + 32 tests de contrato (241 total) | IMPLEMENTADO s29 (evidencia: revision/fase-6/s29_demo/) |
+| avoid_faces: señal `hay_cara_en_rango` (CSV) | IMPLEMENTADO s29 la señal + tests; SIN CONSUMIDOR aún (los 3 presets usan position=bottom) — se cablea al render en S32 junto con `[center]` |
 | karaoke_highlight, image_popups, Studio, cve_presets.json loader completo | SESIONES SONNET (S30-S33) |
 | Presets 6-12, high_energy/experimental, compositing | BACKLOG `[SPEC-K PENDIENTE]` |
