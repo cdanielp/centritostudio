@@ -611,6 +611,34 @@ se pierda al haber priorizado s28A en cierre de cabos + F5-s2 captions cineticos
 
 ---
 
+### 33. F6 caption_viral_engine — SPEC DE K NO LLEGO (placeholder sin reemplazar, s29)
+
+**Hecho:** el prompt de la sesion 29 debia traer el documento integro de K del
+caption_viral_engine ("Quiero que F6 no sea un estilo fijo..." hasta "...dopaminergico o
+experimental") pero llego el PLACEHOLDER sin reemplazar, seguido del texto de la sesion
+s28A antigua. El documento tampoco existe en el repo (verificado con grep).
+
+**Decision de sesion (MAESTRO: decidir, anotar, seguir):** el diseno se construyo sobre
+las DECISIONES DEL ARQUITECTO a-h del mismo prompt, que son autosuficientes para v1
+(5 presets nombrados, 3 intensidades, deteccion v1, marcado v1, safe zones, config, plan
+Sonnet). Los huecos que SOLO el spec de K puede llenar quedaron marcados
+`[SPEC-K PENDIENTE]` en revision/fase-6/DISENO_CVE.md:
+1. Presets 6-12: quedan como SLOTS con criterio de viabilidad resuelto (via ASS puro /
+   via overlays / via compositing) — no se inventaron nombres para no contradecir a K.
+2. Posiciones exactas del spec (se mapearan a las constantes de safe zone).
+3. Sintaxis completa de marcado manual (v1 = [strong]/[big]/[center] + popups.json).
+
+**ACCION PARA K/ARQUITECTO:** pegar el documento integro en la proxima sesion (o
+guardarlo como revision/fase-6/SPEC_K_CVE.md). Al llegar, se llenan los slots sin
+reabrir la arquitectura.
+
+**Registro del diseno:** revision/fase-6/DISENO_CVE.md (arquitectura de orquestacion
+sobre 3 subsistemas existentes, extension aditiva default-off del motor ASS, merge
+manual > brain > reglas, cadena reducir->mover->desactivar, fallback de 5 niveles,
+plan de sesiones Sonnet S30-S34).
+
+---
+
 ### 32. F7 Telegram / distribucion — DIFERIDA post-v1 (D18, s28A)
 
 Decision de roadmap del arquitecto (DECISIONES D18): F7 se DIFIERE fuera del alcance de v1,

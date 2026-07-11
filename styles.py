@@ -39,8 +39,8 @@ PMS_MARGIN_PCT = 0.12  # Distancia desde abajo (fracción de alto)
 
 # Intensidad del "pop" de la palabra activa (escala del scale-pop word-by-word).
 # 1.0 = sin pop (solo cambio de color); >1.0 = la palabra reposa a ese tamaño mientras
-# está activa (más grande que sus vecinos). suave/fuerte(1.15) de s28A quedaron por
-# compatibilidad pero K los descartó por sutiles (D19); medio/fuerte son los vigentes.
+# está activa (más grande que sus vecinos). Historia: D19 descartó 1.08/1.15 planos,
+# D20 los rehabilitó CON rebote — default final: suave 1.08 + overshoot (cierre s29).
 POP_LEVELS: dict[str, float] = {
     "off": 1.0,
     "suave": 1.08,  # legado s28A (descartado por K, se conserva por compat)
