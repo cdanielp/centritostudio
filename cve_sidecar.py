@@ -42,6 +42,8 @@ def construir_seleccion(groups: list[dict], plan) -> dict:
         "densidad": plan.kw_densidad,
         "punch_scale": plan.kw_punch_scale,
         "keywords": keywords,
+        # Transparencia D22: palabras que el filtro anti-debil rechazo (brain stopwords/cortas).
+        "descartadas": list(getattr(plan, "kw_descartadas", []) or []),
     }
 
 

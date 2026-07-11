@@ -88,6 +88,29 @@ def _es_contenido(palabra: str) -> bool:
     return len(n) >= LARGO_MIN_CONTENIDO and n not in STOPWORDS
 
 
+def es_keyword_debil(palabra: str, crudo: str | None = None) -> bool:
+    """True si la palabra NO debe entrar como keyword AUTOMATICA (stopword/corta).
+
+    Filtro anti-basura del brain (D22, BLOQUE 2): el brain reancla por timestamp y
+    puede elegir palabras debiles ("en", "un", "de"). Se descarta si es stopword o
+    demasiado corta, EXCEPTO si dispara una senal fuerte (dinero/numeros/negaciones/
+    fechas via _regla_por_palabra) — esas nunca son debiles.
+
+    Las reglas R1-R7 ya saltan stopwords; esto cubre la ruta del brain. Las marcas
+    MANUALES jamas pasan por aqui (voto #34: manual siempre gana).
+    """
+    n = _normalizar(palabra)
+    if _regla_por_palabra(n, crudo if crudo is not None else palabra) is not None:
+        return False  # senal fuerte: dinero, numero, negacion o fecha
+    return n in STOPWORDS or len(n) < LARGO_MIN_CONTENIDO
+
+
+def razon_debil(palabra: str) -> str:
+    """Razon legible del descarte (para el sidecar de transparencia D21/D22)."""
+    n = _normalizar(palabra)
+    return "stopword" if n in STOPWORDS else "corta"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Reglas R1-R7 (§4.1) — cada una devuelve candidatos (g_idx, w_idx, score, regla)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,8 +191,15 @@ def detectar_candidatos(groups: list[dict]) -> list[tuple[int, int, int, str]]:
     return result
 
 
-def candidatos_brain(groups: list[dict], brain_data: dict | None) -> list:
-    """Marcas del brain.json como candidatos score 100 (re-ancla por kw_ts, como apply_brain)."""
+def candidatos_brain(
+    groups: list[dict], brain_data: dict | None, descartadas: list | None = None
+) -> list:
+    """Marcas del brain.json como candidatos score 100 (re-ancla por kw_ts, como apply_brain).
+
+    Filtro D22 (BLOQUE 2): una palabra del brain que sea debil (stopword/corta sin
+    senal fuerte) NO entra como candidato. Si se pasa `descartadas`, se le anexa un
+    registro {palabra, timestamp, grupo, razon, fuente} de cada rechazo (transparencia).
+    """
     if not brain_data or not brain_data.get("groups"):
         return []
     kw_ts = {
@@ -180,8 +210,22 @@ def candidatos_brain(groups: list[dict], brain_data: dict | None) -> list:
     result = []
     for g_idx, g in enumerate(groups):
         for w_idx, w in enumerate(g.get("words", [])):
-            if round(float(w.get("start", -999)), 3) in kw_ts:
-                result.append((g_idx, w_idx, SCORE_BRAIN, "brain"))
+            if round(float(w.get("start", -999)), 3) not in kw_ts:
+                continue
+            palabra = w.get("text", "")
+            if es_keyword_debil(palabra):
+                if descartadas is not None:
+                    descartadas.append(
+                        {
+                            "palabra": palabra,
+                            "timestamp": w.get("start"),
+                            "grupo": g_idx,
+                            "razon": razon_debil(palabra),
+                            "fuente": "brain",
+                        }
+                    )
+                continue
+            result.append((g_idx, w_idx, SCORE_BRAIN, "brain"))
     return result
 
 

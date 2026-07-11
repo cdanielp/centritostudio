@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cve_keywords as ck
@@ -54,6 +54,9 @@ class RenderPlan:
     position: str  # "bottom" | "center" | "top" (efecto render: S32)
     video_fx: dict  # declarativo: recomendacion para reframe, no se ejecuta aqui
     kw_densidad: str | None = None  # freno de densidad D21 (baja|media|alta); None = 40%
+    # Descartadas por el filtro anti-debil (D22): brain words rechazadas por stopword/corta.
+    # aplicar_engine lo rellena; el sidecar de seleccion lo publica (transparencia).
+    kw_descartadas: list = field(default_factory=list)
 
 
 # Presets built-in v1 (§1). style = nombre de estilo existente; el resto son modos.
@@ -349,9 +352,10 @@ def aplicar_engine(
     if plan.keywords_mode == "off":
         return limpios
     try:
+        plan.kw_descartadas = []  # se rellena con lo que el filtro anti-debil rechaza
         candidatos = list(manuales)
         if plan.keywords_mode in ("brain", "auto+brain"):
-            candidatos += ck.candidatos_brain(limpios, brain_data)
+            candidatos += ck.candidatos_brain(limpios, brain_data, plan.kw_descartadas)
         if plan.keywords_mode == "auto+brain":
             candidatos += ck.detectar_candidatos(limpios)
         elegidos = ck.elegir_keywords(candidatos, len(limpios), plan.kw_densidad)

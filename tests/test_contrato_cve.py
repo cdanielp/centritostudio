@@ -361,6 +361,68 @@ def test_sidecar_no_aplica_con_keywords_off(tmp_path):
     assert cve.escribir_sidecar_seleccion([], None, tmp_path / "x.mp4") is None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Filtro de keywords debiles (D22, BLOQUE 2): brain no mete stopwords/cortas
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_es_keyword_debil_clasifica():
+    assert ck.es_keyword_debil("en") is True  # stopword
+    assert ck.es_keyword_debil("un") is True
+    assert ck.es_keyword_debil("de") is True
+    assert ck.es_keyword_debil("ya") is True  # corta + stopword
+    assert ck.es_keyword_debil("workflow") is False  # contenido
+    # senales fuertes nunca son debiles (aunque sean cortas)
+    assert ck.es_keyword_debil("500") is False  # numero
+    assert ck.es_keyword_debil("$5") is False  # dinero
+    assert ck.es_keyword_debil("nunca") is False  # negacion
+    assert ck.es_keyword_debil("hoy") is False  # fecha (corta pero fuerte)
+
+
+def test_brain_no_mete_stopwords_debiles():
+    # El brain reancla por kw_ts; si apunta a "en"/"un" el filtro las rechaza
+    grupos = [_grupo(["gana", "en", "un"], 0)]
+    ts_en = grupos[0]["words"][1]["start"]  # "en"
+    ts_un = grupos[0]["words"][2]["start"]  # "un"
+    brain = {"groups": [{"kw_ts": ts_en}, {"kw_ts": ts_un}]}
+    cands = ck.candidatos_brain(grupos, brain)
+    assert cands == []  # ambas debiles: ninguna entra
+
+
+def test_brain_registra_descartadas():
+    grupos = [_grupo(["gana", "en", "premios"], 0)]
+    ts_en = grupos[0]["words"][1]["start"]
+    brain = {"groups": [{"kw_ts": ts_en}]}
+    descartadas = []
+    cands = ck.candidatos_brain(grupos, brain, descartadas)
+    assert cands == []
+    assert len(descartadas) == 1
+    d = descartadas[0]
+    assert d["palabra"] == "en" and d["razon"] == "stopword" and d["fuente"] == "brain"
+    assert d["grupo"] == 0 and d["timestamp"] == ts_en
+
+
+def test_brain_palabra_fuerte_si_entra():
+    # brain apuntando a palabra de contenido entra normal (no se filtra)
+    grupos = [_grupo(["compra", "ahora", "gratis"], 0)]
+    ts = grupos[0]["words"][2]["start"]  # "gratis" (dinero R2)
+    brain = {"groups": [{"kw_ts": ts}]}
+    assert ck.candidatos_brain(grupos, brain) == [(0, 2, ck.SCORE_BRAIN, "brain")]
+
+
+def test_sidecar_no_incluye_basura_y_registra_descartadas(tmp_path):
+    # keyword_punch con brain apuntando a stopword: no entra al render y queda registrada
+    grupos = [_grupo(["gana", "en", "premios"], 0), _grupo(["texto", "normal", "aqui"], 1)]
+    ts_en = grupos[0]["words"][1]["start"]
+    brain = {"groups": [{"kw_ts": ts_en}]}
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920, brain_data=brain)
+    data = cve.construir_seleccion(out, plan)
+    palabras = [k["palabra"] for k in data["keywords"]]
+    assert "en" not in palabras  # basura fuera del sidecar
+    assert len(data["descartadas"]) == 1 and data["descartadas"][0]["palabra"] == "en"
+
+
 def test_brain_gana_a_reglas_en_el_mismo_grupo():
     grupos = [_grupo(["gana", "500", "rapido"])]
     brain = {"groups": [{"g": 0, "kw": 2, "kw_ts": grupos[0]["words"][2]["start"]}]}
