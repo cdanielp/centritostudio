@@ -406,6 +406,54 @@ def start_auto(name: str, objetivo: str = "clips"):
     return {"job_id": jid}
 
 
+# ─── Editor de Paquete (S35, D26) ─────────────────────────────────────────────
+# Vista de revision SOLO-LECTURA sobre output/paquetes/. No reimplementa motores:
+# lee paquete.json + sidecars (paquete_editor.py) y los sirve para el Editor.
+PAQUETES_DIR = OUTPUT_DIR / "paquetes"
+
+
+def _leer_paquete_json(d: Path) -> dict | None:
+    pj = d / "paquete.json"
+    if not pj.exists():
+        return None
+    try:
+        return json.loads(pj.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+@app.get("/api/paquetes")
+def list_paquetes():
+    """Lista los paquetes generados (mas recientes primero). Fail-open por paquete."""
+    import paquete_editor as pe  # noqa: PLC0415
+
+    out = []
+    if not PAQUETES_DIR.exists():
+        return out
+    for d in sorted(PAQUETES_DIR.glob("*"), key=lambda p: p.name, reverse=True):
+        if not d.is_dir():
+            continue
+        data = _leer_paquete_json(d)
+        if data is None:  # corrida a medias / json ilegible: no se lista
+            continue
+        out.append(pe.resumen_lista_paquete(d.name, data))
+    return out
+
+
+@app.get("/api/paquetes/{pkg}")
+def get_paquete(pkg: str):
+    """Detalle de un paquete para el Editor. Valida traversal (solo hijos directos)."""
+    import paquete_editor as pe  # noqa: PLC0415
+
+    d = (PAQUETES_DIR / pkg).resolve()
+    if d.parent != PAQUETES_DIR.resolve() or not d.is_dir():
+        raise HTTPException(404, "Paquete no encontrado")
+    data = _leer_paquete_json(d)
+    if data is None:
+        raise HTTPException(404, "Paquete sin paquete.json (corrida incompleta)")
+    return pe.vista_paquete(data, d.name, TRANSCRIPTS)
+
+
 # ─── Jobs / Estilos ───────────────────────────────────────────────────────────
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):

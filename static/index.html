@@ -1668,11 +1668,12 @@ async function loadHomeStats() {
   const el = document.getElementById('home-wrap');
   if (!el) return;
   let nPkg = paquetesCache.length;
-  try {
-    const res = await fetch('/api/paquetes');
-    if (res.ok) { paquetesCache = await res.json(); nPkg = paquetesCache.length; }
-  } catch (e) { /* fail-safe: conserva el conteo previo */ }
-  const nVid = (videos || []).length;
+  let nVid = (videos || []).length;
+  try {  // conteos frescos e independientes del orden de carga (fail-safe)
+    const [rp, rv] = await Promise.all([fetch('/api/paquetes'), fetch('/api/videos')]);
+    if (rp.ok) { paquetesCache = await rp.json(); nPkg = paquetesCache.length; }
+    if (rv.ok) { const vs = await rv.json(); if (Array.isArray(vs)) nVid = vs.length; }
+  } catch (e) { /* fail-safe: conserva los conteos previos */ }
 
   const modos = [
     {ic:'⚡', t:'Modo Automático', d:'Sube un video y recibe un paquete de clips verticales con captions, listo para revisar.',
@@ -1748,9 +1749,160 @@ function _renderPkgSelect() {
     paquetesCache.map(p => `<option value="${p.id}">${p.name} · ${p.fecha}</option>`).join('');
   if (paquetesCache.some(p => p.id === prev)) sel.value = prev;
 }
-function _renderPkgList() { /* B4 */ }
-function onRevisionShown() { loadPaquetes(); }
-function loadPaqueteDetalle(id) { /* B4 */ }
+// Lista de paquetes (tab Paquetes): tarjetas con estados; click abre el Editor.
+function _renderPkgList() {
+  const list = document.getElementById('pkg-list');
+  if (!list) return;
+  if (!paquetesCache.length) {
+    list.innerHTML = '<div class="msg">Aún no hay paquetes. Genera uno en el Modo Automático.</div>';
+    return;
+  }
+  list.innerHTML = paquetesCache.map(p => `
+    <div class="pkg-card" onclick="openPaqueteEnEditor('${esc(p.id)}')">
+      <div>
+        <div class="pk-name">${p.name}</div>
+        <div class="pk-meta">${p.fecha} · ${p.n_clips} clip(s) · ${p.resumen}</div>
+      </div>
+      <div class="pk-estados">${(p.estados||[]).map(estadoBadge).join('')}</div>
+    </div>`).join('');
+}
+
+function openPaqueteEnEditor(id) {
+  showTab('revision');
+  const sel = document.getElementById('rev-pkg-select');
+  if (sel) sel.value = id;
+  loadPaqueteDetalle(id);
+}
+
+function onRevisionShown() {
+  // Asegura el selector poblado; si ya hay un paquete abierto, conserva la vista.
+  loadPaquetes().then(() => { if (pkgActual) return; });
+}
+
+// ── Aprobacion local (solo en el navegador del tester, no toca disco) ──
+function _aprobados() {
+  try { return JSON.parse(localStorage.getItem('centrito_aprobados') || '{}'); }
+  catch (e) { return {}; }
+}
+function estaAprobado(archivo) { return !!_aprobados()[archivo]; }
+function toggleAprobado(archivo) {
+  const a = _aprobados();
+  if (a[archivo]) delete a[archivo]; else a[archivo] = true;
+  localStorage.setItem('centrito_aprobados', JSON.stringify(a));
+  if (pkgActual) selectRevClip(revClipSel);  // re-render del detalle
+}
+
+async function copiarRuta(ruta) {
+  try { await navigator.clipboard.writeText(ruta); toastRev('Ruta copiada: ' + ruta); }
+  catch (e) { toastRev('Copia manual: ' + ruta); }
+}
+function toastRev(msg) {
+  const t = document.getElementById('rev-toast');
+  if (t) { t.textContent = msg; t.style.opacity = '1'; setTimeout(() => t.style.opacity = '0', 2200); }
+}
+
+async function loadPaqueteDetalle(id) {
+  const clipsEl = document.getElementById('rev-clips');
+  const detailEl = document.getElementById('rev-detail');
+  if (!id) {
+    clipsEl.innerHTML = '<div class="msg" style="padding:16px">Elige un paquete generado por el Modo Automático.</div>';
+    detailEl.innerHTML = '<div class="no-video">Selecciona un clip para revisarlo.</div>';
+    pkgActual = null; return;
+  }
+  clipsEl.innerHTML = '<div class="msg" style="padding:16px">Cargando paquete…</div>';
+  try {
+    const res = await fetch('/api/paquetes/' + encodeURIComponent(id));
+    if (!res.ok) throw new Error('no encontrado');
+    pkgActual = await res.json();
+  } catch (e) {
+    clipsEl.innerHTML = '<div class="msg err" style="padding:16px">No se pudo abrir el paquete.</div>';
+    return;
+  }
+  renderRevClips();
+  if (pkgActual.clips.length) selectRevClip(0);
+  else detailEl.innerHTML = '<div class="no-video">El paquete no tiene clips.</div>';
+}
+
+function renderRevClips() {
+  const el = document.getElementById('rev-clips');
+  const meta = pkgActual.meta || {};
+  const head = `<div style="padding:6px 6px 10px">
+    <div style="font-size:13px;font-weight:500">${pkgActual.id}</div>
+    <div class="msg" style="margin-top:2px">${pkgActual.resumen || ''}</div>
+  </div>`;
+  el.innerHTML = head + pkgActual.clips.map((c, i) => `
+    <div class="rev-clip ${i===revClipSel?'sel':''}" onclick="selectRevClip(${i})">
+      <div class="rc-top">
+        <span class="rc-title">${i+1}. ${c.titulo || c.archivo}</span>
+        ${estadoBadge(c.estado)}
+      </div>
+      <div class="rc-sub">${(c.score ?? '—')}/100 · ${fmtTime(c.dur_s||0)}${estaAprobado(c.archivo)?' · ✅ aprobado':''}</div>
+    </div>`).join('');
+}
+
+function selectRevClip(i) {
+  revClipSel = i;
+  renderRevClips();
+  const c = pkgActual.clips[i];
+  const detail = document.getElementById('rev-detail');
+  const qa = c.qa || {};
+  const alertas = qa.alertas || [];
+  const aprobado = estaAprobado(c.archivo);
+
+  const alertasHtml = alertas.length ? alertas.map(a => `
+    <div class="rev-alert">
+      <span class="ts">${fmtTime(a.timestamp||0)}</span>
+      <span>"${a.texto_detectado||'?'}" → "${a.sugerencia||'sin sugerencia'}"
+        <span style="color:var(--muted)">(confianza ${a.confianza||'?'}, ${a.aplicada?'aplicada':'pendiente'})</span></span>
+    </div>`).join('')
+    : '<div class="rev-empty">Sin alertas de subtítulos.</div>';
+
+  const tramosHtml = (c.avisos||[]).length ? (c.avisos||[]).map(a =>
+      `<div class="rev-alert"><span class="ts">${fmtTime(a.t_ini||0)}</span><span>${a.texto||''}</span></div>`).join('')
+    : (c.tramos_disponibles === false
+        ? '<div class="rev-empty">Métricas no disponibles (clip reutilizado, no se re-renderizó).</div>'
+        : '<div class="rev-empty">Calidad OK en todo el clip.</div>');
+
+  const rec = (pkgActual.recomendacion||[]).map(l => `<li>${l.replace(/^- /,'')}</li>`).join('');
+
+  detail.innerHTML = `
+    <div id="rev-toast" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+      background:#12121e;border:0.5px solid var(--purple);border-radius:8px;padding:8px 16px;
+      font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:50"></div>
+    <div class="rev-video-wrap">
+      <video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>
+    </div>
+    <div class="rev-block">
+      <div class="rev-kv">
+        <span>Estado: ${estadoBadge(c.estado)}</span>
+        <span>Score IA: <b>${c.score ?? '—'}/100</b></span>
+        <span>Duración: <b>${fmtTime(c.dur_s||0)}</b></span>
+        <span style="color:var(--muted)">${c.emojis_msg||''}</span>
+      </div>
+      <div class="msg" style="margin-top:8px">${c.razon||''}</div>
+    </div>
+    <div id="rev-timeline-slot"></div>
+    <div class="rev-block">
+      <h4>Alertas Caption QA</h4>${alertasHtml}
+    </div>
+    <div class="rev-block">
+      <h4>Calidad por tramos</h4>${tramosHtml}
+    </div>
+    <div class="rev-block">
+      <h4>Recomendación del paquete</h4>
+      <ul style="margin:0 0 0 16px;font-size:13px;line-height:1.7">${rec}</ul>
+    </div>
+    <div class="rev-actions">
+      <a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>
+      <button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>
+      <a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>
+      <button class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')">
+        ${aprobado?'✅ Aprobado (quitar)':'Marcar como aprobado'}</button>
+    </div>`;
+  renderTimeline(c);  // B5 (no-op hasta que exista)
+}
+
+function renderTimeline(c) { /* B5 */ }
 
 // ═══════════════════════════════════════════════════════
 // Init
@@ -1758,7 +1910,19 @@ function loadPaqueteDetalle(id) { /* B4 */ }
 loadVideos();
 loadStyles();
 loadPresets();
-showTab('home');
+
+// Deep-link opcional por hash: #revision, #paquetes, #revision/<pkg_id> (bookmarkable
+// y util para abrir una vista directa). Sin hash valido -> Inicio.
+function _rutaInicial() {
+  const h = (location.hash || '').replace(/^#\/?/, '');
+  if (!h) { showTab('home'); return; }
+  const [vista, pkg] = h.split('/');
+  const validas = ['home','auto','revision','creador','paquetes','ajustes'];
+  if (!validas.includes(vista)) { showTab('home'); return; }
+  showTab(vista);
+  if (vista === 'revision' && pkg) setTimeout(() => openPaqueteEnEditor(decodeURIComponent(pkg)), 300);
+}
+_rutaInicial();
 </script>
 </body>
 </html>
