@@ -38,6 +38,35 @@ def _load_or_transcribe(
     return transcript
 
 
+def _resolver_plan_preset(preset: str | None, intensidad: str | None):
+    """RenderPlan del engine CVE o None. Fallo del engine -> None (captions simples)."""
+    if not preset:
+        return None
+    try:
+        import cve  # noqa: PLC0415
+
+        return cve.resolve_preset(preset, intensidad)
+    except Exception as e:
+        print(f"[cve] preset no resuelto ({e}) - se usa el estilo clasico")
+        return None
+
+
+def _aplicar_preset(groups: list, plan, stem: str, width: int, height: int) -> list:
+    """Marca los grupos con el engine CVE (brain.json fail-open si existe)."""
+    import cve  # noqa: PLC0415
+
+    brain_data = None
+    brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
+    if brain_path.exists():
+        try:
+            brain_data = json.loads(brain_path.read_text(encoding="utf-8"))
+            print(f"[cve] brain.json encontrado: enriquecimiento activo ({brain_path.name})")
+        except (ValueError, OSError):  # ValueError cubre JSON invalido y encoding roto
+            print(f"[cve] brain.json ilegible, se ignora: {brain_path.name}")
+            brain_data = None
+    return cve.aplicar_engine(groups, plan, width, height, brain_data)
+
+
 def process_video(
     video_path: Path,
     style: str,
@@ -49,6 +78,8 @@ def process_video(
     use_emojis: bool = False,
     pop: str | None = None,
     rebote: bool | None = None,
+    preset: str | None = None,
+    intensidad: str | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -57,13 +88,18 @@ def process_video(
     model_path, label = core.resolve_model(model_arg)
     print(f"[model] {label} | {device} | {compute}")
 
-    style_cfg = get_style(style, pop, rebote)
+    plan = _resolver_plan_preset(preset, intensidad)
+    style_cfg = plan.style_cfg if plan else get_style(style, pop, rebote)
     stem = out_stem or video_path.stem
-    # pop y rebote entran en el nombre para que las variantes no se pisen.
-    pop_tag = f"_{pop}" if pop else ""
-    reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
-    ass_path = output_dir / f"{stem}_{style}{pop_tag}{reb_tag}.ass"
-    suffix = f"_{style}{pop_tag}{reb_tag}" + ("_emojis" if use_emojis else "")
+    # pop, rebote y preset entran en el nombre para que las variantes no se pisen.
+    if plan:
+        variante = f"_{plan.preset}"
+    else:
+        pop_tag = f"_{pop}" if pop else ""
+        reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
+        variante = f"_{style}{pop_tag}{reb_tag}"
+    ass_path = output_dir / f"{stem}{variante}.ass"
+    suffix = variante + ("_emojis" if use_emojis else "")
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
@@ -74,6 +110,9 @@ def process_video(
     vinfo = core.get_video_info(video_path)
     width, height = vinfo["width"], vinfo["height"]
     print(f"[video] {width}x{height}")
+
+    if plan:
+        groups = _aplicar_preset(groups, plan, stem, width, height)
 
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
@@ -169,6 +208,18 @@ def main() -> None:
         default=None,
         help="Rebote/overshoot de la palabra activa (on/off); default: el del estilo",
     )
+    parser.add_argument(
+        "--preset",
+        choices=["clean_podcast", "viral_bounce", "keyword_punch"],
+        default=None,
+        help="Preset del caption_viral_engine (F6); si se da, --style/--pop se ignoran",
+    )
+    parser.add_argument(
+        "--intensidad",
+        choices=["minimal", "clean", "viral"],
+        default=None,
+        help="Intensidad del preset (default: la propia del preset)",
+    )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
@@ -224,6 +275,8 @@ def main() -> None:
                 use_emojis=args.emojis,
                 pop=args.pop,
                 rebote=rebote,
+                preset=args.preset,
+                intensidad=args.intensidad,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -239,6 +292,8 @@ def main() -> None:
             use_emojis=args.emojis,
             pop=args.pop,
             rebote=rebote,
+            preset=args.preset,
+            intensidad=args.intensidad,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

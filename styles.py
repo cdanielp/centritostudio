@@ -71,6 +71,7 @@ class StyleConfig:
     margin_pct: float = 0.12  # Margen inferior como fracción del alto del video
     pop_scale: float = 1.0  # Tamaño de reposo del énfasis de la palabra activa (1.0 = off)
     overshoot: bool = False  # Rebote: overshoot al pico y baja al reposo (False = pop simple)
+    kw_glow: bool = False  # Glow aprox del keyword (capa ASS extra, F6/CVE; off = sin capa)
 
 
 # Notas de colores ASS: formato &HAABBGGRR
@@ -244,6 +245,7 @@ _FIELD_VALIDATORS = {
     "margin_pct": _is_margin,
     "pop_scale": _is_pop,
     "overshoot": _is_bool,
+    "kw_glow": _is_bool,
 }
 
 

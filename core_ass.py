@@ -11,6 +11,16 @@ from pathlib import Path
 
 import pysubs2
 
+from core_ass_fx import _KW_SCALE_DEFAULT as _KW_BASE
+
+# Primitivas de texto ASS + extensiones F6/CVE (punch_scale, glow) — re-export
+# para compatibilidad: tests y consumidores siguen usando core_ass._kw_scale etc.
+from core_ass_fx import (  # noqa: F401
+    _escape_ass,
+    _glow_event_text,
+    _join_parts,
+    _kw_scale,
+)
 from styles import StyleConfig
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,25 +34,6 @@ def _ass_to_pysubs2(ass_color: str) -> pysubs2.Color:
     return pysubs2.Color(r, g, b, a)
 
 
-def _escape_ass(text: str) -> str:
-    return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
-
-
-def _join_parts(parts: list[str]) -> str:
-    """Une partes de texto ASS respetando saltos de linea."""
-    result: list[str] = []
-    for p in parts:
-        if p == "\\N":
-            if result and result[-1] == " ":
-                result.pop()
-            result.append("\\N")
-        else:
-            if result and result[-1] != "\\N":
-                result.append(" ")
-            result.append(p)
-    return "".join(result)
-
-
 # Timing del rebote (ms). Derivados del brief D19: sube en ~70ms, asienta hasta ~200ms.
 _OVERSHOOT_FACTOR = 1.12  # cuanto se pasa del reposo antes de asentar
 _OVERSHOOT_RISE_MS = 70
@@ -51,7 +42,12 @@ _POP_SIMPLE_RISE_MS = 90  # sin rebote: crece y se queda en el reposo
 
 
 def _active_highlight_tag(
-    style_cfg: StyleConfig, is_kw: bool, active_color: str, kw_sc: str, esc: str
+    style_cfg: StyleConfig,
+    is_kw: bool,
+    active_color: str,
+    kw_sc: str,
+    esc: str,
+    kw_base: int = _KW_BASE,
 ) -> str:
     """Tag ASS de la palabra activa en modo highlight.
 
@@ -62,7 +58,7 @@ def _active_highlight_tag(
     if pop <= 1.0:
         return f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
 
-    base = 122 if is_kw else 100
+    base = kw_base if is_kw else 100
     rest = int(round(base * pop))  # tamaño de reposo del enfasis mientras la palabra activa
     if getattr(style_cfg, "overshoot", False):
         peak = int(round(rest * _OVERSHOOT_FACTOR))
@@ -91,9 +87,10 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
         disp = w["text"].upper() if style_cfg.uppercase else w["text"]
         esc = _escape_ass(disp)
         is_kw = w.get("is_keyword", False)
+        sc_kw = _kw_scale(w)  # 122 salvo punch_scale del engine (F6)
         # Keyword siempre usa keyword_color; no-keyword usa highlight al estar activa
         active_color = kw if is_kw else hl
-        kw_sc = "\\fscx122\\fscy122" if is_kw else ""
+        kw_sc = f"\\fscx{sc_kw}\\fscy{sc_kw}" if is_kw else ""
 
         if i == active_idx:
             if anim == "karaoke":
@@ -106,19 +103,16 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
                     f"\\t(80,160,\\fscx{lo}\\fscy{lo})\\c{active_color}}}{esc}{{\\r}}"
                 )
             elif anim == "scale":
-                sc = 122 if is_kw else 115
+                sc = sc_kw if is_kw else 115
                 tag = f"{{\\fscx{sc}\\fscy{sc}\\c{active_color}}}{esc}{{\\r}}"
             else:
-                # highlight: cambio de color + scale-pop opcional de la palabra activa.
-                # pop_scale>1.0 -> la palabra REPOSA a ese tamaño mientras esta activa (mas
-                # grande que sus vecinos, no vuelve a 100 como en s28A). Con overshoot hace
-                # rebote: sube al pico (~pop*1.12) y baja al reposo. Reutiliza el timing por-
-                # palabra (el evento dura lo que la palabra activa). \t sobre el ASS existente.
-                tag = _active_highlight_tag(style_cfg, is_kw, active_color, kw_sc, esc)
+                # highlight: color + scale-pop con reposo (s28C) y rebote opcional.
+                # El reposo del keyword parte de sc_kw (punch_scale del engine o 122).
+                tag = _active_highlight_tag(style_cfg, is_kw, active_color, kw_sc, esc, sc_kw)
             parts.append(tag)
         elif is_kw:
-            # Persistente: keyword_color + 122% durante toda la duracion del grupo
-            parts.append(f"{{\\c{kw}\\fscx122\\fscy122}}{esc}{{\\r}}")
+            # Persistente: keyword_color + escala kw durante toda la duracion del grupo
+            parts.append(f"{{\\c{kw}\\fscx{sc_kw}\\fscy{sc_kw}}}{esc}{{\\r}}")
         else:
             parts.append(esc)
 
@@ -208,19 +202,31 @@ def build_ass(
     style_cfg: StyleConfig,
     output_path: Path,
 ) -> None:
-    """Genera el .ass con captions animados word-by-word, escalado relativo a PlayResY."""
+    """Genera el .ass con captions animados word-by-word, escalado relativo a PlayResY.
+
+    Con kw_glow (F6/CVE) los grupos con keyword emiten su texto en capa 1 y un evento
+    gemelo de glow en capa 0. Default off: eventos sin capa, ruta identica a la actual.
+    """
+    glow_on = getattr(style_cfg, "kw_glow", False)
     subs = pysubs2.SSAFile()
     _make_ass_style(subs, video_width, video_height, style_cfg)
     for group in groups:
         gw = group["words"]
+        con_glow = glow_on and any(w.get("is_keyword", False) for w in gw)
+        glow_text = _glow_event_text(gw, style_cfg) if con_glow else None
         for idx, word in enumerate(gw):
             ev_end = gw[idx + 1]["start"] if idx < len(gw) - 1 else group["end"]
             ev_end = max(ev_end, word["start"] + 0.05)
+            start = pysubs2.make_time(s=word["start"])
+            end = pysubs2.make_time(s=ev_end)
+            if con_glow:
+                subs.events.append(pysubs2.SSAEvent(start=start, end=end, text=glow_text, layer=0))
             subs.events.append(
                 pysubs2.SSAEvent(
-                    start=pysubs2.make_time(s=word["start"]),
-                    end=pysubs2.make_time(s=ev_end),
+                    start=start,
+                    end=end,
                     text=_word_event_text(gw, idx, style_cfg),
+                    layer=1 if con_glow else 0,
                 )
             )
     subs.save(str(output_path))

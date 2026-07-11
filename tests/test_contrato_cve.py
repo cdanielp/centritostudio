@@ -1,0 +1,344 @@
+"""Tests de contrato del caption_viral_engine (F6, s29).
+
+Cubren: resolucion de presets (fail-safe), fallback total a captions simples,
+deteccion determinista de keywords, marcas manuales tolerantes, fit de escala,
+y extensiones aditivas del motor ASS (punch_scale por palabra + glow, default off).
+"""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import core_ass
+import cve
+import cve_keywords as ck
+from styles import get_style
+
+
+def _grupo(palabras: list[str], g_id: int = 0, texto: str | None = None) -> dict:
+    t0 = g_id * 10.0
+    words = [
+        {"text": p, "start": t0 + i * 0.5, "end": t0 + i * 0.5 + 0.4, "line_idx": 0}
+        for i, p in enumerate(palabras)
+    ]
+    return {
+        "id": g_id,
+        "start": t0,
+        "end": t0 + len(palabras) * 0.5,
+        "text": texto if texto is not None else " ".join(palabras),
+        "words": words,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resolucion de presets
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_presets_v1_resuelven():
+    assert cve.list_presets() == ["clean_podcast", "keyword_punch", "viral_bounce"]
+    for nombre in cve.list_presets():
+        plan = cve.resolve_preset(nombre)
+        assert plan.preset == nombre
+        assert plan.style_cfg.name in {"clean", "hormozi"}
+
+
+def test_preset_desconocido_error_accionable():
+    with pytest.raises(ValueError, match="Opciones"):
+        cve.resolve_preset("mega_viral")
+
+
+def test_intensidad_invalida_cae_a_la_del_preset():
+    # keyword_punch default = viral (glow on, punch 145)
+    plan = cve.resolve_preset("keyword_punch", "explosiva")
+    assert plan.kw_glow is True
+    assert plan.kw_punch_scale == 145
+
+
+def test_matriz_intensidades():
+    minimal = cve.resolve_preset("keyword_punch", "minimal")
+    assert minimal.style_cfg.pop_scale == pytest.approx(1.0)  # pop off
+    assert minimal.kw_glow is False
+    assert minimal.kw_punch_scale == ck.KW_SCALE_BASE  # sin punch especial
+    clean = cve.resolve_preset("keyword_punch", "clean")
+    assert clean.kw_glow is False  # glow solo en viral
+    assert clean.kw_punch_scale == 130  # POP_LEVELS medio
+    viral = cve.resolve_preset("keyword_punch", "viral")
+    assert viral.kw_glow is True and viral.style_cfg.kw_glow is True
+    assert viral.kw_punch_scale == 145  # POP_LEVELS fuerte
+
+
+def test_clean_podcast_envuelve_clean_sin_keywords():
+    plan = cve.resolve_preset("clean_podcast")
+    assert plan.style_cfg.name == "clean"
+    assert plan.keywords_mode == "off"
+    grupos = [_grupo(["hola", "mundo"])]
+    assert cve.aplicar_engine(grupos, plan, 1080, 1920) == grupos
+
+
+def test_viral_bounce_envuelve_hormozi_con_rebote():
+    plan = cve.resolve_preset("viral_bounce")
+    assert plan.style_cfg.name == "hormozi"
+    assert plan.style_cfg.pop_scale == pytest.approx(1.08)  # D20
+    assert plan.style_cfg.overshoot is True
+    assert plan.keywords_mode == "brain"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fallback total (nivel 3: engine falla -> grupos originales)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_engine_falla_devuelve_grupos_originales():
+    plan = cve.resolve_preset("keyword_punch")
+    rotos = [{"id": 0, "text": "sin words"}]  # malformado: sin 'words'
+    assert cve.aplicar_engine(rotos, plan, 1080, 1920) == rotos
+
+
+def test_engine_sin_candidatos_devuelve_grupos_intactos():
+    plan = cve.resolve_preset("keyword_punch")
+    grupos = [_grupo(["la", "de", "que"])]  # solo stopwords
+    assert cve.aplicar_engine(grupos, plan, 1080, 1920) == grupos
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deteccion determinista (R1-R7) sobre transcript sintetico
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_deteccion_numeros_y_dinero():
+    grupos = [_grupo(["gana", "500", "pesos"]), _grupo(["son", "tres", "pasos"], 1)]
+    reglas = {(c[0], c[3]) for c in ck.detectar_candidatos(grupos)}
+    assert (0, "R2") in reglas  # pesos
+    assert (0, "R1") in reglas  # 500
+    assert (1, "R1") in reglas  # tres
+
+
+def test_deteccion_negacion_y_contraste():
+    grupos = [_grupo(["nunca", "hagas", "esto"]), _grupo(["pero", "existe", "solucion"], 1)]
+    cands = ck.detectar_candidatos(grupos)
+    assert any(c[0] == 0 and c[3] == "R5" for c in cands)  # nunca
+    r6 = [c for c in cands if c[3] == "R6"]
+    assert r6 and grupos[1]["words"][r6[0][1]]["text"] == "existe"  # la que SIGUE a pero
+
+
+def test_deteccion_pregunta_marca_contenido():
+    g = _grupo(["y", "como", "funciona", "esto?"], texto="y como funciona esto?")
+    cands = [c for c in ck.detectar_candidatos([g]) if c[3] == "R4"]
+    assert cands and g["words"][cands[0][1]]["text"] == "funciona"
+
+
+def test_deteccion_repetidas_con_tope():
+    grupos = [_grupo(["workflow", "ya"], i) for i in range(4)]  # workflow x4, ya=stopword
+    r7 = [c for c in ck.detectar_candidatos(grupos) if c[3] == "R7"]
+    assert len(r7) == ck.REPETIDA_MAX_MARCAS  # solo las primeras 2 apariciones
+    assert {c[0] for c in r7} == {0, 1}
+
+
+def test_stopwords_nunca_son_keyword():
+    grupos = [_grupo(["el", "la", "que", "para"])]
+    assert ck.detectar_candidatos(grupos) == []
+
+
+def test_merge_un_keyword_por_grupo_y_densidad():
+    # dinero (95) debe ganarle a numero (90) dentro del mismo grupo
+    grupos = [_grupo(["500", "pesos", "hoy"])]
+    elegidos = ck.elegir_keywords(ck.detectar_candidatos(grupos), 1)
+    assert len(elegidos) == 1
+    w_idx, score, regla = elegidos[0]
+    assert regla == "R2" and grupos[0]["words"][w_idx]["text"] == "pesos"
+    # densidad: 10 grupos todos con candidato -> max 4 (40%)
+    muchos = [_grupo(["gana", f"{i}00", "pesos"], i) for i in range(10)]
+    assert len(ck.elegir_keywords(ck.detectar_candidatos(muchos), 10)) <= 4
+
+
+def test_brain_gana_a_reglas_en_el_mismo_grupo():
+    grupos = [_grupo(["gana", "500", "rapido"])]
+    brain = {"groups": [{"g": 0, "kw": 2, "kw_ts": grupos[0]["words"][2]["start"]}]}
+    cands = ck.detectar_candidatos(grupos) + ck.candidatos_brain(grupos, brain)
+    elegidos = ck.elegir_keywords(cands, 1)
+    w_idx, _score, regla = elegidos[0]
+    assert regla == "brain" and grupos[0]["words"][w_idx]["text"] == "rapido"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marcas manuales: tolerancia total
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_marca_strong_aplica_a_la_palabra_siguiente():
+    limpio, marcas, center = ck.parsear_marcas("esto es [strong]magia pura")
+    assert limpio == "esto es magia pura"
+    assert marcas == {2: "strong"} and center is False
+
+
+def test_marca_center_es_de_grupo():
+    limpio, marcas, center = ck.parsear_marcas("[center]el titulo grande")
+    assert limpio == "el titulo grande" and center is True and marcas == {}
+
+
+def test_marca_invalida_jamas_rompe():
+    casos = [
+        "hola [fuego]mundo",  # marca desconocida
+        "final huerfano [strong]",  # huerfana al final
+        "[big][strong]doble palabra",  # anidada/duplicada
+        "texto [/strong]cierre suelto",  # cierre sin apertura
+        "sin marcas normales",
+    ]
+    for texto in casos:
+        limpio, _marcas, _c = ck.parsear_marcas(texto)
+        assert "[" not in limpio and "]" not in limpio
+
+
+def test_marca_manual_gana_a_brain_y_reglas():
+    g = _grupo(["gana", "500", "rapido"], texto="gana 500 [strong]rapido")
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine([g], plan, 1080, 1920)
+    assert out[0]["words"][2].get("is_keyword") is True  # rapido (manual), no 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fit de escala contra safe zones (reducir -> desactivar)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_fit_reduce_hasta_caber():
+    # 10 chars: a 145 no cabe en 875px, reducida si (145 -> 135 -> 125)
+    escala = ck.ajustar_escala_punch("produccion", fontsize=90, ancho_util_px=875, escala=145)
+    assert escala is not None and ck.KW_SCALE_BASE <= escala < 145
+
+
+def test_fit_imposible_desactiva():
+    assert ck.ajustar_escala_punch("palabrota", 90, ancho_util_px=100, escala=145) is None
+
+
+def test_fit_palabra_corta_conserva_escala():
+    assert ck.ajustar_escala_punch("hoy", 90, ancho_util_px=875, escala=145) == 145
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Extensiones del motor ASS: punch_scale + glow (default off = byte-identico)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_punch_scale_por_palabra_en_ass():
+    cfg = get_style("hormozi", "off")  # sin pop: escala persistente pura
+    gw = _grupo(["gran", "OFERTA", "hoy"])["words"]
+    gw[1]["is_keyword"] = True
+    gw[1]["punch_scale"] = 145
+    txt = core_ass._word_event_text(gw, 0, cfg)  # keyword NO activa: persistente
+    assert "\\fscx145\\fscy145" in txt and "\\fscx122" not in txt
+
+
+def test_sin_punch_scale_conserva_122():
+    cfg = get_style("hormozi", "off")
+    gw = _grupo(["gran", "OFERTA", "hoy"])["words"]
+    gw[1]["is_keyword"] = True
+    txt = core_ass._word_event_text(gw, 0, cfg)
+    assert "\\fscx122\\fscy122" in txt  # comportamiento historico intacto
+
+
+def test_punch_scale_invalido_failsafe():
+    assert core_ass._kw_scale({"punch_scale": 999}) == 122
+    assert core_ass._kw_scale({"punch_scale": "grande"}) == 122
+    assert core_ass._kw_scale({"punch_scale": True}) == 122
+    assert core_ass._kw_scale({}) == 122
+    assert core_ass._kw_scale({"punch_scale": 145}) == 145
+
+
+def test_glow_off_no_cambia_eventos(tmp_path):
+    cfg = get_style("hormozi")
+    assert cfg.kw_glow is False  # default del builtin
+    g = _grupo(["gran", "OFERTA", "hoy"])
+    g["words"][1]["is_keyword"] = True
+    out = tmp_path / "off.ass"
+    core_ass.build_ass([g], 1080, 1920, cfg, out)
+    import pysubs2
+
+    subs = pysubs2.load(str(out))
+    assert len(subs.events) == 3  # un evento por palabra, sin gemelos
+    assert all(ev.layer == 0 for ev in subs.events)
+
+
+def test_glow_on_agrega_capa_detras(tmp_path):
+    from dataclasses import replace
+
+    cfg = replace(get_style("hormozi"), kw_glow=True)
+    g = _grupo(["gran", "OFERTA", "hoy"])
+    g["words"][1]["is_keyword"] = True
+    out = tmp_path / "glow.ass"
+    core_ass.build_ass([g], 1080, 1920, cfg, out)
+    import pysubs2
+
+    subs = pysubs2.load(str(out))
+    assert len(subs.events) == 6  # gemelo de glow por cada evento de palabra
+    glow = [ev for ev in subs.events if ev.layer == 0]
+    texto = [ev for ev in subs.events if ev.layer == 1]
+    assert len(glow) == 3 and len(texto) == 3
+    assert all("\\blur" in ev.text and "\\alpha&HFF&" in ev.text for ev in glow)
+
+
+def test_glow_on_sin_keywords_no_agrega_nada(tmp_path):
+    from dataclasses import replace
+
+    cfg = replace(get_style("hormozi"), kw_glow=True)
+    g = _grupo(["sin", "keywords", "aqui"])
+    out = tmp_path / "nokw.ass"
+    core_ass.build_ass([g], 1080, 1920, cfg, out)
+    import pysubs2
+
+    subs = pysubs2.load(str(out))
+    assert len(subs.events) == 3 and all(ev.layer == 0 for ev in subs.events)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# avoid_faces: senal binaria desde CSV (sin senal = None, fail-open)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_csv_ausente_sin_senal(tmp_path):
+    assert cve.hay_cara_en_rango(tmp_path / "no_existe.csv", 0, 10) is None
+
+
+def test_csv_sin_columna_conf_sin_senal(tmp_path):
+    p = tmp_path / "t.csv"
+    p.write_text("t,cam_center_x,face_x_asignada,distancia\n1.0,500,510,10\n", encoding="utf-8")
+    assert cve.hay_cara_en_rango(p, 0, 10) is None
+
+
+def test_csv_con_conf_da_senal(tmp_path):
+    p = tmp_path / "t.csv"
+    p.write_text(
+        "t,cam_center_x,face_x_asignada,distancia,conf_asignada\n"
+        "1.0,500,510,10,0.91\n5.0,500,510,10,\n",
+        encoding="utf-8",
+    )
+    assert cve.hay_cara_en_rango(p, 0.0, 2.0) is True  # deteccion viva en rango
+    assert cve.hay_cara_en_rango(p, 4.0, 6.0) is False  # solo hold en rango
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# E2E del engine sobre grupos sinteticos (keyword_punch completo)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_keyword_punch_e2e_marca_y_escala():
+    # 5 grupos con 2 candidatos: densidad 40% permite exactamente 2 keywords
+    grupos = [
+        _grupo(["gana", "500", "pesos"], 0),
+        _grupo(["nunca", "pares", "aqui"], 1),
+        _grupo(["la", "de", "que"], 2),
+        _grupo(["cosas", "sueltas", "van"], 3),
+        _grupo(["texto", "normal", "sigue"], 4),
+    ]
+    plan = cve.resolve_preset("keyword_punch", "viral")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920)
+    kw0 = [w for w in out[0]["words"] if w.get("is_keyword")]
+    kw1 = [w for w in out[1]["words"] if w.get("is_keyword")]
+    assert kw0 and kw0[0]["text"] == "pesos" and kw0[0].get("punch_scale", 0) > 122
+    assert kw1 and kw1[0]["text"] == "nunca"
+    assert not any(w.get("is_keyword") for w in out[2]["words"])
+    assert grupos[0]["words"][1].get("is_keyword") is None  # originales no mutados
