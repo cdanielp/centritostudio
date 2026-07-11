@@ -1902,7 +1902,47 @@ function selectRevClip(i) {
   renderTimeline(c);  // B5 (no-op hasta que exista)
 }
 
-function renderTimeline(c) { /* B5 */ }
+// Timeline simple de revision: barra de duracion + markers leidos de los sidecars
+// (tramos, Caption QA, keywords, popups). Click en la barra mueve el video (seek).
+function _escAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function renderTimeline(c) {
+  const slot = document.getElementById('rev-timeline-slot');
+  if (!slot) return;
+  const dur = c.dur_s || 0;
+  const markers = c.markers || [];
+  if (!dur || !markers.length) { slot.innerHTML = ''; return; }
+  const tramos = markers.filter(m => m.tipo === 'tramo');
+  const puntos = markers.filter(m => m.tipo !== 'tramo');
+  const bars = tramos.map(m => {
+    const l = Math.max(0, (m.t / dur) * 100);
+    const w = Math.max(0.6, (((m.t_fin || m.t) - m.t) / dur) * 100);
+    return `<div class="tl-tramo" style="left:${l}%;width:${w}%" title="${_escAttr(m.texto)}"></div>`;
+  }).join('');
+  const mks = puntos.map(m => {
+    const l = Math.min(100, Math.max(0, (m.t / dur) * 100));
+    return `<div class="tl-mk ${m.tipo}" style="left:${l}%" title="${fmtTime(m.t)} — ${_escAttr(m.texto)}"></div>`;
+  }).join('');
+  const cuenta = {qa:0, keyword:0, popup:0, tramo:tramos.length};
+  puntos.forEach(m => cuenta[m.tipo] = (cuenta[m.tipo]||0) + 1);
+  slot.innerHTML = `
+    <div class="rev-block">
+      <h4>Timeline de revisión</h4>
+      <div class="tl" onclick="tlSeek(event, ${dur})">${bars}${mks}</div>
+      <div class="tl-legend">
+        <span><i style="background:rgba(251,146,60,.55)"></i>Tramos con aviso (${cuenta.tramo})</span>
+        <span><i style="background:var(--cyan)"></i>Caption QA (${cuenta.qa})</span>
+        <span><i style="background:var(--yellow)"></i>Keywords (${cuenta.keyword})</span>
+        <span><i style="background:var(--purple)"></i>Popups (${cuenta.popup})</span>
+      </div>
+      <div class="msg" style="margin-top:6px">Clic en la barra para mover el video a ese punto.</div>
+    </div>`;
+}
+function tlSeek(ev, dur) {
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const pct = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+  const v = document.getElementById('rev-video');
+  if (v) { try { v.currentTime = pct * dur; } catch (e) {} }
+}
 
 // ═══════════════════════════════════════════════════════
 // Init

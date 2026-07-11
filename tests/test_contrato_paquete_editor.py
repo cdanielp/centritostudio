@@ -85,6 +85,55 @@ def test_vista_paquete_incluye_resumen_y_recomendacion(tmp_path):
     assert len(vista["clips"]) == 1
 
 
+def test_construir_markers_ordena_y_tipa():
+    avisos = [{"t_ini": 8.4, "t_fin": 22.2, "texto": "revisa 0:08-0:22"}]
+    qa = [{"timestamp": 24.1, "texto_detectado": "mira", "sugerencia": None, "confianza": "baja"}]
+    brain = [("keyword", 2.5), ("popup", 5.0)]
+    m = pe.construir_markers(30.0, avisos, qa, brain)
+    assert [x["tipo"] for x in m] == ["keyword", "popup", "tramo", "qa"]  # ordenado por t
+    tramo = next(x for x in m if x["tipo"] == "tramo")
+    assert tramo["t"] == 8.4 and tramo["t_fin"] == 22.2
+    qa_mk = next(x for x in m if x["tipo"] == "qa")
+    assert "mira -> sin sugerencia (baja)" in qa_mk["texto"]
+
+
+def test_construir_markers_descarta_fuera_de_clip_y_sin_tiempo():
+    avisos = [{"t_ini": 999.0, "t_fin": 1000.0, "texto": "fuera"}]
+    qa = [{"timestamp": None, "texto_detectado": "x"}]  # sin tiempo -> descartada
+    m = pe.construir_markers(30.0, avisos, qa, [("keyword", 5.0)])
+    assert len(m) == 1 and m[0]["tipo"] == "keyword"
+
+
+def test_markers_de_brain_lee_keywords_y_popups(tmp_path):
+    (tmp_path / "vid_clip1_corto_9x16.brain.json").write_text(
+        json.dumps(
+            {
+                "groups": [
+                    {"g": 0, "kw": 1, "emoji": None, "kw_ts": 0.0},
+                    {"g": 1, "kw": None, "emoji": "🔥", "kw_ts": 3.2},
+                    {"g": 2, "kw": None, "emoji": None, "kw_ts": 5.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    c = _clip(qa={"alerts_file": "vid_clip1_corto_9x16_caption_alerts.json"})
+    mk = pe.markers_de_brain(c, tmp_path)
+    assert ("keyword", 0.0) in mk
+    assert ("popup", 3.2) in mk
+    assert len(mk) == 2  # el grupo sin kw ni emoji no genera marker
+
+
+def test_markers_de_brain_fail_open_sin_archivo(tmp_path):
+    assert pe.markers_de_brain(_clip(), tmp_path) == []
+
+
+def test_enriquecer_clip_incluye_markers(tmp_path):
+    c = _clip(dur_s=30.0, avisos=[{"t_ini": 1.0, "t_fin": 2.0, "texto": "x"}])
+    out = pe.enriquecer_clip(c, "vid_x", tmp_path)
+    assert any(m["tipo"] == "tramo" for m in out["markers"])
+
+
 def test_resumen_lista_paquete_parsea_nombre_y_estados():
     data = {
         "clips": [_clip(), _clip(avisos=[{"t_ini": 0.0, "t_fin": 1.0, "texto": "x"}])],

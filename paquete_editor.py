@@ -55,6 +55,75 @@ def alertas_del_clip(clip: dict, transcripts_dir: Path) -> list[dict]:
         return []
 
 
+def _num(v) -> float | None:
+    """float() defensivo: None/'' -> None (para descartar markers sin tiempo). Puro."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def markers_de_brain(clip: dict, transcripts_dir: Path) -> list[tuple[str, float]]:
+    """[(tipo, t)] de keywords y popups leidos del {stem}.brain.json. Fail-open -> [].
+
+    Un grupo con emoji marcado -> popup; con keyword (kw != None) -> keyword. Ambos
+    usan kw_ts como tiempo. Solo lectura: no dispara el cerebro ni recalcula nada.
+    """
+    stem = _stem_de_clip(clip)
+    if not stem:
+        return []
+    p = Path(transcripts_dir) / f"{stem}.brain.json"
+    if not p.exists():
+        return []
+    try:
+        groups = json.loads(p.read_text(encoding="utf-8")).get("groups", [])
+    except (OSError, ValueError):
+        return []
+    out: list[tuple[str, float]] = []
+    for g in groups:
+        t = _num(g.get("kw_ts"))
+        if t is None:
+            continue
+        if g.get("emoji"):
+            out.append(("popup", t))
+        elif g.get("kw") is not None:
+            out.append(("keyword", t))
+    return out
+
+
+def _texto_alerta_qa(a: dict) -> str:
+    sug = a.get("sugerencia") or "sin sugerencia"
+    return f"{a.get('texto_detectado', '?')} -> {sug} ({a.get('confianza', '?')})"
+
+
+def construir_markers(
+    dur_s: float, avisos: list[dict], qa_alertas: list[dict], brain_markers: list[tuple[str, float]]
+) -> list[dict]:
+    """Markers del timeline de revision (puro). No recalcula: traduce lo ya medido.
+
+    Cada marker: {tipo, t, texto} (+ t_fin en los tramos). Se descartan los sin
+    tiempo y los que caen fuera del clip; el resultado va ordenado por t.
+    """
+    m: list[dict] = []
+    for a in avisos:
+        m.append(
+            {
+                "tipo": "tramo",
+                "t": _num(a.get("t_ini")),
+                "t_fin": _num(a.get("t_fin")),
+                "texto": a.get("texto", ""),
+            }
+        )
+    for a in qa_alertas:
+        m.append({"tipo": "qa", "t": _num(a.get("timestamp")), "texto": _texto_alerta_qa(a)})
+    for tipo, t in brain_markers:
+        m.append({"tipo": tipo, "t": _num(t), "texto": tipo})
+    m = [x for x in m if x["t"] is not None]
+    if dur_s and dur_s > 0:
+        m = [x for x in m if x["t"] <= dur_s + 0.5]
+    return sorted(m, key=lambda x: x["t"])
+
+
 def enriquecer_clip(clip: dict, pkg_id: str, transcripts_dir: Path) -> dict:
     """clip de paquete.json -> dict para el Editor. Estado y URL de preview incluidos.
 
@@ -62,21 +131,26 @@ def enriquecer_clip(clip: dict, pkg_id: str, transcripts_dir: Path) -> dict:
     URL de video apunta al montaje estatico /output ya existente (no se copia nada).
     """
     qa = dict(clip.get("qa") or {})
+    alertas = alertas_del_clip(clip, transcripts_dir)
     if qa:
-        qa["alertas"] = alertas_del_clip(clip, transcripts_dir)
+        qa["alertas"] = alertas
+    avisos = clip.get("avisos", [])
+    dur_s = clip.get("dur_s", 0)
+    markers = construir_markers(dur_s, avisos, alertas, markers_de_brain(clip, transcripts_dir))
     return {
         "archivo": clip.get("archivo"),
         "titulo": clip.get("titulo", ""),
         "razon": clip.get("razon", ""),
         "score": clip.get("score"),
-        "dur_s": clip.get("dur_s", 0),
+        "dur_s": dur_s,
         "emojis_msg": clip.get("emojis_msg", ""),
         "estado": auto_report.estado_clip(clip),
         "video_url": f"/output/paquetes/{pkg_id}/{clip.get('archivo')}",
         "ruta_fs": f"output/paquetes/{pkg_id}/{clip.get('archivo')}",
-        "avisos": clip.get("avisos", []),
+        "avisos": avisos,
         "tramos_disponibles": clip.get("tramos_disponibles", True),
         "qa": qa or None,
+        "markers": markers,
     }
 
 
