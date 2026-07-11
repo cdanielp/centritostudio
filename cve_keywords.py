@@ -37,7 +37,11 @@ DENSIDADES: dict[str, tuple[int, float]] = {
 DENSIDAD_DEFAULT = "baja"
 REPETIDA_MIN_APARICIONES = 3
 REPETIDA_MAX_MARCAS = 2  # solo las primeras N apariciones de una repetida
-LARGO_MIN_CONTENIDO = 4  # chars minimos para que una palabra sea "de contenido"
+LARGO_MIN_CONTENIDO = 4  # chars minimos para que una palabra sea "de contenido" (R7)
+# Filtro anti-debil (D22): mas conservador que LARGO_MIN_CONTENIDO — solo corta
+# fragmentos de 1-2 chars. Palabras cortas CON valor ("kit", "PNG") sobreviven; los
+# stopwords ya se cazan por lista sin importar longitud. Evita falsos positivos.
+LARGO_MIN_KEYWORD_DEBIL = 3
 
 # Stopwords: nunca son keyword (lista del prompt del brain + extension conservadora)
 STOPWORDS = frozenset(
@@ -102,7 +106,7 @@ def es_keyword_debil(palabra: str, crudo: str | None = None) -> bool:
     n = _normalizar(palabra)
     if _regla_por_palabra(n, crudo if crudo is not None else palabra) is not None:
         return False  # senal fuerte: dinero, numero, negacion o fecha
-    return n in STOPWORDS or len(n) < LARGO_MIN_CONTENIDO
+    return n in STOPWORDS or len(n) < LARGO_MIN_KEYWORD_DEBIL
 
 
 def razon_debil(palabra: str) -> str:

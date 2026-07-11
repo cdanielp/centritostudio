@@ -1,0 +1,125 @@
+{
+  "preset": "keyword_punch",
+  "densidad": "baja",
+  "punch_scale": 145,
+  "keywords": [
+    {
+      "palabra": "kit",
+      "timestamp": 2.26,
+      "grupo": 1,
+      "frase": "nuestra kit ya tiene los custom",
+      "regla": "brain",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "parece",
+      "timestamp": 8.84,
+      "grupo": 3,
+      "frase": "ahora algo que parece magia para",
+      "regla": "brain",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "carpeta",
+      "timestamp": 18.7,
+      "grupo": 6,
+      "frase": "recuerdas nuestra carpeta de output",
+      "regla": "brain",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "PNG",
+      "timestamp": 37.56,
+      "grupo": 16,
+      "frase": "desde el PNG que nos generó.",
+      "regla": "brain",
+      "fuente": "brain"
+    }
+  ],
+  "descartadas": [
+    {
+      "palabra": "en",
+      "timestamp": 6.2,
+      "grupo": 2,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "un",
+      "timestamp": 11.56,
+      "grupo": 4,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "la",
+      "timestamp": 23.9,
+      "grupo": 9,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "en",
+      "timestamp": 26.18,
+      "grupo": 10,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "a",
+      "timestamp": 29.94,
+      "grupo": 12,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "un",
+      "timestamp": 36.18,
+      "grupo": 15,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "con",
+      "timestamp": 41.12,
+      "grupo": 18,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "esta",
+      "timestamp": 42.82,
+      "grupo": 19,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "como",
+      "timestamp": 48.04,
+      "grupo": 21,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "todo",
+      "timestamp": 49.58,
+      "grupo": 22,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "o",
+      "timestamp": 59.14,
+      "grupo": 28,
+      "razon": "stopword",
+      "fuente": "brain"
+    },
+    {
+      "palabra": "vas",
+      "timestamp": 63.3,
+      "grupo": 31,
+      "razon": "stopword",
+      "fuente": "brain"
+    }
+  ]
+}

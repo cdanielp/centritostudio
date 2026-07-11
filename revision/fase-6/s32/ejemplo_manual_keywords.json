@@ -1,0 +1,8 @@
+{
+  "_nota": "Marcado manual v1 (S32, BLOQUE 3). Prioridad total sobre reglas/brain; no se filtra por stopwords.",
+  "keywords": [
+    { "palabra": "workflow", "intensidad": "big" },
+    { "palabra": "magia" },
+    { "palabra": "custom" }
+  ]
+}

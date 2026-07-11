@@ -372,6 +372,8 @@ def test_es_keyword_debil_clasifica():
     assert ck.es_keyword_debil("de") is True
     assert ck.es_keyword_debil("ya") is True  # corta + stopword
     assert ck.es_keyword_debil("workflow") is False  # contenido
+    assert ck.es_keyword_debil("kit") is False  # corta (3) pero con valor: no se filtra
+    assert ck.es_keyword_debil("PNG") is False  # idem, dominio
     # senales fuertes nunca son debiles (aunque sean cortas)
     assert ck.es_keyword_debil("500") is False  # numero
     assert ck.es_keyword_debil("$5") is False  # dinero
