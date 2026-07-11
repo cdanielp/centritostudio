@@ -496,3 +496,42 @@ D21/D22: el problema es SELECCION; el humano selecciona mejor que el brain.
   poblar esa UI de revision.
 - No convierte esto en editor visual/timeline: es un panel de revision de keywords
   (aprobar/editar/forzar palabras sobre los grupos existentes), no edicion libre.
+
+---
+
+## D24: Caption QA — corrector de transcripcion con glosario + guion opcional (s33)
+
+**Que es:** capa opcional (`--caption-qa`) previa al burn que detecta palabras mal
+transcritas ("confeti UI" -> ComfyUI, "aflicjo" -> archivo, "Kansas" -> canvas) y
+genera `transcripts/{stem}_caption_alerts.json`. Dos modos: `alertas` (solo reporta)
+y `auto_seguro` (aplica SOLO confianza alta, en memoria).
+
+### Decisiones de diseno
+
+1. **Variantes curadas > fuzzy.** Calibracion s33 con pares reales: los errores
+   FONETICOS no se cazan por similitud (confeti ui/comfyui 0.588, aflicjo/archivo
+   0.429, kansas/canvas 0.667 — todos bajo el umbral util) mientras los falsos
+   positivos aparecen desde 0.667 (flujo/flux) y 0.769 (archivo/activo). Por eso:
+   - `assets/glosario.json` con **variantes conocidas** (confianza alta, editable
+     por K sin tocar codigo) = la ruta premium — consistente con D23: la curaduria
+     humana gana a la heuristica.
+   - Similitud difflib SOLO para errores ortograficos contra terminos >= 6 chars
+     (checpoint/checkpoint 0.947): alta >= 0.87, media >= 0.78.
+2. **Guion opcional** (`{stem}_guion.txt` o `--guion`): vocabulario esperado +
+   contexto de bigrama precedente ("abrir el ___" -> archivo). Sugerencias del guion
+   = confianza MEDIA (el guion puede ser resumen/parafrasis): alertan, no auto-aplican.
+3. **Heuristica prob Whisper < 0.40**: alerta BAJA sin sugerencia (senala donde mirar).
+4. **DeepSeek = AUDITOR, no reescritor** (`--caption-qa-llm`, opt-in): recibe solo las
+   alertas no-altas con contexto de +-4 palabras; puede confirmar (sube a alta),
+   proponer o descartar. Fail-open: si la API cae, las alertas deterministas quedan.
+5. **Nada persiste al transcript**: `auto_seguro` corrige en memoria del render; el
+   words.json de disco conserva su hash (verificado en la validacion). Manual gana.
+6. **Timestamps intactos**: una correccion multi-palabra fusiona el span en un word
+   [s del primero, e del ultimo]; ningun otro timestamp cambia. Fijado por test.
+7. **Stopwords y tokens < 4 chars jamas se corrigen** (reusa STOPWORDS de cve_keywords).
+8. **Fail-open total** (regla #8 extendida): QA roto -> aviso + render con la
+   transcripcion original. Fijado por test sobre el wrapper de caption.py.
+
+**Validacion:** revision/s33-caption-qa/ (frames COMFYUI/CHECKPOINT quemados, AFLICJO
+pendiente como media, baseline intacto). 316 tests. Sin dependencias nuevas (difflib
+es stdlib).

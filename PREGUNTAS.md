@@ -751,3 +751,35 @@ paquete de clips listos para revisar sale (loop ya funcional, Modo Automatico v1
 Spec de F7 (cuando se retome, post-v1): worker de distribucion a Telegram; la PC solo hace
 requests SALIENTES (poll), cero puertos abiertos (MAESTRO F7). Bloqueada por M5 de K
 (canal/grupo destino + quien aprueba). Estado: **diferida, post-v1**.
+
+---
+
+### 35. Caption QA (S33) — deudas y decisiones tomadas asumiendolas razonables
+
+**Deuda: Caption QA en el Studio (pendiente, NO era barato).** El CLI ya expone
+`--caption-qa/--caption-qa-mode/--guion/--glosario/--caption-qa-llm`, pero jobs.py
+llama process-flow propio sin qa_opts. Exponerlo bien en el Studio implica: checkbox +
+selector de modo en Render, subida/edicion del guion, y un panel para revisar las
+alertas pendientes del sidecar `{stem}_caption_alerts.json` (aprobar/rechazar cada
+sugerencia). Ese panel de revision CONECTA con el panel de keywords manuales de D23
+(misma UX de aprobar/editar/forzar) — conviene diseniarlos JUNTOS en la sesion del
+"panel de revision" para Alpha. Consistente con precedentes CLI-only: --popups (s31),
+manual keywords (s32).
+
+**Decisiones tomadas en s33 (no votadas, razonables):**
+- (a) El auditor DeepSeek es un flag EXTRA opt-in (`--caption-qa-llm`) y no parte de
+  `--caption-qa`: costo LLM jamas se gasta sin pedirlo explicito (regla 15 + patron #8).
+- (b) `auto_seguro` corrige EN MEMORIA del render; `transcripts/{stem}_words.json` en
+  disco JAMAS se toca -> la edicion manual del Editor siempre gana. Si se quisiera
+  persistir la correccion, seria una accion explicita del usuario (futuro Studio).
+- (c) Convencion del guion: `transcripts/{stem}_guion.txt` (sidecar junto al transcript,
+  mismo patron que `{stem}_keywords.json`), o ruta libre via `--guion`.
+- (d) El Modo Automatico corre el QA en modo SOLO-LECTURA (alertas al REPORTE.md, cero
+  correcciones): una capa nueva no altera el output de la capa automatica sin veredicto
+  de K (regla 15). Cuando K valide auto_seguro, la receta del autopiloto podra activarlo.
+
+**Limitaciones documentadas v1 (siguiente iteracion si duelen):**
+- La similitud fuzzy solo corre por token individual contra terminos >= 6 chars;
+  errores multi-palabra nuevos se cubren agregando variantes al glosario (editable).
+- El contexto del guion usa bigrama PRECEDENTE exacto; parafrasis fuerte del guion
+  reduce el recall (el vocabulario fuzzy del guion compensa parcialmente).

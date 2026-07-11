@@ -79,10 +79,14 @@ def cargar_guion(stem: str, path: str | Path | None = None) -> str | None:
     try:
         if candidato.exists():
             return candidato.read_text(encoding="utf-8-sig")
-    except OSError:
-        pass
+    except (OSError, UnicodeDecodeError) as exc:
+        print(
+            f"[caption-qa] guion no legible ({candidato.name}: {type(exc).__name__}) "
+            "- QA sigue sin guion"
+        )
+        return None
     if path:
-        print(f"[caption-qa] guion no legible: {path} - QA sigue sin guion")
+        print(f"[caption-qa] guion no encontrado: {path} - QA sigue sin guion")
     return None
 
 

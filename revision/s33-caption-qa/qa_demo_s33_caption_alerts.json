@@ -1,0 +1,42 @@
+{
+  "stem": "qa_demo_s33",
+  "modo": "auto_seguro",
+  "n_alertas": 3,
+  "aplicadas": 2,
+  "pendientes": 1,
+  "alertas": [
+    {
+      "timestamp": 2.0,
+      "texto_detectado": "aflicjo",
+      "sugerencia": "archivo",
+      "confianza": "media",
+      "motivo": "el guion dice 'archivo' tras '... abrir el'",
+      "fuente": "guion",
+      "aplicar_auto": false,
+      "aplicada": false,
+      "n_palabras": 1
+    },
+    {
+      "timestamp": 4.7,
+      "texto_detectado": "confeti UI",
+      "sugerencia": "ComfyUI",
+      "confianza": "alta",
+      "motivo": "variante conocida del glosario",
+      "fuente": "glosario",
+      "aplicar_auto": true,
+      "aplicada": true,
+      "n_palabras": 2
+    },
+    {
+      "timestamp": 8.6,
+      "texto_detectado": "checpoint",
+      "sugerencia": "checkpoint",
+      "confianza": "alta",
+      "motivo": "variante conocida del glosario",
+      "fuente": "glosario",
+      "aplicar_auto": true,
+      "aplicada": true,
+      "n_palabras": 1
+    }
+  ]
+}
