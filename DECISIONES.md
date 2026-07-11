@@ -535,3 +535,38 @@ y `auto_seguro` (aplica SOLO confianza alta, en memoria).
 **Validacion:** revision/s33-caption-qa/ (frames COMFYUI/CHECKPOINT quemados, AFLICJO
 pendiente como media, baseline intacto). 316 tests. Sin dependencias nuevas (difflib
 es stdlib).
+
+---
+
+## D25: Veredicto K sobre S33 — Caption QA APROBADO para Alpha
+
+**K reviso los frames de `revision/s33-caption-qa/` y aprueba S33 visualmente:**
+
+1. Sin QA: `CONFETI UI` y `CHECPOINT` visibles como errores reales (baseline honesto).
+2. Modo `alertas`: conserva el caption original, no modifica a ciegas. CORRECTO.
+3. Modo `auto_seguro`: corrige `CONFETI UI` -> `COMFYUI` y `CHECPOINT` -> `CHECKPOINT`.
+4. `AFLICJO` queda pendiente y NO se autocorrige — correcto por ser confianza media.
+
+### Decision de producto (vinculante)
+
+- **Caption QA queda APROBADO como capa util y segura para Alpha.**
+- **Estrategia confirmada** (es exactamente el contrato implementado en s33/D24):
+  - confianza ALTA: puede autoaplicarse en `auto_seguro`;
+  - confianza MEDIA/BAJA: queda como alerta para revision humana;
+  - modo `alertas`: no debe modificar captions.
+- **No reabrir S33 salvo bugs.**
+
+### Siguiente paso recomendado por K
+
+**S34 — Alpha 0.1**: estabilizacion, splits por limite de lineas (caption.py 398/400 y
+auto.py 400/400, riesgo (a) del revisor s33), UI minima y guia para testers.
+
+### Criterio Alpha 0.1 (registrado s34 B0, vinculante para el roadmap inmediato)
+
+- **Caption QA queda aprobado TECNICAMENTE** (frames s33 + contrato de confianzas).
+- **La app ya tiene suficientes funciones para preparar Alpha 0.1** (loop nucleo D18
+  funcional + estaciones + CVE + Caption QA).
+- **Antes de nuevas features grandes toca: estabilizacion, UI minima y flujo de
+  prueba para testers cercanos.** Ninguna feature visual nueva en s34.
+- **Riesgo tecnico registrado:** caption.py 398/400 y auto.py 400/400 lineas — el
+  proximo cambio EXIGE split (revisor s33, riesgo (a)). El split es el BLOQUE 1 de s34.
