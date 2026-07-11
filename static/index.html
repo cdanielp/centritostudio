@@ -598,6 +598,14 @@ function renderAutoIncluye() {
 // esc(): escapa comillas simples para uso seguro en atributos onclick inline
 function esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 
+// escHtml(): escapa texto para inyeccion segura por innerHTML. Los titulos/razones
+// vienen del LLM y de la transcripcion (no confiables como HTML): un '<' o '&'
+// rompe el render o inyecta DOM. Usar en TODO dato de paquete que entre a innerHTML.
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // loadStyles(): puebla el dropdown de estilos desde /api/styles (estilos nuevos
 // aparecen solos, sin editar el HTML). Fail-safe: si falla, conserva el fallback estatico.
 async function loadStyles() {
@@ -1500,15 +1508,15 @@ function renderAutoResult(result) {
   clipsEl.innerHTML = '';
   (result.clips || []).forEach((c, i) => {
     const avisos = (c.avisos || []).map(a =>
-      `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${a.texto}</div>`).join('');
+      `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
     const div = document.createElement('div');
     div.style.cssText = 'border:var(--border);border-radius:8px;padding:12px';
     div.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span style="font-size:13px;font-weight:500">${i+1}. ${c.titulo || c.archivo}</span>
+        <span style="font-size:13px;font-weight:500">${i+1}. ${escHtml(c.titulo || c.archivo)}</span>
         <span style="color:var(--purple);font-weight:500">${c.score ?? '—'}/100</span>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${c.emojis_msg || ''}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${escHtml(c.emojis_msg || '')}</div>
       ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
       <a href="/output/${result.paquete ? result.paquete.replace(/^output\//,'') + '/' : ''}${c.archivo}" download
          class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a>`;
@@ -1703,7 +1711,7 @@ function estadoClass(estado) {
   }[estado] || 'LISTO';
 }
 function estadoBadge(estado) {
-  return `<span class="estado ${estadoClass(estado)}">${estado || 'LISTO'}</span>`;
+  return `<span class="estado ${estadoClass(estado)}">${escHtml(estado || 'LISTO')}</span>`;
 }
 
 // Cockpit del Home: hero + cards de los 3 modos + capacidades. Los conteos
@@ -1815,7 +1823,7 @@ function _renderPkgSelect() {
   if (!sel) return;
   const prev = sel.value;
   sel.innerHTML = '<option value="">— Elegir paquete —</option>' +
-    paquetesCache.map(p => `<option value="${p.id}">${p.name} · ${p.fecha}</option>`).join('');
+    paquetesCache.map(p => `<option value="${escHtml(p.id)}">${escHtml(p.name)} · ${escHtml(p.fecha)}</option>`).join('');
   if (paquetesCache.some(p => p.id === prev)) sel.value = prev;
 }
 // Lista de paquetes (tab Paquetes): tarjetas con estados; click abre el Editor.
@@ -1829,8 +1837,8 @@ function _renderPkgList() {
   list.innerHTML = paquetesCache.map(p => `
     <div class="pkg-card" onclick="openPaqueteEnEditor('${esc(p.id)}')">
       <div>
-        <div class="pk-name">${p.name}</div>
-        <div class="pk-meta">${p.fecha} · ${p.n_clips} clip(s) · ${p.resumen}</div>
+        <div class="pk-name">${escHtml(p.name)}</div>
+        <div class="pk-meta">${escHtml(p.fecha)} · ${p.n_clips} clip(s) · ${escHtml(p.resumen)}</div>
       </div>
       <div class="pk-estados">${(p.estados||[]).map(estadoBadge).join('')}</div>
     </div>`).join('');
@@ -1896,13 +1904,13 @@ function renderRevClips() {
   const el = document.getElementById('rev-clips');
   const meta = pkgActual.meta || {};
   const head = `<div style="padding:6px 6px 10px">
-    <div style="font-size:13px;font-weight:500">${pkgActual.id}</div>
-    <div class="msg" style="margin-top:2px">${pkgActual.resumen || ''}</div>
+    <div style="font-size:13px;font-weight:500">${escHtml(pkgActual.id)}</div>
+    <div class="msg" style="margin-top:2px">${escHtml(pkgActual.resumen || '')}</div>
   </div>`;
   el.innerHTML = head + pkgActual.clips.map((c, i) => `
     <div class="rev-clip ${i===revClipSel?'sel':''}" onclick="selectRevClip(${i})">
       <div class="rc-top">
-        <span class="rc-title">${i+1}. ${c.titulo || c.archivo}</span>
+        <span class="rc-title">${i+1}. ${escHtml(c.titulo || c.archivo)}</span>
         ${estadoBadge(c.estado)}
       </div>
       <div class="rc-sub">${(c.score ?? '—')}/100 · ${fmtTime(c.dur_s||0)}${estaAprobado(c.archivo)?' · ✅ aprobado':''}</div>
@@ -1921,18 +1929,18 @@ function selectRevClip(i) {
   const alertasHtml = alertas.length ? alertas.map(a => `
     <div class="rev-alert">
       <span class="ts">${fmtTime(a.timestamp||0)}</span>
-      <span>"${a.texto_detectado||'?'}" → "${a.sugerencia||'sin sugerencia'}"
-        <span style="color:var(--muted)">(confianza ${a.confianza||'?'}, ${a.aplicada?'aplicada':'pendiente'})</span></span>
+      <span>"${escHtml(a.texto_detectado||'?')}" → "${escHtml(a.sugerencia||'sin sugerencia')}"
+        <span style="color:var(--muted)">(confianza ${escHtml(a.confianza||'?')}, ${a.aplicada?'aplicada':'pendiente'})</span></span>
     </div>`).join('')
     : '<div class="rev-empty">Sin alertas de subtítulos.</div>';
 
   const tramosHtml = (c.avisos||[]).length ? (c.avisos||[]).map(a =>
-      `<div class="rev-alert"><span class="ts">${fmtTime(a.t_ini||0)}</span><span>${a.texto||''}</span></div>`).join('')
+      `<div class="rev-alert"><span class="ts">${fmtTime(a.t_ini||0)}</span><span>${escHtml(a.texto||'')}</span></div>`).join('')
     : (c.tramos_disponibles === false
         ? '<div class="rev-empty">Métricas no disponibles (clip reutilizado, no se re-renderizó).</div>'
         : '<div class="rev-empty">Calidad OK en todo el clip.</div>');
 
-  const rec = (pkgActual.recomendacion||[]).map(l => `<li>${l.replace(/^- /,'')}</li>`).join('');
+  const rec = (pkgActual.recomendacion||[]).map(l => `<li>${escHtml(l.replace(/^- /,''))}</li>`).join('');
 
   detail.innerHTML = `
     <div id="rev-toast" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
@@ -1946,9 +1954,9 @@ function selectRevClip(i) {
         <span>Estado: ${estadoBadge(c.estado)}</span>
         <span>Score IA: <b>${c.score ?? '—'}/100</b></span>
         <span>Duración: <b>${fmtTime(c.dur_s||0)}</b></span>
-        <span style="color:var(--muted)">${c.emojis_msg||''}</span>
+        <span style="color:var(--muted)">${escHtml(c.emojis_msg||'')}</span>
       </div>
-      <div class="msg" style="margin-top:8px">${c.razon||''}</div>
+      <div class="msg" style="margin-top:8px">${escHtml(c.razon||'')}</div>
     </div>
     <div id="rev-timeline-slot"></div>
     <div class="rev-block">
