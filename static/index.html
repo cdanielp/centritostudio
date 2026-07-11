@@ -374,33 +374,44 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
 <!-- ════════════════ TAB: AUTOMATICO ════════════════ -->
 <div id="tab-auto" class="tab">
-  <div style="padding:20px;max-width:680px;display:flex;flex-direction:column;gap:16px">
-    <div style="background:var(--surface);border:var(--border);border-radius:10px;padding:20px">
-      <h2 style="font-size:15px;font-weight:500;margin-bottom:6px">Modo Automático</h2>
-      <div class="msg" style="font-size:12px;margin-bottom:16px">
-        Sube un video, elige el objetivo y recibe un paquete listo para revisar y publicar.
-        El paquete incluye REPORTE.md con calidad por tramos y alertas de transcripción
-        (Caption QA) — revísalo antes de publicar.
-      </div>
-      <div class="field">
-        <label>Video</label>
-        <select id="auto-video-select">
-          <option value="">— Elegir video —</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Objetivo</label>
-        <select id="auto-objetivo">
-          <option value="clips">Clips virales (hasta 3, verticales, con captions)</option>
-        </select>
-      </div>
+  <div class="home-wrap" style="max-width:760px">
+    <h2 class="section-title">Modo Automático</h2>
+    <div class="msg" style="margin-bottom:16px">De un video largo a un paquete de clips verticales listo para revisar. Cinco pasos; el pipeline hace el resto.</div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-num">1</span> Elige el video</div>
+      <select id="auto-video-select" style="width:100%">
+        <option value="">— Elegir video —</option>
+      </select>
+      <div class="msg" style="margin-top:6px">¿No aparece? Súbelo desde Creador → Biblioteca de videos.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-num">2</span> Elige el objetivo</div>
+      <select id="auto-objetivo" style="width:100%">
+        <option value="clips">Clips virales (hasta 3, verticales, con captions)</option>
+      </select>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-num">3</span> Qué incluye el paquete</div>
+      <div class="cap-grid" id="auto-incluye"></div>
+      <div class="msg" style="margin-top:8px">Estas etapas están fijas en el Modo Automático (no se configuran aquí).</div>
+    </div>
+
+    <div class="step">
+      <div class="step-head"><span class="step-num">4</span> Genera el paquete</div>
       <button class="btn" id="auto-btn" onclick="startAuto()">Generar paquete</button>
       <div id="auto-status" style="margin-top:10px"></div>
     </div>
-    <div id="auto-result" style="display:none;background:var(--surface);border:var(--border);border-radius:10px;padding:20px">
-      <div id="auto-resumen" style="font-size:14px;font-weight:500;margin-bottom:12px"></div>
-      <div id="auto-clips" style="display:flex;flex-direction:column;gap:10px"></div>
-      <div id="auto-reporte-link" style="margin-top:12px;font-size:12px"></div>
+
+    <div id="auto-result" style="display:none">
+      <div class="step done">
+        <div class="step-head"><span class="step-num">5</span> Revisa en el Editor</div>
+        <div id="auto-resumen" style="font-size:14px;font-weight:500;margin-bottom:12px"></div>
+        <div id="auto-clips" style="display:flex;flex-direction:column;gap:10px"></div>
+        <div id="auto-reporte-link" style="margin-top:12px;font-size:12px"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -514,6 +525,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .tl-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--muted)}
 .tl-legend span{display:inline-flex;align-items:center;gap:5px}
 .tl-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* Pasos del Modo Automatico */
+#tab-auto{padding:0;overflow-y:auto}
+.step{background:var(--surface);border:var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+.step-head{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;margin-bottom:12px}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
+  background:var(--purple-dim);border:0.5px solid var(--purple);color:#fff;font-size:12px;flex-shrink:0}
+.step.done .step-num{background:#0f2417;border-color:#1c5334;color:#4ade80}
+.cap-chip.soon{opacity:.5}
 </style>
 
 <script>
@@ -551,6 +571,28 @@ function showTab(id) {
   else if (id === 'home') loadHomeStats();
   else if (id === 'creador') renderCreadorCards();
   else if (id === 'ajustes') renderAjustes();
+  else if (id === 'auto') renderAutoIncluye();
+}
+
+// Paso 3 del Automatico: etapas FIJAS del paquete (no toggles — el pipeline no
+// cambia). Solo informan que trae el paquete; lo no conectado se marca "proximamente".
+function renderAutoIncluye() {
+  const el = document.getElementById('auto-incluye');
+  if (!el) return;
+  const items = [
+    {n:'Reframe escenas (9:16)', on:true},
+    {n:'Captions Hormozi', on:true},
+    {n:'Caption QA (revisión)', on:true},
+    {n:'Reporte de calidad', on:true},
+    {n:'Popups / Emojis', on:true, note:'requiere ComfyUI'},
+    {n:'Keyword manual', soon:true},
+  ];
+  el.innerHTML = items.map(i => `
+    <span class="cap-chip ${i.soon?'soon':''}">
+      <span class="dot ${i.on?'':'off'}"></span>${i.n}${
+        i.soon?' <span style="color:var(--muted);font-size:11px">(próximamente)</span>':
+        (i.note?` <span style="color:var(--muted);font-size:11px">(${i.note})</span>`:'')}
+    </span>`).join('');
 }
 
 // esc(): escapa comillas simples para uso seguro en atributos onclick inline
@@ -1473,8 +1515,10 @@ function renderAutoResult(result) {
     clipsEl.appendChild(div);
   });
   const rep = result.paquete ? result.paquete.replace(/^output\//,'') : '';
+  const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//,'') : '';
   document.getElementById('auto-reporte-link').innerHTML = rep
-    ? `Paquete completo en <code>${result.paquete}</code> · <a href="/output/${rep}/REPORTE.md" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a>`
+    ? `<button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}')">Abrir en el Editor de Paquete →</button>
+       <div class="msg" style="margin-top:8px">Paquete en <code>${result.paquete}</code> · <a href="/output/${rep}/REPORTE.md" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a></div>`
     : '';
   wrap.style.display = 'block';
 }
