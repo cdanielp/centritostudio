@@ -306,6 +306,8 @@ def qa_para_reporte(stem: str, words_path: Path | None = None) -> dict | None:
     """Resumen solo-lectura para el REPORTE.md del Modo Automatico. Fail-open total.
 
     Corre en modo "alertas" (jamas modifica nada); devuelve el resumen o None.
+    Adjunta ademas la lista de alertas (leida del sidecar recien escrito) para que
+    el REPORTE.md muestre el detalle inline sin obligar a abrir el JSON (Alpha 0.1).
     """
     try:
         p = words_path or TRANSCRIPTS / f"{stem}_words.json"
@@ -315,6 +317,9 @@ def qa_para_reporte(stem: str, words_path: Path | None = None) -> dict | None:
         if not words:
             return None
         _words, resumen = ejecutar_qa(words, stem, modo="alertas")
+        sidecar = TRANSCRIPTS / resumen["alerts_file"] if resumen.get("alerts_file") else None
+        if sidecar and sidecar.exists():
+            resumen["alertas"] = json.loads(sidecar.read_text(encoding="utf-8")).get("alertas", [])
         return resumen
     except Exception as exc:
         print(f"[caption-qa] reporte fail-open: {type(exc).__name__}")

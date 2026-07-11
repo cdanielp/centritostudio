@@ -127,8 +127,170 @@ def test_reporte_md_contiene_lo_esencial():
     assert "score IA 88/100" in md
     assert "revisa 0:16-0:30" in md
     assert "REVISION HUMANA REQUERIDA" in md
-    assert "ComfyUI apagado" in md
+    # ningun clip usa emojis -> linea global, ya no la nota por clip (Alpha 0.1)
+    assert "Overlays/Emojis: no usados en este paquete" in md
+    assert "ComfyUI apagado" not in md
     assert "$0.0010" in md
+
+
+# ── Alpha 0.1: estado por clip, QA inline, emojis global, recomendacion, telemetria ──
+
+
+def test_estado_clip_listo():
+    import auto
+
+    assert auto.estado_clip({"avisos": [], "tramos_disponibles": True}) == "LISTO"
+
+
+def test_estado_clip_listo_con_aviso_por_qa_pendiente():
+    import auto
+
+    c = {"avisos": [], "qa": {"n_alertas": 2, "aplicadas": 0, "pendientes": 2}}
+    assert auto.estado_clip(c) == "LISTO CON AVISO"
+
+
+def test_estado_clip_requiere_revision_por_tramos():
+    import auto
+
+    c = {"avisos": [{"t_ini": 1.0, "t_fin": 2.0, "texto": "x"}]}
+    assert auto.estado_clip(c) == "REQUIERE REVISION"
+
+
+def test_estado_clip_no_publicar_sin_metricas():
+    import auto
+
+    # clip reutilizado sin re-render: sin metricas de tramos -> no avalar a ciegas
+    assert auto.estado_clip({"avisos": [], "tramos_disponibles": False}) == "NO PUBLICAR AUN"
+
+
+def test_avisos_llevan_tipo_para_la_recomendacion():
+    import auto
+
+    multi = auto.avisos_de_segmentos([_seg(tipo="multi", n_caras=2)])
+    none = auto.avisos_de_segmentos([_seg(tipo="none", n_caras=0, c1v2=None)])
+    segui = auto.avisos_de_segmentos([_seg(c1v2=40.0)])
+    assert multi[0]["tipo"] == "multi"
+    assert none[0]["tipo"] == "none"
+    assert segui[0]["tipo"] == "seguimiento"
+
+
+def test_reporte_estado_en_header_y_overview():
+    import auto
+
+    info = [
+        {
+            "archivo": "a.mp4",
+            "titulo": "Clip A",
+            "score": 90,
+            "dur_s": 20.0,
+            "avisos": [],
+            "emojis_msg": "sin overlays",
+        }
+    ]
+    md = auto.generar_reporte_md("v", info, {"fecha": "f", "costo_usd": 0.0})
+    assert "[LISTO]" in md
+    assert "## Estado de los clips" in md
+    assert "Clip 1: LISTO — Clip A" in md
+
+
+def test_reporte_qa_detalle_inline_sin_abrir_json():
+    import auto
+
+    info = [
+        {
+            "archivo": "a.mp4",
+            "titulo": "T",
+            "score": 80,
+            "dur_s": 20.0,
+            "avisos": [],
+            "emojis_msg": "sin overlays",
+            "qa": {
+                "n_alertas": 1,
+                "aplicadas": 0,
+                "pendientes": 1,
+                "alerts_file": "a_caption_alerts.json",
+                "alertas": [
+                    {
+                        "timestamp": 12.4,
+                        "texto_detectado": "confiwai",
+                        "sugerencia": "ComfyUI",
+                        "confianza": "alta",
+                        "aplicada": False,
+                    }
+                ],
+            },
+        }
+    ]
+    md = auto.generar_reporte_md("v", info, {"fecha": "f", "costo_usd": 0.0})
+    assert "0:12" in md
+    assert '"confiwai" -> "ComfyUI"' in md
+    assert "confianza alta" in md
+    assert "pendiente" in md
+
+
+def test_reporte_emojis_por_clip_cuando_alguno_usa():
+    import auto
+
+    info = [
+        {
+            "archivo": "a.mp4",
+            "score": 90,
+            "dur_s": 20.0,
+            "avisos": [],
+            "emojis_msg": "2 overlay(s)",
+        },
+        {
+            "archivo": "b.mp4",
+            "score": 80,
+            "dur_s": 20.0,
+            "avisos": [],
+            "emojis_msg": "sin overlays",
+        },
+    ]
+    md = auto.generar_reporte_md("v", info, {"fecha": "f", "costo_usd": 0.0})
+    assert "Overlays/Emojis: no usados" not in md
+    assert "2 overlay(s)" in md
+
+
+def test_recomendacion_final_nombra_tramos_y_mas_publicable():
+    import auto
+
+    info = [
+        {
+            "archivo": "a.mp4",
+            "titulo": "Bueno",
+            "score": 95,
+            "dur_s": 20.0,
+            "avisos": [],
+            "emojis_msg": "sin overlays",
+        },
+        {
+            "archivo": "b.mp4",
+            "titulo": "Multi",
+            "score": 70,
+            "dur_s": 20.0,
+            "avisos": [{"t_ini": 16.0, "t_fin": 30.0, "tipo": "multi", "texto": "x"}],
+            "emojis_msg": "sin overlays",
+        },
+    ]
+    md = auto.generar_reporte_md("v", info, {"fecha": "f", "costo_usd": 0.0})
+    assert "## Recomendacion final" in md
+    assert "Clips a revisar: clip 2 (REQUIERE REVISION)" in md
+    assert "Tramos a mirar: clip 2 0:16-0:30" in md
+    assert "Stack o Reframe Multi v2" in md
+    assert 'Mas publicable: clip 1 "Bueno"' in md
+
+
+def test_telemetria_tiempo_total_en_minutos_y_segundos():
+    import auto
+
+    md = auto.generar_reporte_md(
+        "v", [], {"fecha": "f", "costo_usd": 0.002, "t_total_s": 135.0, "t_clipper_s": 8.1}
+    )
+    assert "Tiempo total: 2m 15s" in md
+    assert "Costo LLM: $0.0020" in md
+    assert "Tiempos tecnicos:" in md
+    assert "Clipper: 8.1s" in md
 
 
 # ── Orquestador: capa delgada con mocks ──────────────────────────────────────

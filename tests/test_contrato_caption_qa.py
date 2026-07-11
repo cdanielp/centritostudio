@@ -287,6 +287,6 @@ def test_reporte_md_incluye_caption_qa():
         }
     ]
     md = auto.generar_reporte_md("demo", clips_info, {"fecha": "hoy"})
-    assert "Caption QA: 2 alerta(s)" in md
+    assert "Caption QA: 2 deteccion(es)" in md
     assert "2 pendientes de revision" in md
     assert "clip1_caption_alerts.json" in md

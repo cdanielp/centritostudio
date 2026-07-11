@@ -23,7 +23,9 @@ from auto_report import (  # noqa: F401
     STYLE_AUTO,
     _fmt_t,
     avisos_de_segmentos,
+    estado_clip,
     generar_reporte_md,
+    recomendacion_final,
     resumen_paquete,
 )
 
