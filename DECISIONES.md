@@ -459,3 +459,40 @@ brain** (SCORE_MANUAL). En el sidecar aparece `fuente="manual"`, `regla="manual"
 (o `manual_big`) y **no se filtra por stopwords**. Fail-open: manual invalido
 (JSON roto, palabra inexistente) jamas rompe el render. NO se crea editor visual
 ni timeline (fuera de alcance v1).
+
+---
+
+## D23: Veredicto K sobre los renders s32 — el marcado MANUAL es la ruta premium
+
+Sobre los 3 renders de s32 (`output/*_keyword_punch_{clean,classic_s32,manual_s32}.mp4`):
+
+**K prefiere `_keyword_punch_manual_s32.mp4`** (marcado manual) sobre la version
+automatica clasica (`_classic_s32`) y sobre la clean.
+
+**Interpretacion:** el efecto visual de keyword_punch funciona MEJOR cuando las
+palabras destacadas son elegidas manualmente o guiadas por intencion humana. La
+seleccion automatica (brain + reglas + filtro anti-stopword de B2) AYUDA, pero no
+debe ser la fuente principal cuando se busca maxima calidad. Confirma la tesis de
+D21/D22: el problema es SELECCION; el humano selecciona mejor que el brain.
+
+### Decision de producto
+
+- **`keyword_punch` con marcado manual = la mejor ruta para resultados premium.**
+- **`keyword_punch` automatico = asistencia util, NO la referencia final de calidad.**
+  El brain/reglas sugieren; el filtro anti-stopword (B2) limpia; pero la aprobacion
+  humana manda.
+- **El sistema debe permitir sugerencias automaticas + que el usuario apruebe, edite
+  o fuerce palabras.** El marcado manual v1 (B3, `{stem}_keywords.json`, SCORE_MANUAL,
+  exento del filtro) ya es la base tecnica de "forzar"; falta el ciclo de aprobar/editar.
+- **Para Alpha, el marcado manual es parte importante del flujo de REVISION.**
+
+### Consecuencia para el roadmap (deudas s32 re-priorizadas)
+
+- La deuda "manual sidecar es CLI-only, falta en el Studio" (revisor s32, riesgo #1)
+  pasa de *nice-to-have* a **prioritaria para Alpha**: el flujo de revision del Studio
+  debe leer/escribir `{stem}_keywords.json` (o equivalente) y dejar al usuario
+  aprobar/editar/forzar las keywords que el brain sugirio. El sidecar
+  `keyword_selection.json` (keywords + descartadas) ya es la fuente de datos para
+  poblar esa UI de revision.
+- No convierte esto en editor visual/timeline: es un panel de revision de keywords
+  (aprobar/editar/forzar palabras sobre los grupos existentes), no edicion libre.
