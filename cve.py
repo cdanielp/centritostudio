@@ -378,10 +378,10 @@ def aplicar_engine(
     # Manuales del sidecar: se suman a las marcas inline. Aun con keywords off el
     # marcado manual explicito destaca (es intencion directa del usuario, voto #34).
     manuales = list(manuales) + ck.candidatos_manuales(limpios, manual_entries)
+    plan.kw_descartadas = []  # reset antes de cualquier retorno (no arrastrar de un render previo)
     if plan.keywords_mode == "off" and not manuales:
         return limpios
     try:
-        plan.kw_descartadas = []  # se rellena con lo que el filtro anti-debil rechaza
         candidatos = list(manuales)
         if plan.keywords_mode in ("brain", "auto+brain"):
             candidatos += ck.candidatos_brain(limpios, brain_data, plan.kw_descartadas)
