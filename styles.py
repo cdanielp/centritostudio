@@ -102,7 +102,7 @@ _BUILTIN: dict[str, StyleConfig] = {
         max_chars_per_line=18,
         margin_pct=0.10,
         pop_scale=1.08,  # suave por default (D20: 1.30/1.45 muy fuertes para K)
-        overshoot=False,  # sabor provisional sin rebote; K fija con/sin con los renders s28D
+        overshoot=True,  # default FINAL: suave CON rebote (veredicto K sobre A/B s28D, cierra D20)
     ),
     "clean": StyleConfig(
         name="clean",
@@ -173,7 +173,7 @@ _BUILTIN: dict[str, StyleConfig] = {
         max_chars_per_line=PMS_MAX_CHARS,
         margin_pct=PMS_MARGIN_PCT,
         pop_scale=1.08,  # suave, alineado con hormozi (D20); marca real pendiente M2/M3
-        overshoot=False,
+        overshoot=True,  # alineado con hormozi (default final suave+rebote, cierre D20)
     ),
 }
 

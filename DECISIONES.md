@@ -353,10 +353,10 @@ claro. Con el loop nucleo ya funcional y F5-s2 (motor) entregado, el avance pasa
   suaves. Los 4 niveles se CONSERVAN todos (regla #15): off/suave/medio/fuerte siguen
   disponibles en CLI y Studio; SOLO cambia el default.
 - **Default provisional del estilo hormozi (y del autopiloto): pop SUAVE 1.08.**
-- **PENDIENTE DE K — el sabor exacto del suave** (con o sin rebote) lo fija con 2 renders del
-  mismo clip de videolargo (s28D):
-  a. suave 1.08 SIN rebote (overshoot off) — animacion plana, como las de s28A.
-  b. suave 1.08 CON rebote (overshoot on) — poco crecimiento pero con el rebotecito vivo.
-  El default provisional se dejo SIN rebote (opcion a); K confirma o cambia a (b) viendo los
-  MP4 en movimiento. Motor (core_ass) NO tocado: solo cambio de config de estilos + override
-  de overshoot en get_style + flag --rebote en la CLI para producir el A/B.
+- ~~**PENDIENTE DE K — el sabor exacto del suave** (con o sin rebote)~~ **CERRADA (s29):
+  veredicto final de K sobre el A/B s28D = opcion (b), suave 1.08 CON rebote.**
+  **DEFAULT FINAL de captions: suave 1.08 + overshoot ON** (hormozi y pms; pms sigue
+  alineado a hormozi hasta que llegue la marca real M2/M3). Los 4 niveles off/suave/medio/
+  fuerte y el flag --rebote se conservan como opciones (regla #15). Motor (core_ass) NO
+  tocado: el cierre es solo config de estilos (overshoot=True) + 2 tests actualizados.
+  D20 queda cerrada; F5-s2 sin pendientes de sabor (solo M2/M3 para la marca real).

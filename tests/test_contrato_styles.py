@@ -65,18 +65,18 @@ def test_pop_niveles_resuelven():
     assert styles.get_style("hormozi", "fuerte").pop_scale == pytest.approx(1.45)
 
 
-def test_hormozi_default_es_suave_sin_rebote():
-    # Default del autopiloto tras D20: suave 1.08 sin rebote (provisional; K fija el sabor).
+def test_hormozi_default_es_suave_con_rebote():
+    # Default FINAL tras el A/B s28D (cierre D20): suave 1.08 CON rebote.
     cfg = styles.get_style("hormozi")
     assert cfg.pop_scale == pytest.approx(1.08)
-    assert cfg.overshoot is False
+    assert cfg.overshoot is True
 
 
 def test_overshoot_override_en_get_style():
     # get_style permite sobrescribir el rebote (fail-safe: None usa el del estilo).
     assert styles.get_style("hormozi", "suave", overshoot=True).overshoot is True
     assert styles.get_style("hormozi", "suave", overshoot=False).overshoot is False
-    assert styles.get_style("hormozi", "suave").overshoot is False  # None -> el del estilo
+    assert styles.get_style("hormozi", "suave").overshoot is True  # None -> el del estilo
 
 
 def test_pop_float_directo():

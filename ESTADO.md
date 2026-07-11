@@ -1,5 +1,5 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-10 · Sesión: 28D · **Avance real: 83/100** (v1 sin F7; def. v1 = video entra → paquete de clips a revisar sale, D18)
+Actualizado: 2026-07-10 · Sesión: 29 · **Avance real: 83/100** (v1 sin F7; def. v1 = video entra → paquete de clips a revisar sale, D18)
 
 ## Fases
 - [x] F0 Auditoría + equipamiento — evidencia sintética en revision/fase-0/
@@ -13,7 +13,7 @@ Actualizado: 2026-07-10 · Sesión: 28D · **Avance real: 83/100** (v1 sin F7; d
 - [x] F4.2-CORTES modo escenas — CERRADA s27 (veredicto K: ESCENAS gana, "ya no pierde a la persona tras los cortes", D16). Default en CLI y Studio; EMA disponible como opcion (regla 15)
 - [x] F5-s1 Assets: puente ComfyUI + emojis PNG (s23) + emojis v2 (s25) — VALIDADA s27 (K: "ya parece emoji de app, posicion perfecta", D16)
 - [x] Modo Automatico v1 (s27) — capa delgada auto.py + run_auto + pestana Automatico; objetivo "Clips virales"; paquete con REPORTE.md de calidad por tramos (D17, MAESTRO regla #19)
-- [~] F5-s2 Captions cinéticos + estilos de marca — MOTOR ENTREGADO s28A, ITERADO s28C. s28A: scale-pop + clean (aprobado por K) + styles.json fail-safe por-campo + placeholder marca pms. s28C (D19, veredicto K: 1.08/1.15 descartados): pop medio 1.30 / fuerte 1.45 con REBOTE (overshoot), palabra activa reposa más grande que los vecinos; --pop y clean expuestos en Studio (dropdown lee /api/styles). Espera: ojo de K sobre los 2 renders en movimiento (revision/fase-5/s28C_comparativa/) + M2/M3 para marca real
+- [~] F5-s2 Captions cinéticos + estilos de marca — MOTOR ENTREGADO s28A, ITERADO s28C. s28A: scale-pop + clean (aprobado por K) + styles.json fail-safe por-campo + placeholder marca pms. s28C (D19, veredicto K: 1.08/1.15 descartados): pop medio 1.30 / fuerte 1.45 con REBOTE (overshoot), palabra activa reposa más grande que los vecinos; --pop y clean expuestos en Studio (dropdown lee /api/styles). CERRADA s29 (motor): veredicto final de K sobre el A/B s28D = suave 1.08 CON rebote (overshoot=True default, D20 cerrada). Solo queda M2/M3 para la marca real (no bloquea)
 - [ ] F6 Motor B: HyperFrames
 - [⏸] F7 Distribución Telegram — **DIFERIDA fuera de v1 (D18, s28A)**, NO cancelada. Post-v1: la distribución no es motor; en v1 el usuario revisa el paquete y publica a mano. Spec en PREGUNTAS (marcada "diferida, post-v1"). Necesita M5 de K cuando se retome
 
@@ -25,6 +25,7 @@ Actualizado: 2026-07-10 · Sesión: 28D · **Avance real: 83/100** (v1 sin F7; d
 
 ## Bitácora
 
+- 2026-07-10: Sesion 29 B0 — CIERRE F5-s2: veredicto final de K sobre el A/B s28D = suave 1.08 CON rebote. hormozi y pms pasan a overshoot=True (default final, cierra D20); niveles y --rebote conservados (regla #15). 2 tests actualizados (209 total). Motor no tocado.
 - 2026-07-07: Sesión 1 — pipeline CLI + 4 estilos ASS + renders de 4 videos reales validados
 - 2026-07-08: Sesión 2 — baseline kit guardrails: ruff limpio, tests reconciliados con API real de core.py, anti-huérfano respeta max_words, pytest.ini, /revisar aplicado
 - 2026-07-09: Sesión 3 — Fase 0 cerrada (node OK, HyperFrames, /watch, skills), Fase 2: brain.py + DeepSeek + keywords en Motor A + UI Énfasis IA
