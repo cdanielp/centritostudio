@@ -496,6 +496,94 @@ def test_marca_standalone_se_consume_y_aplica():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Marcado manual v1 por sidecar {stem}_keywords.json (D22, BLOQUE 3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_candidatos_manuales_palabra_exacta():
+    grupos = [_grupo(["compra", "gratis", "hoy"], 0)]
+    cands = ck.candidatos_manuales(grupos, [{"palabra": "gratis"}])
+    assert cands == [(0, 1, ck.SCORE_MANUAL, "manual")]
+
+
+def test_candidatos_manuales_frase_corta():
+    grupos = [_grupo(["esto", "sin", "costo", "extra"], 0)]
+    cands = ck.candidatos_manuales(grupos, [{"frase": "sin costo"}])
+    assert cands == [(0, 1, ck.SCORE_MANUAL, "manual")]  # 1er token del match
+
+
+def test_candidatos_manuales_intensidad_big():
+    grupos = [_grupo(["mira", "esto"], 0)]
+    cands = ck.candidatos_manuales(grupos, [{"palabra": "esto", "intensidad": "big"}])
+    assert cands == [(0, 1, ck.SCORE_MANUAL, "manual_big")]
+
+
+def test_candidatos_manuales_acota_por_grupo():
+    grupos = [_grupo(["repetida", "aqui"], 0), _grupo(["repetida", "alla"], 1)]
+    cands = ck.candidatos_manuales(grupos, [{"palabra": "repetida", "grupo": 1}])
+    assert cands == [(1, 0, ck.SCORE_MANUAL, "manual")]
+
+
+def test_manual_aparece_aunque_el_sistema_no_la_elegiria():
+    # "de" es stopword: jamas la elegiria el sistema, pero manual la fuerza
+    grupos = [_grupo(["algo", "de", "valor"], 0)]
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920, manual_entries=[{"palabra": "de"}])
+    assert out[0]["words"][1].get("is_keyword") is True  # stopword forzada por manual
+
+
+def test_manual_gana_prioridad_sobre_brain_y_reglas():
+    grupos = [_grupo(["gana", "500", "rapido"], 0)]  # 500 = R1, rapido nada
+    brain = {"groups": [{"kw_ts": grupos[0]["words"][1]["start"]}]}  # brain -> 500
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine(
+        grupos, plan, 1080, 1920, brain_data=brain, manual_entries=[{"palabra": "rapido"}]
+    )
+    kw = [w for w in out[0]["words"] if w.get("is_keyword")]
+    assert len(kw) == 1 and kw[0]["text"] == "rapido"  # manual gana, no 500
+
+
+def test_manual_se_registra_en_sidecar_como_manual():
+    grupos = [_grupo(["algo", "de", "valor"], 0)]
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920, manual_entries=[{"palabra": "valor"}])
+    data = cve.construir_seleccion(out, plan)
+    assert len(data["keywords"]) == 1
+    kw = data["keywords"][0]
+    assert kw["palabra"] == "valor" and kw["regla"] == "manual" and kw["fuente"] == "manual"
+
+
+def test_manual_invalido_fail_open_no_rompe():
+    grupos = [_grupo(["texto", "normal"], 0)]
+    plan = cve.resolve_preset("keyword_punch")
+    basura = [{"sin": "palabra"}, "no soy dict", {"palabra": "inexistente"}, 42]
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920, manual_entries=basura)
+    assert [w["text"] for w in out[0]["words"]] == ["texto", "normal"]  # render intacto
+
+
+def test_cargar_manual_keywords_failopen(tmp_path):
+    assert cve.cargar_manual_keywords(tmp_path / "no_existe.json") == []
+    roto = tmp_path / "roto_keywords.json"
+    roto.write_text("{no es json", encoding="utf-8")
+    assert cve.cargar_manual_keywords(roto) == []
+    # acepta lista directa y {"keywords": [...]}
+    lista = tmp_path / "lista_keywords.json"
+    lista.write_text('[{"palabra": "x"}]', encoding="utf-8")
+    assert cve.cargar_manual_keywords(lista) == [{"palabra": "x"}]
+    envuelto = tmp_path / "env_keywords.json"
+    envuelto.write_text('{"keywords": [{"palabra": "y"}]}', encoding="utf-8")
+    assert cve.cargar_manual_keywords(envuelto) == [{"palabra": "y"}]
+
+
+def test_manual_funciona_aun_con_keywords_off():
+    # clean_podcast tiene keywords off; el marcado manual explicito igual destaca
+    grupos = [_grupo(["titulo", "importante"], 0)]
+    plan = cve.resolve_preset("clean_podcast")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920, manual_entries=[{"palabra": "importante"}])
+    assert out[0]["words"][1].get("is_keyword") is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Fit de escala contra safe zones (reducir -> desactivar)
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -275,7 +275,73 @@ def elegir_keywords(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Marcado manual v1 (§7): [strong] [big] [center] — parser tolerante
+# Marcado manual v1 por sidecar (§7, D22 BLOQUE 3): {stem}_keywords.json
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Intensidades de una entrada manual -> regla (big amplifica escala como manual_big)
+_INTENSIDAD_A_REGLA = {"big": "manual_big", "grande": "manual_big"}
+
+
+def _regla_manual(entry: dict) -> str:
+    """Regla de una entrada manual: 'manual' o 'manual_big' segun intensidad/perfil."""
+    inten = str(entry.get("intensidad") or entry.get("perfil") or "").lower()
+    return _INTENSIDAD_A_REGLA.get(inten, "manual")
+
+
+def _entry_apunta_al_grupo(entry: dict, g_idx: int, words: list[dict]) -> bool:
+    """Filtro opcional de una entrada por grupo o timestamp (si los trae)."""
+    if entry.get("grupo") is not None and int(entry["grupo"]) != g_idx:
+        return False
+    ts = entry.get("timestamp")
+    if ts is not None:
+        return any(abs(float(w.get("start", -999)) - float(ts)) < 0.05 for w in words)
+    return True
+
+
+def candidatos_manuales(groups: list[dict], entries: list[dict] | None) -> list:
+    """Candidatos manuales (SCORE_MANUAL) desde el sidecar {stem}_keywords.json.
+
+    Cada entrada destaca una `palabra` exacta o una `frase` corta (secuencia de
+    palabras). Opcional: `grupo`/`timestamp` para acotar, `intensidad`/`perfil` para
+    amplificar (big -> manual_big). Prioridad total sobre reglas y brain; NUNCA se
+    filtra por stopwords (voto #34: manual siempre gana). Marca TODAS las apariciones
+    que casen (elegir_keywords deja 1 por grupo; manual esta exento de densidad).
+
+    Fail-open a nivel entrada: una entrada malformada se ignora con log, no rompe.
+    """
+    if not entries:
+        return []
+    result: list[tuple[int, int, int, str]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            palabra = entry.get("palabra")
+            frase = entry.get("frase")
+            secuencia = (
+                [_normalizar(t) for t in str(frase).split()]
+                if frase
+                else ([_normalizar(str(palabra))] if palabra else [])
+            )
+            secuencia = [s for s in secuencia if s]
+            if not secuencia:
+                continue
+            regla = _regla_manual(entry)
+            for g_idx, g in enumerate(groups):
+                words = g.get("words", [])
+                if not _entry_apunta_al_grupo(entry, g_idx, words):
+                    continue
+                norms = [_normalizar(w.get("text", "")) for w in words]
+                for i in range(len(norms) - len(secuencia) + 1):
+                    if norms[i : i + len(secuencia)] == secuencia:
+                        result.append((g_idx, i, SCORE_MANUAL, regla))  # 1er token del match
+        except (ValueError, TypeError, KeyError) as e:
+            print(f"[cve] entrada manual ignorada ({e}) - render no afectado")
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marcado manual v1 inline (§7): [strong] [big] [center] — parser tolerante
 # ─────────────────────────────────────────────────────────────────────────────
 
 

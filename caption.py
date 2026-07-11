@@ -104,7 +104,10 @@ def process_video(
         import cve  # noqa: PLC0415
 
         brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
-        groups, plan, aviso = cve.aplicar_preset(groups, plan, brain_path, width, height)
+        manual_kw_path = _TRANSCRIPTS_DIR / f"{stem}_keywords.json"
+        groups, plan, aviso = cve.aplicar_preset(
+            groups, plan, brain_path, width, height, manual_kw_path
+        )
         if aviso:
             print(f"[cve] {aviso}")
         style_cfg = plan.style_cfg

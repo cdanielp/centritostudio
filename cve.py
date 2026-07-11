@@ -189,17 +189,40 @@ def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad:
         return None, aviso
 
 
+def cargar_manual_keywords(path: Path | None) -> list[dict]:
+    """Lee el sidecar manual {stem}_keywords.json. Fail-open: ausente/roto -> [].
+
+    Acepta lista de entradas o {"keywords": [...]}. Un JSON invalido o formato
+    inesperado jamas rompe el render (BLOQUE 3, voto #34).
+    """
+    if not path or not Path(path).exists():
+        return []
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (ValueError, OSError):
+        print(f"[cve] {Path(path).name} ilegible, se ignora (marcado manual)")
+        return []
+    entries = data.get("keywords", data) if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        print(f"[cve] {Path(path).name} sin lista de keywords, se ignora")
+        return []
+    print(f"[cve] marcado manual: {len(entries)} entrada(s) en {Path(path).name}")
+    return entries
+
+
 def aplicar_preset(
     groups: list[dict],
     plan: RenderPlan,
     brain_path: Path | None,
     video_w: int,
     video_h: int,
+    manual_kw_path: Path | None = None,
 ) -> tuple[list[dict], RenderPlan, str | None]:
     """Ruta completa del preset: brain fail-open + engine + ajuste de plan a los grupos.
 
     Fuente unica para CLI y Studio. Devuelve (groups, plan, aviso); el aviso (regla #16)
     dice cuando el preset usa brain y no hay brain.json — el consumidor ofrece el fix.
+    `manual_kw_path` = sidecar {stem}_keywords.json opcional (BLOQUE 3, fail-open).
     """
     brain_data = None
     aviso = None
@@ -211,7 +234,8 @@ def aplicar_preset(
             print(f"[cve] brain.json ilegible, se ignora: {Path(brain_path).name}")
     if plan.keywords_mode in ("brain", "auto+brain") and brain_data is None:
         aviso = "Sin brain.json: el preset rinde sin keywords semanticas (Analizar IA lo habilita)"
-    groups = aplicar_engine(groups, plan, video_w, video_h, brain_data)
+    manual_entries = cargar_manual_keywords(manual_kw_path)
+    groups = aplicar_engine(groups, plan, video_w, video_h, brain_data, manual_entries)
     plan = ajustar_plan_a_groups(plan, groups)
     return groups, plan, aviso
 
@@ -338,18 +362,23 @@ def aplicar_engine(
     video_w: int,
     video_h: int,
     brain_data: dict | None = None,
+    manual_entries: list | None = None,
 ) -> list[dict]:
     """Marca keywords en los grupos segun el plan. Fallo -> grupos originales (§8 nivel 3).
 
     Las marcas manuales se consumen SIEMPRE (aun con keywords off): el ASS jamas
-    muestra corchetes de marca (voto #34).
+    muestra corchetes de marca (voto #34). `manual_entries` = sidecar {stem}_keywords.json
+    (BLOQUE 3): candidatos manuales que ganan a reglas/brain y no se filtran por stopword.
     """
     try:
         limpios, manuales = _consumir_marcas(groups)
     except Exception as e:
         print(f"[cve] limpieza de marcas fallo ({e}) - grupos originales")
         limpios, manuales = groups, []
-    if plan.keywords_mode == "off":
+    # Manuales del sidecar: se suman a las marcas inline. Aun con keywords off el
+    # marcado manual explicito destaca (es intencion directa del usuario, voto #34).
+    manuales = list(manuales) + ck.candidatos_manuales(limpios, manual_entries)
+    if plan.keywords_mode == "off" and not manuales:
         return limpios
     try:
         plan.kw_descartadas = []  # se rellena con lo que el filtro anti-debil rechaza
