@@ -570,3 +570,26 @@ auto.py 400/400, riesgo (a) del revisor s33), UI minima y guia para testers.
   prueba para testers cercanos.** Ninguna feature visual nueva en s34.
 - **Riesgo tecnico registrado:** caption.py 398/400 y auto.py 400/400 lineas — el
   proximo cambio EXIGE split (revisor s33, riesgo (a)). El split es el BLOQUE 1 de s34.
+
+### D26 — Editor de Paquete + 3 modos (registrado s35 B0, vinculante)
+
+Decision de producto para dejar el Studio listo para testers cercanos (Alpha 0.1):
+
+- **Centrito NO sera un CapCut completo.** No timeline profesional multipista, no
+  cortes manuales, no drag&drop, no editor de video real. La app sigue siendo una
+  fabrica de clips con IA + revision, no una suite de edicion.
+- **Se agrega el concepto de "Editor de Paquete".** Es una vista de REVISION, no de
+  edicion: NO reimplementa motores; solo VISUALIZA outputs, reportes y sidecars que
+  ya existen en `output/paquetes/` (paquete.json, REPORTE.md, `*_caption_alerts.json`,
+  `*.brain.json`). Cero recalculo, cero re-render.
+- **Tres modos, un motor** (extiende regla MAESTRO #19):
+  1. **Modo Automatico** — genera paquetes (pipeline intacto).
+  2. **Modo Editor / Revision** — revisa clips generados: estados, alertas, timeline
+     simple de markers, recomendacion del reporte.
+  3. **Modo Creador / Herramientas** — herramientas existentes con control granular
+     (captions, clipper, reframe, stack, caption QA, popups, keyword punch, depurador).
+- **Objetivo Alpha 0.1:** que un tester entienda QUE paso y QUE revisar sin leer el
+  JSON ni la CLI. La UI premium es medio, no fin.
+- **Prohibido en s35:** tocar reframe/clipper/depurador/brain/core/motores de render,
+  migrar framework, meter React/Vue, cambiar arquitectura, o tocar
+  `.env`/`input`/`output`/`transcripts`/`models` (salvo LEER sidecars para mostrarlos).
