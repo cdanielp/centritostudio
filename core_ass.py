@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pysubs2
 
+import core_overlays  # constructor puro del comando de overlays (F6 S31)
 from core_ass_fx import _KW_SCALE_DEFAULT as _KW_BASE
 
 # Primitivas de texto ASS + extensiones F6/CVE (punch_scale, glow) — re-export
@@ -312,14 +313,15 @@ def burn_video_with_emojis(
     output_video: Path,
     emoji_overlays: list[tuple[Path, float, float]],
     style_cfg: StyleConfig | None = None,
+    popups: list | None = None,
 ) -> float:
-    """Quema ASS + overlays PNG RGBA en un solo pase FFmpeg.
+    """Quema ASS + overlays PNG RGBA (emojis y popups de imagen) en un solo pase FFmpeg.
 
-    emoji_overlays: lista de (png_path, t_start_s, t_end_s).
-    Posicion: centrado horizontal, arriba del bloque de captions (via style_cfg).
-    Entrada/salida con fade de EMOJI_FADE_S. Lista vacia delega en burn_video.
+    emoji_overlays: lista de (png_path, t_start_s, t_end_s) — capa historica intacta.
+    popups: lista opcional de core_overlays.Popup (F6 S31); None/vacia = flujo anterior
+    byte-identico. Sin overlays de ningun tipo delega en burn_video.
     """
-    if not emoji_overlays:
+    if not emoji_overlays and not popups:
         return burn_video(input_video, ass_path, output_video)
 
     # Dimensiones calculadas en Python (NO en expresiones FFmpeg) para evitar
@@ -333,42 +335,18 @@ def burn_video_with_emojis(
     size_px -= size_px % 2  # forzar par para evitar errores libx264
     y_px = _emoji_y_sobre_captions(video_w, video_h, size_px, style_cfg)
 
-    ass_esc = _ffmpeg_ass_path(ass_path)
-
-    # Inputs: video primero; cada PNG como stream en loop con duracion fija
-    # (necesario para poder aplicar fade con timeline propio)
-    cmd: list[str] = ["ffmpeg", "-y", "-i", str(input_video)]
-    for png, t_start, t_end in emoji_overlays:
-        dur = max(t_end - t_start, 0.1)
-        cmd += ["-loop", "1", "-t", f"{dur:.3f}", "-i", str(png)]
-
-    # filter_complex: ASS -> escalar+fade cada PNG -> overlay centrado en cadena
-    fc_parts: list[str] = [f"[0:v]ass={ass_esc}[vcap]"]
-    fade = EMOJI_FADE_S
-    for i, (_png, t_start, t_end) in enumerate(emoji_overlays):
-        dur = max(t_end - t_start, 0.1)
-        fade_out_st = max(dur - fade, 0.0)
-        fc_parts.append(
-            f"[{i + 1}:v]format=rgba,scale={size_px}:-2,"
-            f"fade=t=in:st=0:d={fade:.3f}:alpha=1,"
-            f"fade=t=out:st={fade_out_st:.3f}:d={fade:.3f}:alpha=1,"
-            f"setpts=PTS-STARTPTS+{t_start:.3f}/TB[ovs{i}]"
-        )
-
-    current = "[vcap]"
-    for i, (_png, t_start, t_end) in enumerate(emoji_overlays):
-        next_label = f"[vo{i}]"
-        enable = f"between(t,{t_start:.3f},{t_end:.3f})"
-        fc_parts.append(
-            f"{current}[ovs{i}]overlay=x=(W-w)/2:y={y_px}:"
-            f"eof_action=pass:enable='{enable}'{next_label}"
-        )
-        current = next_label
-
-    cmd += ["-filter_complex", ";".join(fc_parts)]
-    cmd += ["-map", current, "-map", "0:a"]
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"]
-    cmd.append(str(output_video))
+    cmd = core_overlays.construir_comando(
+        input_video,
+        _ffmpeg_ass_path(ass_path),
+        output_video,
+        emoji_overlays,
+        size_px,
+        y_px,
+        EMOJI_FADE_S,
+        video_w,
+        video_h,
+        popups,
+    )
 
     t0 = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True)

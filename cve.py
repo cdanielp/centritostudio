@@ -16,18 +16,18 @@ from pathlib import Path
 import cve_keywords as ck
 from core_ass import _scaled_fontsize  # fuente unica de la formula de fontsize (D14)
 
+# Safe zones 9:16 (§5.1) — fuente unica en core_overlays (S31); re-export para
+# compatibilidad: consumidores siguen usando cve.SAFE_*.
+from core_overlays import (  # noqa: F401
+    SAFE_BOTTOM_PCT,
+    SAFE_LEFT_PCT,
+    SAFE_RIGHT_PCT,
+    SAFE_TOP_PCT,
+)
+
 # Sidecar de transparencia (D21) — re-export: CLI, Studio y tests lo usan via cve.*
 from cve_sidecar import construir_seleccion, escribir_sidecar_seleccion  # noqa: F401
 from styles import POP_LEVELS, StyleConfig, get_style
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Safe zones 9:16 (DISENO_CVE.md §5.1) — margenes de UI TikTok/Reels/Shorts
-# ─────────────────────────────────────────────────────────────────────────────
-
-SAFE_TOP_PCT = 0.10  # username / sonido
-SAFE_BOTTOM_PCT = 0.18  # descripcion / barra de progreso
-SAFE_RIGHT_PCT = 0.14  # columna de acciones (like/comment/share)
-SAFE_LEFT_PCT = 0.05  # respiro simetrico minimo
 
 INTENSIDADES = ("minimal", "clean", "viral")
 

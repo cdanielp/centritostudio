@@ -61,6 +61,7 @@ def process_video(
     max_words: int | None = None,
     out_stem: str | None = None,
     use_emojis: bool = False,
+    use_popups: bool = False,
     pop: str | None = None,
     rebote: bool | None = None,
     preset: str | None = None,
@@ -87,7 +88,7 @@ def process_video(
         reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
         variante = f"_{style}{pop_tag}{reb_tag}"
     ass_path = output_dir / f"{stem}{variante}.ass"
-    suffix = variante + ("_emojis" if use_emojis else "")
+    suffix = variante + ("_emojis" if use_emojis else "") + ("_popups" if use_popups else "")
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
@@ -111,6 +112,12 @@ def process_video(
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
 
+    popups: list = []
+    if use_popups:
+        import cve_popups  # noqa: PLC0415
+
+        popups = cve_popups.resolver_popups(groups, stem)
+
     if use_emojis:
         import assets_comfy as ac  # noqa: PLC0415
 
@@ -121,7 +128,9 @@ def process_video(
             print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
         else:
             print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
-        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays, style_cfg)
+        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays, style_cfg, popups)
+    elif popups:
+        core.burn_video_with_emojis(video_path, ass_path, out_path, [], style_cfg, popups)
     else:
         core.burn_video(video_path, ass_path, out_path)
 
@@ -248,6 +257,12 @@ def main() -> None:
         default=False,
         help="Overlay de assets IA (ComfyUI) sobre palabras clave del brain.json",
     )
+    parser.add_argument(
+        "--popups",
+        action="store_true",
+        default=False,
+        help="Popups de imagen: assets/biblioteca/ por keyword + transcripts/{stem}_popups.json",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -278,6 +293,7 @@ def main() -> None:
                 args.model,
                 args.words_per_group,
                 use_emojis=args.emojis,
+                use_popups=args.popups,
                 pop=args.pop,
                 rebote=rebote,
                 preset=args.preset,
@@ -296,6 +312,7 @@ def main() -> None:
             args.words_per_group,
             args.out_stem,
             use_emojis=args.emojis,
+            use_popups=args.popups,
             pop=args.pop,
             rebote=rebote,
             preset=args.preset,
