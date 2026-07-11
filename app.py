@@ -339,7 +339,11 @@ def start_render(
     pop: str | None = None,
     preset: str | None = None,
     intensidad: str | None = None,
+    caption_qa: str | None = None,
+    guion: str | None = None,
 ):
+    if caption_qa and caption_qa not in ("alertas", "auto_seguro"):
+        raise HTTPException(400, "caption_qa invalido. Opciones: alertas, auto_seguro")
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if not mp4.exists():
@@ -366,7 +370,12 @@ def start_render(
     threading.Thread(
         target=jobs.run_render,
         args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis, pop),
-        kwargs={"preset": preset, "intensidad": intensidad},
+        kwargs={
+            "preset": preset,
+            "intensidad": intensidad,
+            "qa_mode": caption_qa,
+            "qa_guion": guion,
+        },
         daemon=True,
     ).start()
     return {"job_id": jid}

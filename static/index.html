@@ -243,6 +243,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <label for="use-emojis">Emojis IA — assets ComfyUI sobre keywords</label>
       <span class="msg" style="margin:0;color:var(--muted);font-size:11px">(requiere ComfyUI corriendo)</span>
     </div>
+    <div class="emphasis-row">
+      <input type="checkbox" id="use-caption-qa" onchange="onCaptionQaToggle()">
+      <label for="use-caption-qa">Revisar subtítulos con Caption QA</label>
+      <select id="caption-qa-mode" style="display:none">
+        <option value="alertas">Solo alertas (no modifica nada)</option>
+        <option value="auto_seguro">Auto seguro — aplica solo confianza alta</option>
+      </select>
+    </div>
+    <div class="field" id="field-guion" style="display:none">
+      <label>Guion del video (opcional, ruta a un .txt)</label>
+      <input type="text" id="caption-qa-guion" placeholder="Vacío = usa transcripts/{video}_guion.txt si existe">
+      <span class="msg" style="margin:0;color:var(--muted);font-size:11px">
+        Puede ser el guion completo, un resumen o una lista de términos esperados.
+      </span>
+    </div>
     <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
     <div id="render-status"></div>
   </div>
@@ -838,6 +853,13 @@ function onEmphasisToggle() {
   if (hint) hint.textContent = hasBrain ? '' : '— analiza el video primero';
 }
 
+// Caption QA (s34): al activarlo aparecen el modo y el campo de guion opcional.
+function onCaptionQaToggle() {
+  const on = document.getElementById('use-caption-qa').checked;
+  document.getElementById('caption-qa-mode').style.display = on ? '' : 'none';
+  document.getElementById('field-guion').style.display = on ? '' : 'none';
+}
+
 // ═══════════════════════════════════════════════════════
 // TAB RENDER
 // ═══════════════════════════════════════════════════════
@@ -905,6 +927,11 @@ async function startRender() {
   if (wpg) params.append('words_per_group', wpg);
   if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
   if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
+  if (document.getElementById('use-caption-qa').checked) {
+    params.append('caption_qa', document.getElementById('caption-qa-mode').value);
+    const guion = document.getElementById('caption-qa-guion').value.trim();
+    if (guion) params.append('guion', guion);
+  }
 
   const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
   if (!res.ok) {
@@ -931,6 +958,9 @@ async function startRender() {
       }
       if (j.result && j.result.preset_msg) {
         statusDiv.innerHTML += `<div class="msg warn">${j.result.preset_msg}</div>`;
+      }
+      if (j.result && j.result.qa_msg) {
+        statusDiv.innerHTML += `<div class="msg">${esc(j.result.qa_msg)}</div>`;
       }
       showOutputPreview(j.result.output, name, style);
       loadVideos();

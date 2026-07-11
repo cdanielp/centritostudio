@@ -270,6 +270,38 @@ def ejecutar_qa(
     return words_qa, resumen
 
 
+def qa_para_studio(
+    name: str,
+    modo: str,
+    guion_path: str | None,
+    groups: list[dict],
+    words_per_group: int | None = None,
+) -> tuple[list[dict], dict | None]:
+    """QA para el render del Studio. Fail-open: (groups intactos, None) si algo falla.
+
+    modo "alertas": groups intactos; solo genera el sidecar y devuelve el resumen.
+    modo "auto_seguro": reagrupa desde los words corregidos (mismo camino que el
+    selector "palabras por grupo"; pisa ediciones del Editor SOLO porque el usuario
+    eligio auto_seguro explicitamente — documentado en PREGUNTAS #35).
+    """
+    try:
+        p = TRANSCRIPTS / f"{name}_words.json"
+        if not p.exists():
+            return groups, None
+        words = json.loads(p.read_text(encoding="utf-8")).get("words", [])
+        if not words:
+            return groups, None
+        words_qa, resumen = ejecutar_qa(words, name, modo=modo, guion_path=guion_path or None)
+        if modo == "auto_seguro" and resumen["aplicadas"] > 0:
+            import core  # noqa: PLC0415
+
+            groups = core.group_words(words_qa, max_words=words_per_group)
+        return groups, resumen
+    except Exception as exc:
+        print(f"[caption-qa] studio fail-open: {type(exc).__name__}")
+        return groups, None
+
+
 def qa_para_reporte(stem: str, words_path: Path | None = None) -> dict | None:
     """Resumen solo-lectura para el REPORTE.md del Modo Automatico. Fail-open total.
 
