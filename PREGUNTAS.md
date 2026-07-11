@@ -783,3 +783,14 @@ manual keywords (s32).
   errores multi-palabra nuevos se cubren agregando variantes al glosario (editable).
 - El contexto del guion usa bigrama PRECEDENTE exacto; parafrasis fuerte del guion
   reduce el recall (el vocabulario fuzzy del guion compensa parcialmente).
+
+**Nota s34 (fix 2 del revisor, aclara el punto (b) de arriba):** la garantia
+"la edicion manual del Editor siempre gana" aplica a la CLI y al modo `alertas`.
+En el STUDIO con `auto_seguro` el render REAGRUPA desde `{name}_words.json`
+corregido (mismo camino que el selector "palabras por grupo") y por tanto
+DESCARTA las ediciones guardadas en `{name}_groups.json` para ESE render — es
+una eleccion explicita del usuario y el selector lo avisa en su etiqueta
+("reagrupa: ignora ediciones del Editor"). Los archivos de disco no se tocan:
+las ediciones siguen ahi para el siguiente render sin QA. Conciliar ambos
+mundos (aplicar QA SOBRE los groups editados) es parte del panel de revision
+de D23 (futuro).

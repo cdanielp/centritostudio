@@ -248,7 +248,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <label for="use-caption-qa">Revisar subtítulos con Caption QA</label>
       <select id="caption-qa-mode" style="display:none">
         <option value="alertas">Solo alertas (no modifica nada)</option>
-        <option value="auto_seguro">Auto seguro — aplica solo confianza alta</option>
+        <option value="auto_seguro">Auto seguro — aplica confianza alta (reagrupa: ignora ediciones del Editor)</option>
       </select>
     </div>
     <div class="field" id="field-guion" style="display:none">
@@ -954,14 +954,15 @@ async function startRender() {
     if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
     if (j.status === 'done') {
       btn.disabled = false;
-      if (j.result && j.result.emphasis_msg) {
-        statusDiv.innerHTML += `<div class="msg warn">${j.result.emphasis_msg}</div>`;
-      }
-      if (j.result && j.result.preset_msg) {
-        statusDiv.innerHTML += `<div class="msg warn">${j.result.preset_msg}</div>`;
-      }
-      if (j.result && j.result.qa_msg) {
-        statusDiv.innerHTML += `<div class="msg">${esc(j.result.qa_msg)}</div>`;
+      // Mensajes del worker como texto plano (textContent evita inyectar HTML)
+      for (const [msg, cls] of [[j.result && j.result.emphasis_msg, 'msg warn'],
+                                [j.result && j.result.preset_msg, 'msg warn'],
+                                [j.result && j.result.qa_msg, 'msg']]) {
+        if (!msg) continue;
+        const div = document.createElement('div');
+        div.className = cls;
+        div.textContent = msg;
+        statusDiv.appendChild(div);
       }
       showOutputPreview(j.result.output, name, style);
       loadVideos();
