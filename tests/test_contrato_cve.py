@@ -39,11 +39,16 @@ def _grupo(palabras: list[str], g_id: int = 0, texto: str | None = None) -> dict
 
 
 def test_presets_v1_resuelven():
-    assert cve.list_presets() == ["clean_podcast", "keyword_punch", "viral_bounce"]
+    assert cve.list_presets() == [
+        "clean_podcast",
+        "karaoke_highlight",
+        "keyword_punch",
+        "viral_bounce",
+    ]
     for nombre in cve.list_presets():
         plan = cve.resolve_preset(nombre)
         assert plan.preset == nombre
-        assert plan.style_cfg.name in {"clean", "hormozi"}
+        assert plan.style_cfg.name in {"clean", "hormozi", "karaoke"}
 
 
 def test_preset_desconocido_error_accionable():
@@ -85,6 +90,60 @@ def test_viral_bounce_envuelve_hormozi_con_rebote():
     assert plan.style_cfg.pop_scale == pytest.approx(1.08)  # D20
     assert plan.style_cfg.overshoot is True
     assert plan.keywords_mode == "brain"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# karaoke_highlight (S30): envoltura del modo karaoke + past color + fallback timing
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_karaoke_highlight_resuelve():
+    plan = cve.resolve_preset("karaoke_highlight")
+    assert plan.style_cfg.name == "karaoke"
+    assert plan.style_cfg.animation_type == "karaoke"
+    assert plan.style_cfg.karaoke_past_color == "&H00FFFF00"  # dichas quedan marcadas
+    assert plan.keywords_mode == "off"  # sobrio: el karaoke ES el enfasis
+
+
+def test_karaoke_past_color_marca_las_dichas():
+    plan = cve.resolve_preset("karaoke_highlight")
+    gw = _grupo(["una", "dos", "tres"])["words"]
+    txt = core_ass._word_event_text(gw, 1, plan.style_cfg)  # activa: "dos"
+    pasada, activa, futura = txt.split(" ")
+    assert "\\c&H00FFFF00" in pasada  # ya dicha: marcada con past color
+    assert "\\kf" in activa  # activa: relleno progresivo
+    assert futura == "tres"  # siguiente: color base, sin tags
+
+
+def test_karaoke_sin_past_color_byte_identico():
+    # El ESTILO karaoke clasico (sin past color) conserva su salida historica exacta
+    cfg = get_style("karaoke")
+    assert cfg.karaoke_past_color is None
+    gw = _grupo(["una", "dos", "tres"])["words"]
+    txt = core_ass._word_event_text(gw, 1, cfg)
+    pasada, activa, futura = txt.split(" ")
+    assert pasada == "una" and futura == "tres"  # sin tags nuevos
+    assert "\\kf" in activa
+
+
+def test_karaoke_fallback_sin_timing_cae_a_highlight():
+    plan = cve.resolve_preset("karaoke_highlight")
+    sin_timing = [{"id": 0, "text": "hola mundo", "words": [{"text": "hola"}, {"text": "mundo"}]}]
+    ajustado = cve.ajustar_plan_a_groups(plan, sin_timing)
+    assert ajustado.style_cfg.animation_type == "highlight"  # captions simples: jamas sin captions
+    assert ajustado.style_cfg.karaoke_past_color is None
+
+
+def test_karaoke_con_timing_plan_intacto():
+    plan = cve.resolve_preset("karaoke_highlight")
+    con_timing = [_grupo(["hola", "mundo"])]
+    assert cve.ajustar_plan_a_groups(plan, con_timing) is plan
+
+
+def test_ajustar_plan_no_toca_presets_no_karaoke():
+    plan = cve.resolve_preset("keyword_punch")
+    sin_timing = [{"id": 0, "text": "x", "words": [{"text": "x"}]}]
+    assert cve.ajustar_plan_a_groups(plan, sin_timing) is plan
 
 
 # ─────────────────────────────────────────────────────────────────────────────

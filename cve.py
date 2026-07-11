@@ -80,6 +80,18 @@ _PRESETS: dict[str, dict] = {
         "position": "bottom",
         "video_fx": {"punch_in": True},  # recomendacion; deuda #20 la vota K
     },
+    "karaoke_highlight": {
+        "style": "karaoke",  # envoltura del modo karaoke existente (\kf progresivo)
+        "intensidad": "clean",
+        "keywords": "off",  # sobrio: el karaoke ES el enfasis (ante duda, opcion sobria)
+        "glow": False,
+        "overlays": "off",
+        "position": "bottom",
+        "video_fx": {"punch_in": False},
+        # Karaoke moderno: dichas quedan marcadas (cian, = relleno). Parametrizable:
+        # base = primary_color del estilo, activo = highlight_color, pasado = este campo.
+        "past_color": "&H00FFFF00",
+    },
 }
 
 
@@ -95,6 +107,11 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str) -> RenderPlan:
         style_cfg = replace(style_cfg, pop_scale=1.0, overshoot=False)
     if glow != getattr(style_cfg, "kw_glow", False):
         style_cfg = replace(style_cfg, kw_glow=glow)
+    # past_color solo aplica al modo karaoke; los presets son constantes confiables
+    # (los overrides del usuario llegaran validados via cve_presets.json, S33)
+    past = p.get("past_color")
+    if past and style_cfg.animation_type == "karaoke":
+        style_cfg = replace(style_cfg, karaoke_past_color=past)
     return RenderPlan(
         preset=nombre,
         style_cfg=style_cfg,
@@ -120,6 +137,33 @@ def resolve_preset(nombre: str, intensidad: str | None = None) -> RenderPlan:
     p = _PRESETS[key]
     inten = intensidad if intensidad in INTENSIDADES else p.get("intensidad", "clean")
     return _plan_desde_dict(key, p, inten)
+
+
+def _timing_por_palabra_completo(groups: list[dict]) -> bool:
+    """True si TODAS las palabras traen start/end numericos (lo que karaoke necesita)."""
+    for g in groups:
+        for w in g.get("words", []):
+            if not isinstance(w.get("start"), (int, float)) or not isinstance(
+                w.get("end"), (int, float)
+            ):
+                return False
+    return True
+
+
+def ajustar_plan_a_groups(plan: RenderPlan, groups: list[dict]) -> RenderPlan:
+    """Fallback nivel 3 (§8): karaoke sin timing por-palabra cae a captions simples.
+
+    El relleno progresivo \\kf necesita duracion por palabra; sin ella el estilo del
+    preset se conserva pero la animacion cae a highlight (el video JAMAS queda sin
+    captions). Con timing completo el plan vuelve intacto.
+    """
+    if plan.style_cfg.animation_type != "karaoke":
+        return plan
+    if _timing_por_palabra_completo(groups):
+        return plan
+    print("[cve] sin timing por-palabra: karaoke cae a captions simples (highlight, nivel 3)")
+    style_cfg = replace(plan.style_cfg, animation_type="highlight", karaoke_past_color=None)
+    return replace(plan, style_cfg=style_cfg)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

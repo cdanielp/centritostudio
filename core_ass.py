@@ -78,6 +78,8 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
     hl = style_cfg.highlight_color
     kw = style_cfg.keyword_color
     anim = style_cfg.animation_type
+    # Karaoke moderno (F6/CVE): palabras ya dichas quedan marcadas. None = ruta histórica.
+    past = getattr(style_cfg, "karaoke_past_color", None)
 
     for i, w in enumerate(group_words):
         if prev_line is not None and w["line_idx"] != prev_line:
@@ -113,6 +115,9 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
         elif is_kw:
             # Persistente: keyword_color + escala kw durante toda la duracion del grupo
             parts.append(f"{{\\c{kw}\\fscx{sc_kw}\\fscy{sc_kw}}}{esc}{{\\r}}")
+        elif anim == "karaoke" and past and i < active_idx:
+            # Ya dicha: queda marcada con el color pasado (karaoke_highlight, F6/CVE)
+            parts.append(f"{{\\c{past}}}{esc}{{\\r}}")
         else:
             parts.append(esc)
 

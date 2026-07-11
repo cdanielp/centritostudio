@@ -113,6 +113,11 @@ def process_video(
 
     if plan:
         groups = _aplicar_preset(groups, plan, stem, width, height)
+        import cve  # noqa: PLC0415
+
+        # Fallback nivel 3: karaoke sin timing por-palabra cae a highlight (jamas sin captions)
+        plan = cve.ajustar_plan_a_groups(plan, groups)
+        style_cfg = plan.style_cfg
 
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
@@ -210,7 +215,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--preset",
-        choices=["clean_podcast", "viral_bounce", "keyword_punch"],
+        choices=["clean_podcast", "viral_bounce", "keyword_punch", "karaoke_highlight"],
         default=None,
         help="Preset del caption_viral_engine (F6); si se da, --style/--pop se ignoran",
     )

@@ -72,6 +72,9 @@ class StyleConfig:
     pop_scale: float = 1.0  # Tamaño de reposo del énfasis de la palabra activa (1.0 = off)
     overshoot: bool = False  # Rebote: overshoot al pico y baja al reposo (False = pop simple)
     kw_glow: bool = False  # Glow aprox del keyword (capa ASS extra, F6/CVE; off = sin capa)
+    # Karaoke moderno (F6/CVE): color de las palabras YA dichas. None = comportamiento
+    # histórico del modo karaoke (las pasadas vuelven al color base).
+    karaoke_past_color: str | None = None
 
 
 # Notas de colores ASS: formato &HAABBGGRR
@@ -246,6 +249,7 @@ _FIELD_VALIDATORS = {
     "pop_scale": _is_pop,
     "overshoot": _is_bool,
     "kw_glow": _is_bool,
+    "karaoke_past_color": _is_color,
 }
 
 
