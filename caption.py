@@ -1,19 +1,19 @@
 """
 caption.py — CLI para el pipeline de captions.
-Toda la lógica vive en core.py. Esta es solo la interfaz de línea de comandos.
+Toda la lógica vive en core.py; los flags/ayuda de la CLI en caption_args.py (s34).
 Uso: python caption.py input/video.mp4 --style hormozi --lang es
      python caption.py input/ --style karaoke --lang es   (batch)
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 import time
 from pathlib import Path
 
 import core
+from caption_args import build_parser, qa_opts_de_args
 from styles import get_style
 
 _TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
@@ -231,111 +231,12 @@ def _run_clips_cli(input_path: Path, tipos: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Captions animados word-by-word — Centrito Studio CLI"
-    )
-    parser.add_argument("input", help="Video .mp4 de entrada, o carpeta para batch")
-    parser.add_argument(
-        "--style", default="hormozi", choices=["hormozi", "clean", "karaoke", "bounce", "pms"]
-    )
-    parser.add_argument(
-        "--pop",
-        choices=["off", "suave", "medio", "fuerte"],
-        default=None,
-        help="Intensidad del pop (off=1.0, suave=1.08, medio=1.30, fuerte=1.45)",
-    )
-    parser.add_argument(
-        "--rebote",
-        choices=["on", "off"],
-        default=None,
-        help="Rebote/overshoot de la palabra activa (on/off); default: el del estilo",
-    )
-    parser.add_argument(
-        "--preset",
-        choices=["clean_podcast", "viral_bounce", "keyword_punch", "karaoke_highlight"],
-        default=None,
-        help="Preset del caption_viral_engine (F6); si se da, --style/--pop se ignoran",
-    )
-    parser.add_argument(
-        "--intensidad",
-        choices=["minimal", "clean", "viral"],
-        default=None,
-        help="Intensidad del preset (default: la propia del preset)",
-    )
-    parser.add_argument(
-        "--densidad",
-        choices=["baja", "media", "alta"],
-        default=None,
-        help="Densidad de keywords automaticas del preset (doble freno D21; default: del preset)",
-    )
-    parser.add_argument("--lang", default="es")
-    parser.add_argument("--output-dir", default="output")
-    parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
-    parser.add_argument("--words-per-group", type=int, default=None, metavar="N")
-    parser.add_argument("--out-stem", default=None)
-    parser.add_argument(
-        "--depurar",
-        choices=["seguro", "agresivo"],
-        default=None,
-        help="Depurar silencios (seguro) o tambien muletillas (agresivo)",
-    )
-    parser.add_argument(
-        "--clips",
-        choices=["cortos", "largos", "ambos"],
-        default=None,
-        help="Generar clips virales con IA (cortos|largos|ambos)",
-    )
-    parser.add_argument(
-        "--emojis",
-        action="store_true",
-        default=False,
-        help="Overlay de assets IA (ComfyUI) sobre palabras clave del brain.json",
-    )
-    parser.add_argument(
-        "--popups",
-        action="store_true",
-        default=False,
-        help="Popups de imagen: assets/biblioteca/ por keyword + transcripts/{stem}_popups.json",
-    )
-    parser.add_argument(
-        "--caption-qa",
-        action="store_true",
-        default=False,
-        help="QA de transcripcion: detecta palabras mal transcritas (glosario/guion)",
-    )
-    parser.add_argument(
-        "--caption-qa-mode",
-        choices=["alertas", "auto_seguro"],
-        default="alertas",
-        help="alertas = solo reporta; auto_seguro = aplica solo confianza alta",
-    )
-    parser.add_argument(
-        "--guion",
-        default=None,
-        metavar="PATH",
-        help="Guion opcional (texto/resumen/temario); default: transcripts/{stem}_guion.txt",
-    )
-    parser.add_argument(
-        "--glosario",
-        default=None,
-        metavar="PATH",
-        help="Glosario alterno para el QA (default: assets/glosario.json)",
-    )
-    parser.add_argument(
-        "--caption-qa-llm",
-        action="store_true",
-        default=False,
-        help="Auditor DeepSeek de alertas dudosas (opt-in, fail-open)",
-    )
-    args = parser.parse_args()
+    args = build_parser().parse_args()
 
     output_dir = Path(args.output_dir)
     input_path = Path(args.input)
     rebote = None if args.rebote is None else (args.rebote == "on")
-    qa_opts = None
-    if args.caption_qa:
-        qa_opts = {"modo": args.caption_qa_mode, "guion": args.guion}
-        qa_opts |= {"glosario": args.glosario, "llm": args.caption_qa_llm}
+    qa_opts = qa_opts_de_args(args)
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
