@@ -133,16 +133,63 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   <span>🎬</span>
   <h1>Centrito Studio</h1>
   <nav>
-    <button class="active" onclick="showTab('videos',this)">Videos</button>
-    <button onclick="showTab('editor',this)">Editor</button>
-    <button onclick="showTab('render',this)">Render</button>
-    <button onclick="showTab('clips',this)">Clips</button>
-    <button onclick="showTab('auto',this)">Modo Automático</button>
+    <button data-tab="home" class="active" onclick="showTab('home')">Inicio</button>
+    <button data-tab="auto" onclick="showTab('auto')">Automático</button>
+    <button data-tab="revision" onclick="showTab('revision')">Editor</button>
+    <button data-tab="creador" onclick="showTab('creador')">Creador</button>
+    <button data-tab="paquetes" onclick="showTab('paquetes')">Paquetes</button>
+    <button data-tab="ajustes" onclick="showTab('ajustes')">Ajustes</button>
   </nav>
 </div>
 
+<!-- ════════════════ TAB: INICIO (dashboard) ════════════════ -->
+<div id="tab-home" class="tab active">
+  <div class="home-wrap" id="home-wrap"><div class="msg">Cargando…</div></div>
+</div>
+
+<!-- ════════════════ TAB: EDITOR / REVISION (Editor de Paquete) ════════════════ -->
+<div id="tab-revision" class="tab">
+  <div id="rev-left">
+    <div id="rev-header">
+      <select id="rev-pkg-select" onchange="loadPaqueteDetalle(this.value)">
+        <option value="">— Elegir paquete —</option>
+      </select>
+    </div>
+    <div id="rev-clips"><div class="msg" style="padding:16px">Elige un paquete generado por el Modo Automático.</div></div>
+  </div>
+  <div id="rev-right">
+    <div id="rev-detail"><div class="no-video">Selecciona un clip para revisarlo.</div></div>
+  </div>
+</div>
+
+<!-- ════════════════ TAB: PAQUETES ════════════════ -->
+<div id="tab-paquetes" class="tab">
+  <div class="pkg-wrap">
+    <h2 class="section-title">Paquetes generados</h2>
+    <div class="msg" style="margin-bottom:14px">Cada paquete lo produce el Modo Automático en <code>output/paquetes/</code>. Ábrelo en el Editor para revisarlo.</div>
+    <div id="pkg-list"><div class="msg">Cargando…</div></div>
+  </div>
+</div>
+
+<!-- ════════════════ TAB: CREADOR (herramientas) ════════════════ -->
+<div id="tab-creador" class="tab">
+  <div class="home-wrap">
+    <h2 class="section-title">Modo Creador — herramientas</h2>
+    <div class="msg" style="margin-bottom:16px">Control granular. Cada herramienta usa los motores ya validados; nada se reimplementa aquí.</div>
+    <div class="card-grid" id="creador-cards"></div>
+  </div>
+</div>
+
+<!-- ════════════════ TAB: AJUSTES ════════════════ -->
+<div id="tab-ajustes" class="tab">
+  <div class="home-wrap">
+    <h2 class="section-title">Ajustes e información</h2>
+    <div class="cap-panel" id="ajustes-panel"></div>
+  </div>
+</div>
+
 <!-- ════════════════ TAB: VIDEOS ════════════════ -->
-<div id="tab-videos" class="tab active">
+<div id="tab-videos" class="tab">
 
   <div id="upload-zone" onclick="document.getElementById('file-input').click()"
        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
@@ -373,6 +420,100 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .clip-titulo{font-size:14px;font-weight:500;margin:4px 0}
 .clip-razon{font-size:12px;color:var(--muted);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .clip-dur{font-size:11px;color:var(--muted)}
+
+/* ══════════════════════════════════════════
+   S35 — Vistas premium: Home / Editor de Paquete / Paquetes / Creador
+══════════════════════════════════════════ */
+#tab-home,#tab-paquetes,#tab-creador,#tab-ajustes{padding:0;overflow-y:auto}
+.home-wrap,.pkg-wrap{max-width:1000px;margin:0 auto;padding:28px 24px;width:100%}
+.section-title{font-size:16px;font-weight:500;letter-spacing:.3px;margin-bottom:6px}
+
+/* Hero del dashboard */
+.hero{background:linear-gradient(135deg,#0d0d1a 0%,#120a24 60%,#0a1420 100%);
+  border:var(--border);border-radius:16px;padding:28px 26px;margin-bottom:22px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;top:-40%;right:-10%;width:340px;height:340px;
+  background:radial-gradient(circle,rgba(124,58,237,.20),transparent 70%);pointer-events:none}
+.hero h1{font-size:26px;font-weight:500;letter-spacing:.4px;margin-bottom:6px}
+.hero .accent{background:linear-gradient(90deg,var(--cyan),var(--purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{color:var(--muted);font-size:13px;max-width:560px}
+.hero .pill{display:inline-flex;align-items:center;gap:6px;margin-top:14px;font-size:11px;color:var(--cyan);
+  border:0.5px solid #1c3a44;background:#08161a;border-radius:999px;padding:4px 12px}
+
+/* Grid de cards de modo/herramienta */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:24px}
+.mode-card{display:flex;flex-direction:column;gap:8px;text-align:left;
+  background:var(--surface);border:var(--border);border-radius:14px;padding:18px;cursor:pointer;
+  transition:border-color .18s,transform .18s,background .18s}
+.mode-card:hover{border-color:var(--purple);transform:translateY(-2px);background:#100d1c}
+.mode-card .ic{font-size:22px}
+.mode-card .t{font-size:14px;font-weight:500}
+.mode-card .d{font-size:12px;color:var(--muted);line-height:1.45}
+.mode-card .go{margin-top:auto;font-size:11px;color:var(--cyan)}
+.mode-card.soon{cursor:default;opacity:.55}
+.mode-card.soon:hover{transform:none;border-color:#1e1e2e;background:var(--surface)}
+
+/* Panel de capacidades */
+.cap-panel{background:var(--surface);border:var(--border);border-radius:14px;padding:18px 20px}
+.cap-panel h3{font-size:13px;font-weight:500;margin-bottom:12px;color:var(--text)}
+.cap-grid{display:flex;flex-wrap:wrap;gap:8px}
+.cap-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text);
+  background:#0f0f1c;border:0.5px solid #23233a;border-radius:8px;padding:6px 11px}
+.cap-chip .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.cap-chip .dot.off{background:var(--muted)}
+.ajustes-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid #1a1a2a;font-size:13px}
+.ajustes-row:last-child{border-bottom:none}
+.ajustes-row .k{color:var(--muted)}
+
+/* Estado por clip — badges de semaforo */
+.estado{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:500;letter-spacing:.2px}
+.estado.LISTO{background:#0f2417;color:#4ade80;border:0.5px solid #1c5334}
+.estado.AVISO{background:#2a2410;color:#fbbf24;border:0.5px solid #5c4d14}
+.estado.REVISION{background:#2a1a0f;color:#fb923c;border:0.5px solid #5c3414}
+.estado.NOPUB{background:#2a1015;color:#f87171;border:0.5px solid #5c1c22}
+
+/* Lista de paquetes */
+.pkg-card{display:flex;align-items:center;gap:14px;background:var(--surface);border:var(--border);
+  border-radius:12px;padding:14px 18px;margin-bottom:10px;cursor:pointer;transition:border-color .18s,background .18s}
+.pkg-card:hover{border-color:var(--purple);background:#100d1c}
+.pkg-card .pk-name{font-weight:500;font-size:14px}
+.pkg-card .pk-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.pkg-card .pk-estados{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:260px}
+
+/* Editor de Paquete — layout 2 columnas */
+#tab-revision{flex-direction:row}
+#rev-left{width:340px;min-width:280px;display:flex;flex-direction:column;border-right:var(--border);background:var(--surface)}
+#rev-header{padding:12px 14px;border-bottom:var(--border)}
+#rev-header select{width:100%}
+#rev-clips{flex:1;overflow-y:auto;padding:10px}
+.rev-clip{background:#101019;border:var(--border);border-radius:10px;padding:11px 12px;margin-bottom:9px;cursor:pointer;transition:border-color .15s}
+.rev-clip:hover{border-color:var(--purple-dim)}
+.rev-clip.sel{border-color:var(--purple);background:#130f22}
+.rev-clip .rc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.rev-clip .rc-title{font-size:13px;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rev-clip .rc-sub{font-size:11px;color:var(--muted)}
+#rev-right{flex:1;display:flex;flex-direction:column;padding:18px;gap:14px;overflow-y:auto}
+.rev-video-wrap{background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;max-height:46vh}
+.rev-video-wrap video{max-width:100%;max-height:46vh;display:block}
+.rev-block{background:var(--surface);border:var(--border);border-radius:12px;padding:14px 16px}
+.rev-block h4{font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.rev-kv{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+.rev-kv b{color:var(--purple);font-weight:500}
+.rev-alert{font-size:12px;padding:6px 0;border-bottom:0.5px solid #1a1a2a;display:flex;gap:8px;align-items:baseline}
+.rev-alert:last-child{border-bottom:none}
+.rev-alert .ts{color:var(--cyan);font-family:monospace;font-size:11px;min-width:42px}
+.rev-actions{display:flex;gap:8px;flex-wrap:wrap}
+.rev-empty{color:var(--muted);font-size:12px}
+
+/* Timeline simple de revision */
+.tl{position:relative;height:38px;background:#0c0c16;border:0.5px solid #23233a;border-radius:8px;margin-top:4px;cursor:pointer}
+.tl .tl-tramo{position:absolute;top:0;bottom:0;background:rgba(251,146,60,.16);border-left:0.5px solid var(--orange);border-right:0.5px solid var(--orange)}
+.tl .tl-mk{position:absolute;top:0;width:2px;height:100%;transform:translateX(-1px)}
+.tl .tl-mk.qa{background:var(--cyan)}
+.tl .tl-mk.keyword{background:var(--yellow)}
+.tl .tl-mk.popup{background:var(--purple)}
+.tl-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--muted)}
+.tl-legend span{display:inline-flex;align-items:center;gap:5px}
+.tl-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
 </style>
 
 <script>
@@ -390,12 +531,26 @@ let brainMap      = {};   // {groupId: {g, kw, emoji}} — datos de análisis IA
 // ═══════════════════════════════════════════════════════
 // Tabs
 // ═══════════════════════════════════════════════════════
-function showTab(id, btn) {
+// Cada vista pertenece a un "modo" del nav. Las herramientas (videos/editor/render/
+// clips) cuelgan de Creador, asi que resaltan ese boton aunque no tengan boton propio.
+const TAB_PRIMARY = {
+  home:'home', auto:'auto', revision:'revision', paquetes:'paquetes', ajustes:'ajustes',
+  creador:'creador', videos:'creador', editor:'creador', render:'creador', clips:'creador',
+};
+function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const el = document.getElementById('tab-' + id);
+  if (el) el.classList.add('active');
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
-  btn.classList.add('active');
+  const btn = document.querySelector('nav button[data-tab="' + (TAB_PRIMARY[id] || id) + '"]');
+  if (btn) btn.classList.add('active');
+  // Hooks de carga por vista (fail-safe: cada funcion existe cuando su bloque carga)
   if (id === 'videos') loadVideos();
+  else if (id === 'paquetes') loadPaquetes();
+  else if (id === 'revision') onRevisionShown();
+  else if (id === 'home') loadHomeStats();
+  else if (id === 'creador') renderCreadorCards();
+  else if (id === 'ajustes') renderAjustes();
 }
 
 // esc(): escapa comillas simples para uso seguro en atributos onclick inline
@@ -611,7 +766,7 @@ function pollJob(jid, cb, interval=900) {
 // TAB EDITOR
 // ═══════════════════════════════════════════════════════
 function openEditor(name) {
-  showTab('editor', document.querySelectorAll('nav button')[1]);
+  showTab('editor');
   document.getElementById('editor-video-select').value = name;
   loadEditorVideo(name);
 }
@@ -865,7 +1020,7 @@ function onCaptionQaToggle() {
 // TAB RENDER
 // ═══════════════════════════════════════════════════════
 function openRender(name) {
-  showTab('render', document.querySelectorAll('nav button')[2]);
+  showTab('render');
   document.getElementById('render-video-select').value = name;
 }
 
@@ -1325,7 +1480,7 @@ function renderAutoResult(result) {
 }
 
 function openRenderClip(stem) {
-  showTab('render', document.querySelectorAll('nav button')[2]);
+  showTab('render');
   document.getElementById('render-status').innerHTML = `
     <div class="msg" style="font-size:12px">
       Para captions de este clip, usa la CLI:<br>
@@ -1367,7 +1522,7 @@ function pollJobP(jid, onTick, interval=900) {
 
 // Navega a Videos y señala el video específico que necesita transcripción
 function goTranscribeVideo(name) {
-  showTab('videos', document.querySelectorAll('nav button')[0]);
+  showTab('videos');
   setTimeout(() => {
     const jobEl = document.getElementById('job-' + name);
     if (jobEl) {
@@ -1489,11 +1644,76 @@ async function transcribeAndGenerateClips(name) {
 }
 
 // ═══════════════════════════════════════════════════════
+// S35 — Vistas nuevas (Home / Editor de Paquete / Paquetes / Creador / Ajustes)
+// Cada funcion se completa en su bloque; en B2 dejan la vista utilizable.
+// ═══════════════════════════════════════════════════════
+let paquetesCache = [];   // lista de /api/paquetes
+let pkgActual     = null; // detalle del paquete abierto en el Editor
+let revClipSel    = null; // indice del clip seleccionado en el Editor
+
+// Mapea el estado del reporte a la clase CSS del badge (semaforo).
+function estadoClass(estado) {
+  return {
+    'LISTO':'LISTO', 'LISTO CON AVISO':'AVISO',
+    'REQUIERE REVISION':'REVISION', 'NO PUBLICAR AUN':'NOPUB',
+  }[estado] || 'LISTO';
+}
+function estadoBadge(estado) {
+  return `<span class="estado ${estadoClass(estado)}">${estado || 'LISTO'}</span>`;
+}
+
+function loadHomeStats() {
+  const el = document.getElementById('home-wrap');
+  if (el && !el.dataset.ready) {
+    el.innerHTML = `<div class="hero"><h1><span class="accent">Centrito Studio</span></h1>
+      <p>Fábrica local de clips con IA.</p></div>`;
+  }
+}
+function renderCreadorCards() { /* B7 */ }
+
+function renderAjustes() {
+  const el = document.getElementById('ajustes-panel');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="ajustes-row"><span class="k">App</span><span>Centrito Studio · Alpha 0.1</span></div>
+    <div class="ajustes-row"><span class="k">Servidor</span><span>FastAPI · puerto 8787</span></div>
+    <div class="ajustes-row"><span class="k">Motores</span><span>Whisper · ASS/FFmpeg · Reframe · Clipper · Caption QA</span></div>
+    <div class="ajustes-row"><span class="k">Colores / estilos</span><span>Se editan en <code>styles.py</code> (CLI y Studio)</span></div>
+    <div class="ajustes-row"><span class="k">Guía de testers</span><span><a href="/output/../docs/ALPHA_TESTERS.md" onclick="return false" style="color:var(--muted)">docs/ALPHA_TESTERS.md</a></span></div>`;
+}
+
+// Paquetes / Editor: se implementan en B4-B5. En B2 degradan con gracia.
+async function loadPaquetes() {
+  const list = document.getElementById('pkg-list');
+  try {
+    const res = await fetch('/api/paquetes');
+    if (!res.ok) throw new Error('endpoint no disponible');
+    paquetesCache = await res.json();
+    _renderPkgSelect();
+    _renderPkgList();
+  } catch (e) {
+    if (list) list.innerHTML = '<div class="msg">Aún no hay paquetes. Genera uno en el Modo Automático.</div>';
+  }
+}
+function _renderPkgSelect() {
+  const sel = document.getElementById('rev-pkg-select');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Elegir paquete —</option>' +
+    paquetesCache.map(p => `<option value="${p.id}">${p.name} · ${p.fecha}</option>`).join('');
+  if (paquetesCache.some(p => p.id === prev)) sel.value = prev;
+}
+function _renderPkgList() { /* B4 */ }
+function onRevisionShown() { loadPaquetes(); }
+function loadPaqueteDetalle(id) { /* B4 */ }
+
+// ═══════════════════════════════════════════════════════
 // Init
 // ═══════════════════════════════════════════════════════
 loadVideos();
 loadStyles();
 loadPresets();
+showTab('home');
 </script>
 </body>
 </html>
