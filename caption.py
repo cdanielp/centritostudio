@@ -45,26 +45,11 @@ def _resolver_plan_preset(preset: str | None, intensidad: str | None):
     try:
         import cve  # noqa: PLC0415
 
-        return cve.resolve_preset(preset, intensidad)
-    except Exception as e:
+        plan, _aviso = cve.resolver_preset_seguro(preset, intensidad)
+        return plan
+    except Exception as e:  # cubre hasta un import cve roto
         print(f"[cve] preset no resuelto ({e}) - se usa el estilo clasico")
         return None
-
-
-def _aplicar_preset(groups: list, plan, stem: str, width: int, height: int) -> list:
-    """Marca los grupos con el engine CVE (brain.json fail-open si existe)."""
-    import cve  # noqa: PLC0415
-
-    brain_data = None
-    brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
-    if brain_path.exists():
-        try:
-            brain_data = json.loads(brain_path.read_text(encoding="utf-8"))
-            print(f"[cve] brain.json encontrado: enriquecimiento activo ({brain_path.name})")
-        except (ValueError, OSError):  # ValueError cubre JSON invalido y encoding roto
-            print(f"[cve] brain.json ilegible, se ignora: {brain_path.name}")
-            brain_data = None
-    return cve.aplicar_engine(groups, plan, width, height, brain_data)
 
 
 def process_video(
@@ -91,9 +76,11 @@ def process_video(
     plan = _resolver_plan_preset(preset, intensidad)
     style_cfg = plan.style_cfg if plan else get_style(style, pop, rebote)
     stem = out_stem or video_path.stem
-    # pop, rebote y preset entran en el nombre para que las variantes no se pisen.
+    # pop, rebote, preset e intensidad entran en el nombre para que las variantes no se pisen.
     if plan:
-        variante = f"_{plan.preset}"
+        import cve  # noqa: PLC0415
+
+        variante = cve.tag_variante(plan.preset, intensidad)
     else:
         pop_tag = f"_{pop}" if pop else ""
         reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
@@ -112,11 +99,12 @@ def process_video(
     print(f"[video] {width}x{height}")
 
     if plan:
-        groups = _aplicar_preset(groups, plan, stem, width, height)
         import cve  # noqa: PLC0415
 
-        # Fallback nivel 3: karaoke sin timing por-palabra cae a highlight (jamas sin captions)
-        plan = cve.ajustar_plan_a_groups(plan, groups)
+        brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
+        groups, plan, aviso = cve.aplicar_preset(groups, plan, brain_path, width, height)
+        if aviso:
+            print(f"[cve] {aviso}")
         style_cfg = plan.style_cfg
 
     core.build_ass(groups, width, height, style_cfg, ass_path)

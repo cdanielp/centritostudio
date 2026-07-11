@@ -203,6 +203,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       </select>
     </div>
     <div class="field">
+      <label>Preset viral (motor CVE)</label>
+      <select id="render-preset" onchange="onPresetChange()">
+        <option value="">Sin preset — estilo clásico</option>
+        <!-- Se puebla desde /api/presets al cargar (presets nuevos aparecen solos). -->
+      </select>
+    </div>
+    <div class="field" id="field-intensidad" style="display:none">
+      <label>Intensidad del preset</label>
+      <select id="render-intensidad">
+        <option value="">Default del preset</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Intensidad del pop (palabra activa)</label>
       <select id="render-pop">
         <option value="">Default del estilo</option>
@@ -385,6 +398,34 @@ async function loadStyles() {
     sel.innerHTML = styles.map(s => `<option value="${s.id}">${s.label || s.name || s.id}</option>`).join('');
     if (styles.some(s => s.id === prev)) sel.value = prev;
   } catch (e) { /* fail-safe: se queda el <option> hardcodeado de respaldo */ }
+}
+
+// loadPresets(): puebla preset + intensidad desde /api/presets (metadatos en cvePresets
+// para el pre-check de brain). Fail-safe: sin CVE o error, queda solo "Sin preset".
+let cvePresets = [];
+async function loadPresets() {
+  try {
+    const res = await fetch('/api/presets');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data.presets) || data.presets.length === 0) return;
+    cvePresets = data.presets;
+    document.getElementById('render-preset').innerHTML =
+      '<option value="">Sin preset — estilo clásico</option>' +
+      data.presets.map(p => `<option value="${p.id}">${p.label || p.id}</option>`).join('');
+    document.getElementById('render-intensidad').innerHTML =
+      '<option value="">Default del preset</option>' +
+      (data.intensidades || []).map(i => `<option value="${i.id}">${i.label || i.id}</option>`).join('');
+  } catch (e) { /* fail-safe: dropdown queda en "Sin preset" */ }
+}
+
+// Con preset, el engine manda: estilo/pop/énfasis se ignoran (mismo contrato que la CLI)
+function onPresetChange() {
+  const conPreset = !!document.getElementById('render-preset').value;
+  document.getElementById('field-intensidad').style.display = conPreset ? '' : 'none';
+  document.getElementById('render-style').disabled = conPreset;
+  document.getElementById('render-pop').disabled = conPreset;
+  document.getElementById('use-emphasis').disabled = conPreset;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -806,6 +847,8 @@ function openRender(name) {
 }
 
 async function startRender() {
+  const forzado = renderSinBrain;   // el flag se consume SIEMPRE (un solo salto del pre-check)
+  renderSinBrain = false;
   const name  = document.getElementById('render-video-select').value;
   const style = document.getElementById('render-style').value;
   const wpg   = document.getElementById('render-wpg').value;
@@ -827,10 +870,36 @@ async function startRender() {
     return;
   }
 
+  // Preset CVE: pre-check de brain.json (regla 16: el aviso trae el botón que lo resuelve)
+  const preset = document.getElementById('render-preset').value;
+  if (preset) {
+    const info = cvePresets.find(p => p.id === preset);
+    if (info && info.usa_brain && !forzado) {
+      const bres = await fetch(`/api/videos/${name}/brain`).catch(() => null);
+      const bdata = bres && bres.ok ? await bres.json() : {groups: []};
+      if (!(bdata.groups || []).length) {
+        document.getElementById('render-status').innerHTML = `
+          <div class="msg warn" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            El preset destaca keywords con el análisis IA y este video no tiene brain.json.
+            <button class="btn" style="font-size:12px;padding:4px 10px"
+              onclick="analyzeFromRender('${esc(name)}')">Analizar con IA ahora</button>
+            <button class="btn" style="font-size:12px;padding:4px 10px"
+              onclick="startRenderForzado()">Renderizar sin keywords IA</button>
+          </div>`;
+        return;
+      }
+    }
+  }
+
   const btn = document.getElementById('render-btn');
   btn.disabled = true;
 
   const params = new URLSearchParams({style});
+  if (preset) {
+    params.append('preset', preset);
+    const inten = document.getElementById('render-intensidad').value;
+    if (inten) params.append('intensidad', inten);
+  }
   const pop = document.getElementById('render-pop').value;
   if (pop) params.append('pop', pop);
   if (wpg) params.append('words_per_group', wpg);
@@ -860,11 +929,46 @@ async function startRender() {
       if (j.result && j.result.emphasis_msg) {
         statusDiv.innerHTML += `<div class="msg warn">${j.result.emphasis_msg}</div>`;
       }
+      if (j.result && j.result.preset_msg) {
+        statusDiv.innerHTML += `<div class="msg warn">${j.result.preset_msg}</div>`;
+      }
       showOutputPreview(j.result.output, name, style);
       loadVideos();
     } else if (j.status === 'error') {
       statusDiv.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
       btn.disabled = false;
+    }
+  });
+}
+
+// Reintento explícito del render sin keywords IA (el usuario decide saltarse el brain)
+let renderSinBrain = false;
+function startRenderForzado() { renderSinBrain = true; startRender(); }
+
+// Analiza con IA desde la pestaña Render y, al terminar, relanza el render solo.
+async function analyzeFromRender(name) {
+  const statusDiv = document.getElementById('render-status');
+  statusDiv.innerHTML = '<div class="msg">Analizando con IA…</div>';
+  const res = await fetch(`/api/videos/${name}/analyze`, {method:'POST'});
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    statusDiv.innerHTML = `<div class="msg err">${err.detail || 'Error al analizar'}</div>`;
+    return;
+  }
+  const {job_id} = await res.json();
+  const t0 = Date.now();
+  pollJob(job_id, (j) => {
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    const msgEl = statusDiv.querySelector('.msg');
+    if (msgEl && j.status !== 'done' && j.status !== 'error') {
+      msgEl.textContent = `${j.message} (${elapsed}s)`;
+    }
+    if (j.status === 'done') {
+      statusDiv.innerHTML = '<div class="msg">Análisis listo — renderizando…</div>';
+      startRender();
+    } else if (j.status === 'error') {
+      statusDiv.innerHTML = `<div class="msg err">Análisis falló: ${j.message}.
+        Puedes "Renderizar sin keywords IA".</div>`;
     }
   });
 }
@@ -1357,6 +1461,7 @@ async function transcribeAndGenerateClips(name) {
 // ═══════════════════════════════════════════════════════
 loadVideos();
 loadStyles();
+loadPresets();
 </script>
 </body>
 </html>

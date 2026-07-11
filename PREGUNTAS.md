@@ -554,6 +554,10 @@ Roadmap futuro (cada item se disena/vota antes de implementarse):
 1. **Recetas/presets.json por objetivo:** cada objetivo (clips virales, clase depurada,
    reel con marca...) es una receta declarativa que nombra herramientas del motor y sus
    parametros. Anadir objetivo = anadir receta, no codigo.
+   *Nota s30:* los presets del CVE ya son elegibles desde el Studio (/api/presets +
+   dropdown, modo Creador). El Modo Automatico CONSERVA su default (hormozi+emojis);
+   "preset CVE en el autopiloto" es exactamente este item: la receta nombrara un preset
+   por nombre cuando se implemente. No se cablea antes de disenar la receta.
 2. **Batch:** carpeta completa por el modo automatico con un solo click/comando.
 3. **Score de publicacion v2:** ponderar score IA del clipper con las metricas de calidad
    de tramos (un clip 90/100 con 40% de tramos con aviso no debe salir primero).

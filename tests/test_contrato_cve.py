@@ -147,6 +147,53 @@ def test_ajustar_plan_no_toca_presets_no_karaoke():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Studio (S30): /api/presets + ruta de preset del worker de render
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_info_presets_contrato():
+    infos = {i["id"]: i for i in cve.info_presets()}
+    assert sorted(infos) == cve.list_presets()
+    assert infos["keyword_punch"]["usa_brain"] is True
+    assert infos["viral_bounce"]["usa_brain"] is True
+    assert infos["clean_podcast"]["usa_brain"] is False
+    assert infos["karaoke_highlight"]["usa_keywords"] is False
+    assert infos["keyword_punch"]["intensidad_default"] == "viral"
+
+
+def test_api_presets_shape():
+    import app as studio
+
+    data = studio.list_presets_cve()
+    assert [p["id"] for p in data["presets"]] == cve.list_presets()
+    assert all(p.get("label") for p in data["presets"])
+    assert [i["id"] for i in data["intensidades"]] == ["minimal", "clean", "viral"]
+
+
+def test_resolver_preset_seguro_failsafe():
+    # Fuente unica CLI+Studio (regla #10): invalido -> (None, aviso accionable)
+    plan, aviso = cve.resolver_preset_seguro("karaoke_highlight", "clean")
+    assert aviso is None and plan.preset == "karaoke_highlight"
+    plan, aviso = cve.resolver_preset_seguro("inexistente", None)
+    assert plan is None and "Preset no resuelto" in aviso
+    assert cve.resolver_preset_seguro(None, None) == (None, None)
+
+
+def test_aplicar_preset_sin_brain_avisa_pero_rinde(tmp_path):
+    grupos = [_grupo(["gana", "500", "pesos"])]
+    plan, _ = cve.resolver_preset_seguro("keyword_punch", "viral")
+    brain_inexistente = tmp_path / "nadie.brain.json"
+    out, plan2, aviso = cve.aplicar_preset(grupos, plan, brain_inexistente, 1080, 1920)
+    assert aviso and "brain" in aviso  # regla 16: el aviso lo dice
+    assert any(w.get("is_keyword") for w in out[0]["words"])  # reglas R1-R7 rinden igual
+
+
+def test_tag_variante_consistente_cli_studio():
+    assert cve.tag_variante("karaoke_highlight", None) == "_karaoke_highlight"
+    assert cve.tag_variante("keyword_punch", "viral") == "_keyword_punch_viral"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Fallback total (nivel 3: engine falla -> grupos originales)
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@ Fallback total: cualquier fallo del engine degrada a captions simples (§8), jam
 from __future__ import annotations
 
 import csv
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -99,6 +100,26 @@ def list_presets() -> list[str]:
     return sorted(_PRESETS)
 
 
+def info_presets() -> list[dict]:
+    """Metadatos de los presets para consumidores (Studio /api/presets, regla 19).
+
+    usa_brain permite a la UI avisar (y ofrecer el fix) cuando falta brain.json.
+    """
+    result = []
+    for nombre in list_presets():
+        p = _PRESETS[nombre]
+        kw = str(p.get("keywords", "off"))
+        result.append(
+            {
+                "id": nombre,
+                "intensidad_default": p.get("intensidad", "clean"),
+                "usa_keywords": kw != "off",
+                "usa_brain": kw in ("brain", "auto+brain"),
+            }
+        )
+    return result
+
+
 def _plan_desde_dict(nombre: str, p: dict, intensidad: str) -> RenderPlan:
     """Construye el RenderPlan aplicando la matriz de intensidades (§6.1)."""
     glow = bool(p.get("glow", False)) and intensidad == "viral"
@@ -137,6 +158,54 @@ def resolve_preset(nombre: str, intensidad: str | None = None) -> RenderPlan:
     p = _PRESETS[key]
     inten = intensidad if intensidad in INTENSIDADES else p.get("intensidad", "clean")
     return _plan_desde_dict(key, p, inten)
+
+
+def resolver_preset_seguro(preset: str | None, intensidad: str | None):
+    """(plan, aviso) fail-safe: preset invalido o engine roto -> (None, aviso accionable).
+
+    Fuente unica para CLI y Studio (regla #10): el llamador cae a captions clasicos.
+    """
+    if not preset:
+        return None, None
+    try:
+        return resolve_preset(preset, intensidad), None
+    except Exception as exc:
+        aviso = f"Preset no resuelto ({exc}) - render con estilo clasico"
+        print(f"[cve] {aviso}")
+        return None, aviso
+
+
+def aplicar_preset(
+    groups: list[dict],
+    plan: RenderPlan,
+    brain_path: Path | None,
+    video_w: int,
+    video_h: int,
+) -> tuple[list[dict], RenderPlan, str | None]:
+    """Ruta completa del preset: brain fail-open + engine + ajuste de plan a los grupos.
+
+    Fuente unica para CLI y Studio. Devuelve (groups, plan, aviso); el aviso (regla #16)
+    dice cuando el preset usa brain y no hay brain.json — el consumidor ofrece el fix.
+    """
+    brain_data = None
+    aviso = None
+    if brain_path and Path(brain_path).exists():
+        try:
+            brain_data = json.loads(Path(brain_path).read_text(encoding="utf-8"))
+            print(f"[cve] brain.json encontrado: enriquecimiento activo ({Path(brain_path).name})")
+        except (ValueError, OSError):  # ValueError cubre JSON invalido y encoding roto
+            print(f"[cve] brain.json ilegible, se ignora: {Path(brain_path).name}")
+    if plan.keywords_mode in ("brain", "auto+brain") and brain_data is None:
+        aviso = "Sin brain.json: el preset rinde sin keywords semanticas (Analizar IA lo habilita)"
+    groups = aplicar_engine(groups, plan, video_w, video_h, brain_data)
+    plan = ajustar_plan_a_groups(plan, groups)
+    return groups, plan, aviso
+
+
+def tag_variante(preset: str, intensidad: str | None) -> str:
+    """Sufijo de salida de una variante de preset — identico en CLI y Studio."""
+    inten_tag = f"_{intensidad}" if intensidad else ""
+    return f"_{preset}{inten_tag}"
 
 
 def _timing_por_palabra_completo(groups: list[dict]) -> bool:

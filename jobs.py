@@ -1,48 +1,19 @@
-"""jobs.py - Registro de jobs en memoria y workers de background para Centrito Studio."""
+"""jobs.py - Workers de background para Centrito Studio (registro en jobs_registry)."""
 
 from __future__ import annotations
 
 import json
-import threading
-import uuid
 from pathlib import Path
 
 import core
+
+# Re-export: los consumidores (app.py, tests) siguen usando jobs.new_job/get_job.
+from jobs_registry import get_job, new_job, update_job  # noqa: F401
 from styles import get_style
 
 ROOT = Path(__file__).parent
 TRANSCRIPTS = ROOT / "transcripts"
 OUTPUT_DIR = ROOT / "output"
-
-# ---Registro de jobs ---──────────────────────────────────────────────────────
-_JOBS: dict[str, dict] = {}
-_JOBS_LOCK = threading.Lock()
-
-
-def new_job(description: str) -> str:
-    """Crea un job nuevo y devuelve su ID."""
-    jid = str(uuid.uuid4())[:8]
-    with _JOBS_LOCK:
-        _JOBS[jid] = {
-            "status": "pending",
-            "progress": 0,
-            "message": description,
-            "result": None,
-            "error": None,
-        }
-    return jid
-
-
-def update_job(jid: str, **kwargs) -> None:
-    """Actualiza campos de un job."""
-    with _JOBS_LOCK:
-        _JOBS[jid].update(kwargs)
-
-
-def get_job(jid: str) -> dict | None:
-    """Devuelve el job o None si no existe."""
-    with _JOBS_LOCK:
-        return _JOBS.get(jid)
 
 
 # ---Worker: transcripcion ---──────────────────────────────────────────────────
@@ -313,8 +284,11 @@ def run_render(
     use_emphasis: bool = False,
     use_emojis: bool = False,
     pop: str | None = None,
+    preset: str | None = None,
+    intensidad: str | None = None,
 ) -> None:
-    """Worker: genera ASS con captions y quema el video de salida."""
+    """Worker: genera ASS y quema el video. Con `preset` (CVE) manda el plan del
+    engine: style/pop/use_emphasis se ignoran (mismo contrato que la CLI)."""
     try:
         update_job(jid, status="running", progress=10, message="Cargando grupos...")
         groups = json.loads(grp_path.read_text(encoding="utf-8"))
@@ -326,7 +300,16 @@ def run_render(
                 raw = json.loads(raw_path.read_text(encoding="utf-8"))
                 groups = core.group_words(raw["words"], max_words=words_per_group)
 
-        if use_emphasis:
+        plan, preset_msg = None, None
+        if preset:
+            try:
+                import cve  # noqa: PLC0415
+
+                plan, preset_msg = cve.resolver_preset_seguro(preset, intensidad)
+            except Exception as exc:  # import cve roto: captions clasicos
+                preset_msg = f"Preset no resuelto ({exc}) - render con estilo clasico"
+
+        if use_emphasis and not plan:
             groups, enfasis_msg = _apply_emphasis(groups, name)
             update_job(jid, progress=18, message=enfasis_msg)
 
@@ -334,16 +317,25 @@ def run_render(
         info = core.get_video_info(mp4)
         w, h = info["width"], info["height"]
 
-        style_cfg = get_style(style, pop)
-        # El pop entra en el nombre para no pisar renders de distinta intensidad.
-        pop_tag = f"_{pop}" if pop else ""
-        suffix_parts = [f"_{style}{pop_tag}"]
-        if use_emphasis:
-            suffix_parts.append("_enfasis")
+        if plan:
+            # cve ya quedo importado al resolver el plan (plan no-None lo implica)
+            update_job(jid, progress=25, message=f"Aplicando preset {plan.preset}...")
+            brain = TRANSCRIPTS / f"{name}.brain.json"
+            groups, plan, aviso_brain = cve.aplicar_preset(groups, plan, brain, w, h)
+            preset_msg = preset_msg or aviso_brain
+
+        style_cfg = plan.style_cfg if plan else get_style(style, pop)
+        # Preset/pop/intensidad entran en el nombre para no pisar variantes distintas.
+        if plan:
+            base_tag = cve.tag_variante(plan.preset, intensidad)
+        else:
+            base_tag = f"_{style}" + (f"_{pop}" if pop else "")
+        suffix = base_tag
+        if use_emphasis and not plan:
+            suffix += "_enfasis"
         if use_emojis:
-            suffix_parts.append("_emojis")
-        suffix = "".join(suffix_parts)
-        ass_path = OUTPUT_DIR / f"{name}_{style}{pop_tag}.ass"
+            suffix += "_emojis"
+        ass_path = OUTPUT_DIR / f"{name}{base_tag}.ass"
         out_path = OUTPUT_DIR / f"{name}{suffix}.mp4"
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")
@@ -369,7 +361,7 @@ def run_render(
             elapsed = core.burn_video(mp4, ass_path, out_path)
             emojis_result = None
 
-        emphasis_result = enfasis_msg if use_emphasis else None
+        emphasis_result = enfasis_msg if (use_emphasis and not plan) else None
         update_job(
             jid,
             status="done",
@@ -380,6 +372,7 @@ def run_render(
                 "elapsed": elapsed,
                 "emphasis_msg": emphasis_result,
                 "emojis_msg": emojis_result,
+                "preset_msg": preset_msg,
             },
         )
     except Exception as exc:

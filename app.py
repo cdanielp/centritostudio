@@ -337,6 +337,8 @@ def start_render(
     use_emphasis: bool = False,
     use_emojis: bool = False,
     pop: str | None = None,
+    preset: str | None = None,
+    intensidad: str | None = None,
 ):
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -346,11 +348,25 @@ def start_render(
         raise HTTPException(400, "Transcribe el video antes de renderizar")
     if style not in STYLES:
         raise HTTPException(400, f"Estilo invalido. Opciones: {', '.join(STYLES)}")
-    # pop invalido es fail-safe en get_style (usa el del estilo); no bloqueamos aqui.
-    jid = jobs.new_job(f"Renderizando {name} en {style}...")
+    if preset:
+        try:
+            import cve  # noqa: PLC0415
+
+            if preset not in cve.list_presets():
+                raise HTTPException(
+                    400, f"Preset invalido. Opciones: {', '.join(cve.list_presets())}"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(500, "Engine CVE no disponible; renderiza sin preset") from None
+    # pop/intensidad invalidos son fail-safe (usan el default del estilo/preset).
+    etiqueta = preset or style
+    jid = jobs.new_job(f"Renderizando {name} en {etiqueta}...")
     threading.Thread(
         target=jobs.run_render,
         args=(jid, mp4, grp_path, name, style, words_per_group, use_emphasis, use_emojis, pop),
+        kwargs={"preset": preset, "intensidad": intensidad},
         daemon=True,
     ).start()
     return {"job_id": jid}
@@ -411,6 +427,37 @@ def list_styles():
         }
         for k, v in STYLES.items()
     ]
+
+
+# Labels de presets CVE para el dropdown (fallback: el id crudo).
+_PRESET_LABELS = {
+    "clean_podcast": "Clean Podcast — limpio profesional",
+    "viral_bounce": "Viral Bounce — pop + rebote",
+    "keyword_punch": "Keyword Punch — keywords gigantes + glow",
+    "karaoke_highlight": "Karaoke Highlight — relleno progresivo moderno",
+}
+
+_INTENSIDAD_LABELS = [
+    {"id": "minimal", "label": "Minimal — casi plano"},
+    {"id": "clean", "label": "Clean — profesional"},
+    {"id": "viral", "label": "Viral — recomendado"},
+]
+
+
+@app.get("/api/presets")
+def list_presets_cve():
+    """Presets del caption_viral_engine + intensidades. Fail-open: sin CVE -> vacio."""
+    try:
+        import cve  # noqa: PLC0415
+
+        presets = [
+            {**info, "label": _PRESET_LABELS.get(info["id"], info["id"])}
+            for info in cve.info_presets()
+        ]
+        return {"presets": presets, "intensidades": _INTENSIDAD_LABELS}
+    except Exception as exc:  # CVE roto no tumba el Studio: la UI cae a estilos clasicos
+        print(f"[studio] /api/presets sin engine CVE ({exc}) - dropdown en modo clasico")
+        return {"presets": [], "intensidades": []}
 
 
 if __name__ == "__main__":
