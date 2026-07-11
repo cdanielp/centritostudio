@@ -200,6 +200,33 @@ def test_marca_manual_gana_a_brain_y_reglas():
     assert out[0]["words"][2].get("is_keyword") is True  # rapido (manual), no 500
 
 
+def test_marcas_invalidas_jamas_visibles_en_ass(tmp_path):
+    """Voto #34: [/strong] y cualquier marca invalida JAMAS es texto visible en el ASS.
+
+    Las words llevan las marcas incrustadas (asi las deja rebalance_timestamps tras
+    editar en el Studio) — el engine debe consumirlas en TODOS los presets.
+    """
+    textos = ["di [strong]hola mundo", "esto [fuego]arde fuerte", "cierre [/strong] suelto"]
+    grupos = [_grupo(t.split(), i, texto=t) for i, t in enumerate(textos)]
+    plan = cve.resolve_preset("clean_podcast")  # keywords off: la limpieza no depende del modo
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920)
+    ass = tmp_path / "marcas.ass"
+    core_ass.build_ass(out, 1080, 1920, plan.style_cfg, ass)
+    contenido = ass.read_text(encoding="utf-8")
+    for marca in ("[strong]", "[/strong]", "[fuego]"):
+        assert marca not in contenido
+    assert "hola" in contenido and "arde" in contenido and "suelto" in contenido
+
+
+def test_marca_standalone_se_consume_y_aplica():
+    # "[strong]" como token suelto: desaparece como palabra y marca a la siguiente
+    g = _grupo("gana [strong] todo".split(), texto="gana [strong] todo")
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine([g], plan, 1080, 1920)
+    assert [w["text"] for w in out[0]["words"]] == ["gana", "todo"]
+    assert out[0]["words"][1].get("is_keyword") is True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fit de escala contra safe zones (reducir -> desactivar)
 # ─────────────────────────────────────────────────────────────────────────────

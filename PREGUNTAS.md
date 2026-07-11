@@ -570,7 +570,44 @@ revision humana antes de publicar; la aprobacion de F7 (Telegram) es la misma co
 
 ---
 
-### 30. GREMLIN 0-BYTE — archivos vacios con nombres de palabras del dominio (deuda real, s28A)
+### 30. GREMLIN 0-BYTE — **RESUELTO (s30): cazado, reproducido y arreglado**
+
+**Causa raiz (reproducida en vivo, s30):** los hooks de `.claude/settings.json` se
+invocaban como `cmd /c hooks\autoformat.bat`. Cuando el harness ejecuta ese string a
+traves de la capa POSIX (Git Bash/MSYS), la conversion automatica de argumentos de MSYS
+transforma `/c` en `C:\` (lo interpreta como ruta Unix). Resultado: cmd arranca SIN `/c`
+= MODO INTERACTIVO, y ejecuta su stdin — el JSON del hook, que lleva el CONTENIDO del
+archivo recien escrito — LINEA POR LINEA como comandos. Cada linea con `-> palabra` crea
+`palabra` (0 bytes) por redireccion; cmd corta el nombre en la coma (huella que descarto
+bash/PowerShell: por eso `list[tuple[int` y no `list[tuple[int,`).
+
+**Verificacion (cada gremlin mapeado a su linea fuente con `-> palabra`):**
+- `bool` <- cve_keywords.py:75 `-> bool` | `la` <- cve.py:114 `-> la default del preset`
+- `list[tuple[int` <- cve_keywords.py:98 `-> list[tuple[int, int, int, str]]` (corte en coma)
+- `hook` <- ESTADO.md:30 `... -> hook post-Write ...` | `completado` <- ESTADO.md:62 `-> completado a 3/3`
+- `paquete`/`crop`/`captions`/`el`/`cae`/`dict` <- construcciones `-> palabra` equivalentes
+  en bitacoras y codigo de sus sesiones.
+
+**Reproduccion controlada:** `printf 'algo -> tokentrampa, int, str\n' | cmd /c hooks/autoformat.bat`
+desde Git Bash -> aparece el banner interactivo de cmd y nace `tokentrampa` (0 bytes).
+Descartados con cebo directo (NO reproducen): autoformat.bat y gate.bat con stdin JSON
+cebado via `cmd //c`, check.bat, Write en vivo con hook activo, git hooks (LFS estandar
+bien citados), settings globales (~/.claude, sin hooks), commands de .claude/, y todo el
+subprocess del repo (list-args, cero shell=True).
+
+**FIX APLICADO (.claude/settings.json):** hooks invocados como `hooks/autoformat.bat` y
+`hooks/gate.bat` (sin envoltura cmd, forward slashes). Verificado con cebo en los 3
+spawners: Git Bash ejecuta el .bat correcto (sin conversion posible), PowerShell tambien;
+un spawner cmd puro fallaria fail-open (exit 1, hook no corre) — en ningun caso queda cmd
+interactivo leyendo contenido. La bomba de perdida de datos (truncar un archivo real como
+`core` o `styles`) queda eliminada. El fix rige desde la PROXIMA sesion (los hooks se
+capturan al inicio); en esta sesion se vigila la raiz antes de cada commit.
+
+---
+
+*(registro historico de la deuda:)*
+
+### 30-historial. GREMLIN 0-BYTE — archivos vacios con nombres de palabras del dominio (deuda real, s28A)
 
 **Sintoma:** aparecen en la raiz del repo archivos de 0 bytes cuyos nombres son palabras
 sueltas del dominio: `captions`, `crop`, `paquete`, `dict`, `el`, `completado` (lista no
@@ -660,7 +697,24 @@ plan de sesiones Sonnet S30-S34).
 
 ---
 
-### 34. F6 marcado manual — ¿marcas por FRASE (spans con cierre) o por PALABRA? (divergencia spec vs v1, s30)
+### 34. F6 marcado manual — ¿marcas por FRASE (spans con cierre) o por PALABRA? — **RESUELTO (voto arquitecto, s30)**
+
+**VOTO DEL ARQUITECTO (s30): (a) HOY + (b) EN S32 con regla pre-firmada.**
+- v1 sigue por-palabra HOY (no se reabre la decision e).
+- En S32 entran los spans de frase con regla PRE-FIRMADA: el span aplica el efecto a
+  CADA palabra del span, y las marcas MANUALES quedan EXENTAS de kw_max_por_grupo.
+  Jerarquia manual > brain > reglas: lo manual gana; si el usuario marco una frase,
+  saturar es su decision.
+- **Implementado s30 (consecuencia del voto):** garantia de no-fuga — `[/strong]` y
+  cualquier marca invalida JAMAS aparecen como texto visible en el ASS quemado. El engine
+  consume las marcas (validas o invalidas) del texto Y de las words en TODOS los presets,
+  incluso con keywords off (test de contrato con .ass real:
+  test_marcas_invalidas_jamas_visibles_en_ass). Alcance: cubre la ruta CON preset (engine);
+  la ruta clasica sin preset se cablea en S32 junto con el editor E2E.
+
+---
+
+*(registro original de la divergencia, s30:)*
 
 **Hecho:** el spec de K (SPEC_K_CVE.md) ejemplifica el minimo v1 con SPANS cerrados sobre
 frases: `[strong]esto cambió todo[/strong]`, `[big]10 millones[/big]`,

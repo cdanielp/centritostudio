@@ -210,6 +210,14 @@ def elegir_keywords(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def limpiar_token(token: str) -> str:
+    """Texto visible de un token: toda marca [x] (valida, invalida o cierre) se elimina.
+
+    Misma regla que parsear_marcas — el ASS jamas muestra corchetes de marca (voto #34).
+    """
+    return _MARCA_RE.sub("", token)
+
+
 def parsear_marcas(texto: str) -> tuple[str, dict[int, str], bool]:
     """Extrae marcas v1 del texto de un grupo. Marca invalida = se elimina, jamas rompe.
 

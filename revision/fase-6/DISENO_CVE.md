@@ -341,11 +341,12 @@ inmediata. Reglas de robustez (tests de contrato):
   `[glitch]…[/glitch]` (vía compositing, §9.1). El parser v1 ya es extensible: tabla
   `MARCAS = {"strong": ..., "big": ..., "center": ...}`. La regla del spec "marca inválida
   = texto plano, jamás rompe render/export" ya es el contrato del parser (tests s29).
-- **Divergencia con el spec (voto en PREGUNTAS #34):** los ejemplos del spec son SPANS con
-  cierre sobre frases (`[strong]esto cambió todo[/strong]`); el parser v1 aplica la marca a
-  UNA palabra (la siguiente) y un tag de cierre se elimina como marca inválida (texto sale
-  plano, nada rompe). El diseño NO se cambia aquí — decisión e definió el subconjunto v1 y
-  el énfasis de frase entera está en backlog ("frase destacada", §4.2/§9.2).
+- **Divergencia spans-vs-palabra — VOTADA (arquitecto, s30, PREGUNTAS #34):** (a) v1 sigue
+  por-palabra HOY + (b) los spans de frase entran EN S32 con regla pre-firmada: el span
+  aplica el efecto a CADA palabra del span, y las marcas MANUALES quedan EXENTAS de
+  kw_max_por_grupo (manual > brain > reglas; si el usuario marcó una frase, saturar es su
+  decisión). Garantía implementada s30: ninguna marca (válida, inválida o cierre) llega
+  como texto visible al ASS — el engine las consume de texto y words en todos los presets.
 
 ---
 
@@ -388,6 +389,11 @@ Cada uno queda clasificado en su vía técnica (criterio de viabilidad resuelto 
 | 11 | `hook_takeover` | ASS puro | frase gigante en los primeros 1-2s; cumple el requisito del spec "el primer segundo debe permitir un hook visual fuerte" |
 | 12 | `commentary_reactor` | overlays PNG + ASS | arrows/callouts/etiquetas de la biblioteca + frases fuertes |
 
+Nota (aprobado por el arquitecto, s30): la numeración 6-12 sigue el orden "Después
+agregar" del spec (no la lista "Presets iniciales", donde glitch_cyber=7 y premium_flat=2);
+y la interpretación de `meme_impact` — cortes = clipper, zoom = punch-in del reframe;
+el CVE no corta video — queda APROBADA explícitamente.
+
 Ficha técnica de las 3 vías:
 - **Vía ASS puro** (pop, karaoke, swipe con `\move`, cajas `\bord`+BorderStyle=3,
   subrayado (caja fina bajo la palabra vía evento extra), shake acotado (`\t` con offsets
@@ -422,7 +428,7 @@ Ficha técnica de las 3 vías:
 |---|---|---|
 | **S30 — karaoke_highlight + Studio** | Preset `karaoke_highlight` registrado (envoltura del modo karaoke). `/api/presets` + dropdown de presets en Studio (patrón /api/styles de s28C). Selector de intensidad. Deuda #25 (poll timeout) si cabe. | Preset rinde por CLI y Studio; render karaoke byte-equivalente al actual con preset default; tests de contrato del endpoint; check.bat verde. |
 | **S31 — image_popups** | Cadena generalizada: `assets/biblioteca/`, `{stem}_popups.json`, posición paramétrica en `burn_video_with_emojis` (default intacto), cascada manual→biblioteca→ComfyUI, safe zones + cadena reducir→mover→desactivar para overlays. | Demo con ≥2 PNGs de biblioteca + 1 manual sobre el clip videolargo; entrada inválida no rompe (test); ruta emojis actual byte-idéntica sin popups; frames de evidencia. |
-| **S32 — marcado manual E2E** | Parser ya existe (s29); esta sesión lo cablea al Editor del Studio (las marcas se escriben en el texto del grupo y sobreviven el guardado), + `[center]` por grupo en build_ass (posición por-evento `\an`/marginv). | E2E: editar grupo con `[big]` en Studio → render con la palabra grande; marca inválida visible como texto plano en el editor pero ausente del render; tests parser+persistencia. |
+| **S32 — marcado manual E2E** | Parser ya existe (s29); esta sesión lo cablea al Editor del Studio (las marcas se escriben en el texto del grupo y sobreviven el guardado), + `[center]` por grupo en build_ass (posición por-evento `\an`/marginv), + SPANS de frase con regla pre-firmada del voto #34 (efecto a cada palabra del span; marcas manuales exentas de kw_max_por_grupo), + garantía de no-fuga de marcas en la ruta clásica sin preset. | E2E: editar grupo con `[big]` en Studio → render con la palabra grande; marca inválida visible como texto plano en el editor pero ausente del render; span `[strong]frase[/strong]` marca todas las palabras del span; tests parser+persistencia. |
 | **S33 — config usuario + intensidades completas** | `cve_presets.json` end-to-end (hoy solo se especifica el esquema y el loader mínimo), matriz de intensidades completa aplicada a los 5 presets, documentación de usuario. | cve_presets.json roto/ausente → built-ins (tests por campo); preset custom del usuario rinde; matriz validada con 1 render por intensidad. |
 | **S34 — validación con K** | Los 5 presets × 3 intensidades sobre 2 clips reales; paquete para-K. | Veredicto de K por preset; deudas #20 (punch-in) votable con estos renders. |
 

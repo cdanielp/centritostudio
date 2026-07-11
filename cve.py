@@ -154,31 +154,42 @@ def hay_cara_en_rango(csv_path: Path, t0: float, t1: float) -> bool | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _marcas_manuales(groups: list[dict]) -> list[tuple[int, int, int, str]]:
-    """Candidatos manuales desde marcas [strong]/[big] en el texto de cada grupo."""
-    result = []
+def _consumir_marcas(groups: list[dict]) -> tuple[list[dict], list[tuple[int, int, int, str]]]:
+    """Consume las marcas manuales de texto Y words; devuelve (grupos limpios, candidatos).
+
+    Garantia del voto #34: ninguna marca ([strong], [fuego], [/strong]...) llega como
+    texto visible al ASS — valida o invalida, se elimina. Un token que era SOLO marca
+    desaparece como palabra (la marca no es una palabra, DISENO §7). Las marcas validas
+    se vuelven candidatos manuales (score SCORE_MANUAL) si el mapeo texto→words coincide.
+    """
+    result: list[dict] = []
+    candidatos: list[tuple[int, int, int, str]] = []
     for g_idx, g in enumerate(groups):
-        limpio, marcas, _center = ck.parsear_marcas(g.get("text", ""))
+        texto = g.get("text", "")
+        words = g.get("words", [])
+        if "[" not in texto and not any("[" in (w.get("text") or "") for w in words):
+            result.append(g)
+            continue
+        limpio, marcas, center = ck.parsear_marcas(texto)
+        nuevas = []
+        for w in words:
+            t = ck.limpiar_token(w.get("text", ""))
+            if t:
+                nuevas.append({**w, "text": t})
+        g2 = {**g, "text": limpio, "words": nuevas}
+        if center:
+            g2["center"] = True  # posicion por-grupo: sin consumidor hasta S32
+        result.append(g2)
         if not marcas:
             continue
         # El mapeo por indice solo es confiable si el conteo de palabras coincide
-        if len(limpio.split()) != len(g.get("words", [])):
+        if len(limpio.split()) != len(nuevas):
             print(f"[cve] grupo {g_idx}: marcas ignoradas (texto editado no coincide)")
             continue
         for w_idx, marca in marcas.items():
             regla = "manual_big" if marca == "big" else "manual"
-            result.append((g_idx, w_idx, ck.SCORE_MANUAL, regla))
-    return result
-
-
-def _reunir_candidatos(groups: list[dict], modo: str, brain_data: dict | None) -> list:
-    """Junta candidatos segun el modo del preset (manual siempre gana si existe)."""
-    candidatos = list(_marcas_manuales(groups))
-    if modo in ("brain", "auto+brain"):
-        candidatos += ck.candidatos_brain(groups, brain_data)
-    if modo == "auto+brain":
-        candidatos += ck.detectar_candidatos(groups)
-    return candidatos
+            candidatos.append((g_idx, w_idx, ck.SCORE_MANUAL, regla))
+    return result, candidatos
 
 
 def _marcar_grupo(g: dict, w_idx: int, regla: str, escala: int | None) -> dict:
@@ -199,29 +210,42 @@ def aplicar_engine(
     video_h: int,
     brain_data: dict | None = None,
 ) -> list[dict]:
-    """Marca keywords en los grupos segun el plan. Fallo -> grupos originales (§8 nivel 3)."""
-    if plan.keywords_mode == "off":
-        return groups
+    """Marca keywords en los grupos segun el plan. Fallo -> grupos originales (§8 nivel 3).
+
+    Las marcas manuales se consumen SIEMPRE (aun con keywords off): el ASS jamas
+    muestra corchetes de marca (voto #34).
+    """
     try:
-        candidatos = _reunir_candidatos(groups, plan.keywords_mode, brain_data)
-        elegidos = ck.elegir_keywords(candidatos, len(groups))
+        limpios, manuales = _consumir_marcas(groups)
+    except Exception as e:
+        print(f"[cve] limpieza de marcas fallo ({e}) - grupos originales")
+        limpios, manuales = groups, []
+    if plan.keywords_mode == "off":
+        return limpios
+    try:
+        candidatos = list(manuales)
+        if plan.keywords_mode in ("brain", "auto+brain"):
+            candidatos += ck.candidatos_brain(limpios, brain_data)
+        if plan.keywords_mode == "auto+brain":
+            candidatos += ck.detectar_candidatos(limpios)
+        elegidos = ck.elegir_keywords(candidatos, len(limpios))
         if not elegidos:
-            return groups
+            return limpios
 
         fontsize = _scaled_fontsize(video_w, video_h, plan.style_cfg)
         ancho_util = int(video_w * (1.0 - SAFE_LEFT_PCT - SAFE_RIGHT_PCT))
-        result = list(groups)
+        result = list(limpios)
         for g_idx, (w_idx, _score, regla) in elegidos.items():
             escala = None
             if plan.kw_punch_scale > ck.KW_SCALE_BASE or regla == "manual_big":
-                palabra = groups[g_idx]["words"][w_idx]["text"]
+                palabra = limpios[g_idx]["words"][w_idx]["text"]
                 escala = ck.ajustar_escala_punch(palabra, fontsize, ancho_util, plan.kw_punch_scale)
                 if escala is None:
                     print(f"[cve] '{palabra}' no cabe ni reducida: punch desactivado (kw normal)")
-            result[g_idx] = _marcar_grupo(groups[g_idx], w_idx, regla, escala)
+            result[g_idx] = _marcar_grupo(limpios[g_idx], w_idx, regla, escala)
         n = len(elegidos)
-        print(f"[cve] preset {plan.preset}: {n} keyword(s) marcadas en {len(groups)} grupos")
+        print(f"[cve] preset {plan.preset}: {n} keyword(s) marcadas en {len(limpios)} grupos")
         return result
     except Exception as e:  # fallback total: captions con el estilo del preset, sin marcas
         print(f"[cve] engine fallo ({e}) - render sigue con captions simples del estilo")
-        return groups
+        return limpios
