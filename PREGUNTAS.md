@@ -622,7 +622,7 @@ se pierda al haber priorizado s28A en cierre de cabos + F5-s2 captions cineticos
 
 ---
 
-### 33. F6 caption_viral_engine — SPEC DE K NO LLEGO (placeholder sin reemplazar, s29)
+### 33. F6 caption_viral_engine — SPEC DE K NO LLEGO (s29) — **RESUELTO (s30)**
 
 **Hecho:** el prompt de la sesion 29 debia traer el documento integro de K del
 caption_viral_engine ("Quiero que F6 no sea un estilo fijo..." hasta "...dopaminergico o
@@ -639,14 +639,47 @@ Sonnet). Los huecos que SOLO el spec de K puede llenar quedaron marcados
 2. Posiciones exactas del spec (se mapearan a las constantes de safe zone).
 3. Sintaxis completa de marcado manual (v1 = [strong]/[big]/[center] + popups.json).
 
-**ACCION PARA K/ARQUITECTO:** pegar el documento integro en la proxima sesion (o
-guardarlo como revision/fase-6/SPEC_K_CVE.md). Al llegar, se llenan los slots sin
-reabrir la arquitectura.
+**RESUELTO (s30):** el documento integro de K llego y esta guardado tal cual en
+`revision/fase-6/SPEC_K_CVE.md` (trackeado). Los huecos [SPEC-K PENDIENTE] quedaron
+resueltos en DISENO_CVE.md sin reabrir la arquitectura:
+1. Presets 6-12 nombrados y clasificados por via tecnica (§9.1): storytelling_cinematic
+   y premium_flat y hook_takeover via ASS puro, meme_impact via ASS+video_fx,
+   educational_clear y commentary_reactor via ASS+overlays, glitch_cyber via compositing.
+2. Posiciones del spec (13 opciones) mapeadas a las constantes de safe zone (§5.1);
+   auto_safe ya es el default del engine, behind_text va a S31, full_screen_takeover a backlog.
+3. Sintaxis futura de marcado registrada: [shake]/[image:id]/[glitch] (§7 → backlog §9.2).
+Refinamientos del spec integrados (refinan sin contradecir): cadena de conflicto ampliada
+a 5 pasos con SIMPLIFICAR ANIMACION (§5.3), claves extra de config con destino (§6),
+nota de alcance del "nunca sin captions" vs nivel 0 (§8). CERO contradicciones duras con
+las decisiones a-h. Una divergencia menor para voto del arquitecto: #34.
 
 **Registro del diseno:** revision/fase-6/DISENO_CVE.md (arquitectura de orquestacion
 sobre 3 subsistemas existentes, extension aditiva default-off del motor ASS, merge
 manual > brain > reglas, cadena reducir->mover->desactivar, fallback de 5 niveles,
 plan de sesiones Sonnet S30-S34).
+
+---
+
+### 34. F6 marcado manual — ¿marcas por FRASE (spans con cierre) o por PALABRA? (divergencia spec vs v1, s30)
+
+**Hecho:** el spec de K (SPEC_K_CVE.md) ejemplifica el minimo v1 con SPANS cerrados sobre
+frases: `[strong]esto cambió todo[/strong]`, `[big]10 millones[/big]`,
+`[center]la frase principal[/center]`. El parser implementado en s29 (decision e,
+subconjunto v1) aplica la marca a UNA palabra (la siguiente inmediata) y no reconoce tags
+de cierre — un `[/strong]` se elimina como marca invalida (el texto sale plano; el
+contrato "jamas rompe render" SI se cumple).
+
+Ademas, el enfasis de frase/grupo entero fue diferido explicitamente a backlog en el
+diseño ("frase destacada", DISENO_CVE §4.2/§9.2: el hook es una FRASE, no una palabra).
+
+**Opciones:**
+- (a) v1 se queda por-palabra (`[strong]palabra`); el span por frase entra junto con
+  "frase destacada" (backlog) o en S32 (marcado E2E) si el arquitecto lo adelanta.
+- (b) S32 implementa spans con cierre: la marca aplica a todas las palabras del span.
+  Nota: multiples keywords por grupo rompe la regla kw_max_por_grupo=1 — habria que
+  definir la excepcion para marcas manuales.
+
+**Pregunta binaria:** ¿v1 por-palabra (a, propuesta — no reabre decision e) o spans en S32 (b)?
 
 ---
 

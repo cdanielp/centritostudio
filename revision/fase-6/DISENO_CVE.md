@@ -1,10 +1,13 @@
 # DISEÑO — caption_viral_engine (CVE)
 **Fase:** F6 · **Sesión:** 29 (diseño, Fable) · **Fecha:** 2026-07-10
-**Estado del spec fuente:** el documento íntegro de K ("Quiero que F6 no sea un estilo fijo…")
-NO llegó a esta sesión — el prompt traía el placeholder sin reemplazar (ver PREGUNTAS #33).
-Este diseño se construye sobre las DECISIONES DEL ARQUITECTO (a-h), que son vinculantes y
-autosuficientes para el alcance v1. Los huecos que solo el spec de K puede llenar están
-marcados como `[SPEC-K PENDIENTE]` y no bloquean la v1.
+**Estado del spec fuente:** el documento íntegro de K llegó en s30 y está guardado tal cual
+en `revision/fase-6/SPEC_K_CVE.md` (cierra PREGUNTAS #33). Contrastado contra este diseño:
+cero contradicciones duras con las decisiones a-h; las marcas `[SPEC-K PENDIENTE]` de la
+versión s29 quedaron resueltas en s30 (posiciones §5.1, marcado §7, presets 6-12 §9.1) y se
+integraron los refinamientos del spec (cadena de 5 pasos §5.3, config extra §6, nota §8).
+Una divergencia menor (marcas por frase vs por palabra) quedó para voto en PREGUNTAS #34.
+Historial: en s29 el prompt traía el placeholder sin reemplazar y el diseño se construyó
+solo sobre las decisiones a-h del arquitecto, que resultaron consistentes con el spec.
 
 ---
 
@@ -195,10 +198,22 @@ Zona útil resultante: x ∈ [54, 929], y ∈ [192, 1574] en 1080×1920.
 **Nota de compatibilidad:** los estilos actuales (margin_pct 0.10-0.12) quedaron aprobados
 por K ANTES de estas constantes; el engine NO los mueve retroactivamente (regla 15). Las
 safe zones gobiernan lo NUEVO: posiciones del engine, popups de imagen y el fit de la
-palabra punch. `[SPEC-K PENDIENTE]`: las posiciones exactas del spec de K se mapearán a
-estas constantes cuando llegue el documento; los nombres v1 son:
+palabra punch. Los nombres v1 son:
 `bottom` (default, = actual), `center` (y≈55% H), `top` (y = SAFE_TOP + alto de bloque),
 `top_right`/`top_left` (solo overlays).
+
+**Posiciones del spec de K (recibido s30, SPEC_K_CVE.md) mapeadas a estas constantes** —
+el spec define 13 opciones de ubicación para imágenes/overlays:
+- `top` / `center` / `bottom` / `left` / `right` + 4 esquinas (`top_left`, `top_right`,
+  `bottom_left`, `bottom_right`) → anclas dentro de la zona útil; entran con la posición
+  paramétrica de overlays (§3.2, S31). v1 ya cubre `top_right`/`top_left`.
+- `auto_safe` → ya es el comportamiento por defecto del engine: todo elemento nuevo pasa
+  por el fit de zona útil (§5.1) y la cadena de conflicto (§5.3). No requiere código nuevo.
+- `avoid_faces` → el flag existente (§5.2).
+- `behind_text` → overlay en la cadena FFmpeg ANTES del filtro `ass=` (los captions quedan
+  encima). Orden de filtros, no tecnología nueva → S31.
+- `full_screen_takeover` → overlay a pantalla completa; conecta con `hook_takeover` (§9.1)
+  → backlog post-v1.
 
 ### 5.2 avoid_faces — leyendo el CSV del reframe (NO se corre detección nueva)
 El reframe ya exporta `trayectoria_{stem}.csv` (`t, cam_center_x, face_x_asignada,
@@ -218,18 +233,26 @@ cara. v1 usa "hay cara en cuadro" como señal binaria por rango de tiempo — su
 la regla center→bottom. Precisión vertical → backlog (§9: exige columna `face_y` nueva en
 el CSV = tocar reframe, se hace cuando se abra ese motor, no antes).
 
-### 5.3 Cadena de conflicto (reducir → mover → desactivar) — explícita
-Para CADA elemento nuevo del engine (palabra punch, popup de imagen, bloque center):
+### 5.3 Cadena de conflicto (reducir → mover → simplificar → desactivar → caption simple)
+Para CADA elemento nuevo del engine (palabra punch, popup de imagen, bloque center).
+Cadena de 5 pasos, alineada 1:1 con el fallback en cadena del spec de K (s30):
 
 ```
-1. REDUCIR:    ¿cabe reduciendo escala?  punch: baja de kw_punch_scale hacia 122 en pasos
-               de 10 hasta caber (ancho estimado = len(word)·fontsize·0.60·scale/100 ≤
-               zona útil). popup: reduce size_pct hasta 0.12.
-2. MOVER:      ¿cabe en otra posición permitida?  center→bottom (avoid_faces),
-               top_right→top_left (popup fuera de zona de acciones).
-3. DESACTIVAR: el elemento pierde su tratamiento especial y cae al comportamiento base
-               (punch → keyword 122% normal; popup → se omite con log). El texto NUNCA
-               desaparece: desactivar quita el ADORNO, no la palabra.
+1. REDUCIR:     ¿cabe reduciendo escala?  punch: baja de kw_punch_scale hacia 122 en pasos
+                de 10 hasta caber (ancho estimado = len(word)·fontsize·0.60·scale/100 ≤
+                zona útil). popup: reduce size_pct hasta 0.12.
+2. MOVER:       ¿cabe en otra posición permitida?  center→bottom (avoid_faces),
+                top_right→top_left (popup fuera de zona de acciones).
+3. SIMPLIFICAR: (paso del spec de K, integrado s30) el elemento pierde su ANIMACIÓN pero
+                conserva el tratamiento estático: punch → escala/color sin pop; popup →
+                aparece sin fade. Paso barato entre mover y desactivar; se cablea en S31
+                junto con overlays — la implementación s29 (reducir→mover→desactivar)
+                sigue válida como subconjunto.
+4. DESACTIVAR:  el elemento pierde su tratamiento especial y cae al comportamiento base
+                (punch → keyword 122% normal; popup → se omite con log). El texto NUNCA
+                desaparece: desactivar quita el ADORNO, no la palabra.
+5. CAPTION SIMPLE: si el conflicto es del grupo entero (no de un adorno), el grupo cae a
+                caption simple = nivel 2 del fallback total (§8).
 ```
 Cada paso se loguea (`[cve] palabra 'X' reducida a 130% para caber en safe zone`) —
 regla #16: nada silencioso.
@@ -271,6 +294,13 @@ Garantías (idénticas a styles.json, probadas por tests de contrato):
 - `styles.json` actual NO cambia de semántica: sigue gobernando ESTILOS; cve_presets.json
   gobierna PRESETS y referencia estilos por nombre. Cero colisión, cero migración.
 
+Claves adicionales que el spec de K (s30) pide exponer, y su destino:
+- `idioma` → ya existe (`--lang` del CLI); el preset no lo duplica.
+- export Reels/TikTok/Shorts → el output ya es 9:16 H.264+AAC compatible con las 3 apps;
+  queda como nota de documentación de usuario (S33), no como código nuevo.
+- texto gigante tipo hook / efectos experimentales / captions dinámicos vs siempre abajo →
+  backlog §9 (van con `hook_takeover`, intensidad `experimental` y posición por-grupo).
+
 ### 6.1 Matriz de intensidades v1
 
 | | `minimal` | `clean` | `viral` |
@@ -304,8 +334,18 @@ inmediata. Reglas de robustez (tests de contrato):
   Jamás una excepción.
 - El texto limpio (sin corchetes) es lo que va al ASS; los timestamps por-palabra no se
   alteran (la marca no es una palabra, se consume antes del mapeo texto→words).
-- `[SPEC-K PENDIENTE]`: sintaxis completa de K (más marcas, parámetros inline) → backlog;
-  el parser v1 se diseñó extensible: tabla `MARCAS = {"strong": ..., "big": ..., "center": ...}`.
+- Sintaxis completa (spec K recibido s30): el mínimo v1 del spec son EXACTAMENTE las 3
+  marcas de esta tabla + timestamps de imágenes — coincide con lo implementado. Marcas
+  futuras nombradas por el spec → backlog: `[shake]…[/shake]` (vía ASS puro, §9.1),
+  `[image:id]…[/image]` (dispara overlay de biblioteca al mencionar la frase, S31+),
+  `[glitch]…[/glitch]` (vía compositing, §9.1). El parser v1 ya es extensible: tabla
+  `MARCAS = {"strong": ..., "big": ..., "center": ...}`. La regla del spec "marca inválida
+  = texto plano, jamás rompe render/export" ya es el contrato del parser (tests s29).
+- **Divergencia con el spec (voto en PREGUNTAS #34):** los ejemplos del spec son SPANS con
+  cierre sobre frases (`[strong]esto cambió todo[/strong]`); el parser v1 aplica la marca a
+  UNA palabra (la siguiente) y un tag de cierre se elimina como marca inválida (texto sale
+  plano, nada rompe). El diseño NO se cambia aquí — decisión e definió el subconjunto v1 y
+  el énfasis de frase entera está en backlog ("frase destacada", §4.2/§9.2).
 
 ---
 
@@ -324,14 +364,31 @@ CLI (caption.py) — "captions simples actuales" significa EXACTAMENTE lo que el
 recibe hoy sin engine. El "fallar hacia lo sobrio" de §6 aplica a presets NUEVOS sin
 `base`, donde no hay comportamiento previo que preservar.
 
+Contrato del spec de K (s30) — "si algo falla, el video nunca debe quedar sin captions;
+debe volver a captions simples": lo cumplen los niveles 3→1. El nivel 0 no lo contradice —
+es la garantía de ESTACIÓN (regla 15.3) para el caso en que el burn entero falle (FFmpeg
+muere), un escalón por debajo del alcance del spec: sin burn no existen captions posibles
+y el usuario conserva el video limpio en vez de un archivo corrupto.
+
 ---
 
 ## 9. Backlog post-v1 (especificado, NO implementar)
 
-### 9.1 Presets 6-12 `[SPEC-K PENDIENTE]`
-El documento de K con los presets 6-12 no llegó (PREGUNTAS #33). Para no inventar en
-falso, quedan como SLOTS con el criterio de viabilidad ya resuelto — al llegar el spec,
-cada preset se clasifica en una de estas 3 vías y hereda su ficha técnica:
+### 9.1 Presets 6-12 (spec de K recibido s30 — clasificados)
+El spec (SPEC_K_CVE.md) nombra los presets 6-12 y su orden de implementación post-v1.
+Cada uno queda clasificado en su vía técnica (criterio de viabilidad resuelto en s29):
+
+| # | Preset (spec K) | Vía | Notas |
+|---|---|---|---|
+| 6 | `storytelling_cinematic` | ASS puro | frases como títulos narrativos: fades + `\move` sobrios |
+| 7 | `premium_flat` | ASS puro | texto plano elegante, transiciones suaves |
+| 8 | `meme_impact` | ASS puro + video_fx | texto grande directo; zoom = punch-in del reframe (declarado en `video_fx`); "cortes agresivos" son del clipper/editor, no del CVE |
+| 9 | `educational_clear` | ASS puro + overlays PNG | keywords resaltadas (ya existe) + números/listas/etiquetas como cajas ASS u overlays de biblioteca |
+| 10 | `glitch_cyber` | compositing | scanlines y glitch real exigen pase FFmpeg extra o Motor B; chromatic aberration tiene aprox ASS (2 capas desfasadas) |
+| 11 | `hook_takeover` | ASS puro | frase gigante en los primeros 1-2s; cumple el requisito del spec "el primer segundo debe permitir un hook visual fuerte" |
+| 12 | `commentary_reactor` | overlays PNG + ASS | arrows/callouts/etiquetas de la biblioteca + frases fuertes |
+
+Ficha técnica de las 3 vías:
 - **Vía ASS puro** (pop, karaoke, swipe con `\move`, cajas `\bord`+BorderStyle=3,
   subrayado (caja fina bajo la palabra vía evento extra), shake acotado (`\t` con offsets
   pequeños alternados), glow aprox (§3.1), chromatic aberration aprox (2 capas desfasadas
@@ -349,8 +406,11 @@ cada preset se clasifica en una de estas 3 vías y hereda su ficha técnica:
   puede exigir compositing).
 - Detección semántica dedicada (llamada LLM propia con rúbrica de "palabra viral") —
   hoy el brain existente ya aporta la señal semántica sin costo nuevo.
-- Sintaxis completa de marcado de K + UI de marcado en el Editor del Studio.
-- "Frase destacada" (hook de clips.json como grupo-énfasis, ver §4.2).
+- Sintaxis completa de marcado de K (`[shake]`, `[image:id]`, `[glitch]`, spans por frase
+  — ver §7 y PREGUNTAS #34) + UI de marcado en el Editor del Studio.
+- "Frase destacada" (hook de clips.json como grupo-énfasis, ver §4.2). El spec de K (s30)
+  la confirma como requisito del sistema completo: frases hook, frases emocionales,
+  momentos de giro y títulos visuales son detección a nivel FRASE, no palabra.
 - `face_y` en CSV del reframe → avoid_faces con precisión vertical (§5.2).
 - Popups con animación de entrada (slide/bounce del PNG — filtros FFmpeg overlay+eq).
 
@@ -388,4 +448,4 @@ registra lo que realmente quedó implementado (esa es la fuente de verdad del es
 | Demos 3 presets sobre clip videolargo + 32 tests de contrato (241 total) | IMPLEMENTADO s29 (evidencia: revision/fase-6/s29_demo/) |
 | avoid_faces: señal `hay_cara_en_rango` (CSV) | IMPLEMENTADO s29 la señal + tests; SIN CONSUMIDOR aún (los 3 presets usan position=bottom) — se cablea al render en S32 junto con `[center]` |
 | karaoke_highlight, image_popups, Studio, cve_presets.json loader completo | SESIONES SONNET (S30-S33) |
-| Presets 6-12, high_energy/experimental, compositing | BACKLOG `[SPEC-K PENDIENTE]` |
+| Presets 6-12 (spec s30, clasificados en §9.1), high_energy/experimental, compositing | BACKLOG post-v1 |
