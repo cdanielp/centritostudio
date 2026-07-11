@@ -116,6 +116,15 @@ def generar_reporte_md(name: str, clips_info: list[dict], meta: dict) -> str:
             f"- Razon IA: {c.get('razon', '')}",
             f"- Emojis: {c.get('emojis_msg', 'sin overlays')}",
         ]
+        qa = c.get("qa")
+        if qa:
+            detalle = (
+                f"; detalle en transcripts/{qa['alerts_file']}" if qa.get("alerts_file") else ""
+            )
+            lineas.append(
+                f"- Caption QA: {qa['n_alertas']} alerta(s) de transcripcion "
+                f"({qa['aplicadas']} aplicadas, {qa['pendientes']} pendientes de revision{detalle})"
+            )
         avisos = c.get("avisos", [])
         if avisos:
             lineas.append("- Calidad por tramos:")
@@ -282,6 +291,14 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
 
     core.burn_video_with_emojis(clip_9x16, ass_path, final_path, overlays, style_cfg)
 
+    # Caption QA solo-lectura para el REPORTE (regla 15: no altera el render)
+    try:
+        import caption_qa  # noqa: PLC0415
+
+        info_qa = caption_qa.qa_para_reporte(stem_9x16)  # fail-open interno
+    except ImportError:
+        info_qa = None
+
     return {
         "archivo": final_path.name,
         "titulo": clip.get("titulo", ""),
@@ -289,6 +306,7 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
         "score": clip.get("score"),
         "dur_s": clip.get("dur_s", 0),
         "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
+        "qa": info_qa,
         "emojis_msg": (
             f"{len(overlays)} overlay(s)"
             if overlays

@@ -38,6 +38,33 @@ def _load_or_transcribe(
     return transcript
 
 
+def _aplicar_caption_qa(transcript: dict, stem: str, qa_opts: dict) -> dict:
+    """Capa Caption QA fail-open: si el QA falla, el render sale con la original."""
+    try:
+        import caption_qa  # noqa: PLC0415
+
+        words, resumen = caption_qa.ejecutar_qa(
+            transcript["words"],
+            stem,
+            modo=qa_opts.get("modo", "alertas"),
+            guion_path=qa_opts.get("guion"),
+            glosario_path=qa_opts.get("glosario"),
+            usar_llm=qa_opts.get("llm", False),
+        )
+        destino = f" -> {resumen['alerts_file']}" if resumen.get("alerts_file") else ""
+        print(
+            f"[caption-qa] {resumen['n_alertas']} alerta(s) | {resumen['aplicadas']} "
+            f"aplicadas | {resumen['pendientes']} pendientes{destino}"
+        )
+        return {**transcript, "words": words}
+    except Exception as exc:
+        print(
+            f"[caption-qa] AVISO: QA fallo ({type(exc).__name__}) "
+            "- render sale con transcripcion original"
+        )
+        return transcript
+
+
 def _resolver_plan_preset(preset: str | None, intensidad: str | None, densidad: str | None):
     """RenderPlan del engine CVE o None. Fallo del engine -> None (captions simples)."""
     if not preset:
@@ -67,6 +94,7 @@ def process_video(
     preset: str | None = None,
     intensidad: str | None = None,
     densidad: str | None = None,
+    qa_opts: dict | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -92,6 +120,9 @@ def process_video(
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
+
+    if qa_opts:
+        transcript = _aplicar_caption_qa(transcript, stem, qa_opts)
 
     groups = core.group_words(transcript["words"], max_words=max_words)
     print(f"[grupos] {len(groups)} bloques de subtitulo")
@@ -266,11 +297,45 @@ def main() -> None:
         default=False,
         help="Popups de imagen: assets/biblioteca/ por keyword + transcripts/{stem}_popups.json",
     )
+    parser.add_argument(
+        "--caption-qa",
+        action="store_true",
+        default=False,
+        help="QA de transcripcion: detecta palabras mal transcritas (glosario/guion)",
+    )
+    parser.add_argument(
+        "--caption-qa-mode",
+        choices=["alertas", "auto_seguro"],
+        default="alertas",
+        help="alertas = solo reporta; auto_seguro = aplica solo confianza alta",
+    )
+    parser.add_argument(
+        "--guion",
+        default=None,
+        metavar="PATH",
+        help="Guion opcional (texto/resumen/temario); default: transcripts/{stem}_guion.txt",
+    )
+    parser.add_argument(
+        "--glosario",
+        default=None,
+        metavar="PATH",
+        help="Glosario alterno para el QA (default: assets/glosario.json)",
+    )
+    parser.add_argument(
+        "--caption-qa-llm",
+        action="store_true",
+        default=False,
+        help="Auditor DeepSeek de alertas dudosas (opt-in, fail-open)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     input_path = Path(args.input)
     rebote = None if args.rebote is None else (args.rebote == "on")
+    qa_opts = None
+    if args.caption_qa:
+        qa_opts = {"modo": args.caption_qa_mode, "guion": args.guion}
+        qa_opts |= {"glosario": args.glosario, "llm": args.caption_qa_llm}
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
@@ -302,6 +367,7 @@ def main() -> None:
                 preset=args.preset,
                 intensidad=args.intensidad,
                 densidad=args.densidad,
+                qa_opts=qa_opts,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -321,6 +387,7 @@ def main() -> None:
             preset=args.preset,
             intensidad=args.intensidad,
             densidad=args.densidad,
+            qa_opts=qa_opts,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")
