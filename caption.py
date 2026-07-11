@@ -38,14 +38,14 @@ def _load_or_transcribe(
     return transcript
 
 
-def _resolver_plan_preset(preset: str | None, intensidad: str | None):
+def _resolver_plan_preset(preset: str | None, intensidad: str | None, densidad: str | None):
     """RenderPlan del engine CVE o None. Fallo del engine -> None (captions simples)."""
     if not preset:
         return None
     try:
         import cve  # noqa: PLC0415
 
-        plan, _aviso = cve.resolver_preset_seguro(preset, intensidad)
+        plan, _aviso = cve.resolver_preset_seguro(preset, intensidad, densidad)
         return plan
     except Exception as e:  # cubre hasta un import cve roto
         print(f"[cve] preset no resuelto ({e}) - se usa el estilo clasico")
@@ -65,6 +65,7 @@ def process_video(
     rebote: bool | None = None,
     preset: str | None = None,
     intensidad: str | None = None,
+    densidad: str | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,14 +74,14 @@ def process_video(
     model_path, label = core.resolve_model(model_arg)
     print(f"[model] {label} | {device} | {compute}")
 
-    plan = _resolver_plan_preset(preset, intensidad)
+    plan = _resolver_plan_preset(preset, intensidad, densidad)
     style_cfg = plan.style_cfg if plan else get_style(style, pop, rebote)
     stem = out_stem or video_path.stem
     # pop, rebote, preset e intensidad entran en el nombre para que las variantes no se pisen.
     if plan:
         import cve  # noqa: PLC0415
 
-        variante = cve.tag_variante(plan.preset, intensidad)
+        variante = cve.tag_variante(plan.preset, intensidad, densidad)
     else:
         pop_tag = f"_{pop}" if pop else ""
         reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
@@ -123,6 +124,11 @@ def process_video(
         core.burn_video_with_emojis(video_path, ass_path, out_path, overlays, style_cfg)
     else:
         core.burn_video(video_path, ass_path, out_path)
+
+    if plan:
+        import cve  # noqa: PLC0415
+
+        cve.escribir_sidecar_seleccion(groups, plan, out_path)
 
     total = time.time() - t0
     print(f"[ok] {video_path.name} -> {out_path.name} en {total:.1f}s\n")
@@ -213,6 +219,12 @@ def main() -> None:
         default=None,
         help="Intensidad del preset (default: la propia del preset)",
     )
+    parser.add_argument(
+        "--densidad",
+        choices=["baja", "media", "alta"],
+        default=None,
+        help="Densidad de keywords automaticas del preset (doble freno D21; default: del preset)",
+    )
     parser.add_argument("--lang", default="es")
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
@@ -270,6 +282,7 @@ def main() -> None:
                 rebote=rebote,
                 preset=args.preset,
                 intensidad=args.intensidad,
+                densidad=args.densidad,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -287,6 +300,7 @@ def main() -> None:
             rebote=rebote,
             preset=args.preset,
             intensidad=args.intensidad,
+            densidad=args.densidad,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

@@ -57,10 +57,23 @@ def test_preset_desconocido_error_accionable():
 
 
 def test_intensidad_invalida_cae_a_la_del_preset():
-    # keyword_punch default = viral (glow on, punch 145)
+    # keyword_punch default calibrado (D21) = clean (130, sin glow, densidad baja)
     plan = cve.resolve_preset("keyword_punch", "explosiva")
-    assert plan.kw_glow is True
-    assert plan.kw_punch_scale == 145
+    assert plan.kw_glow is False
+    assert plan.kw_punch_scale == 130
+    assert plan.kw_densidad == "baja"
+
+
+def test_keyword_punch_calibrado_d21():
+    # Default sobrio: 130 + densidad baja; 145+glow sigue disponible como opcion fuerte
+    plan = cve.resolve_preset("keyword_punch")
+    assert plan.kw_punch_scale == 130 and plan.kw_glow is False
+    assert plan.kw_densidad == "baja"
+    fuerte = cve.resolve_preset("keyword_punch", "viral", "alta")
+    assert fuerte.kw_punch_scale == 145 and fuerte.kw_glow is True
+    assert fuerte.kw_densidad == "alta"
+    # densidad invalida cae a la del preset (fail-safe por campo)
+    assert cve.resolve_preset("keyword_punch", None, "turbo").kw_densidad == "baja"
 
 
 def test_matriz_intensidades():
@@ -179,7 +192,7 @@ def test_info_presets_contrato():
     assert infos["viral_bounce"]["usa_brain"] is True
     assert infos["clean_podcast"]["usa_brain"] is False
     assert infos["karaoke_highlight"]["usa_keywords"] is False
-    assert infos["keyword_punch"]["intensidad_default"] == "viral"
+    assert infos["keyword_punch"]["intensidad_default"] == "clean"  # calibracion D21
 
 
 def test_api_presets_shape():
@@ -212,6 +225,7 @@ def test_aplicar_preset_sin_brain_avisa_pero_rinde(tmp_path):
 def test_tag_variante_consistente_cli_studio():
     assert cve.tag_variante("karaoke_highlight", None) == "_karaoke_highlight"
     assert cve.tag_variante("keyword_punch", "viral") == "_keyword_punch_viral"
+    assert cve.tag_variante("keyword_punch", "clean", "media") == "_keyword_punch_clean_media"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -280,6 +294,71 @@ def test_merge_un_keyword_por_grupo_y_densidad():
     # densidad: 10 grupos todos con candidato -> max 4 (40%)
     muchos = [_grupo(["gana", f"{i}00", "pesos"], i) for i in range(10)]
     assert len(ck.elegir_keywords(ck.detectar_candidatos(muchos), 10)) <= 4
+
+
+def test_densidad_doble_freno_clip_corto_manda_pct():
+    # 10 grupos, todos con candidato: baja = min(5, 15% de 10 = 1) -> manda el %
+    grupos = [_grupo(["gana", f"{i}00", "pesos"], i) for i in range(10)]
+    cands = ck.detectar_candidatos(grupos)
+    assert len(ck.elegir_keywords(cands, 10, "baja")) == 1
+    assert len(ck.elegir_keywords(cands, 10, "media")) == 2  # min(10, 20% de 10)
+    assert len(ck.elegir_keywords(cands, 10, "alta")) == 3  # min(15, 30% de 10)
+
+
+def test_densidad_doble_freno_clip_largo_manda_tope():
+    # 100 grupos con candidato: baja = min(5, 15) -> manda el tope absoluto
+    assert ck.max_keywords_auto(100, "baja") == 5
+    assert ck.max_keywords_auto(100, "media") == 10
+    assert ck.max_keywords_auto(100, "alta") == 15
+    # sin densidad: ruta historica 40% intacta
+    assert ck.max_keywords_auto(100, None) == 40
+
+
+def test_manual_exenta_del_freno_de_densidad():
+    # 10 grupos: 8 candidatos auto + 3 manuales -> baja deja 1 auto y TODAS las manuales
+    cands = [(i, 0, ck.SCORE_R1_NUMEROS, "R1") for i in range(8)]
+    cands += [(i, 1, ck.SCORE_MANUAL, "manual") for i in (7, 8, 9)]
+    elegidos = ck.elegir_keywords(cands, 10, "baja")
+    manuales = [g for g, v in elegidos.items() if v[2] == "manual"]
+    autos = [g for g, v in elegidos.items() if v[2] == "R1"]
+    assert sorted(manuales) == [7, 8, 9]  # voto #34: saturar es decision del usuario
+    assert len(autos) == 1
+
+
+def test_manual_exenta_tambien_en_ruta_historica():
+    # D21: la exencion manual cubre TODAS las rutas, incluida densidad=None (40%).
+    # 5 grupos: cap 40% = 2 autos; las 3 manuales sobreviven completas ademas.
+    cands = [(i, 0, ck.SCORE_R1_NUMEROS, "R1") for i in range(5)]
+    cands += [(i, 1, ck.SCORE_MANUAL, "manual") for i in (0, 1, 2)]
+    elegidos = ck.elegir_keywords(cands, 5, None)
+    manuales = [g for g, v in elegidos.items() if v[2] == "manual"]
+    autos = [g for g, v in elegidos.items() if v[2] == "R1"]
+    assert sorted(manuales) == [0, 1, 2]
+    assert len(autos) == 2  # max(int(5*0.40),1) = 2, solo automaticas
+
+
+def test_sidecar_seleccion_construir_y_escribir(tmp_path):
+    # D21: el sidecar registra palabra, timestamp, grupo/frase, regla, fuente, preset, densidad
+    grupos = [_grupo(["gana", "500", "pesos"]), _grupo(["texto", "normal", "sigue"], 1)]
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine(grupos, plan, 1080, 1920)
+    data = cve.construir_seleccion(out, plan)
+    assert data["preset"] == "keyword_punch" and data["densidad"] == "baja"
+    assert len(data["keywords"]) == 1
+    kw = data["keywords"][0]
+    assert kw["palabra"] == "pesos" and kw["regla"] == "R2" and kw["fuente"] == "regla"
+    assert kw["grupo"] == 0 and "pesos" in kw["frase"] and kw["timestamp"] is not None
+
+    video = tmp_path / "demo_keyword_punch.mp4"
+    sidecar = cve.escribir_sidecar_seleccion(out, plan, video)
+    assert sidecar is not None and sidecar.name == "demo_keyword_punch.keyword_selection.json"
+    assert sidecar.exists()
+
+
+def test_sidecar_no_aplica_con_keywords_off(tmp_path):
+    plan = cve.resolve_preset("clean_podcast")
+    assert cve.escribir_sidecar_seleccion([], plan, tmp_path / "x.mp4") is None
+    assert cve.escribir_sidecar_seleccion([], None, tmp_path / "x.mp4") is None
 
 
 def test_brain_gana_a_reglas_en_el_mismo_grupo():
@@ -480,7 +559,8 @@ def test_csv_con_conf_da_senal(tmp_path):
 
 
 def test_keyword_punch_e2e_marca_y_escala():
-    # 5 grupos con 2 candidatos: densidad 40% permite exactamente 2 keywords
+    # 5 grupos con 2 candidatos, densidad baja (D21): min(5, 15% de 5)=1 -> gana el
+    # de mayor score (pesos R2=95); nunca (R5=85) cae por el freno de seleccion.
     grupos = [
         _grupo(["gana", "500", "pesos"], 0),
         _grupo(["nunca", "pares", "aqui"], 1),
@@ -491,8 +571,7 @@ def test_keyword_punch_e2e_marca_y_escala():
     plan = cve.resolve_preset("keyword_punch", "viral")
     out = cve.aplicar_engine(grupos, plan, 1080, 1920)
     kw0 = [w for w in out[0]["words"] if w.get("is_keyword")]
-    kw1 = [w for w in out[1]["words"] if w.get("is_keyword")]
     assert kw0 and kw0[0]["text"] == "pesos" and kw0[0].get("punch_scale", 0) > 122
-    assert kw1 and kw1[0]["text"] == "nunca"
+    assert not any(w.get("is_keyword") for w in out[1]["words"])  # freno densidad baja
     assert not any(w.get("is_keyword") for w in out[2]["words"])
     assert grupos[0]["words"][1].get("is_keyword") is None  # originales no mutados

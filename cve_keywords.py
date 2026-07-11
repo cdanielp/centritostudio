@@ -23,7 +23,18 @@ SCORE_R5_NEGACION = 85
 SCORE_R6_CONTRASTE = 80
 SCORE_R7_REPETIDA = 60
 
-DENSIDAD_MAX = 0.40  # fraccion maxima de grupos con keyword (anti-spam)
+DENSIDAD_MAX = 0.40  # fraccion maxima de grupos con keyword (anti-spam, ruta historica)
+
+# Densidades calibradas (D21, s31): DOBLE FRENO tope absoluto Y porcentaje.
+# En clips cortos manda el %, en largos el tope absoluto — es intencional, no
+# simplificar a solo %. baja usa el techo del rango 10-15% votado (el tope
+# absoluto ya frena los clips largos). Default de keyword_punch: "baja".
+DENSIDADES: dict[str, tuple[int, float]] = {
+    "baja": (5, 0.15),
+    "media": (10, 0.20),
+    "alta": (15, 0.30),
+}
+DENSIDAD_DEFAULT = "baja"
 REPETIDA_MIN_APARICIONES = 3
 REPETIDA_MAX_MARCAS = 2  # solo las primeras N apariciones de una repetida
 LARGO_MIN_CONTENIDO = 4  # chars minimos para que una palabra sea "de contenido"
@@ -179,12 +190,24 @@ def candidatos_brain(groups: list[dict], brain_data: dict | None) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def max_keywords_auto(n_groups: int, densidad: str | None) -> int:
+    """Doble freno de D21: min(tope absoluto, porcentaje). None = ruta historica (40%)."""
+    if densidad in DENSIDADES:
+        tope, pct = DENSIDADES[densidad]
+        return min(tope, max(int(n_groups * pct), 1))
+    return max(int(n_groups * DENSIDAD_MAX), 1)
+
+
 def elegir_keywords(
-    candidatos: list[tuple[int, int, int, str]], n_groups: int
+    candidatos: list[tuple[int, int, int, str]],
+    n_groups: int,
+    densidad: str | None = None,
 ) -> dict[int, tuple[int, int, str]]:
-    """Merge final: 1 keyword por grupo (score mayor; empate no reordena), densidad <=40%.
+    """Merge final: 1 keyword por grupo (score mayor; empate no reordena) + freno densidad.
 
     Devuelve {g_idx: (w_idx, score, regla)}. Anti-spam R7: no 2 grupos consecutivos por R7.
+    El freno de densidad (D21) recorta solo las AUTOMATICAS (peor score primero); las
+    marcas manuales quedan exentas (voto #34: saturar es decision del usuario).
     """
     por_grupo: dict[int, tuple[int, int, str]] = {}
     for g_idx, w_idx, score, regla in sorted(candidatos, key=lambda c: -c[2]):
@@ -198,10 +221,12 @@ def elegir_keywords(
             peor = g_idx if por_grupo[g_idx][1] <= por_grupo[vecino][1] else vecino
             por_grupo.pop(peor)
 
-    max_kw = max(int(n_groups * DENSIDAD_MAX), 1)
-    if len(por_grupo) > max_kw:
-        mejores = sorted(por_grupo.items(), key=lambda kv: -kv[1][1])[:max_kw]
-        por_grupo = dict(mejores)
+    max_kw = max_keywords_auto(n_groups, densidad)
+    autos = {g: v for g, v in por_grupo.items() if v[1] < SCORE_MANUAL}
+    if len(autos) > max_kw:
+        sobran = sorted(autos.items(), key=lambda kv: -kv[1][1])[max_kw:]
+        for g_idx, _v in sobran:
+            por_grupo.pop(g_idx)
     return por_grupo
 
 

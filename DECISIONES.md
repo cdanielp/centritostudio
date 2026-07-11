@@ -360,3 +360,46 @@ claro. Con el loop nucleo ya funcional y F5-s2 (motor) entregado, el avance pasa
   fuerte y el flag --rebote se conservan como opciones (regla #15). Motor (core_ass) NO
   tocado: el cierre es solo config de estilos (overshoot=True) + 2 tests actualizados.
   D20 queda cerrada; F5-s2 sin pendientes de sabor (solo M2/M3 para la marca real).
+
+## D21: Veredictos de K sobre los 4 presets del CVE + calibracion keyword_punch (s31)
+
+Sobre los demos de s29/s30 (`output/videolargo_clip1_largo_9x16_{clean_podcast,viral_bounce,keyword_punch,karaoke_highlight}.mp4`):
+
+1. **clean_podcast — APROBADO** como estilo serio.
+2. **viral_bounce — APROBADO como base/default DEL MOTOR CVE para short-form.**
+   Alcance exacto: es el punto de partida cuando se usa el CVE. **NO es el default
+   universal de Centrito** — el default universal de captions sigue siendo D20
+   (hormozi suave 1.08 + rebote). No se toca codigo por este veredicto: el CLI y el
+   Studio siguen sin preseleccionar preset; cuando la receta del Modo Automatico
+   nombre presets (PREGUNTAS #29.1), viral_bounce sera el candidato para short-form.
+3. **karaoke_highlight — APROBADO tal cual.**
+4. **keyword_punch — OPT-IN de nicho, NUNCA default.** Diagnostico de K: repetido !=
+   importante; el problema es SELECCION + AMPLIFICACION, no solo intensidad.
+
+### Calibracion de keyword_punch (firmada, implementada s31)
+
+- **Densidades con DOBLE FRENO (tope absoluto Y porcentaje):**
+  `baja = min(5, 15%)` · `media = min(10, 20%)` · `alta = min(15, 30%)`.
+  En clips cortos manda el %, en largos el tope absoluto — el doble freno es
+  INTENCIONAL: no simplificarlo a solo porcentaje. (baja usa el techo del rango
+  10-15% votado; el tope absoluto ya frena los clips largos.)
+- **Default = densidad baja.** Las marcas MANUALES estan exentas del freno
+  (consistente con voto #34: saturar es decision del usuario). La exencion aplica
+  a TODAS las rutas, incluida la historica densidad=None (40%): antes el cap
+  contaba manuales+autos juntas; desde s31 las manuales jamas caen por densidad
+  (cambio intencional, fijado por test). El freno recorta las automaticas de
+  peor score primero — con ello R7 (repetidas, score 60) es lo primero que cae,
+  atacando el "repetido != importante".
+- **Intensidad default = 130** (intensidad `clean`; sin glow, matriz §6.1);
+  **145 + glow queda como opcion fuerte** via `--intensidad viral` (regla #15:
+  nada se elimina). CLI gana `--densidad baja|media|alta`.
+
+### Transparencia OBLIGATORIA: sidecar keyword_selection.json (s31)
+
+Todo render con seleccion automatica de keywords (modos `brain` / `auto+brain`)
+escribe `{render}.keyword_selection.json` junto al MP4 con: palabra, timestamp,
+grupo y frase, regla que la eligio (R1-R7 | brain | manual), fuente
+(regla | brain | manual), preset y densidad usados. Aplica a CLI y Studio
+(fuente unica `cve.escribir_sidecar_seleccion`, fail-open: su fallo jamas tumba
+el render). Mostrarlo en el Studio es opcional/no bloqueante; el sidecar SI es
+obligatorio.

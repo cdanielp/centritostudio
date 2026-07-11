@@ -110,6 +110,17 @@ revision/           Evidencia de validacion por fase (.jpg, .csv, .md)
 > **Cambios por rama + pull request, nunca directo a main.**
 > `check.bat` debe estar verde antes de todo PR.
 
+### Notas para agentes y colaboradores en Windows
+
+- **Hooks de Claude Code:** invocar los `.bat` DIRECTO (`hooks/autoformat.bat`),
+  nunca via `cmd /c`. La capa POSIX (Git Bash/MSYS) convierte `/c` en `C:\` y deja
+  un cmd INTERACTIVO ejecutando el stdin del hook — es la causa raiz del gremlin
+  de archivos 0-byte (ver PREGUNTAS #30).
+- **Smokes de UI con navegador:** cada smoke lanza su PROPIA instancia (headless,
+  con `--user-data-dir` temporal propio) y al terminar mata SOLO su PID. Prohibido
+  matar el navegador por nombre de proceso (`taskkill /im msedge.exe`): tumba la
+  sesion real del usuario.
+
 ```powershell
 git checkout -b mi-feature
 # ... trabajar ...

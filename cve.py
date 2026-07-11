@@ -15,6 +15,9 @@ from pathlib import Path
 
 import cve_keywords as ck
 from core_ass import _scaled_fontsize  # fuente unica de la formula de fontsize (D14)
+
+# Sidecar de transparencia (D21) — re-export: CLI, Studio y tests lo usan via cve.*
+from cve_sidecar import construir_seleccion, escribir_sidecar_seleccion  # noqa: F401
 from styles import POP_LEVELS, StyleConfig, get_style
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +53,7 @@ class RenderPlan:
     avoid_faces: bool
     position: str  # "bottom" | "center" | "top" (efecto render: S32)
     video_fx: dict  # declarativo: recomendacion para reframe, no se ejecuta aqui
+    kw_densidad: str | None = None  # freno de densidad D21 (baja|media|alta); None = 40%
 
 
 # Presets built-in v1 (§1). style = nombre de estilo existente; el resto son modos.
@@ -74,9 +78,12 @@ _PRESETS: dict[str, dict] = {
     },
     "keyword_punch": {
         "style": "hormozi",
-        "intensidad": "viral",
+        # Calibracion D21 (veredicto K s31): default sobrio 130 ("clean"); 145+glow
+        # queda como opcion fuerte via --intensidad viral. Seleccion con doble freno.
+        "intensidad": "clean",
+        "densidad": ck.DENSIDAD_DEFAULT,
         "keywords": "auto+brain",  # reglas R1-R7 + enriquecimiento brain (§4)
-        "glow": True,  # glow aprox sobre el keyword (viral; clean lo apaga)
+        "glow": True,  # glow aprox sobre el keyword (solo enciende en viral, §6.1)
         "overlays": "off",
         "position": "bottom",
         "video_fx": {"punch_in": True},  # recomendacion; deuda #20 la vota K
@@ -120,7 +127,7 @@ def info_presets() -> list[dict]:
     return result
 
 
-def _plan_desde_dict(nombre: str, p: dict, intensidad: str) -> RenderPlan:
+def _plan_desde_dict(nombre: str, p: dict, intensidad: str, densidad: str | None) -> RenderPlan:
     """Construye el RenderPlan aplicando la matriz de intensidades (§6.1)."""
     glow = bool(p.get("glow", False)) and intensidad == "viral"
     style_cfg = get_style(p.get("style", "hormozi"))
@@ -143,13 +150,16 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str) -> RenderPlan:
         avoid_faces=bool(p.get("avoid_faces", True)),
         position=str(p.get("position", "bottom")),
         video_fx=dict(p.get("video_fx", {})),
+        kw_densidad=densidad,
     )
 
 
-def resolve_preset(nombre: str, intensidad: str | None = None) -> RenderPlan:
+def resolve_preset(
+    nombre: str, intensidad: str | None = None, densidad: str | None = None
+) -> RenderPlan:
     """Resuelve un preset built-in a RenderPlan. Nombre desconocido -> error accionable.
 
-    `intensidad` invalida o None -> la default del preset (fail-safe por campo).
+    `intensidad`/`densidad` invalidas o None -> la default del preset (fail-safe por campo).
     """
     key = (nombre or "").lower().strip()
     if key not in _PRESETS:
@@ -157,10 +167,11 @@ def resolve_preset(nombre: str, intensidad: str | None = None) -> RenderPlan:
         raise ValueError(f"Preset '{nombre}' no disponible. Opciones: {disponibles}")
     p = _PRESETS[key]
     inten = intensidad if intensidad in INTENSIDADES else p.get("intensidad", "clean")
-    return _plan_desde_dict(key, p, inten)
+    dens = densidad if densidad in ck.DENSIDADES else p.get("densidad")
+    return _plan_desde_dict(key, p, inten, dens)
 
 
-def resolver_preset_seguro(preset: str | None, intensidad: str | None):
+def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad: str | None = None):
     """(plan, aviso) fail-safe: preset invalido o engine roto -> (None, aviso accionable).
 
     Fuente unica para CLI y Studio (regla #10): el llamador cae a captions clasicos.
@@ -168,7 +179,7 @@ def resolver_preset_seguro(preset: str | None, intensidad: str | None):
     if not preset:
         return None, None
     try:
-        return resolve_preset(preset, intensidad), None
+        return resolve_preset(preset, intensidad, densidad), None
     except Exception as exc:
         aviso = f"Preset no resuelto ({exc}) - render con estilo clasico"
         print(f"[cve] {aviso}")
@@ -202,10 +213,11 @@ def aplicar_preset(
     return groups, plan, aviso
 
 
-def tag_variante(preset: str, intensidad: str | None) -> str:
+def tag_variante(preset: str, intensidad: str | None, densidad: str | None = None) -> str:
     """Sufijo de salida de una variante de preset — identico en CLI y Studio."""
     inten_tag = f"_{intensidad}" if intensidad else ""
-    return f"_{preset}{inten_tag}"
+    dens_tag = f"_{densidad}" if densidad else ""
+    return f"_{preset}{inten_tag}{dens_tag}"
 
 
 def _timing_por_palabra_completo(groups: list[dict]) -> bool:
@@ -311,6 +323,7 @@ def _marcar_grupo(g: dict, w_idx: int, regla: str, escala: int | None) -> dict:
     if w_idx >= len(words):
         return g
     words[w_idx]["is_keyword"] = True
+    words[w_idx]["kw_regla"] = regla  # trazabilidad para el sidecar (D21)
     if escala is not None and escala > ck.KW_SCALE_BASE:
         words[w_idx]["punch_scale"] = escala
     return {**g, "words": words}
@@ -341,7 +354,7 @@ def aplicar_engine(
             candidatos += ck.candidatos_brain(limpios, brain_data)
         if plan.keywords_mode == "auto+brain":
             candidatos += ck.detectar_candidatos(limpios)
-        elegidos = ck.elegir_keywords(candidatos, len(limpios))
+        elegidos = ck.elegir_keywords(candidatos, len(limpios), plan.kw_densidad)
         if not elegidos:
             return limpios
 

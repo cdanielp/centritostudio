@@ -274,6 +274,32 @@ def _apply_emphasis(groups: list[dict], name: str) -> tuple[list[dict], str]:
     return enriched, f"Enfasis aplicado: {n_kw} keywords"
 
 
+def _rutas_render(
+    name: str,
+    plan,
+    style: str,
+    pop: str | None,
+    intensidad: str | None,
+    use_emphasis: bool,
+    use_emojis: bool,
+) -> tuple[Path, Path]:
+    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes)."""
+    if plan:
+        import cve  # noqa: PLC0415
+
+        # Sin densidad: el Studio aun no la expone; al exponerla, pasarla aqui
+        # (cve.tag_variante ya la acepta) para que variantes no se pisen.
+        base_tag = cve.tag_variante(plan.preset, intensidad)
+    else:
+        base_tag = f"_{style}" + (f"_{pop}" if pop else "")
+    suffix = base_tag
+    if use_emphasis and not plan:
+        suffix += "_enfasis"
+    if use_emojis:
+        suffix += "_emojis"
+    return OUTPUT_DIR / f"{name}{base_tag}.ass", OUTPUT_DIR / f"{name}{suffix}.mp4"
+
+
 def run_render(
     jid: str,
     mp4: Path,
@@ -325,18 +351,9 @@ def run_render(
             preset_msg = preset_msg or aviso_brain
 
         style_cfg = plan.style_cfg if plan else get_style(style, pop)
-        # Preset/pop/intensidad entran en el nombre para no pisar variantes distintas.
-        if plan:
-            base_tag = cve.tag_variante(plan.preset, intensidad)
-        else:
-            base_tag = f"_{style}" + (f"_{pop}" if pop else "")
-        suffix = base_tag
-        if use_emphasis and not plan:
-            suffix += "_enfasis"
-        if use_emojis:
-            suffix += "_emojis"
-        ass_path = OUTPUT_DIR / f"{name}{base_tag}.ass"
-        out_path = OUTPUT_DIR / f"{name}{suffix}.mp4"
+        ass_path, out_path = _rutas_render(
+            name, plan, style, pop, intensidad, use_emphasis, use_emojis
+        )
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")
         core.build_ass(groups, w, h, style_cfg, ass_path)
@@ -360,6 +377,10 @@ def run_render(
             update_job(jid, progress=50, message="Quemando con FFmpeg...")
             elapsed = core.burn_video(mp4, ass_path, out_path)
             emojis_result = None
+
+        if plan:
+            # cve importado al resolver el plan; sidecar obligatorio con keywords auto (D21)
+            cve.escribir_sidecar_seleccion(groups, plan, out_path)
 
         emphasis_result = enfasis_msg if (use_emphasis and not plan) else None
         update_job(
