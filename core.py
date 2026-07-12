@@ -93,8 +93,18 @@ def _probe_volume(video_path: Path) -> float:
     return -99.0
 
 
+def _parse_fps(r_frame_rate: str | None) -> float:
+    """Convierte 'num/den' (r_frame_rate de ffprobe) a float; 30.0 si no se puede."""
+    try:
+        num, den = r_frame_rate.split("/")
+        f = float(num) / float(den)
+        return f if f > 0 else 30.0
+    except (ValueError, AttributeError, ZeroDivisionError):
+        return 30.0
+
+
 def get_video_info(video_path: Path) -> dict:
-    """Devuelve width, height, duration, mean_volume, has_audio."""
+    """Devuelve width, height, duration, fps, mean_volume, has_audio."""
     probe = subprocess.run(
         [
             "ffprobe",
@@ -114,6 +124,7 @@ def get_video_info(video_path: Path) -> dict:
         "width": 0,
         "height": 0,
         "duration": 0.0,
+        "fps": 30.0,
         "mean_volume": -99.0,
         "has_audio": False,
     }
@@ -121,6 +132,7 @@ def get_video_info(video_path: Path) -> dict:
         if s.get("codec_type") == "video":
             info["width"] = int(s["width"])
             info["height"] = int(s["height"])
+            info["fps"] = _parse_fps(s.get("r_frame_rate"))
         elif s.get("codec_type") == "audio":
             info["has_audio"] = True
     info["duration"] = float(data.get("format", {}).get("duration", 0))

@@ -158,12 +158,15 @@ def construir_comando(
     video_w: int,
     video_h: int,
     popups: list[Popup] | None = None,
+    fx_prefilter: str | None = None,
 ) -> list[str]:
-    """Comando FFmpeg completo: ass + emojis (cadena historica) + popups opcionales.
+    """Comando FFmpeg completo: FX + ass + emojis (cadena historica) + popups opcionales.
 
-    Sin popups el comando es BYTE-IDENTICO al historico de burn_video_with_emojis
+    Sin popups NI fx el comando es BYTE-IDENTICO al historico de burn_video_with_emojis
     (test de contrato lo fija). behind_text: esos popups se componen ANTES del
-    filtro ass, asi los captions quedan encima.
+    filtro ass, asi los captions quedan encima. fx_prefilter (S36-FX): cadena de video
+    `[0:v]...[vfx]` que va ANTES del ass (punch/flash/scanner sin deformar captions);
+    si se da, la base pasa a `vfx`. El logo/outro entra como popup (overlay PNG real).
     """
     prep = [_preparar_popup(p, video_w, video_h, emoji_y_px) for p in (popups or [])]
     activos = [p for p in prep if p]
@@ -179,6 +182,9 @@ def construir_comando(
     fc: list[str] = []
     idx0 = 1 + len(emoji_overlays)  # primer input de popups
     base = "0:v"
+    if fx_prefilter:
+        fc.append(fx_prefilter)  # [0:v] FX [vfx]  — el FX no anade inputs
+        base = "vfx"
     for i, p in enumerate(behind):
         fc.append(_filtro_png(idx0 + i, p["size"], p["t0"], p["t1"], p["fade_s"], f"pb{i}"))
         fc.append(_filtro_overlay(base, f"pb{i}", p["x"], p["y"], p["t0"], p["t1"], f"vb{i}"))

@@ -79,6 +79,36 @@ def _resolver_plan_preset(preset: str | None, intensidad: str | None, densidad: 
         return None
 
 
+_MARCA_DIR = Path(__file__).parent / "assets" / "marca"
+
+
+def _logo_png() -> Path | None:
+    """Logo real de marca para el FX (PNG). None si aun no existe (M2 pendiente de K)."""
+    if not _MARCA_DIR.exists():
+        return None
+    for cand in sorted(_MARCA_DIR.glob("*.png")):
+        return cand
+    return None
+
+
+def _resolver_plan_fx(fx_preset: str | None, stem: str, duration: float):
+    """FXPlan del preset opcional o None. Fallo de la capa -> None (render sin FX)."""
+    if not fx_preset:
+        return None
+    try:
+        import fx  # noqa: PLC0415
+
+        brain_data = fx.cargar_brain_fx(_TRANSCRIPTS_DIR / f"{stem}.brain.json")
+        plan = fx.generar_plan_fx(duration, fx_preset, brain_data, _logo_png())
+        n = len(plan.punch_ins), len(plan.flashes), len(plan.scanners)
+        origen = "brain" if brain_data else "fallback"
+        print(f"[fx] {fx_preset} ({origen}): {n[0]} punch, {n[1]} flash, {n[2]} scanner")
+        return None if plan.vacio() else plan
+    except Exception as e:
+        print(f"[fx] preset no aplicado ({e}) - render sin efectos")
+        return None
+
+
 def process_video(
     video_path: Path,
     style: str,
@@ -95,6 +125,7 @@ def process_video(
     intensidad: str | None = None,
     densidad: str | None = None,
     qa_opts: dict | None = None,
+    fx_preset: str | None = None,
 ) -> tuple[float, dict]:
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -116,7 +147,10 @@ def process_video(
         reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
         variante = f"_{style}{pop_tag}{reb_tag}"
     ass_path = output_dir / f"{stem}{variante}.ass"
-    suffix = variante + ("_emojis" if use_emojis else "") + ("_popups" if use_popups else "")
+    fx_tag = f"_fx-{fx_preset}" if fx_preset else ""
+    suffix = (
+        variante + ("_emojis" if use_emojis else "") + ("_popups" if use_popups else "") + fx_tag
+    )
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
@@ -152,6 +186,8 @@ def process_video(
 
         popups = cve_popups.resolver_popups(groups, stem)
 
+    fx_plan = _resolver_plan_fx(fx_preset, stem, vinfo["duration"])
+
     if use_emojis:
         import assets_comfy as ac  # noqa: PLC0415
 
@@ -162,9 +198,11 @@ def process_video(
             print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
         else:
             print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
-        core.burn_video_with_emojis(video_path, ass_path, out_path, overlays, style_cfg, popups)
-    elif popups:
-        core.burn_video_with_emojis(video_path, ass_path, out_path, [], style_cfg, popups)
+        core.burn_video_with_emojis(
+            video_path, ass_path, out_path, overlays, style_cfg, popups, fx_plan
+        )
+    elif popups or fx_plan is not None:
+        core.burn_video_with_emojis(video_path, ass_path, out_path, [], style_cfg, popups, fx_plan)
     else:
         core.burn_video(video_path, ass_path, out_path)
 
@@ -269,6 +307,7 @@ def main() -> None:
                 intensidad=args.intensidad,
                 densidad=args.densidad,
                 qa_opts=qa_opts,
+                fx_preset=args.fx,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -289,6 +328,7 @@ def main() -> None:
             intensidad=args.intensidad,
             densidad=args.densidad,
             qa_opts=qa_opts,
+            fx_preset=args.fx,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

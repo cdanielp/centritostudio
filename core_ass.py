@@ -314,14 +314,16 @@ def burn_video_with_emojis(
     emoji_overlays: list[tuple[Path, float, float]],
     style_cfg: StyleConfig | None = None,
     popups: list | None = None,
+    fx_plan=None,
 ) -> float:
-    """Quema ASS + overlays PNG RGBA (emojis y popups de imagen) en un solo pase FFmpeg.
+    """Quema FX + ASS + overlays PNG RGBA (emojis y popups) en un solo pase FFmpeg.
 
     emoji_overlays: lista de (png_path, t_start_s, t_end_s) — capa historica intacta.
     popups: lista opcional de core_overlays.Popup (F6 S31); None/vacia = flujo anterior
-    byte-identico. Sin overlays de ningun tipo delega en burn_video.
+    byte-identico. fx_plan: fx.FXPlan opcional (S36-FX); sus punch/flash/scanner van ANTES
+    del ass y su logo/outro entra como popup. Sin overlays NI fx delega en burn_video.
     """
-    if not emoji_overlays and not popups:
+    if not emoji_overlays and not popups and fx_plan is None:
         return burn_video(input_video, ass_path, output_video)
 
     # Dimensiones calculadas en Python (NO en expresiones FFmpeg) para evitar
@@ -335,6 +337,19 @@ def burn_video_with_emojis(
     size_px -= size_px % 2  # forzar par para evitar errores libx264
     y_px = _emoji_y_sobre_captions(video_w, video_h, size_px, style_cfg)
 
+    fx_prefilter = None
+    popups = list(popups or [])
+    if fx_plan is not None and not fx_plan.vacio():
+        import fx as fxmod  # noqa: PLC0415
+
+        chain, _out = fxmod.construir_filtro_video_fx(
+            "0:v", fx_plan, video_w, video_h, info.get("fps", 30.0)
+        )
+        fx_prefilter = chain or None
+        logo_popup = fxmod.logo_a_popup(fx_plan)
+        if logo_popup is not None:
+            popups.append(logo_popup)  # logo/outro = overlay PNG real, encima del ass
+
     cmd = core_overlays.construir_comando(
         input_video,
         _ffmpeg_ass_path(ass_path),
@@ -346,6 +361,7 @@ def burn_video_with_emojis(
         video_w,
         video_h,
         popups,
+        fx_prefilter,
     )
 
     t0 = time.time()

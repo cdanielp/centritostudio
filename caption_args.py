@@ -78,6 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Popups de imagen: assets/biblioteca/ por keyword + transcripts/{stem}_popups.json",
     )
     parser.add_argument(
+        "--fx",
+        choices=["express", "pro", "premium"],
+        default=None,
+        help="Capa FX local opcional (S36-FX): punch-in/flash/scanner/logo antes del ass",
+    )
+    parser.add_argument(
         "--caption-qa",
         action="store_true",
         default=False,
