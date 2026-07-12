@@ -139,6 +139,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <button data-tab="auto" onclick="showTab('auto')">Automático</button>
     <button data-tab="revision" onclick="showTab('revision')">Editor</button>
     <button data-tab="creador" onclick="showTab('creador')">Creador</button>
+    <button data-tab="submagic" onclick="showTab('submagic')">Submagic</button>
     <button data-tab="paquetes" onclick="showTab('paquetes')">Paquetes</button>
     <button data-tab="ajustes" onclick="showTab('ajustes')">Ajustes</button>
   </nav>
@@ -161,6 +162,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   </div>
   <div id="rev-right">
     <div id="rev-detail"><div class="no-video">Selecciona un clip para revisarlo.</div></div>
+  </div>
+</div>
+
+<!-- ════════════════ TAB: SUBMAGIC (motor nube opt-in) ════════════════ -->
+<div id="tab-submagic" class="tab">
+  <div class="home-wrap">
+    <h2 class="section-title">Editar con Submagic (nube)</h2>
+    <div class="msg" style="margin-bottom:16px">Estación independiente. Submagic quema los captions en su nube — el resultado <strong>no pasa por el motor local</strong> (sin doble caption). Plantilla <code>Hormozi 2</code> · idioma español · zooms y b-rolls automáticos.</div>
+    <div id="submagic-panel" style="background:var(--surface);border:var(--border);border-radius:10px;padding:20px;max-width:520px">
+      <div class="field">
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Video de entrada</label>
+        <select id="submagic-video-select"><option value="">— Elegir video —</option></select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn secondary" onclick="submagicProbarKey()" id="submagic-key-btn">Probar key</button>
+        <button class="btn" onclick="startSubmagic()" id="submagic-btn">Editar con Submagic</button>
+      </div>
+      <div id="submagic-status" style="margin-top:14px"></div>
+    </div>
   </div>
 </div>
 
@@ -570,6 +590,7 @@ let brainMap      = {};   // {groupId: {g, kw, emoji}} — datos de análisis IA
 const TAB_PRIMARY = {
   home:'home', auto:'auto', revision:'revision', paquetes:'paquetes', ajustes:'ajustes',
   creador:'creador', videos:'creador', editor:'creador', render:'creador', clips:'creador',
+  submagic:'submagic',
 };
 function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -584,6 +605,7 @@ function showTab(id) {
   else if (id === 'revision') onRevisionShown();
   else if (id === 'home') loadHomeStats();
   else if (id === 'creador') renderCreadorCards();
+  else if (id === 'submagic') loadSubmagicVideos();
   else if (id === 'ajustes') renderAjustes();
   else if (id === 'auto') renderAutoIncluye();
 }
@@ -1806,6 +1828,67 @@ function renderCreadorCards() {
       <div class="d">${x.d}</div>
       <div class="go">${x.note ? '<span style="color:var(--muted)">'+x.note+'</span> · ' : ''}Abrir →</div>
     </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB SUBMAGIC (motor nube opt-in — estacion independiente)
+// ═══════════════════════════════════════════════════════
+async function loadSubmagicVideos() {
+  const sel = document.getElementById('submagic-video-select');
+  if (!sel) return;
+  try {
+    const res = await fetch('/api/videos');
+    const vids = await res.json();
+    const opts = vids.map(v => `<option value="${escHtml(v.name)}">${escHtml(v.name)}</option>`).join('');
+    sel.innerHTML = '<option value="">— Elegir video —</option>' + opts;
+  } catch (e) {
+    sel.innerHTML = '<option value="">— No se pudo cargar la lista —</option>';
+  }
+}
+
+async function submagicProbarKey() {
+  const box = document.getElementById('submagic-status');
+  box.innerHTML = '<div class="msg">Probando key…</div>';
+  try {
+    const res = await fetch('/api/submagic/probar-key', {method:'POST'});
+    const j = await res.json();
+    const color = j.ok ? 'var(--purple)' : '#ff7676';
+    const pre = j.ok ? 'OK - ' : 'Error - ';
+    box.innerHTML = `<div class="msg" style="color:${color}">${pre}${escHtml(j.message)}</div>`;
+  } catch (e) {
+    box.innerHTML = '<div class="msg" style="color:#ff7676">No se pudo contactar el servidor</div>';
+  }
+}
+
+async function startSubmagic() {
+  const name = document.getElementById('submagic-video-select').value;
+  const box = document.getElementById('submagic-status');
+  if (!name) { box.innerHTML = '<div class="msg" style="color:#ff7676">Elige un video primero</div>'; return; }
+  const btn = document.getElementById('submagic-btn');
+  btn.disabled = true;
+  box.innerHTML = '<div class="msg">Enviando a Submagic…</div>';
+  try {
+    const res = await fetch(`/api/videos/${encodeURIComponent(name)}/submagic`, {method:'POST'});
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      box.innerHTML = `<div class="msg" style="color:#ff7676">${escHtml(err.detail || 'Error al iniciar. ¿Configuraste SUBMAGIC_API_KEY en .env?')}</div>`;
+      btn.disabled = false;
+      return;
+    }
+    const {job_id} = await res.json();
+    pollJob(job_id, j => {
+      const color = j.status === 'error' ? '#ff7676' : (j.status === 'done' ? 'var(--purple)' : 'var(--muted)');
+      let extra = '';
+      if (j.status === 'done' && j.result && j.result.output) {
+        extra = `<br><a href="/output/${encodeURIComponent(j.result.output)}" style="color:var(--purple)">Ver MP4 →</a>`;
+      }
+      box.innerHTML = `<div class="msg" style="color:${color}">${escHtml(j.message || '')}${extra}</div>`;
+      if (j.status === 'done' || j.status === 'error') btn.disabled = false;
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="msg" style="color:#ff7676">No se pudo contactar el servidor</div>';
+    btn.disabled = false;
+  }
 }
 
 function renderAjustes() {

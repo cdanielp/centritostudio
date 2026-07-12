@@ -381,6 +381,34 @@ def start_render(
     return {"job_id": jid}
 
 
+# ─── Submagic (motor nube opt-in) ─────────────────────────────────────────────
+# Estacion independiente: el video se edita en la nube de Submagic y NO pasa por
+# caption.py ni core_ass.py. Sin doble caption.
+
+
+@app.post("/api/submagic/probar-key")
+def submagic_probar_key():
+    """Health check + validacion de la key. Nunca revela el secreto."""
+    import submagic  # noqa: PLC0415
+
+    return submagic.probar_key()
+
+
+@app.post("/api/videos/{name}/submagic")
+def start_submagic(name: str):
+    """Edita el video con Submagic (nube). Motor opt-in, sin tocar caption.py."""
+    import submagic  # noqa: PLC0415
+
+    mp4 = _resolver_video_input(name)
+    if mp4 is None:
+        raise HTTPException(404, f"Video {name} no encontrado en input/")
+    if not submagic.tiene_key():
+        raise HTTPException(400, "Falta SUBMAGIC_API_KEY en .env (ver .env.example)")
+    jid = jobs.new_job(f"Editando {name} con Submagic (nube)...")
+    threading.Thread(target=jobs.run_submagic_render, args=(jid, mp4, name), daemon=True).start()
+    return {"job_id": jid}
+
+
 # ─── Modo Automatico ──────────────────────────────────────────────────────────
 
 

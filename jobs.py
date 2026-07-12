@@ -228,6 +228,72 @@ def run_reframe(
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
 
+# --- Worker: Submagic (motor nube opt-in) -------------------------------------
+
+
+def run_submagic_render(jid: str, mp4: Path, name: str) -> None:
+    """Worker: edita un video con Submagic (nube). NO pasa por caption.py.
+
+    Flujo async: upload multipart -> poll estado -> export fallback si no hay
+    downloadUrl -> poll downloadUrl -> descarga MP4 a output/. Fail seguro:
+    errores HTTP muestran status + mensaje sin secretos (regla #9)."""
+    try:
+        import time  # noqa: PLC0415
+
+        import submagic  # noqa: PLC0415
+
+        if not submagic.tiene_key():
+            msg = "Falta SUBMAGIC_API_KEY en .env (ver .env.example)"
+            update_job(jid, status="error", message=msg, error=msg)
+            return
+
+        def _prog(texto: str, pct: int) -> None:
+            if pct < 0:
+                update_job(jid, message=texto)
+            else:
+                update_job(jid, progress=pct, message=texto)
+
+        t_up = time.monotonic()
+        update_job(jid, status="running", progress=10, message="Subiendo a Submagic...")
+        pid, rate_up = submagic.enviar_video(mp4)
+        up_s = round(time.monotonic() - t_up, 1)
+        update_job(jid, progress=25, message=f"Subido en {up_s}s - procesando en la nube...")
+
+        t_poll = time.monotonic()
+        try:
+            url = submagic.esperar_download_url(pid, progress=_prog)
+        except TimeoutError:
+            # Fallback: autoRender no disparo -> export manual y re-poll.
+            update_job(jid, progress=60, message="Sin downloadUrl - lanzando export...")
+            submagic.exportar(pid)
+            url = submagic.esperar_download_url(pid, progress=_prog)
+        poll_s = round(time.monotonic() - t_poll, 1)
+
+        t_dl = time.monotonic()
+        update_job(jid, progress=90, message="Descargando MP4 final...")
+        dest = OUTPUT_DIR / f"{name}_submagic.mp4"
+        nbytes = submagic.descargar(url, dest)
+        dl_s = round(time.monotonic() - t_dl, 1)
+
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=f"Listo - {dest.name} ({nbytes // 1024} KB)",
+            result={
+                "output": dest.name,
+                "project_id_parcial": pid[:6] + "..." if len(pid) > 6 else pid,
+                "bytes": nbytes,
+                "tiempos_s": {"upload": up_s, "poll": poll_s, "download": dl_s},
+                "rate_limit": rate_up,
+                "engine": "submagic",
+                "sin_caption_local": True,
+            },
+        )
+    except Exception as exc:
+        update_job(jid, status="error", message=str(exc), error=str(exc))
+
+
 # --- Worker: modo automatico ---------------------------------------------------
 
 
