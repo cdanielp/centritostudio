@@ -33,7 +33,7 @@ PUNCH_ZOOM = 1.10  # zoom (rango 1.08-1.12)
 PUNCH_ZOOM_LIGERO = 1.08  # express: mas sutil
 
 FLASH_DUR_S = 0.14  # rango 0.10-0.18
-FLASH_ALPHA = 0.7  # rango 0.55-0.85
+FLASH_ALPHA = 0.50  # default aprobado por K (S36-FX-B): flash soft (guia advisory 0.55-0.85)
 FLASH_MIN_GAP_S = 3.0
 
 SCANNER_DUR_S = 0.6  # rango 0.5-0.8
