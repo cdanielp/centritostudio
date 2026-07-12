@@ -150,6 +150,51 @@ def test_worker_no_usa_motor_local_captions(monkeypatch):
     assert jobs.get_job(jid)["status"] == "done"
 
 
+# ── probar_key: distingue key valida / invalida sin tronar ni revelar secreto ──
+
+
+def test_probar_key_invalida(monkeypatch):
+    """Key rechazada: el probe a un proyecto inexistente da 401 -> ok False claro."""
+    monkeypatch.setattr(submagic, "tiene_key", lambda: True)
+    monkeypatch.setattr(submagic, "health_check", lambda: {"ok": True, "status": 200, "rate": {}})
+    monkeypatch.setattr(submagic, "_request", lambda m, p, **k: FakeResp(401))
+    r = submagic.probar_key()
+    assert r["ok"] is False
+    assert "rechazada" in r["message"].lower()
+    # El mensaje jamas debe filtrar la key ni el valor del env.
+    assert "SUBMAGIC_API_KEY" in r["message"]  # solo nombra la variable, no su valor
+
+
+def test_probar_key_valida(monkeypatch):
+    """Key valida: proyecto inexistente responde 404 -> ok True."""
+    monkeypatch.setattr(submagic, "tiene_key", lambda: True)
+    monkeypatch.setattr(submagic, "health_check", lambda: {"ok": True, "status": 200, "rate": {}})
+    monkeypatch.setattr(submagic, "_request", lambda m, p, **k: FakeResp(404))
+    r = submagic.probar_key()
+    assert r["ok"] is True
+
+
+def test_probar_key_sin_configurar(monkeypatch):
+    """Sin key en .env: mensaje accionable, no truena."""
+    monkeypatch.setattr(submagic, "tiene_key", lambda: False)
+    r = submagic.probar_key()
+    assert r["ok"] is False
+    assert "SUBMAGIC_API_KEY" in r["message"]
+
+
+def test_probar_key_api_caida(monkeypatch):
+    """Health falla: reporta que no contacta la API, sin excepcion."""
+    monkeypatch.setattr(submagic, "tiene_key", lambda: True)
+
+    def _falla():
+        raise requests.RequestException("timeout")
+
+    monkeypatch.setattr(submagic, "health_check", _falla)
+    r = submagic.probar_key()
+    assert r["ok"] is False
+    assert "api.submagic.co" in r["message"]
+
+
 # ── TAREA 2: listar templates ─────────────────────────────────────────────────
 
 

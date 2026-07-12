@@ -180,6 +180,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <div style="display:flex;gap:8px">
           <select id="submagic-template-select" style="flex:1"><option value="Hormozi 2">Hormozi 2</option></select>
           <button class="btn secondary" onclick="loadSubmagicTemplates(true)" id="submagic-tpl-btn">Actualizar estilos</button>
+          <button class="btn secondary" onclick="openGaleria()" id="submagic-galeria-btn" style="display:none">Ver estilos</button>
         </div>
       </div>
       <div class="field" style="margin-top:14px">
@@ -194,6 +195,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <button class="btn" onclick="startSubmagic()" id="submagic-btn">Editar con Submagic</button>
       </div>
       <div id="submagic-status" style="margin-top:14px"></div>
+    </div>
+  </div>
+  <!-- Popup galeria de estilos Submagic (solo referencia visual, no manda nada a la API) -->
+  <div id="submagic-galeria-modal" onclick="closeGaleria(event)" style="display:none;position:fixed;inset:0;background:rgba(4,4,10,.82);z-index:60;align-items:center;justify-content:center;padding:24px">
+    <div style="max-width:min(1100px,92vw);max-height:92vh;background:var(--surface);border:var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:var(--muted)">Galería de estilos Submagic — referencia visual</span>
+        <button class="btn secondary" onclick="closeGaleria()">Cerrar</button>
+      </div>
+      <img id="submagic-galeria-img" src="" alt="Galería de estilos Submagic" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px">
     </div>
   </div>
 </div>
@@ -1859,6 +1870,36 @@ async function loadSubmagicVideos() {
     sel.innerHTML = '<option value="">— No se pudo cargar la lista —</option>';
   }
   loadSubmagicTemplates();
+  checkGaleria();
+}
+
+// Galeria de estilos: imagen de referencia (galeria.webp) provista por K. Si no
+// existe, se oculta el boton sin romper. Solo referencia visual: no toca la API.
+const SUBMAGIC_GALERIA_URL = '/static/previews/galeria.webp';
+
+async function checkGaleria() {
+  const btn = document.getElementById('submagic-galeria-btn');
+  if (!btn) return;
+  try {
+    const res = await fetch(SUBMAGIC_GALERIA_URL, {method:'HEAD'});
+    btn.style.display = res.ok ? '' : 'none';
+  } catch (e) {
+    btn.style.display = 'none';
+  }
+}
+
+function openGaleria() {
+  const modal = document.getElementById('submagic-galeria-modal');
+  const img = document.getElementById('submagic-galeria-img');
+  if (!modal || !img) return;
+  if (!img.src) img.src = SUBMAGIC_GALERIA_URL;
+  modal.style.display = 'flex';
+}
+
+function closeGaleria(ev) {
+  if (ev && ev.target && ev.target.id && ev.target.id !== 'submagic-galeria-modal') return;
+  const modal = document.getElementById('submagic-galeria-modal');
+  if (modal) modal.style.display = 'none';
 }
 
 async function loadSubmagicTemplates(refresh) {
@@ -2173,7 +2214,7 @@ function _rutaInicial() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   if (!h) { showTab('home'); return; }
   const [vista, pkg] = h.split('/');
-  const validas = ['home','auto','revision','creador','paquetes','ajustes'];
+  const validas = ['home','auto','revision','creador','submagic','paquetes','ajustes'];
   if (!validas.includes(vista)) { showTab('home'); return; }
   showTab(vista);
   if (vista === 'revision' && pkg) setTimeout(() => openPaqueteEnEditor(decodeURIComponent(pkg)), 300);
