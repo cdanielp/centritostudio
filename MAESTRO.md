@@ -300,3 +300,11 @@ Actualizado: {fecha} · Sesión: {n}
 2. Commits limpios por fase (nunca trabajo sin commitear al cerrar).
 3. Si una fase quedó a medias: deja en la bitácora el punto EXACTO de continuación y qué archivo estabas tocando.
 4. Resumen al usuario: qué se construyó, evidencia (rutas de frames/reportes), decisiones tomadas, y las preguntas de PREGUNTAS.md que necesitan su voto — máximo 3, formuladas como binarias.
+
+---
+
+## BACKLOG / IDEAS FUTURAS
+
+Ideas registradas para no perderlas. NO se implementan sin una decisión explícita del usuario.
+
+- **Multiusuario self-service** (cada cliente con su propia API key: login, aislamiento por usuario, cifrado de secretos, servidor público). ARCHIVADO — el modelo actual es producir y entregar, no self-service. No construir sin decisión explícita.
