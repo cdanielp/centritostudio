@@ -1892,7 +1892,9 @@ function openGaleria() {
   const modal = document.getElementById('submagic-galeria-modal');
   const img = document.getElementById('submagic-galeria-img');
   if (!modal || !img) return;
-  if (!img.src) img.src = SUBMAGIC_GALERIA_URL;
+  // Asignar siempre (cache-bust): un <img src=""> vacio resuelve a la URL del
+  // documento, asi que el guard "if (!img.src)" nunca disparaba y no cargaba nada.
+  img.src = SUBMAGIC_GALERIA_URL + '?v=' + Date.now();
   modal.style.display = 'flex';
 }
 
