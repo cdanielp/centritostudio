@@ -175,6 +175,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Video de entrada</label>
         <select id="submagic-video-select"><option value="">— Elegir video —</option></select>
       </div>
+      <div class="field" style="margin-top:14px">
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Estilo Submagic</label>
+        <div style="display:flex;gap:8px">
+          <select id="submagic-template-select" style="flex:1"><option value="Hormozi 2">Hormozi 2</option></select>
+          <button class="btn secondary" onclick="loadSubmagicTemplates(true)" id="submagic-tpl-btn">Actualizar estilos</button>
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--fg);cursor:pointer">
+          <input type="checkbox" id="submagic-reframe-chk" checked>
+          Reencuadrar a vertical 9:16 antes de subir
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Submagic no reencuadra. Si el video ya es 9:16 se sube tal cual.</div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn secondary" onclick="submagicProbarKey()" id="submagic-key-btn">Probar key</button>
         <button class="btn" onclick="startSubmagic()" id="submagic-btn">Editar con Submagic</button>
@@ -1844,6 +1858,25 @@ async function loadSubmagicVideos() {
   } catch (e) {
     sel.innerHTML = '<option value="">— No se pudo cargar la lista —</option>';
   }
+  loadSubmagicTemplates();
+}
+
+async function loadSubmagicTemplates(refresh) {
+  const sel = document.getElementById('submagic-template-select');
+  const btn = document.getElementById('submagic-tpl-btn');
+  if (!sel) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Actualizando…'; }
+  try {
+    const res = await fetch('/api/submagic/templates' + (refresh ? '?refresh=true' : ''));
+    const j = await res.json();
+    const nombres = (j.templates && j.templates.length) ? j.templates : [j.default || 'Hormozi 2'];
+    const def = j.default || 'Hormozi 2';
+    sel.innerHTML = nombres.map(n => `<option value="${escHtml(n)}"${n === def ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="Hormozi 2">Hormozi 2</option>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualizar estilos'; }
+  }
 }
 
 async function submagicProbarKey() {
@@ -1867,8 +1900,11 @@ async function startSubmagic() {
   const btn = document.getElementById('submagic-btn');
   btn.disabled = true;
   box.innerHTML = '<div class="msg">Enviando a Submagic…</div>';
+  const reframe = document.getElementById('submagic-reframe-chk').checked;
+  const template = document.getElementById('submagic-template-select').value || 'Hormozi 2';
+  const qs = `?reframe=${reframe}&template=${encodeURIComponent(template)}`;
   try {
-    const res = await fetch(`/api/videos/${encodeURIComponent(name)}/submagic`, {method:'POST'});
+    const res = await fetch(`/api/videos/${encodeURIComponent(name)}/submagic${qs}`, {method:'POST'});
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       box.innerHTML = `<div class="msg" style="color:#ff7676">${escHtml(err.detail || 'Error al iniciar. ¿Configuraste SUBMAGIC_API_KEY en .env?')}</div>`;

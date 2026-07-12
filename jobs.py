@@ -231,12 +231,54 @@ def run_reframe(
 # --- Worker: Submagic (motor nube opt-in) -------------------------------------
 
 
-def run_submagic_render(jid: str, mp4: Path, name: str) -> None:
+def _reframe_para_submagic(jid: str, mp4: Path, reframe_9x16: bool) -> tuple[Path, dict]:
+    """Decide si reencuadrar a 9:16 antes de subir. Devuelve (ruta_a_subir, evidencia).
+
+    Submagic NO reencuadra: si el clip no es vertical hay que darselo ya en 9:16.
+    Reusa reframe.reframe_clip (mismo face tracking del motor local), sin tocar
+    caption.py ni core_ass.py. Si ya es vertical o el toggle esta apagado, se sube
+    el original."""
+    info = core.get_video_info(mp4)
+    w, h = info["width"], info["height"]
+    ev = {"origen": f"{w}x{h}", "aplicado": False, "subido": f"{w}x{h}"}
+    import submagic  # noqa: PLC0415
+
+    if not reframe_9x16:
+        ev["motivo"] = "toggle apagado"
+        return mp4, ev
+    if not submagic.necesita_reframe(w, h):
+        ev["motivo"] = "ya era vertical"
+        update_job(jid, message=f"Ya era vertical ({w}x{h}) - sin reencuadre")
+        return mp4, ev
+
+    import reframe  # noqa: PLC0415
+
+    stage_dir = OUTPUT_DIR / "submagic_stage"
+    staged = stage_dir / f"{mp4.stem}_9x16_for_submagic.mp4"
+    update_job(jid, status="running", progress=5, message=f"Reencuadrando {w}x{h} a 9:16...")
+    reframe.reframe_clip(mp4, staged)
+    vinfo = core.get_video_info(staged)
+    vw, vh = vinfo["width"], vinfo["height"]
+    if not submagic.es_9x16(vw, vh):
+        raise RuntimeError(f"Reframe no produjo 9:16 (quedo {vw}x{vh})")
+    ev.update({"aplicado": True, "subido": f"{vw}x{vh}", "motivo": "horizontal reencuadrado"})
+    update_job(jid, message=f"Reencuadrado {w}x{h} -> {vw}x{vh}")
+    return staged, ev
+
+
+def run_submagic_render(
+    jid: str,
+    mp4: Path,
+    name: str,
+    reframe_9x16: bool = True,
+    template_name: str | None = None,
+) -> None:
     """Worker: edita un video con Submagic (nube). NO pasa por caption.py.
 
-    Flujo async: upload multipart -> poll estado -> export fallback si no hay
-    downloadUrl -> poll downloadUrl -> descarga MP4 a output/. Fail seguro:
-    errores HTTP muestran status + mensaje sin secretos (regla #9)."""
+    Flujo async: reframe a 9:16 si aplica -> upload multipart -> poll estado ->
+    export fallback si no hay downloadUrl -> poll downloadUrl -> descarga MP4 a
+    output/. Fail seguro: errores HTTP muestran status + mensaje sin secretos
+    (regla #9)."""
     try:
         import time  # noqa: PLC0415
 
@@ -253,9 +295,12 @@ def run_submagic_render(jid: str, mp4: Path, name: str) -> None:
             else:
                 update_job(jid, progress=pct, message=texto)
 
+        upload_path, reframe_ev = _reframe_para_submagic(jid, mp4, reframe_9x16)
+        params = {"templateName": template_name} if template_name else None
+
         t_up = time.monotonic()
         update_job(jid, status="running", progress=10, message="Subiendo a Submagic...")
-        pid, rate_up = submagic.enviar_video(mp4)
+        pid, rate_up = submagic.enviar_video(upload_path, title=name, params=params)
         up_s = round(time.monotonic() - t_up, 1)
         update_job(jid, progress=25, message=f"Subido en {up_s}s - procesando en la nube...")
 
@@ -288,6 +333,8 @@ def run_submagic_render(jid: str, mp4: Path, name: str) -> None:
                 "rate_limit": rate_up,
                 "engine": "submagic",
                 "sin_caption_local": True,
+                "reframe": reframe_ev,
+                "template": template_name or submagic.DEFAULT_PARAMS["templateName"],
             },
         )
     except Exception as exc:

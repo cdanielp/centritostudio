@@ -45,7 +45,33 @@ _BACKOFF = [2, 5, 10, 20, 30]
 _POLL_INTERVAL = 5.0  # segundos entre polls
 _POLL_TIMEOUT = 900.0  # 15 min tope por fase de espera
 
+# Reframe: Submagic NO reencuadra (devuelve el mismo aspect ratio). Para short-form
+# el video debe llegar ya en 9:16. Ratio objetivo y tolerancia para clasificar.
+ASPECTO_VERTICAL = 9 / 16  # 0.5625
+_ASPECTO_TOL = 0.02
+
+# Templates: fallback unico permitido si la API falla o no devuelve nada util.
+TEMPLATE_FALLBACK = "Hormozi 2"
+_templates_cache: list[str] | None = None
+
 ProgressCb = Callable[[str, int], None]
+
+
+def es_9x16(width: int, height: int, tol: float = _ASPECTO_TOL) -> bool:
+    """True si el aspect ratio ya es ~9:16 vertical (dimensiones desconocidas -> False)."""
+    if width <= 0 or height <= 0:
+        return False
+    return abs(width / height - ASPECTO_VERTICAL) <= tol
+
+
+def necesita_reframe(width: int, height: int, tol: float = _ASPECTO_TOL) -> bool:
+    """True si el video es mas ancho que 9:16 y debe reencuadrarse antes de subir.
+
+    Ya vertical (9:16 o mas alto) -> False. Dimensiones desconocidas -> False
+    (no arriesgar un reframe a ciegas; se sube el original)."""
+    if width <= 0 or height <= 0:
+        return False
+    return (width / height) > (ASPECTO_VERTICAL + tol)
 
 
 def tiene_key() -> bool:
@@ -133,6 +159,56 @@ def probar_key() -> dict:
     if resp.status_code in (401, 403):
         return {"ok": False, "message": "Key rechazada (401/403) - revisa SUBMAGIC_API_KEY"}
     return {"ok": False, "message": f"Auth respondio {resp.status_code}"}
+
+
+def _extraer_nombres(payload) -> list[str]:
+    """Extrae nombres de template de una respuesta arbitraria. Puro y robusto.
+
+    Soporta lista directa o envuelta en templates/data/items/results; cada item
+    puede ser string o dict (name/templateName/title/id)."""
+    items = None
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        for clave in ("templates", "data", "items", "results"):
+            if isinstance(payload.get(clave), list):
+                items = payload[clave]
+                break
+    if items is None:
+        return []
+    nombres = []
+    for it in items:
+        if isinstance(it, str) and it.strip():
+            nombres.append(it.strip())
+        elif isinstance(it, dict):
+            nombre = it.get("name") or it.get("templateName") or it.get("title") or it.get("id")
+            if nombre:
+                nombres.append(str(nombre))
+    return nombres
+
+
+def listar_templates(force_refresh: bool = False) -> list[str]:
+    """GET /templates -> lista de nombres reales. Cachea el resultado exitoso.
+
+    Fallback a [TEMPLATE_FALLBACK] si la API falla, responde error o no trae
+    nombres reconocibles. El fallback NO se cachea: el proximo intento reintenta."""
+    global _templates_cache
+    if _templates_cache is not None and not force_refresh:
+        return _templates_cache
+    try:
+        resp = _request("GET", "/templates")
+        if not resp.ok:
+            print(f"[submagic] templates HTTP {resp.status_code} -- fallback {TEMPLATE_FALLBACK}")
+            return [TEMPLATE_FALLBACK]
+        nombres = _extraer_nombres(resp.json())
+    except (requests.RequestException, ValueError) as exc:
+        print(f"[submagic] templates fallo ({type(exc).__name__}) -- fallback {TEMPLATE_FALLBACK}")
+        return [TEMPLATE_FALLBACK]
+    if not nombres:
+        print(f"[submagic] templates vacio -- fallback {TEMPLATE_FALLBACK}")
+        return [TEMPLATE_FALLBACK]
+    _templates_cache = nombres
+    return nombres
 
 
 def enviar_video(

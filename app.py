@@ -394,9 +394,21 @@ def submagic_probar_key():
     return submagic.probar_key()
 
 
+@app.get("/api/submagic/templates")
+def submagic_templates(refresh: bool = False):
+    """Lista plantillas reales desde la API. Fallback a Hormozi 2 si falla."""
+    import submagic  # noqa: PLC0415
+
+    nombres = submagic.listar_templates(force_refresh=refresh)
+    return {"templates": nombres, "default": submagic.DEFAULT_PARAMS["templateName"]}
+
+
 @app.post("/api/videos/{name}/submagic")
-def start_submagic(name: str):
-    """Edita el video con Submagic (nube). Motor opt-in, sin tocar caption.py."""
+def start_submagic(name: str, reframe: bool = True, template: str | None = None):
+    """Edita el video con Submagic (nube). Motor opt-in, sin tocar caption.py.
+
+    reframe=True (default): reencuadra a 9:16 antes de subir si no es vertical.
+    template: templateName elegido (None -> default Hormozi 2 del motor)."""
     import submagic  # noqa: PLC0415
 
     mp4 = _resolver_video_input(name)
@@ -405,7 +417,11 @@ def start_submagic(name: str):
     if not submagic.tiene_key():
         raise HTTPException(400, "Falta SUBMAGIC_API_KEY en .env (ver .env.example)")
     jid = jobs.new_job(f"Editando {name} con Submagic (nube)...")
-    threading.Thread(target=jobs.run_submagic_render, args=(jid, mp4, name), daemon=True).start()
+    threading.Thread(
+        target=jobs.run_submagic_render,
+        args=(jid, mp4, name, reframe, template),
+        daemon=True,
+    ).start()
     return {"job_id": jid}
 
 
