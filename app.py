@@ -49,7 +49,9 @@ app.mount("/thumbs", StaticFiles(directory=str(THUMBS_DIR)), name="thumbs")
 
 @app.get("/")
 def root():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    # charset explicito: el navegador nunca debe interpretar la UI en Latin-1
+    # (evita mojibake en acentos/emojis aunque falte el <meta charset>).
+    return FileResponse(str(STATIC_DIR / "index.html"), media_type="text/html; charset=utf-8")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
