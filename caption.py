@@ -184,7 +184,7 @@ def process_video(
     if use_popups:
         import cve_popups  # noqa: PLC0415
 
-        popups = cve_popups.resolver_popups(groups, stem)
+        popups = cve_popups.resolver_popups(groups, stem, video_w=width, video_h=height)
 
     fx_plan = _resolver_plan_fx(fx_preset, stem, vinfo["duration"])
 

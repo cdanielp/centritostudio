@@ -1,0 +1,18 @@
+[
+  {
+    "source": "pexels",
+    "query": "cafe mexicano",
+    "t": 1.0,
+    "dur": 3.0,
+    "cutaway": true,
+    "fit": "cover",
+    "size_pct": 1.0,
+    "behind_text": true
+  },
+  {
+    "t": 6.0,
+    "dur": 1.2,
+    "imagen": "flecha",
+    "cutaway": false
+  }
+]

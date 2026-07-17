@@ -713,3 +713,49 @@ cambios en `auto.py`, llamadas reales durante pytest.
 
 **Requiere prueba manual con API key real:** el smoke test (`revision/broll-pexels-images/
 smoke_pexels.py`) hace una busqueda + descarga real contra Pexels; no forma parte de pytest.
+
+## D29 — Pexels como b-roll cutaway: puente aislado, entrada explicita (feat/broll-pexels-cutaway-integration)
+
+Cierra el circuito abierto por D27 (cutaway) y D28 (fetcher): un modulo PUENTE convierte una
+entrada EXPLICITA de b-roll Pexels en un `Popup(cutaway=True)` renderizable, sin acoplar el
+fetcher a la capa de overlays ni al reves.
+
+1. **Un modulo puente nuevo, no un metodo en el fetcher.** `broll_cutaway.py` importa el fetcher
+   (`buscar_broll_seguro`, `descargar_asset`) y `core_overlays.Popup`; el fetcher NO conoce a
+   `Popup` (sigue puro respecto al pipeline, D28) y `core_overlays` NO conoce a Pexels. Motivo
+   extra: `broll_stock.py` ya estaba a 396/400 lineas; meterle la integracion habria forzado otro
+   split. El puente es la costura natural y mantiene ambas capas <=400L.
+2. **Contrato publico:** `resolver_cutaway_pexels(query, t0, t1, *, orientation, fit="cover",
+   size_pct=1.0, behind_text=True, cache_dir=None) -> ResultadoCutawayPexels(popup, codigo,
+   mensaje, asset)` + `orientacion_para_video(w, h) -> (orientation_pexels, destino)`.
+   **Los timestamps vienen de la ENTRADA, no de Pexels.** Seleccion **determinista**: el PRIMER
+   candidato que devuelve el fetcher (V1, sin ranking). Reutiliza el fetcher COMPLETO: cero HTTP,
+   cero caché/sidecar duplicados; la geometria del cutaway es la de `_preparar_cutaway` (D27), no
+   se duplica.
+3. **Fail-open acotado, igual criterio que el fetcher (D28-7).** Los errores OPERATIVOS conocidos
+   (familia `PexelsError`: `deshabilitado`/`rate_limit`/`auth`/`timeout`/`http`/`respuesta_invalida`/
+   `sin_variante`/`descarga`) -> `ResultadoCutawayPexels` SIN popup y con `codigo` visible; el
+   render omite ese b-roll y sigue. **Cero resultados NO es excepcion:** codigo `sin_resultados`.
+   Los errores de PROGRAMACION (RuntimeError/TypeError/AssertionError) y los de CONTRATO (ValueError
+   por query vacia, `t1<=t0`, `fit`/`size_pct`/`orientation` invalidos) se **PROPAGAN**: un contrato
+   roto no se disfraza de fallo de red.
+4. **Orientacion derivada del video, sin hardcodear vertical.** 9:16 (h>w) -> `portrait`/`vertical`;
+   16:9 y cuadrado (w>=h) -> `landscape`/`horizontal`. `destino` es lo que consume `descargar_asset`
+   para ordenar variantes de cover (D28-3). `cve_popups`/`caption.py` propagan `video_w/video_h`.
+5. **Entrada por el sidecar manual ya existente** (`{stem}_popups.json`, el que consume
+   `cve_popups`), extendido con `source="pexels"` + `query`. `_entrada_manual` enruta por `source`;
+   ausente/`biblioteca`/`local` conserva el flujo PNG historico (compatibilidad total, incluido
+   cutaway PNG de D27). `_entrada_pexels` es fail-open TOTAL (jamas lanza; log ASCII accionable) e
+   importa `broll_cutaway` de forma **lazy**: sin una entrada pexels no se toca el fetcher ni la red
+   (renders sin Pexels no requieren API key). `behind_text` default True para el cutaway Pexels
+   (captions encima); explicito se respeta.
+
+**Alcance cerrado (NO en este PR, por diseno):** eleccion automatica de cuantos/cuando poner
+b-roll (vive en el brain), clips de VIDEO de Pexels, ranking con LLM, traduccion de la query,
+seleccion de multiples b-rolls, UI de aprobacion/rechazo, Ken Burns, matting, cambios en `auto.py`
+o `brain.py`, llamadas reales durante pytest.
+
+**Requiere ojo de K (salida visual):** que el `cover` full-frame (size_pct=1.0 default) no tape
+demasiado a la persona/microfono, legibilidad de captions sobre foto real, pertinencia semantica de
+la imagen. Evidencia: `revision/broll-pexels-cutaway/` (README + `gen_evidencia.py` que se niega sin
+key + `ejemplo_popups.json`); 3 frames antes/durante/despues sobre `input/reel01.mp4` (persona real).
