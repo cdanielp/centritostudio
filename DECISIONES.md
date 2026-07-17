@@ -593,3 +593,44 @@ Decision de producto para dejar el Studio listo para testers cercanos (Alpha 0.1
 - **Prohibido en s35:** tocar reframe/clipper/depurador/brain/core/motores de render,
   migrar framework, meter React/Vue, cambiar arquitectura, o tocar
   `.env`/`input`/`output`/`transcripts`/`models` (salvo LEER sidecars para mostrarlos).
+
+---
+
+## D27 — B-roll cutaway de imagen: extension de la capa de overlays (feat/broll-cutaway-image)
+
+**Que es:** soporte de b-roll de IMAGEN en modo cutaway grande, reutilizando `core_overlays.Popup`
+en vez de crear un subsistema nuevo. El popup pequeno historico (esquina, dentro de la zona util
+de TikTok/Reels) y el cutaway grande (centrado, ocupa gran parte o todo el cuadro) son el MISMO
+dataclass con dos ramas de geometria. Extension ADITIVA, default-off (regla #15): sin `cutaway`
+el comportamiento es byte-identico.
+
+**Decisiones tomadas (aprobadas por K antes de implementar):**
+
+1. **Dos ejes explicitos, no un modo magico.** `size_pct` = fraccion del cuadro (1.0 = pantalla
+   completa) y `fit` = estrategia de encaje. Nada se infiere del aspecto de la imagen.
+2. **`fit` default = `contain`** (imagen entera visible, sin recorte, sin deformacion): es la
+   opcion segura. `cover` (llena el cuadro recortando el excedente, aspecto preservado) es opt-in
+   explicito. Ambos via `force_original_aspect_ratio` de FFmpeg (jamas deforman).
+3. **Tamano default del cutaway = 0.85** del cuadro (grande pero deja margen). El default de
+   `Popup.size_pct` es `None` (sentinel) y `Popup.__post_init__` lo resuelve: None + cutaway ->
+   0.85, None + normal -> 0.20 (POPUP_SIZE_PCT); cualquier valor explicito, INCLUIDO 0.20, se
+   conserva. Asi `Popup(cutaway=True)` construido directo tambien da 0.85 (no solo via cve_popups),
+   sin la heuristica fragil de comparar `size_pct == 0.20` (que confundiria omitido con 0.20
+   explicito). El campo NO cambia de posicion en el dataclass -> llamadas posicionales intactas.
+   *(Correccion de un bloqueo detectado en revision pre-commit: el default vivia solo en
+   cve_popups, dejando la construccion directa en 0.20.)*
+4. **El cutaway NO se confina a `zona_util`.** El confinamiento a safe zones es correcto para el
+   popup pequeno (adorno junto a la UI); un cutaway grande, por definicion, la excede. Se centra
+   con expresiones `(W-w)/2 / (H-h)/2` (FFmpeg resuelve en runtime -> exacto para cualquier aspecto).
+5. **`fit` invalido -> fail-open a `contain`** con aviso ASCII (mismo patron que `pos` invalido ->
+   `auto_safe`). `size_pct>1.0 -> 1.0`; `<=0 -> desactivado`. Un popup nunca tumba el render.
+6. **Declaracion manual: cutaway sin `behind_text` -> `behind_text=True`** (captions ENCIMA del
+   b-roll, que es lo deseado para b-roll narrado). `behind_text` explicito (True o False) se
+   respeta. El popup historico sin `cutaway` conserva su default `False` intacto.
+
+**Alcance cerrado (NO implementado, por diseno):** busquedas en APIs de stock/Pexels, overlays de
+video, Ken Burns, persona recortada sobre fondo (matting), cambios a brain/DeepSeek, UI/Studio,
+seleccion automatica de b-roll, NVENC, audio, SRT, refactors generales, dependencias nuevas.
+
+**Deuda anotada:** el cutaway es CLI-only via `{stem}_popups.json` (consistente con `--popups` s31,
+CLI-only). Exponerlo en el Studio conecta con el panel de revision futuro (D23/D26).
