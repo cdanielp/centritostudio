@@ -90,8 +90,29 @@ def _entrada_manual(i: int, entrada: object, biblioteca: dict[str, Path]) -> Pop
     if pos not in POSICIONES_VALIDAS:
         print(f"[popups] entrada #{i}: pos '{pos}' invalida, se usa auto_safe")
         pos = "auto_safe"
-    behind = bool(entrada.get("behind_text", False))
-    return Popup(png=png, t0=t0, t1=t0 + dur, pos=pos, behind_text=behind)
+    cutaway = bool(entrada.get("cutaway", False))
+    # Cutaway sin behind_text explicito -> los captions quedan ENCIMA del b-roll.
+    # behind_text explicito (True o False) se respeta. Popup historico: default False intacto.
+    behind = bool(entrada.get("behind_text", cutaway))
+    if not cutaway:
+        return Popup(png=png, t0=t0, t1=t0 + dur, pos=pos, behind_text=behind)
+    fit = str(entrada.get("fit", "contain"))
+    size_pct = None  # None -> Popup.__post_init__ aplica el default del cutaway (CUTAWAY_SIZE_PCT)
+    if "size_pct" in entrada:
+        try:
+            size_pct = float(entrada["size_pct"])
+        except (TypeError, ValueError):
+            print(f"[popups] entrada #{i}: size_pct invalido, se usa el default del cutaway")
+    return Popup(
+        png=png,
+        t0=t0,
+        t1=t0 + dur,
+        pos=pos,
+        size_pct=size_pct,
+        behind_text=behind,
+        cutaway=True,
+        fit=fit,
+    )
 
 
 def cargar_popups_manual(path: Path, biblioteca: dict[str, Path]) -> list[Popup]:
