@@ -794,3 +794,18 @@ una eleccion explicita del usuario y el selector lo avisa en su etiqueta
 las ediciones siguen ahi para el siguiente render sin QA. Conciliar ambos
 mundos (aplicar QA SOBRE los groups editados) es parte del panel de revision
 de D23 (futuro).
+
+---
+
+### 36. Multi-clip de b-roll de video Pexels — DIFERIDO (V1: un clip por render)
+
+El PR B (D31) integra b-roll de CLIP de video Pexels como cutaway, pero V1 admite como maximo UNA
+entrada `source="pexels_video"` activa por render: si `{stem}_popups.json` trae varias, se procesa
+la PRIMERA por orden del JSON y las demas se omiten con log ASCII (las entradas PNG y Pexels-imagen
+se siguen procesando normal). Razon: acotar el alcance visual del primer PR, verificar bien la
+regla #19 (audio) y la costura del loop con un solo clip antes de tejer varios inputs de video en el
+mismo filter_complex.
+
+**Pendiente (PR posterior):** soporte de N clips por render (varios inputs `-i` + overlays
+encadenados), politica de solape entre clips y con popups de imagen, y quiza `contain` como segundo
+modo de encaje (tambien diferido en D31). Nada de esto bloquea V1. Estado: **diferido, post-PR B**.

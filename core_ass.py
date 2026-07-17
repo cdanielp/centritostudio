@@ -315,15 +315,17 @@ def burn_video_with_emojis(
     style_cfg: StyleConfig | None = None,
     popups: list | None = None,
     fx_plan=None,
+    clips: list | None = None,
 ) -> float:
-    """Quema FX + ASS + overlays PNG RGBA (emojis y popups) en un solo pase FFmpeg.
+    """Quema FX + ASS + overlays PNG RGBA (emojis y popups) + clips de video en un solo pase FFmpeg.
 
     emoji_overlays: lista de (png_path, t_start_s, t_end_s) — capa historica intacta.
     popups: lista opcional de core_overlays.Popup (F6 S31); None/vacia = flujo anterior
     byte-identico. fx_plan: fx.FXPlan opcional (S36-FX); sus punch/flash/scanner van ANTES
-    del ass y su logo/outro entra como popup. Sin overlays NI fx delega en burn_video.
+    del ass y su logo/outro entra como popup. clips: lista opcional de clip_overlay.ClipOverlay
+    (PR B, b-roll de video); su audio NUNCA se mapea (solo 0:a). Sin nada delega en burn_video.
     """
-    if not emoji_overlays and not popups and fx_plan is None:
+    if not emoji_overlays and not popups and fx_plan is None and not clips:
         return burn_video(input_video, ass_path, output_video)
 
     # Dimensiones calculadas en Python (NO en expresiones FFmpeg) para evitar
@@ -362,6 +364,8 @@ def burn_video_with_emojis(
         video_h,
         popups,
         fx_prefilter,
+        clips=clips,
+        fps=info.get("fps", 30.0),
     )
 
     t0 = time.time()

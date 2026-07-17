@@ -149,6 +149,10 @@ def _entrada_manual(
     source = str(entrada.get("source", "") or "").strip().lower()
     if source == "pexels":
         return _entrada_pexels(i, entrada, video_w, video_h)
+    if source == "pexels_video":
+        # Los clips de VIDEO los resuelve resolver_clips (capa separada, tipo ClipOverlay);
+        # aqui se ignoran en silencio para no romper la carga de popups de imagen.
+        return None
     if source not in ("", "biblioteca", "local", "png"):
         print(f"[popups] entrada #{i}: source '{source}' desconocido, omitida")
         return None

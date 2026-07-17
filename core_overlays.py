@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import clip_overlay  # cutaway de CLIP de video (PR B): tipo + filtros puros, capa aditiva
+
 # Safe zones 9:16 (DISENO_CVE.md §5.1) — fuente unica; cve.py las re-exporta.
 SAFE_TOP_PCT = 0.10  # username / sonido
 SAFE_BOTTOM_PCT = 0.18  # descripcion / barra de progreso
@@ -240,6 +242,19 @@ def _filtro_overlay(
     return f"[{src}][{ovl}]overlay=x={x}:y={y}:eof_action=pass:enable='{enable}'[{dest}]"
 
 
+def _tejer_clips(fc: list[str], clips_prep: list[dict], base: str, idx0: int, pref: str) -> str:
+    """Compone clips de video sobre `base` (labels {pref}N / v{pref}N). Devuelve el nuevo base.
+
+    El clip se prepara (recorte/loop/cover/fade) y se superpone; el audio del clip NUNCA entra
+    (solo se teje el plano de video). Vacio -> no toca `fc` (byte-identico sin clips)."""
+    for i, c in enumerate(clips_prep):
+        etiqueta, salida = f"{pref}{i}", f"v{pref}{i}"
+        fc.append(clip_overlay.filtro_clip(idx0 + i, c, etiqueta))
+        fc.append(clip_overlay.overlay_clip(base, etiqueta, c, salida))
+        base = salida
+    return base
+
+
 def construir_comando(
     input_video: Path,
     ass_esc: str,
@@ -252,28 +267,36 @@ def construir_comando(
     video_h: int,
     popups: list[Popup] | None = None,
     fx_prefilter: str | None = None,
+    clips: list[clip_overlay.ClipOverlay] | None = None,
+    fps: float = 30.0,
 ) -> list[str]:
-    """Comando FFmpeg completo: FX + ass + emojis (cadena historica) + popups opcionales.
+    """Comando FFmpeg completo: FX + ass + emojis (cadena historica) + popups + clips opcionales.
 
-    Sin popups NI fx el comando es BYTE-IDENTICO al historico de burn_video_with_emojis
-    (test de contrato lo fija). behind_text: esos popups se componen ANTES del
-    filtro ass, asi los captions quedan encima. fx_prefilter (S36-FX): cadena de video
-    `[0:v]...[vfx]` que va ANTES del ass (punch/flash/scanner sin deformar captions);
-    si se da, la base pasa a `vfx`. El logo/outro entra como popup (overlay PNG real).
+    Sin popups NI fx NI clips el comando es BYTE-IDENTICO al historico (test de contrato lo fija).
+    behind_text (popups y clips): se componen ANTES del filtro ass, asi los captions quedan encima.
+    Los clips de VIDEO entran como inputs `-i` propios (loop via `-stream_loop`); su AUDIO jamas se
+    mapea (solo `0:a`). fx_prefilter (S36-FX): cadena `[0:v]...[vfx]` ANTES del ass; base -> `vfx`.
     """
     prep = [_preparar_popup(p, video_w, video_h, emoji_y_px) for p in (popups or [])]
     activos = [p for p in prep if p]
     behind = [p for p in activos if p["behind"]]
     front = [p for p in activos if not p["behind"]]
+    clips_prep = [clip_overlay.preparar_clip(c, video_w, video_h, fps) for c in (clips or [])]
+    clips_act = [c for c in clips_prep if c]
+    clips_behind = [c for c in clips_act if c["behind"]]
+    clips_front = [c for c in clips_act if not c["behind"]]
 
     cmd: list[str] = ["ffmpeg", "-y", "-i", str(input_video)]
     for png, t0, t1 in emoji_overlays:
         cmd += ["-loop", "1", "-t", f"{max(t1 - t0, 0.1):.3f}", "-i", str(png)]
     for p in behind + front:
         cmd += ["-loop", "1", "-t", f"{max(p['t1'] - p['t0'], 0.1):.3f}", "-i", str(p["png"])]
+    for c in clips_behind + clips_front:
+        cmd += clip_overlay.input_args_clip(c)  # clip como input propio (audio nunca se mapea)
 
     fc: list[str] = []
     idx0 = 1 + len(emoji_overlays)  # primer input de popups
+    idxc = idx0 + len(behind) + len(front)  # primer input de clips
     base = "0:v"
     if fx_prefilter:
         fc.append(fx_prefilter)  # [0:v] FX [vfx]  — el FX no anade inputs
@@ -282,6 +305,7 @@ def construir_comando(
         fc.append(_png_filter_for(p, idx0 + i, f"pb{i}"))
         fc.append(_filtro_overlay(base, f"pb{i}", p["x"], p["y"], p["t0"], p["t1"], f"vb{i}"))
         base = f"vb{i}"
+    base = _tejer_clips(fc, clips_behind, base, idxc, "cb")  # clips behind: captions encima
     fc.append(f"[{base}]ass={ass_esc}[vcap]")
     for i, (_png, t0, t1) in enumerate(emoji_overlays):
         fc.append(_filtro_png(i + 1, emoji_size_px, t0, t1, emoji_fade_s, f"ovs{i}"))
@@ -294,9 +318,10 @@ def construir_comando(
         fc.append(_png_filter_for(p, k, f"pf{j}"))
         fc.append(_filtro_overlay(current, f"pf{j}", p["x"], p["y"], p["t0"], p["t1"], f"vp{j}"))
         current = f"vp{j}"
+    current = _tejer_clips(fc, clips_front, current, idxc + len(clips_behind), "cf")
 
     cmd += ["-filter_complex", ";".join(fc)]
-    cmd += ["-map", f"[{current}]", "-map", "0:a"]
+    cmd += ["-map", f"[{current}]", "-map", "0:a"]  # SOLO 0:a: el audio del clip nunca se mapea
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"]
     cmd.append(str(output_video))
     return cmd
