@@ -634,3 +634,82 @@ seleccion automatica de b-roll, NVENC, audio, SRT, refactors generales, dependen
 
 **Deuda anotada:** el cutaway es CLI-only via `{stem}_popups.json` (consistente con `--popups` s31,
 CLI-only). Exponerlo en el Studio conecta con el panel de revision futuro (D23/D26).
+
+---
+
+## D28 — Fetcher de b-roll de imagenes (Pexels): modulo aislado, opt-in (feat/broll-pexels-images)
+
+**Que es:** `broll_stock.py`, capa que busca/selecciona/descarga/cachea imagenes de stock de
+Pexels para b-roll cutaway. Es una isla: NO conecta con brain, render, `core_overlays`/`Popup`,
+UI ni `auto.py`. Solo produce assets tipados (`StockAsset`) y archivos en cache que una
+integracion futura (el consumidor de D27) leera. Extension aditiva default-off (regla #15):
+sin `PEXELS_API_KEY` la capa queda deshabilitada y el pipeline sigue (fail-open, regla #8).
+
+**Decisiones tomadas (aprobadas por K antes de implementar):**
+
+0. **Split en dos archivos por la regla anti-spaghetti (archivo <= 400 lineas, skill
+   centrito-dev).** `broll_stock.py` (API publica: config, HTTP, seleccion, descarga,
+   orquestacion) + `broll_stock_base.py` (tipos, errores, cache de busqueda + IO atomica +
+   sidecar). Capas sin ciclo: base no depende de red ni de la key; `broll_stock` la consume y
+   re-exporta el contrato publico (`from broll_stock import StockAsset, buscar_broll_seguro, ...`).
+1. **Cliente HTTP = `requests`**, ya presente en `requirements.txt` (mismo patron que
+   `submagic.py`). CERO dependencias nuevas.
+2. **429 sin reintento en V1.** No hay sleep ni repeticion automatica: se lanza
+   `PexelsRateLimit` conservando `Retry-After` como dato opcional; `buscar_broll_seguro` lo
+   traduce a `BrollError(code="rate_limit", retry_after=...)` para que el pipeline omita el
+   b-roll y continue. Los headers `X-Ratelimit-*` solo se leen en respuestas 2xx (no se depende
+   de ellos al manejar el 429).
+3. **Seleccion de variante determinista, prioriza RESOLUCION.** La orientacion ya se resuelve en
+   la busqueda (`orientation` a la API), asi que los candidatos ya tienen composicion compatible
+   con el destino; por eso NO se priorizan las variantes recortadas de Pexels. Ordenes:
+   - `contain`: `large2x -> original -> large`
+   - `cover` + vertical: `large2x -> original -> portrait`
+   - `cover` + horizontal: `large2x -> original -> landscape`
+   `large2x` (~1880px) conserva mejor detalle en salida Full HD (1080x1920 / 1920x1080); las
+   variantes `portrait` (~800x1200) y `landscape` (~1200x627) estan recortadas y se ven suaves al
+   llenar, por lo que quedan como ultimo fallback orientado. `original` es el fallback de maxima
+   calidad. `seleccionar_variante` devuelve `SeleccionVariante(nombre, url, motivo)`; sin ninguna
+   variante admitida -> `PexelsSinVariante`. Cada orden esta cubierto por un test explicito.
+4. **Doble cache.** (a) Archivo descargado con identidad `provider+asset_id+variante`
+   (`pexels_{id}_{variante}.{ext}`): la VARIANTE se resuelve ANTES de la ruta, asi dos variantes
+   del mismo `asset_id` (p.ej. `large2x` para un destino y `portrait` como fallback de otro) NUNCA
+   colisionan; la extension viene de la FIRMA de bytes (JPEG/PNG/WebP), no de la URL. (b) Respuesta
+   de busqueda JSON con TTL 24h y clave determinista (query normalizada -strip + colapso de
+   espacios + lowercase- + orientation + per_page + page). Ambas se escriben atomicamente
+   (temporal + `os.replace`), se deshabilitan con `usar_cache=False`, y se ignoran/renuevan si
+   vencen o se corrompen (jamas fingen exito). Cache en `assets/broll/cache/pexels/` (gitignored;
+   las imagenes reales nunca entran al repo).
+   *(Correccion post-revision: la identidad por solo `asset_id` reutilizaba la variante
+   equivocada cuando cambiaba destino/fit; ahora incluye la variante.)*
+5. **Estado antes/despues de descargar sin strings vacios.** `StockAsset` es frozen con
+   `local_path`/`metadata_path = None` como candidato; al descargar tambien gana
+   `selected_variant` y `selection_reason`, y `descargar_asset` devuelve una NUEVA instancia con
+   la `download_url` realmente usada + rutas reales. **Cache hit valido SOLO si**: la imagen existe
+   y su contenido sigue siendo imagen valida (firma de bytes) Y el sidecar existe y coincide en
+   `provider`, `asset_id`, `selected_variant` y `download_url` con la seleccion actual. Cualquier
+   desajuste (variante o URL distinta, sidecar faltante/corrupto) -> se re-descarga (nunca se
+   reutiliza el archivo de otra variante).
+6. **Sidecar de atribucion/licencia** por imagen (utf-8, sin la API key): `provider_url`,
+   `attribution_text` ("Photo by {author} on Pexels"), `source_url`, `author_url`, dimensiones,
+   `selected_variant`, `selection_reason`, `download_url`, `downloaded_utc`, `last_used_utc`,
+   `sidecar_version` y bloque de licencia (uso comercial si; redistribuir como biblioteca de stock
+   no; datasets/entrenamiento IA no; Centrito lo usa como material integrado). **Refresh en cache
+   hit:** un hit valido reescribe el sidecar (atomico) actualizando SOLO `query` (la mas reciente),
+   `selection_reason` (el actual) y `last_used_utc`; `downloaded_utc` se PRESERVA (nunca se
+   reinicia). Un solo campo `query` (sin lista `queries[]` ni migracion). La identidad de archivo
+   no cambia.
+7. **Contrato de error seguro y tipado + fail-open acotado.** `BrollResult(assets, error,
+   rate_limit)` con `BrollError(code, message, retry_after)` y `RateLimitInfo`. Mensajes saneados:
+   `_sanitizar` garantiza que ni la key ni `Authorization` se filtren. La capa
+   `buscar_imagenes_pexels` es HONESTA (lanza excepciones tipadas). `buscar_broll_seguro` es
+   **fail-open SOLO para errores operativos conocidos**: atrapa unicamente la familia `PexelsError`
+   (deshabilitado/429/auth/http/timeout/respuesta_invalida/sin_variante/descarga). Los errores de
+   PROGRAMACION (RuntimeError/TypeError/ValueError/AssertionError) se PROPAGAN, no se ocultan.
+
+**Alcance cerrado (NO implementado, por diseno):** busqueda de videos, Pixabay/Storyblocks,
+overlay de clips, conexion con brain/DeepSeek, traduccion de keywords, ranking con LLM,
+integracion con `core_overlays`/creacion de `Popup`, UI, aprobacion/rechazo, Ken Burns, matting,
+cambios en `auto.py`, llamadas reales durante pytest.
+
+**Requiere prueba manual con API key real:** el smoke test (`revision/broll-pexels-images/
+smoke_pexels.py`) hace una busqueda + descarga real contra Pexels; no forma parte de pytest.
