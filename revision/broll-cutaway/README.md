@@ -27,18 +27,35 @@ venv\Scripts\python revision\broll-cutaway\gen_evidencia.py
 ```
 
 Genera extractos cortos de un clip real + un PNG de b-roll ANCHO (aspecto 3.2:1, muy distinto
-al cuadro, para distinguir contain de cover) y renderiza con el código real (`construir_comando`).
+al cuadro, para distinguir contain de cover), quema un **caption real de dos líneas** con el
+pipeline existente (`core_ass.build_ass` + estilo hormozi) y renderiza con el código real
+(`construir_comando`). El cutaway va `behind_text=True`.
+
+## Validación de captions sobre el cutaway (actualizado)
+
+Antes la evidencia usaba un ASS **vacío**, así que no probaba la convivencia con captions.
+Ahora el ASS lleva un caption visible de dos líneas (`B-ROLL DE PRUEBA` /
+`LOS CAPTIONS DEBEN QUEDAR ENCIMA`) durante la ventana activa del cutaway (0.3–2.7 s). El
+frame se extrae a t=1.5 s (dentro de esa ventana). Verificado con ojos (regla #7):
+
+- **Overlay detrás del ASS:** el cutaway se compone ANTES del filtro `ass` (`behind_text=True`),
+  por lo que el caption queda **por encima** del b-roll, no tapado.
+- **Caption visible encima:** las dos líneas hormozi (blanco + contorno, con la palabra activa
+  del instante resaltada en amarillo por el estilo — no es un keyword marcado) se leen sobre el
+  b-roll a pantalla completa (cover) y sobre la lámina centrada (contain).
+- **Legibilidad básica:** el contorno negro mantiene el texto legible incluso sobre las barras
+  saturadas del testsrc.
 
 ## Frames (verificados con ojos, regla #7)
 
 | Frame | Caso | Qué prueba |
 |---|---|---|
-| `cutaway_vertical_contain_85.png` | vertical 1080x1920, contain, 0.85 | imagen entera centrada, aspecto preservado (barras sin deformar), no recorta |
-| `cutaway_vertical_cover_fullframe.png` | vertical 1080x1920, cover, 1.0 | llena todo el cuadro, recorte proporcional, sin bandas ni deformación |
-| `cutaway_horizontal_cover_fullframe.png` | horizontal 1920x1080, cover, 1.0 | funciona en horizontal; llena y recorta |
+| `cutaway_vertical_contain_85.png` | vertical 1080x1920, contain, 0.85, **con caption** | imagen entera centrada, aspecto preservado (barras sin deformar), no recorta; caption legible encima |
+| `cutaway_vertical_cover_fullframe.png` | vertical 1080x1920, cover, 1.0, **con caption** | llena todo el cuadro, recorte proporcional, sin bandas ni deformación; caption legible encima |
+| `cutaway_horizontal_cover_fullframe.png` | horizontal 1920x1080, cover, 1.0, **con caption** | funciona en horizontal; llena y recorta; caption legible encima |
 
 ffprobe confirma en los 3 renders: resolución de la fuente conservada y duración = 3.00s
-(coexistencia con el pase ASS + overlays en un solo comando FFmpeg).
+(caption ASS + overlay cutaway conviven en un solo comando FFmpeg).
 
 ## Verificación automática
 
@@ -47,7 +64,8 @@ ffprobe confirma en los 3 renders: resolución de la fuente conservada y duraci�
 
 ## Qué debe revisar K visualmente
 
-- Que el tamaño default 0.85 (contain) se vea bien sobre material real con captions activos.
+- Que el tamaño default 0.85 (contain) se vea bien sobre material real (no testsrc).
 - Elegir por caso de uso `contain` (b-roll completo visible, tipo lámina) vs `cover` (b-roll
   inmersivo full-frame). Con imágenes de aspecto cercano al cuadro la diferencia es sutil.
-- Que `behind_text=True` (default de cutaway manual) deje los captions legibles sobre el b-roll.
+- Confirmar que la legibilidad del caption sobre un b-roll real (foto/ilustración, no barras
+  de color) sigue siendo suficiente; el testsrc es el caso más hostil de contraste.
