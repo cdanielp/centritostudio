@@ -1,0 +1,15 @@
+[
+  {
+    "source": "pexels_video",
+    "query": "snowy mountains vertical video",
+    "t": 1.0,
+    "dur": 4.0,
+    "source_start": 0.0,
+    "loop": true,
+    "cutaway": true,
+    "fit": "cover",
+    "size_pct": 1.0,
+    "behind_text": true,
+    "mute": true
+  }
+]

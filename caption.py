@@ -181,10 +181,13 @@ def process_video(
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
 
     popups: list = []
+    clips: list = []
     if use_popups:
+        import cve_clips  # noqa: PLC0415
         import cve_popups  # noqa: PLC0415
 
         popups = cve_popups.resolver_popups(groups, stem, video_w=width, video_h=height)
+        clips = cve_clips.resolver_clips(stem, video_w=width, video_h=height)
 
     fx_plan = _resolver_plan_fx(fx_preset, stem, vinfo["duration"])
 
@@ -199,10 +202,12 @@ def process_video(
         else:
             print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
         core.burn_video_with_emojis(
-            video_path, ass_path, out_path, overlays, style_cfg, popups, fx_plan
+            video_path, ass_path, out_path, overlays, style_cfg, popups, fx_plan, clips=clips
         )
-    elif popups or fx_plan is not None:
-        core.burn_video_with_emojis(video_path, ass_path, out_path, [], style_cfg, popups, fx_plan)
+    elif popups or clips or fx_plan is not None:
+        core.burn_video_with_emojis(
+            video_path, ass_path, out_path, [], style_cfg, popups, fx_plan, clips=clips
+        )
     else:
         core.burn_video(video_path, ass_path, out_path)
 

@@ -823,3 +823,58 @@ traduccion de la query, multiples clips, Ken Burns, matting, audio, NVENC, SRT, 
 **Sin salida visual:** es plomeria. Verificacion: 52 tests offline (538 totales) + smoke real con
 key (video_id=35568501, file_id=15070864, 1080x1920, 11s, h264 por ffprobe; MP4 no commiteado).
 Evidencia: `revision/broll-pexels-video-fetcher/` (README + `smoke_video_pexels.py`).
+
+## D31 - Clip de video Pexels como b-roll cutaway: capa aditiva, un clip, cover-only (feat/broll-pexels-video-cutaway)
+
+**Contexto:** con el fetcher de VIDEOS mergeado (D30), el paso visible es usar un clip local
+descargado como cutaway temporal dentro del MISMO render FFmpeg, con captions encima, audio original
+conservado y clip silenciado. Es la contraparte de video del cutaway de imagen (D27/D29).
+
+**Decision:** capa ADITIVA, sin romper compatibilidad ni el audio original.
+
+1. **Tipo explicito `ClipOverlay`, NO se fuerza el video dentro de `Popup`.** `Popup` es de imagen
+   (PNG/WebP) y queda intacto. `clip_overlay.py` define `ClipOverlay(clip, t0, t1, source_start,
+   loop, cutaway, fit, size_pct, behind_text, fade, mute)` + los constructores PUROS del filtro
+   FFmpeg. `core_overlays.construir_comando` gana `clips=None, fps=30.0` y los teje; SIN clips el
+   comando es BYTE-IDENTICO (el golden de emojis/popups lo fija). `core_ass`/`caption` propagan.
+
+2. **Solo `fit="cover"` en V1 (contain DIFERIDO, no es una omision accidental).** cover escala
+   conservando aspecto (`scale ...:force_original_aspect_ratio=increase`) y recorta (`crop`) al
+   area objetivo, sin deformar. `contain` (letterbox) se difiere a un PR posterior: el caso de uso
+   V1 es b-roll a pantalla completa. fit distinto de cover -> ValueError de contrato.
+
+3. **Audio: regla #19 es inviolable.** El clip se agrega como input `-i` propio (con `-stream_loop
+   -1` si loop); su AUDIO nunca se mapea ni se mezcla. La salida mapea SOLO `[video_final]` + `0:a`
+   (el audio original), sin `amix`/`amerge`/referencias a `N:a`. `mute=True` es obligatorio en V1.
+   La evidencia lo verifica DURO: original vs salida identicos en codec/duracion/numero de paquetes.
+
+4. **FFmpeg en un solo pase, sin congelar.** trim desde `source_start` por la ventana `t1-t0` ->
+   normaliza (rebase de timestamps, `fps` de la base, `setsar=1`, `format=yuva420p`) -> cover ->
+   fade alpha -> desplaza a `t0`. Overlay centrado con `eof_action=pass:repeatlast=0:enable=
+   'between(t,t0,t1)'`: fuera de la ventana y cuando un clip `loop=false` corto termina, vuelve al
+   VIDEO ORIGINAL (no congela el ultimo frame). `loop=true` usa `-stream_loop -1` (repite el clip
+   corto hasta cubrir la ventana; la costura del loop la revisa K en el mp4 completo).
+
+5. **Maximo UN clip pexels_video por render en V1.** Si `{stem}_popups.json` trae varias entradas
+   source='pexels_video', se procesa deterministicamente la PRIMERA por orden del JSON; las demas
+   se omiten con log ASCII. Las entradas PNG y Pexels-imagen se siguen procesando normal (capas
+   aparte: `cve_popups` para imagen, `cve_clips` para video). Multi-clip DIFERIDO (PREGUNTAS #36).
+
+6. **Contrato de errores POR CAPAS (corrige 'todo ValueError se propaga', que tumbaria el render
+   por un typo del usuario).** El fetcher y el puente `resolver_cutaway_video_pexels` son HONESTOS:
+   el ValueError de contrato (query vacia, t1<=t0, source_start<0, fit!=cover, size_pct/loop/mute
+   invalidos) se PROPAGA. El adaptador de JSON manual `cve_clips` CAPTURA ese ValueError, imprime
+   un mensaje accionable y OMITE solo esa entrada (no derriba el render). Los errores OPERATIVOS de
+   Pexels (cero resultados, timeout, rate limit) omiten solo ese b-roll (fail-open). Los bugs
+   (RuntimeError/TypeError/AssertionError) se PROPAGAN hasta arriba y nunca se convierten en [].
+
+7. **Compatibilidad total.** source='pexels' sigue siendo imagen; source ausente/'local'/
+   'biblioteca' sigue siendo PNG; renders sin Pexels no requieren API key ni tocan la red (import
+   lazy del puente). El cutaway de imagen (D29) y los popups historicos quedan intactos.
+
+**Requiere ojo de K (salida visual):** ver el MP4 de 6s COMPLETO (no solo los frames) y validar que
+el clip se mueve/no se congela/no deforma, que los captions quedan legibles encima, que el audio
+sigue siendo el de la persona, que empieza/termina en los tiempos correctos y que el clip
+corresponde a la query. La costura del loop solo se juzga en el video completo. Evidencia:
+`revision/broll-pexels-video-cutaway/` (README + gen_evidencia.py que se niega sin key +
+ejemplo_popups.json); MP4/clip/frames NO commiteados.
