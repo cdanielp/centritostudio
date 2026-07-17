@@ -759,3 +759,67 @@ o `brain.py`, llamadas reales durante pytest.
 demasiado a la persona/microfono, legibilidad de captions sobre foto real, pertinencia semantica de
 la imagen. Evidencia: `revision/broll-pexels-cutaway/` (README + `gen_evidencia.py` que se niega sin
 key + `ejemplo_popups.json`); 3 frames antes/durante/despues sobre `input/reel01.mp4` (persona real).
+
+## D30 - Fetcher de b-roll de VIDEOS (Pexels): modulo aislado, opt-in (feat/broll-pexels-video-fetcher)
+
+**Contexto:** el fetcher de IMAGENES (D28) y el puente de cutaway de imagen (D29) ya estan
+mergeados. El siguiente paso hacia clips de video Pexels es la PLOMERIA: buscar, seleccionar,
+descargar y cachear un `video_file` MP4. Este PR es SOLO eso; la integracion con FFmpeg/render/
+overlays/UI es el PR B (D31, siguiente).
+
+**Decision:** modulo(s) nuevo(s), aislado(s), sin tocar el fetcher de imagenes ni el pipeline.
+
+1. **Split en tres unidades** (regla anti-spaghetti, cada archivo <=400L, funciones <=50L):
+   `broll_video_stock_base.py` (tipos/errores/cache/IO/sidecar/`verificar_mp4_ffprobe`),
+   `broll_video_select.py` (seleccion determinista PURA, sin red) y `broll_video_stock.py`
+   (config + busqueda HTTP + descarga por streaming + orquestador seguro). Se **reutilizan** de
+   `broll_stock_base` la escritura atomica, el reloj UTC, la normalizacion de query y el tipo
+   `RateLimitInfo` (sin ciclo: la base de imagenes no importa la de video). CERO deps nuevas.
+
+2. **Endpoint** `GET https://api.pexels.com/v1/videos/search` (verificado contra la doc oficial).
+   Un `Video` trae id/width/height/url/image/duration/user{id,name,url}/video_files[]; cada
+   `video_file` trae id/quality/file_type/width/height/fps/link. No se inventan campos.
+
+3. **size=None por defecto (decision explicita).** `size` (large|medium|small) es un FILTRO de
+   busqueda opcional; por defecto NO se envia a la API. La resolucion final la decide
+   `seleccionar_variante_video` sobre los `video_files`, no el filtro: asi no se descartan videos
+   utiles por un filtro de resolucion grueso, y la seleccion queda en un unico lugar determinista.
+
+4. **Seleccion determinista por VARIANTE** (`seleccionar_variante_video(video_files, *, destino,
+   target_width, target_height)`): (a) filtra MP4 directos validos -> descarta HLS, `.m3u8`,
+   `file_type != video/mp4`, dimensiones <=0, links vacios; (b) prioriza candidatos cuya
+   orientacion coincide con el destino (`vertical`->portrait, `horizontal`->landscape); (c) entre
+   los que ALCANZAN target_width y target_height, el de MENOR area suficiente (evita 4K si una
+   Full HD cubre el destino); (d) si ninguno alcanza, el de MAYOR area disponible; (e) desempate
+   determinista: menor diferencia de aspect ratio, luego file_id. Nunca aleatorio. Sin candidato
+   valido -> `PexelsVideoSinVariante`. Ejemplos: 1080x1920 gana a 2160x3840; 1920x1080 gana a
+   4096x2160; con solo 720x1280 se usa como fallback vertical.
+
+5. **Cache por `video_id + file_id`** (NO solo video_id): la identidad de archivo es
+   `pexels_{video_id}_{video_file_id}.mp4` + sidecar `.json`. Un mismo video tiene varias variantes
+   (portrait/landscape, distintas resoluciones); incluir el file_id evita que una variante pise a
+   otra. Cache hit SOLO si el MP4 conserva firma ISO/MP4 (ftyp) valida Y el sidecar coincide en
+   provider/asset_id/video_file_id/download_url. Cache de busqueda JSON aparte, TTL 24h, identidad
+   con media_type=video+query+orientation+size+locale+per_page+page. Todo en
+   `assets/broll/cache/pexels_video/` (gitignored: ni MP4 ni sidecar entran al repo).
+
+6. **Descarga honesta + segura.** Streaming por chunks con tope de 100MB, timeout explicito de 60s,
+   temporal + `os.replace` (atomico). Se valida Content-Type (video/ u octet-stream) cuando viene
+   y SIEMPRE la firma ftyp (HTML renombrado se rechaza). `ffprobe` es validacion REAL opcional
+   (`verificar_mp4_ffprobe`, usada por el smoke/evidencia; los unit tests trabajan con MP4
+   sinteticos de solo-ftyp y no dependen de ffprobe). Sidecar sin API key, con
+   attribution_text="Video by {author} on Pexels" + licencia; en cache hit preserva downloaded_utc.
+
+7. **Fail-open acotado (mismo criterio que D28).** Capa baja lanza `PexelsVideoError` tipado;
+   `buscar_video_broll_seguro` atrapa SOLO esa familia -> `BrollVideoError` saneado (sin secretos)
+   para que el pipeline omita el b-roll y siga. Errores de programacion (RuntimeError/TypeError/
+   ValueError/AssertionError) se PROPAGAN. Seguridad #9: la key nunca se imprime/serializa/loguea.
+
+**Alcance cerrado (NO en este PR, por diseno):** integracion con FFmpeg/render/overlays/`Popup`/
+`caption`/`cve_popups`/UI, seleccion automatica de cuando/cuantos clips (brain), ranking LLM,
+traduccion de la query, multiples clips, Ken Burns, matting, audio, NVENC, SRT, cambios en
+`auto.py`/`brain.py`, llamadas de red durante pytest. Todo eso queda para el PR B (D31).
+
+**Sin salida visual:** es plomeria. Verificacion: 52 tests offline (538 totales) + smoke real con
+key (video_id=35568501, file_id=15070864, 1080x1920, 11s, h264 por ffprobe; MP4 no commiteado).
+Evidencia: `revision/broll-pexels-video-fetcher/` (README + `smoke_video_pexels.py`).
