@@ -16,6 +16,9 @@ thumbs/
 # Assets generados por ComfyUI (cache local)
 assets/generados/
 
+# B-roll de stock descargado (Pexels) — cache local, nunca al repo
+assets/broll/cache/
+
 # Modelos de IA (pesados, se descargan en primer uso)
 models/
 
