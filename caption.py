@@ -109,6 +109,84 @@ def _resolver_plan_fx(fx_preset: str | None, stem: str, duration: float):
         return None
 
 
+def _variante_tag(
+    plan, style: str, pop: str | None, rebote: bool | None, intensidad, densidad
+) -> str:
+    """Sufijo de variante para el nombre de salida (mismo criterio que el flujo clasico)."""
+    if plan:
+        import cve  # noqa: PLC0415
+
+        return cve.tag_variante(plan.preset, intensidad, densidad)
+    pop_tag = f"_{pop}" if pop else ""
+    reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
+    return f"_{style}{pop_tag}{reb_tag}"
+
+
+def _process_srt(
+    video_path: Path,
+    style: str,
+    lang: str,
+    output_dir: Path,
+    model_arg: str,
+    out_stem: str | None,
+    pop: str | None,
+    rebote: bool | None,
+    preset: str | None,
+    intensidad: str | None,
+    densidad: str | None,
+    srt_path: Path,
+) -> tuple[float, dict]:
+    """Render con SRT como texto oficial (S36-B). Whisper solo aporta timings.
+
+    El texto del SRT nunca se sustituye ni se pasa por Caption QA (D36B-1/D36B-5).
+    Salida con sufijo `_srt` para no pisar las variantes historicas (D36B-6).
+    """
+    import srt_caption  # noqa: PLC0415
+
+    t0 = time.time()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    device, compute = core.detect_device()
+    model_path, label = core.resolve_model(model_arg)
+    print(f"[model] {label} | {device} | {compute}")
+
+    plan = _resolver_plan_preset(preset, intensidad, densidad)
+    style_cfg = plan.style_cfg if plan else get_style(style, pop, rebote)
+    stem = out_stem or video_path.stem
+
+    vinfo = core.get_video_info(video_path)
+    width, height = vinfo["width"], vinfo["height"]
+    print(f"[video] {width}x{height}")
+    video_ms = int(round(vinfo["duration"] * 1000)) or None
+
+    transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
+    try:
+        groups, result, payload = srt_caption.preparar_desde_srt(
+            srt_path,
+            transcript["words"],
+            video_duration_ms=video_ms,
+            words_file=f"{stem}_words.json",
+        )
+    except Exception as exc:
+        print(f"[srt] ERROR: {exc}")
+        sys.exit(1)
+    print(
+        f"[srt] {result.n_cues} cues | {result.word_aligned} word-aligned | "
+        f"{result.cue_fallback} fallback | cobertura {result.coverage:.2f}"
+    )
+
+    variante = _variante_tag(plan, style, pop, rebote, intensidad, densidad)
+    ass_path = output_dir / f"{stem}{variante}_srt.ass"
+    out_path = output_dir / f"{stem}{variante}_srt.mp4"
+    core.build_ass(groups, width, height, style_cfg, ass_path)
+    print(f"[ass] {ass_path.name} generado ({len(groups)} grupos)")
+    core.burn_video(video_path, ass_path, out_path)
+    srt_caption.escribir_sidecar(payload, _TRANSCRIPTS_DIR / f"{stem}_srt_alignment.json")
+
+    total = time.time() - t0
+    print(f"[ok] {video_path.name} -> {out_path.name} en {total:.1f}s\n")
+    return total, transcript
+
+
 def process_video(
     video_path: Path,
     style: str,
@@ -126,7 +204,24 @@ def process_video(
     densidad: str | None = None,
     qa_opts: dict | None = None,
     fx_preset: str | None = None,
+    *,
+    srt_path: Path | None = None,
 ) -> tuple[float, dict]:
+    if srt_path is not None:
+        return _process_srt(
+            video_path,
+            style,
+            lang,
+            output_dir,
+            model_arg,
+            out_stem,
+            pop,
+            rebote,
+            preset,
+            intensidad,
+            densidad,
+            srt_path,
+        )
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -248,8 +343,8 @@ def _run_depurar_cli(input_path: Path, mode: str, output_dir: Path) -> None:
     print(f"[depurar] Listo: {result['cuts']} cortes, -{result['saved_s']}s ahorrados")
 
 
-def _run_clips_cli(input_path: Path, tipos: str) -> None:
-    """Genera clips virales desde la CLI."""
+def _run_clips_cli(input_path: Path, tipos: str, srt_path: Path | None = None) -> None:
+    """Genera clips virales desde la CLI. Con --srt genera ademas un SRT rebasado por clip."""
     if not input_path.is_file():
         print(f"[ERROR] No existe: {input_path}")
         sys.exit(1)
@@ -261,10 +356,21 @@ def _run_clips_cli(input_path: Path, tipos: str) -> None:
 
     import clipper  # noqa: PLC0415
 
+    srt_document = None
+    if srt_path is not None:
+        from srt_import import load_srt  # noqa: PLC0415
+
+        try:
+            srt_document = load_srt(srt_path)
+        except Exception as exc:
+            print(f"[clips] ERROR SRT: {exc}")
+            sys.exit(1)
+        print(f"[clips] SRT fuente: {srt_path.name} ({len(srt_document.cues)} cues)")
+
     raw = json.loads(words_path.read_text(encoding="utf-8"))
     words = raw.get("words", [])
     print(f"[clips] {len(words)} palabras | tipos={tipos}")
-    result = clipper.generar_clips(input_path, words, tipos)
+    result = clipper.generar_clips(input_path, words, tipos, srt_document=srt_document)
     n = len(result.get("clips", []))
     err = result.get("error")
     if err:
@@ -280,13 +386,27 @@ def main() -> None:
     input_path = Path(args.input)
     rebote = None if args.rebote is None else (args.rebote == "on")
     qa_opts = qa_opts_de_args(args)
+    srt_path = Path(args.srt) if args.srt else None
+
+    # Guardas de --srt (S36-B): opt-in, un solo video, y sin auto_seguro (el SRT manda).
+    if srt_path is not None:
+        if input_path.is_dir() and not args.clips:
+            print(
+                "[ERROR] --srt requiere un video individual, no una carpeta (S36-B; batch en S36-C)"
+            )
+            sys.exit(1)
+        if qa_opts and qa_opts.get("modo") == "auto_seguro":
+            print(
+                "[ERROR] --srt no admite --caption-qa-mode auto_seguro: el SRT es el texto oficial"
+            )
+            sys.exit(1)
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
         return
 
     if args.clips:
-        _run_clips_cli(input_path, args.clips)
+        _run_clips_cli(input_path, args.clips, srt_path)
         return
 
     if input_path.is_dir():
@@ -334,6 +454,7 @@ def main() -> None:
             densidad=args.densidad,
             qa_opts=qa_opts,
             fx_preset=args.fx,
+            srt_path=srt_path,
         )
     else:
         print(f"[ERROR] No existe: {input_path}")

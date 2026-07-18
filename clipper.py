@@ -263,15 +263,71 @@ def exportar_transcript_clip(words: list[dict], wi: int, wf: int, clip_stem: str
     print(f"[clipper] transcript clip: {len(rebased)} palabras, {len(groups)} grupos")
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Escritura atomica (tmp + os.replace); no deja `.tmp` medio escrito visible."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8", newline="")
+    os.replace(tmp, path)
+
+
+def exportar_srt_clip(srt_document, start_s: float, end_s: float, clip_stem: str) -> dict | None:
+    """Recorta/rebasa el SRT fuente al intervalo REAL del clip [start, end) (D36B-8/9).
+
+    Rebase contra `clip.start` real (con padding), no contra la primera palabra: asi video,
+    audio y SRT comparten el mismo cero. Nunca modifica la fuente. Devuelve metadata saneada
+    (solo basenames) o None si el clip no tiene cues. ms enteros con `round(seconds*1000)`.
+    """
+    from srt_import import serialize_srt, srt_to_contract  # noqa: PLC0415
+    from srt_slice import slice_srt  # noqa: PLC0415
+
+    start_ms = round(start_s * 1000)
+    end_ms = round(end_s * 1000)
+    derived = slice_srt(srt_document, start_ms, end_ms, rebase=True, reindex=True)
+
+    TRANSCRIPTS_DIR.mkdir(exist_ok=True)
+    srt_file = f"{clip_stem}.srt"
+    contract_file = f"{clip_stem}_srt.json"
+    if not derived.cues:  # clip sin cues: metadata honesta n_cues=0, sin archivo (D36B-8)
+        return {
+            "file": None,
+            "contract_file": None,
+            "n_cues": 0,
+            "source_sha256": srt_document.source_sha256,
+            "start_ms_source": start_ms,
+            "end_ms_source": end_ms,
+            "rebased": True,
+        }
+    _atomic_write_text(TRANSCRIPTS_DIR / srt_file, serialize_srt(derived))
+    _atomic_write_text(
+        TRANSCRIPTS_DIR / contract_file,
+        json.dumps(srt_to_contract(derived), ensure_ascii=False, indent=2),
+    )
+    return {
+        "file": srt_file,
+        "contract_file": contract_file,
+        "n_cues": len(derived.cues),
+        "source_sha256": srt_document.source_sha256,
+        "start_ms_source": start_ms,
+        "end_ms_source": end_ms,
+        "rebased": True,
+    }
+
+
 # ── Pipeline principal ────────────────────────────────────────────────────────
 
 
-def generar_clips(video_path: Path, words: list[dict], tipos: str = "ambos") -> dict:  # noqa: C901
+def generar_clips(  # noqa: C901
+    video_path: Path, words: list[dict], tipos: str = "ambos", *, srt_document=None
+) -> dict:
     """Pipeline completo del clipper. Devuelve el dict de clips.json.
 
     {"clips": [...], "descartados": [...], "telemetria": [...], "error": str|None}
     Nunca crashea por el LLM y nunca inventa clips: sin candidatos validos devuelve
     clips=[] con mensaje accionable (DISENO_CLIPPER.md §4.4).
+
+    Con `srt_document` (SrtDocument ya cargado) genera ademas, por clip, un SRT rebasado
+    al intervalo real del clip (D36B-8). Sin el, comportamiento historico exacto: no lee
+    ni genera SRT alguno.
     """
     import clipper_brain as cb  # noqa: PLC0415 lazy — evita circular
 
@@ -471,23 +527,31 @@ def generar_clips(video_path: Path, words: list[dict], tipos: str = "ambos") -> 
             )
             cortar_clip(video_path, clip["start"], clip["end"], out_path)
             exportar_transcript_clip(words, clip["wi"], clip["wf"], out_name)
-            clips_out.append(
-                {
-                    "archivo": out_path.name,
-                    "tipo": clip["tipo"],
-                    "start": clip["start"],
-                    "end": clip["end"],
-                    "dur_s": clip["dur_s"],
-                    "wi": clip["wi"],
-                    "wf": clip["wf"],
-                    "score": clip["score"],
-                    "subscores": clip["subscores"],
-                    "score_duracion": clip["score_duracion"],
-                    "titulo": clip["titulo"],
-                    "razon": clip["razon"],
-                    "tema": clip.get("tema", "(sin tema)"),
-                }
-            )
+            clip_info = {
+                "archivo": out_path.name,
+                "tipo": clip["tipo"],
+                "start": clip["start"],
+                "end": clip["end"],
+                "dur_s": clip["dur_s"],
+                "wi": clip["wi"],
+                "wf": clip["wf"],
+                "score": clip["score"],
+                "subscores": clip["subscores"],
+                "score_duracion": clip["score_duracion"],
+                "titulo": clip["titulo"],
+                "razon": clip["razon"],
+                "tema": clip.get("tema", "(sin tema)"),
+            }
+            if srt_document is not None:
+                # El MP4 ya esta cortado: un fallo del SRT derivado NO tumba el clip (D36B-8).
+                try:
+                    srt_meta = exportar_srt_clip(srt_document, clip["start"], clip["end"], out_name)
+                    if srt_meta is not None:
+                        clip_info["srt"] = srt_meta
+                        print(f"[clipper] SRT clip {n}: {srt_meta['n_cues']} cues rebasados")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[clipper] AVISO: SRT del clip {n} no generado ({type(exc).__name__})")
+            clips_out.append(clip_info)
         except Exception as exc:
             print(f"[clipper] Error cortando clip {n}: {exc}")
             result["descartados"].append({**clip, "motivo": f"error_corte: {exc}"})

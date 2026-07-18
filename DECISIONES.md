@@ -1122,3 +1122,57 @@ Deudas declaradas fuera de alcance (no bloquean ninguna fase futura, no se resue
 - SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente de S37).
 
 Auto clásico continúa como default. Auto v2 ya está disponible en Studio. El Editor muestra b-roll, FX y A/V en modo read-only.
+
+## D36 — S36-B: Texto SRT autoritativo, timings reales, fallback por cue y round-trip
+
+**Fecha:** 2026-07-18. **Rama:** `feat/s36-b-srt-caption-roundtrip`. **Sesión:** 38.
+
+Conecta la capa SRT pura de S36-A con el pipeline de captions y el clipper, sin tocar los
+motores aprobados de S37. Funcionalidad **opt-in**: sin `--srt` el comportamiento es
+byte-idéntico al histórico.
+
+1. **El texto del SRT es la fuente oficial (D36B-1).** Con `--srt`, el texto visible sale
+   tal cual del SRT: no se sustituye por Whisper, no se corrige, no se cambian acentos ni
+   puntuación, no lo toca Caption QA. Whisper (o un transcript existente) aporta ÚNICAMENTE
+   timings por palabra.
+2. **No se inventan timings (D36B-2).** Solo tres tipos: `exact_match`, `substitution_match`
+   (1:1 entre anclas reales) y `cue_fallback`. Prohibido `duración/n_palabras`. Un token del
+   SRT sin ancla real NO recibe timing fabricado.
+3. **Alineación.** `srt_align.py` (puro): normaliza SOLO para comparar (NFKC + casefold +
+   sin acentos + sin puntuación de borde; preserva números/emoji y SIEMPRE el token
+   original). Particiona las timing words por punto medio dentro de la ventana de cada cue
+   (disjunta, sin reusar una word dos veces) y alinea con edit-distance determinista
+   (traceback estable). Complejidad O(n_tokens_cue · n_words_ventana), acotada; sin matriz
+   global. Un cue es `word_aligned` solo si TODOS sus tokens anclan (cobertura 1.0,
+   `min_coverage` por defecto 1.0); si no, `cue_fallback`.
+4. **Fallback honesto (D36B-3).** El cue conserva su texto y sus start/end exactos y se
+   pinta ESTÁTICO (un solo evento ASS, sin color/animación inline), nunca karaoke falso.
+   Cambio mínimo y aditivo en `core_ass.build_ass`: los groups con
+   `timing_mode="cue_fallback"` emiten un evento estático; los groups históricos (sin la
+   clave) son byte-idénticos.
+5. **Validación (D36B-4).** Errores estructurales del SRT abortan el render (no se toca el
+   original); los warnings (cue fuera del video, etc.) se reportan y no abortan. Se valida
+   contra la duración real del video.
+6. **Caption QA (D36B-5).** Con `--srt`, Caption QA NO se aplica al texto oficial;
+   `--caption-qa-mode auto_seguro` se RECHAZA con error claro (exit≠0). El modo alertas no
+   modifica nada.
+7. **Compatibilidad (D36B-6).** Sin `--srt`: CLI, batch, Auto clásico/v2, clipper, nombres
+   de salida y sidecars idénticos. Con `--srt`: la salida lleva sufijo `_srt`
+   (`{stem}_{style}_srt.mp4/.ass`) y se escribe `transcripts/{stem}_srt_alignment.json`.
+8. **Batch (D36B-7).** `--srt` explícito solo con un video individual; carpeta + `--srt` se
+   rechaza. El mapeo video↔SRT es S36-C.
+9. **Round-trip del clipper (D36B-8/9).** Con `srt_document`, por cada clip: `slice_srt`
+   recorta los cues al intervalo real `[clip.start, clip.end)` (semántica fin-exclusivo),
+   los rebasa contra el `clip.start` REAL (con padding, no la primera palabra), reindexa
+   desde 1, preserva líneas/texto, y guarda `transcripts/{clip_stem}.srt` +
+   `_srt.json` + metadata saneada en `clips.json`. La fuente nunca se modifica; un fallo del
+   SRT derivado no borra el MP4 ya cortado. Sin `srt_document`: comportamiento histórico
+   exacto (no lee ni genera SRT).
+10. **Auto/Studio (D36B-10).** No se conecta SRT con Auto v2 ni con Studio en esta sesión;
+    `auto*.py`, `studio_*.py`, `app.py`, `jobs.py`, `static/index.html` quedan intactos.
+
+Módulos nuevos (puros salvo el adaptador): `srt_align.py`, `srt_slice.py`, `srt_caption.py`.
+Evidencia sintética y checklist visual: `revision/s36-b-srt-caption-roundtrip/`.
+
+**Gobernanza.** PR abierto y NO mergeado: cambia el resultado visual de captions y requiere
+veredicto visual de K. S36 sigue ABIERTA (S36-C pendiente).
