@@ -922,3 +922,31 @@ determinista y cubierto por tests.
 (path-safety, endpoints via TestClient, confinamiento del video + del mount, fail-open, no-mutacion).
 La salida visual y el veredicto de K son del PR B. Evidencia:
 `revision/s35-editor-paquete-contract/README.md`.
+
+**Contrato visual final (PR B, feat/studio-package-review-alpha):** cierre visual Alpha 0.1,
+solo-lectura, sobre el contrato del PR A. Decisiones tomadas tras el checkpoint B4.5 (aprobado por K
+con correcciones obligatorias, todas incorporadas):
+
+1. **Preview vertical como elemento principal.** El clip 9:16 se muestra en una caja de
+   `aspect-ratio:9/16` determinista (no depende de que el `<video>` cargue metadata), `object-fit:
+   contain`, centrada, sticky en desktop, ~62-70vh de alto; un solo video cargado a la vez. El empty
+   state (clip sin MP4) comparte esa huella y dice "Video no disponible", sin `<video src=null>`.
+2. **Jerarquia fija:** video -> estado/score/duracion/razon -> alertas Caption QA -> calidad por
+   tramos -> lista de marcadores -> timeline compacto -> recomendacion -> acciones. El timeline es
+   una barra compacta de apoyo (mouse); el camino accesible es la LISTA de marcadores.
+3. **Marcadores como lista clicable (nucleo), no editor pro.** `<button>` por marcador (tipo + tiempo
+   + texto, rango en tramos), seek por click y por teclado (Enter/Espacio), simultaneos no se pisan,
+   leyenda, fallback como lista sin video/duracion, sin division por cero. Sin drag/trim/zoom/multipista.
+4. **Solo-lectura visible.** "Marcar como revisado en esta sesion" (localStorage, `aria-pressed`) con
+   aviso "no se guarda — no modifica el paquete"; aprobar/rechazar persistente se difiere.
+5. **Orden de paquetes por `meta.fecha` descendente** (fallback determinista por id) — el mas reciente
+   primero. Tarjeta-boton accesible con CTA "Revisar paquete"; badges agrupados con conteo si hay muchos.
+6. **Copy para testers y a11y minima.** "Sin elementos visuales adicionales"/"N elemento(s) visual(es)",
+   "Copiar ubicacion", tooltip en Score IA, titulos a 2 lineas con `title`; `<button>` reales,
+   `:focus-visible`, `aria-label`/`aria-current`, estados con texto (no solo color), sin quitar outline.
+7. **Sin refactor general de `static/index.html`.** Solo se tocaron unidades S35; la extraccion a
+   `s35.css`/`s35.js` se DIFIERE como deuda documentada (riesgo de romper otras pestanas > beneficio;
+   el monolito no crecio de forma relevante). Sin escritura, sin motores, sin red.
+
+Evidencia y como levantarlo: `revision/s35-editor-paquete/` (README + CHECKLIST_VISUAL + gen_fixture.py).
+Pendiente: ojo visual final de K antes del merge (el agente NO mergea el PR B).

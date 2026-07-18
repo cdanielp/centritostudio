@@ -121,6 +121,23 @@ def test_construir_markers_ordena_y_tipa():
     assert "mira -> sin sugerencia (baja)" in qa_mk["texto"]
 
 
+def test_construir_markers_conserva_simultaneos():
+    # dos markers distintos en el mismo timestamp deben conservarse ambos (no pisarse)
+    qa = [{"timestamp": 5.0, "texto_detectado": "x", "sugerencia": None, "confianza": "baja"}]
+    brain = [("keyword", 5.0)]
+    m = pe.construir_markers(30.0, [], qa, brain)
+    assert len(m) == 2
+    assert {x["tipo"] for x in m} == {"qa", "keyword"}
+    assert all(x["t"] == 5.0 for x in m)
+
+
+def test_construir_markers_dur_cero_no_crashea_ni_filtra():
+    # dur_s = 0 (clip sin duracion/sin video): no se clampa por duracion, sin crash
+    brain = [("keyword", 2.0), ("popup", 4.0)]
+    m = pe.construir_markers(0, [], [], brain)
+    assert [x["tipo"] for x in m] == ["keyword", "popup"]
+
+
 def test_construir_markers_descarta_fuera_de_clip_y_sin_tiempo():
     avisos = [{"t_ini": 999.0, "t_fin": 1000.0, "texto": "fuera"}]
     qa = [{"timestamp": None, "texto_detectado": "x"}]  # sin tiempo -> descartada

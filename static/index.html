@@ -534,12 +534,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .estado.NOPUB{background:#2a1015;color:#f87171;border:0.5px solid #5c1c22}
 
 /* Lista de paquetes */
-.pkg-card{display:flex;align-items:center;gap:14px;background:var(--surface);border:var(--border);
-  border-radius:12px;padding:14px 18px;margin-bottom:10px;cursor:pointer;transition:border-color .18s,background .18s}
+.pkg-card{display:flex;align-items:center;gap:14px;width:100%;text-align:left;font:inherit;color:var(--text);
+  background:var(--surface);border:var(--border);border-radius:12px;padding:14px 18px;margin-bottom:10px;
+  cursor:pointer;transition:border-color .18s,background .18s}
 .pkg-card:hover{border-color:var(--purple);background:#100d1c}
+.pkg-card:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
 .pkg-card .pk-name{font-weight:500;font-size:14px}
 .pkg-card .pk-meta{font-size:12px;color:var(--muted);margin-top:2px}
-.pkg-card .pk-estados{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:260px}
+.pkg-card .pk-estados{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:280px}
+.pkg-card .pk-cta{color:var(--purple);font-size:12px;white-space:nowrap;margin-left:8px}
 
 /* Editor de Paquete — layout 2 columnas */
 #tab-revision{flex-direction:row}
@@ -547,32 +550,68 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 #rev-header{padding:12px 14px;border-bottom:var(--border)}
 #rev-header select{width:100%}
 #rev-clips{flex:1;overflow-y:auto;padding:10px}
-.rev-clip{background:#101019;border:var(--border);border-radius:10px;padding:11px 12px;margin-bottom:9px;cursor:pointer;transition:border-color .15s}
+.rev-clip{width:100%;text-align:left;font:inherit;color:var(--text);background:#101019;border:var(--border);border-radius:10px;padding:11px 12px;margin-bottom:9px;cursor:pointer;transition:border-color .15s}
 .rev-clip:hover{border-color:var(--purple-dim)}
 .rev-clip.sel{border-color:var(--purple);background:#130f22}
-.rev-clip .rc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.rev-clip .rc-title{font-size:13px;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rev-clip:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
+.rev-clip .rc-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap;row-gap:5px}
+.rev-clip .rc-title{font-size:13px;font-weight:500;flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
 .rev-clip .rc-sub{font-size:11px;color:var(--muted)}
 #rev-right{flex:1;display:flex;flex-direction:column;padding:20px clamp(18px,2.5vw,32px);gap:14px;overflow-y:auto}
-/* Detalle del clip: en pantallas anchas, media a la izquierda y panel a la derecha */
+/* Detalle del clip: video vertical (hero) a la izquierda, diagnostico a la derecha */
 .rev-cols{display:grid;grid-template-columns:1fr;gap:16px}
 .rev-col-media,.rev-col-panel{display:flex;flex-direction:column;gap:14px;min-width:0}
 @media (min-width:1120px){
-  .rev-cols{grid-template-columns:minmax(360px,44%) 1fr;align-items:start}
+  .rev-cols{grid-template-columns:minmax(320px,40%) 1fr;align-items:start}
   .rev-col-media{position:sticky;top:0}
-  .rev-video-wrap,.rev-video-wrap video{max-height:60vh}
+  .rev-video-wrap{max-width:calc(70vh * 9 / 16);max-height:70vh}
 }
-.rev-video-wrap{background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;max-height:46vh}
-.rev-video-wrap video{max-width:100%;max-height:46vh;display:block}
+/* Preview vertical (hero): caja 9:16 determinista; el video contain adentro */
+.rev-video-wrap{background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;aspect-ratio:9/16;width:100%;max-width:calc(62vh * 9 / 16);max-height:62vh;margin:0 auto}
+.rev-video-wrap video{width:100%;height:100%;object-fit:contain;display:block}
+.rev-video-wrap .no-video{padding:20px}
 .rev-block{background:var(--surface);border:var(--border);border-radius:12px;padding:16px 18px}
 .rev-block h4{font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
-.rev-kv{display:flex;gap:18px;flex-wrap:wrap;font-size:14px}
+.rev-kv{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;align-items:center}
 .rev-kv b{color:var(--purple);font-weight:500}
+.rev-kv .hint{cursor:help;border-bottom:1px dotted var(--muted)}
+/* Editor responsive: <=900px se apila (sin scroll horizontal global) */
+@media (max-width:900px){
+  #header{flex-wrap:wrap;gap:8px;padding:10px 14px}
+  nav{margin-left:0;width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+  nav button{flex:0 0 auto;padding:8px 14px}
+  #tab-revision{flex-direction:column;overflow-y:auto;overflow-x:hidden}
+  #rev-left{width:100%;max-width:100%;min-width:0;max-height:40vh;border-right:none;border-bottom:var(--border)}
+  #rev-right{width:100%;max-width:100%;overflow:visible;padding:14px}
+  .pkg-card{flex-wrap:wrap}
+  .pk-estados{max-width:100%}
+  .rev-video-wrap{max-width:calc(56vh * 9 / 16);max-height:56vh}
+  .rev-actions .btn{min-height:44px}
+  .mk-row,.pkg-card,.rev-clip{min-height:44px}
+}
 .rev-alert{font-size:12px;padding:6px 0;border-bottom:0.5px solid #1a1a2a;display:flex;gap:8px;align-items:baseline}
 .rev-alert:last-child{border-bottom:none}
 .rev-alert .ts{color:var(--cyan);font-family:monospace;font-size:11px;min-width:42px}
 .rev-actions{display:flex;gap:8px;flex-wrap:wrap}
 .rev-empty{color:var(--muted);font-size:12px}
+/* Timestamp clicable (QA / avisos -> seek) */
+.ts-btn{background:none;border:none;color:var(--cyan);font-family:monospace;font-size:11px;min-width:42px;cursor:pointer;padding:0;text-align:left}
+.ts-btn:hover{text-decoration:underline}
+.ts-btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:2px}
+
+/* Lista de marcadores clicable (S35 PR B, nucleo) */
+.mk-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.mk-row{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#0c0c16;border:0.5px solid #23233a;border-radius:8px;padding:7px 10px;color:var(--text);cursor:pointer;font-size:12px;font-family:inherit}
+.mk-row:hover{border-color:var(--purple)}
+.mk-row:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
+.mk-tag{font-size:10px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap;border:0.5px solid}
+.mk-tag.tramo{color:var(--orange);border-color:var(--orange)}
+.mk-tag.qa{color:var(--cyan);border-color:var(--cyan)}
+.mk-tag.keyword{color:var(--yellow);border-color:var(--yellow)}
+.mk-tag.popup{color:#c084fc;border-color:#a855f7}
+.mk-time{font-family:monospace;font-size:11px;color:var(--muted);min-width:64px}
+.mk-text{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.mk-empty{color:var(--muted);font-size:12px}
 
 /* Timeline simple de revision */
 .tl{position:relative;height:38px;background:#0c0c16;border:0.5px solid #23233a;border-radius:8px;margin-top:4px;cursor:pointer}
@@ -2001,29 +2040,41 @@ function _renderPkgSelect() {
     paquetesCache.map(p => `<option value="${escHtml(p.id)}">${escHtml(p.name)} · ${escHtml(p.fecha)}</option>`).join('');
   if (paquetesCache.some(p => p.id === prev)) sel.value = prev;
 }
-// Lista de paquetes (tab Paquetes): tarjetas con estados; click abre el Editor.
+// Badges de estados: individuales si son pocos; agrupados con conteo si son muchos
+// (reduce clutter sin perder la señal). El resumen textual va aparte en la tarjeta.
+function _badgesPaquete(estados) {
+  const arr = estados || [];
+  if (arr.length <= 4) return arr.map(estadoBadge).join('');
+  const orden = ['NO PUBLICAR AUN', 'REQUIERE REVISION', 'LISTO CON AVISO', 'LISTO'];
+  const cuenta = {};
+  arr.forEach(e => cuenta[e] = (cuenta[e] || 0) + 1);
+  return orden.filter(e => cuenta[e]).map(e =>
+    `<span class="estado ${estadoClass(e)}">${cuenta[e]}× ${escHtml(e)}</span>`).join('');
+}
+// Lista de paquetes (tab Paquetes): tarjetas-boton con estados + CTA; abre el Editor.
 function _renderPkgList() {
   const list = document.getElementById('pkg-list');
   if (!list) return;
   if (!paquetesCache.length) {
-    list.innerHTML = '<div class="msg">Aún no hay paquetes. Genera uno en el Modo Automático.</div>';
+    list.innerHTML = '<div class="msg">Aún no hay paquetes. Genera uno en el Modo Automático y aquí podrás revisarlo.</div>';
     return;
   }
   list.innerHTML = paquetesCache.map(p => `
-    <div class="pkg-card" onclick="openPaqueteEnEditor('${esc(p.id)}')">
-      <div>
+    <button type="button" class="pkg-card" onclick="openPaqueteEnEditor('${esc(p.id)}')" aria-label="Revisar paquete ${_escAttr(p.name)}">
+      <div style="flex:1;min-width:0">
         <div class="pk-name">${escHtml(p.name)}</div>
         <div class="pk-meta">${escHtml(p.fecha)} · ${p.n_clips} clip(s) · ${escHtml(p.resumen)}</div>
       </div>
-      <div class="pk-estados">${(p.estados||[]).map(estadoBadge).join('')}</div>
-    </div>`).join('');
+      <div class="pk-estados">${_badgesPaquete(p.estados)}</div>
+      <span class="pk-cta">Revisar paquete →</span>
+    </button>`).join('');
 }
 
-function openPaqueteEnEditor(id) {
+function openPaqueteEnEditor(id, clipIdx) {
   showTab('revision');
   const sel = document.getElementById('rev-pkg-select');
   if (sel) sel.value = id;
-  loadPaqueteDetalle(id);
+  loadPaqueteDetalle(id, clipIdx);
 }
 
 function onRevisionShown() {
@@ -2053,7 +2104,7 @@ function toastRev(msg) {
   if (t) { t.textContent = msg; t.style.opacity = '1'; setTimeout(() => t.style.opacity = '0', 2200); }
 }
 
-async function loadPaqueteDetalle(id) {
+async function loadPaqueteDetalle(id, clipIdx) {
   const clipsEl = document.getElementById('rev-clips');
   const detailEl = document.getElementById('rev-detail');
   if (!id) {
@@ -2071,7 +2122,8 @@ async function loadPaqueteDetalle(id) {
     return;
   }
   renderRevClips();
-  if (pkgActual.clips.length) selectRevClip(0);
+  const n = pkgActual.clips.length;
+  if (n) selectRevClip(Math.min(Math.max(0, parseInt(clipIdx, 10) || 0), n - 1));
   else detailEl.innerHTML = '<div class="no-video">El paquete no tiene clips.</div>';
 }
 
@@ -2083,13 +2135,14 @@ function renderRevClips() {
     <div class="msg" style="margin-top:2px">${escHtml(pkgActual.resumen || '')}</div>
   </div>`;
   el.innerHTML = head + pkgActual.clips.map((c, i) => `
-    <div class="rev-clip ${i===revClipSel?'sel':''}" onclick="selectRevClip(${i})">
+    <button type="button" class="rev-clip ${i===revClipSel?'sel':''}" onclick="selectRevClip(${i})"
+       aria-current="${i===revClipSel?'true':'false'}" title="${_escAttr((i+1) + '. ' + (c.titulo || c.archivo))}">
       <div class="rc-top">
         <span class="rc-title">${i+1}. ${escHtml(c.titulo || c.archivo)}</span>
         ${estadoBadge(c.estado)}
       </div>
-      <div class="rc-sub">${(c.score ?? '—')}/100 · ${fmtTime(c.dur_s||0)}${estaAprobado(c.archivo)?' · ✅ aprobado':''}</div>
-    </div>`).join('');
+      <div class="rc-sub">${(c.score ?? '—')}/100 · ${fmtTime(c.dur_s||0)}${estaAprobado(c.archivo)?' · ✔ revisado':''}</div>
+    </button>`).join('');
 }
 
 function selectRevClip(i) {
@@ -2103,14 +2156,14 @@ function selectRevClip(i) {
 
   const alertasHtml = alertas.length ? alertas.map(a => `
     <div class="rev-alert">
-      <span class="ts">${fmtTime(a.timestamp||0)}</span>
+      <button type="button" class="ts-btn" onclick="revSeek(${Number(a.timestamp)||0})" title="Ir a ${fmtTime(a.timestamp||0)}">${fmtTime(a.timestamp||0)}</button>
       <span>"${escHtml(a.texto_detectado||'?')}" → "${escHtml(a.sugerencia||'sin sugerencia')}"
         <span style="color:var(--muted)">(confianza ${escHtml(a.confianza||'?')}, ${a.aplicada?'aplicada':'pendiente'})</span></span>
     </div>`).join('')
     : '<div class="rev-empty">Sin alertas de subtítulos.</div>';
 
   const tramosHtml = (c.avisos||[]).length ? (c.avisos||[]).map(a =>
-      `<div class="rev-alert"><span class="ts">${fmtTime(a.t_ini||0)}</span><span>${escHtml(a.texto||'')}</span></div>`).join('')
+      `<div class="rev-alert"><button type="button" class="ts-btn" onclick="revSeek(${Number(a.t_ini)||0})" title="Ir a ${fmtTime(a.t_ini||0)}">${fmtTime(a.t_ini||0)}</button><span>${escHtml(a.texto||'')}</span></div>`).join('')
     : (c.tramos_disponibles === false
         ? '<div class="rev-empty">Métricas no disponibles (clip reutilizado, no se re-renderizó).</div>'
         : '<div class="rev-empty">Calidad OK en todo el clip.</div>');
@@ -2125,41 +2178,87 @@ function selectRevClip(i) {
       <div class="rev-col-media">
         <div class="rev-video-wrap">
           ${c.video_url
-            ? `<video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>`
+            ? `<video id="rev-video" src="${c.video_url}" controls preload="metadata" aria-label="Preview del clip ${_escAttr(c.titulo || c.archivo)}"></video>`
             : '<div class="no-video">Video no disponible para este clip.</div>'}
         </div>
-        <div id="rev-timeline-slot"></div>
       </div>
       <div class="rev-col-panel">
         <div class="rev-block">
           <div class="rev-kv">
             <span>Estado: ${estadoBadge(c.estado)}</span>
-            <span>Score IA: <b>${c.score ?? '—'}/100</b></span>
+            <span title="Puntaje del análisis de IA sobre qué tan publicable es el clip (0 a 100)."><span class="hint">Score IA</span>: <b>${c.score ?? '—'}/100</b></span>
             <span>Duración: <b>${fmtTime(c.dur_s||0)}</b></span>
-            <span style="color:var(--muted)">${escHtml(c.emojis_msg||'')}</span>
+            <span style="color:var(--muted)">${escHtml(_copyElementos(c.emojis_msg))}</span>
           </div>
           <div class="msg" style="margin-top:8px">${escHtml(c.razon||'')}</div>
         </div>
         <div class="rev-block">
-          <h4>Alertas Caption QA</h4>${alertasHtml}
+          <h4>Alertas de subtítulos (Caption QA)</h4>${alertasHtml}
         </div>
         <div class="rev-block">
           <h4>Calidad por tramos</h4>${tramosHtml}
         </div>
+        <div class="rev-block">
+          <h4>Marcadores (${(c.markers||[]).length})</h4>${renderMarkerList(c)}
+        </div>
+        <div id="rev-timeline-slot"></div>
         <div class="rev-block">
           <h4>Recomendación del paquete</h4>
           <ul style="margin:0 0 0 16px;font-size:13px;line-height:1.7">${rec}</ul>
         </div>
         <div class="rev-actions">
           ${c.video_url ? `<a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>` : ''}
-          ${c.ruta_fs ? `<button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>` : ''}
-          ${pkgActual.reporte_url ? `<a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>` : ''}
-          <button class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')">
-            ${aprobado?'✅ Aprobado (quitar)':'Marcar como aprobado'}</button>
+          ${c.ruta_fs ? `<button type="button" class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ubicación</button>` : ''}
+          ${pkgActual.reporte_url ? `<a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank" rel="noopener">Abrir REPORTE.md</a>` : ''}
+          <button type="button" class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')" aria-pressed="${aprobado?'true':'false'}">
+            ${aprobado?'✔ Revisado (quitar)':'Marcar como revisado en esta sesión'}</button>
         </div>
+        <div class="msg" style="margin-top:2px">Solo lectura — "revisado" queda solo en este navegador (<b>no se guarda</b>) y no modifica el paquete. Aprobar/rechazar de forma persistente llegará en una fase posterior.</div>
       </div>
     </div>`;
   renderTimeline(c);
+}
+
+// Marcadores como LISTA clicable (S35 PR B, nucleo). Cada fila es un boton con
+// tipo + tiempo + texto; click posiciona el video en ese punto (seek). Funciona
+// aunque no haya video ni duracion (los markers ya vienen filtrados del backend).
+// Copy para testers: traduce el "emojis_msg" tecnico del backend a lenguaje llano.
+function _copyElementos(msg) {
+  const s = String(msg || '');
+  if (!s || /^sin overlays/i.test(s) || /^0(\s|$)/.test(s)) return 'Sin elementos visuales adicionales';
+  const m = s.match(/^(\d+)\s*overlay/i);
+  if (m) return `${m[1]} elemento(s) visual(es)`;
+  return s;
+}
+const MK_LABEL = { tramo: 'Tramo', qa: 'Caption QA', keyword: 'Keyword', popup: 'Popup' };
+function revSeek(t) {
+  const v = document.getElementById('rev-video');
+  if (!v) return;                       // clip sin video: la lista igual funciona
+  try { v.currentTime = Math.max(0, Number(t) || 0); v.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+}
+function renderMarkerList(c) {
+  const markers = c.markers || [];
+  if (!markers.length) return '<div class="mk-empty">Sin marcadores en este clip.</div>';
+  const rows = markers.map(m => {
+    const t = Number(m.t) || 0;
+    const rango = (m.tipo === 'tramo' && m.t_fin != null) ? `${fmtTime(t)}–${fmtTime(m.t_fin)}` : fmtTime(t);
+    const label = MK_LABEL[m.tipo] || m.tipo;
+    return `<button type="button" class="mk-row" onclick="revSeek(${t})" title="Ir a ${rango}">
+      <span class="mk-tag ${escHtml(m.tipo)}">${escHtml(label)}</span>
+      <span class="mk-time">${rango}</span>
+      <span class="mk-text">${escHtml(m.texto || label)}</span>
+    </button>`;
+  }).join('');
+  const cuenta = { tramo: 0, qa: 0, keyword: 0, popup: 0 };
+  markers.forEach(m => cuenta[m.tipo] = (cuenta[m.tipo] || 0) + 1);
+  const legend = `<div class="tl-legend" style="margin-top:8px">
+    <span><i style="background:var(--orange)"></i>Tramos (${cuenta.tramo})</span>
+    <span><i style="background:var(--cyan)"></i>Caption QA (${cuenta.qa})</span>
+    <span><i style="background:var(--yellow)"></i>Keywords (${cuenta.keyword})</span>
+    <span><i style="background:var(--purple)"></i>Popups (${cuenta.popup})</span>
+  </div>`;
+  return `<div class="mk-list">${rows}</div>${legend}
+    <div class="msg" style="margin-top:6px">Clic en un marcador para llevar el video a ese punto.</div>`;
 }
 
 // Timeline simple de revision: barra de duracion + markers leidos de los sidecars
@@ -2182,19 +2281,11 @@ function renderTimeline(c) {
     const l = Math.min(100, Math.max(0, (m.t / dur) * 100));
     return `<div class="tl-mk ${m.tipo}" style="left:${l}%" title="${fmtTime(m.t)} — ${_escAttr(m.texto)}"></div>`;
   }).join('');
-  const cuenta = {qa:0, keyword:0, popup:0, tramo:tramos.length};
-  puntos.forEach(m => cuenta[m.tipo] = (cuenta[m.tipo]||0) + 1);
   slot.innerHTML = `
     <div class="rev-block">
-      <h4>Timeline de revisión</h4>
-      <div class="tl" onclick="tlSeek(event, ${dur})">${bars}${mks}</div>
-      <div class="tl-legend">
-        <span><i style="background:rgba(251,146,60,.55)"></i>Tramos con aviso (${cuenta.tramo})</span>
-        <span><i style="background:var(--cyan)"></i>Caption QA (${cuenta.qa})</span>
-        <span><i style="background:var(--yellow)"></i>Keywords (${cuenta.keyword})</span>
-        <span><i style="background:var(--purple)"></i>Popups (${cuenta.popup})</span>
-      </div>
-      <div class="msg" style="margin-top:6px">Clic en la barra para mover el video a ese punto.</div>
+      <h4>Timeline (compacto)</h4>
+      <div class="tl" onclick="tlSeek(event, ${dur})" title="Clic para mover el video a ese punto">${bars}${mks}</div>
+      <div class="msg" style="margin-top:6px">Vista rápida de dónde caen los marcadores; clic en la barra para saltar. Para precisión y teclado, usa la lista de marcadores de arriba.</div>
     </div>`;
 }
 function tlSeek(ev, dur) {
@@ -2216,11 +2307,11 @@ loadPresets();
 function _rutaInicial() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   if (!h) { showTab('home'); return; }
-  const [vista, pkg] = h.split('/');
+  const [vista, pkg, clipIdx] = h.split('/');
   const validas = ['home','auto','revision','creador','submagic','paquetes','ajustes'];
   if (!validas.includes(vista)) { showTab('home'); return; }
   showTab(vista);
-  if (vista === 'revision' && pkg) setTimeout(() => openPaqueteEnEditor(decodeURIComponent(pkg)), 300);
+  if (vista === 'revision' && pkg) setTimeout(() => openPaqueteEnEditor(decodeURIComponent(pkg), clipIdx), 300);
 }
 _rutaInicial();
 </script>

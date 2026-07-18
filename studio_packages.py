@@ -46,17 +46,22 @@ def _dir_paquete(pkg: str) -> Path:
 
 @router.get("/api/paquetes")
 def list_paquetes() -> list[dict]:
-    """Lista los paquetes generados (mas recientes primero). Fail-open por paquete."""
+    """Lista los paquetes (mas recientes primero por meta.fecha). Fail-open por paquete.
+
+    Orden determinista: por `fecha` descendente y, a igualdad o si falta fecha,
+    por `id` descendente (desempate estable). No se recalcula nada.
+    """
     out: list[dict] = []
     if not PAQUETES_DIR.exists():
         return out
-    for d in sorted(PAQUETES_DIR.glob("*"), key=lambda p: p.name, reverse=True):
+    for d in PAQUETES_DIR.glob("*"):
         if not d.is_dir():
             continue
         data = _leer_paquete_json(d)
         if data is None:  # corrida a medias / json ilegible: no se lista
             continue
         out.append(pe.resumen_lista_paquete(d.name, data))
+    out.sort(key=lambda c: (c.get("fecha") or "", c["id"]), reverse=True)
     return out
 
 
