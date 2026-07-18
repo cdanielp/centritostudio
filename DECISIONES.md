@@ -1084,3 +1084,41 @@ S37-B queda aprobada tecnica y visualmente y el PR #12 queda autorizado para mer
 Observaciones no bloqueantes: `cocina` puede detectarse falsamente como movimiento por
 relacion morfologica con `cocinar`; y, a futuro, conviene limpiar queries como
 `conectamos Ahora maquina tostado`. Ninguna bloquea S37-B ni inicia S37-C.
+
+## D35 — S37-C: Studio configura, AutoConfig decide, auto orquesta y Editor lee
+
+**Fecha:** 2026-07-18. **Rama:** `feat/s37-modo-automatico-studio`.
+
+S37-C expone el pipeline ya aprobado sin reimplementarlo ni cambiar su resultado visual:
+
+1. **Classic continúa como default.** La llamada histórica sin `mode` produce `config=None`; Auto v2 solo se activa explícitamente con `mode=v2`.
+2. **Studio solo configura.** `studio_auto.py` valida modos/presets, construye `AutoConfig` y publica capabilities seguras. No usa red, reloj, rutas, render ni escritura.
+3. **Protecciones fijas.** En v2 Studio fuerza `verify_av=True` y `manual_sidecars=True`; captions y reframe 9:16 están siempre activos. No se exponen parámetros avanzados del planner ni fingerprint.
+4. **Un orquestador.** `jobs.run_auto` adapta progreso/resultado y pasa la config; `auto.ejecutar_auto` sigue siendo el único orquestador público. No se importa `auto_v2` desde jobs ni se reconstruye config allí.
+5. **Preview honesto.** Antes del procesamiento solo existe un resumen de configuración. El plan temporal real se calcula por clip después del clipper y solo se muestra desde datos guardados.
+6. **Editor read-only.** `paquete_editor.py` sanea resúmenes de b-roll/FX/A/V y lee el resolved confinado únicamente para crear markers de ventanas realmente renderizadas. No resuelve Pexels, no recalcula, no re-renderiza y no escribe.
+7. **Sin sidecars crudos.** No hay endpoints de `broll_plan.json`, `popups.auto.json`, `broll_resolved.json`, `info.json` ni `paquete.json`; tampoco se publican hashes completos, URLs, assets, secretos o rutas absolutas.
+8. **Gobernanza visual.** El PR queda abierto y NO se mergea aunque la validación técnica esté verde. S37 sigue ABIERTA hasta el veredicto visual APROBADO de K en desktop/móvil y el merge posterior.
+
+Evidencia sintética y checklist: `revision/s37-modo-automatico-studio/`.
+
+## D35 addendum — Veredicto visual de K: S37-C APROBADA — S37 COMPLETA
+
+**Fecha:** 2026-07-18. **PR mergeado:** #13 (merge commit en main).
+
+**VEREDICTO VISUAL DE K: APROBADO.** S37-C queda aprobada técnica y visualmente.
+
+- S37-A: cerrada (PR #11 mergeado).
+- S37-B: cerrada (PR #12 mergeado).
+- S37-C: cerrada (PR #13 mergeado, veredicto visual de K APROBADO 2026-07-18).
+- **S37 COMPLETA.**
+
+Deudas declaradas fuera de alcance (no bloquean ninguna fase futura, no se resuelven en S37):
+- falso positivo morfológico `cocina`/`cocinar` (Caption QA, deuda #48);
+- limpieza futura de queries como `conectamos Ahora maquina tostado`;
+- extracción del monolito `static/index.html` (deuda #38);
+- aprobación/rechazo persistente en el Editor (deuda #37);
+- re-render selectivo desde el Editor (deuda #37);
+- SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente de S37).
+
+Auto clásico continúa como default. Auto v2 ya está disponible en Studio. El Editor muestra b-roll, FX y A/V en modo read-only.

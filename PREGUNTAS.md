@@ -940,3 +940,17 @@ fue iniciada.
 - Mejora futura: limpiar queries como `conectamos Ahora maquina tostado`.
 
 Ambas se registran como deuda/mejora futura y **NO bloquean S37-B**.
+
+### 49. S37-C — contrato de Studio y Editor v2 — **CERRADA (D35 addendum, veredicto visual de K APROBADO, PR #13 mergeado en main)**
+
+No quedan preguntas técnicas abiertas para S37-C: classic es default, v2 es explícito, b-roll/FX son configurables, express es default, A/V y manual sidecars permanecen ON, el preview previo es solo resumen, el plan real es post-proceso y el Editor es read-only.
+
+**VEREDICTO VISUAL DE K: APROBADO (2026-07-18).** PR #13 mergeado en main. S37 COMPLETA.
+
+**Deudas declaradas fuera de alcance (no se resuelven en S37, continúan en roadmap):**
+
+- falso positivo morfológico `cocina`/`cocinar` y limpieza futura de queries como `conectamos Ahora maquina tostado` (Caption QA, deuda #48);
+- extracción futura del monolito `static/index.html` (continúa la deuda #38);
+- aprobación/rechazo persistente en el Editor (continúa la deuda #37);
+- re-render selectivo desde el Editor (continúa la deuda #37);
+- SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente).

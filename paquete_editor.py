@@ -62,13 +62,142 @@ def resolver_sidecar_seguro(transcripts_dir: Path, nombre: str | None) -> Path |
     return resolver_hijo_seguro(transcripts_dir, nombre)
 
 
-def _stem_de_clip(clip: dict) -> str | None:
-    """Stem base del clip (sin estilo ni .mp4) para localizar sus sidecars. Puro.
+def _entero_publico(valor) -> int | None:
+    if isinstance(valor, bool) or valor is None:
+        return None
+    try:
+        return max(0, int(valor))
+    except (TypeError, ValueError):
+        return None
 
-    Preferimos el alerts_file del QA (nombre exacto del sidecar) y caemos al
-    nombre del archivo quitando el sufijo de estilo. Ej.:
-    'mariosoto_clip1_corto_9x16_hormozi.mp4' -> 'mariosoto_clip1_corto_9x16'.
-    """
+
+def _texto_publico(valor, fallback: str = "") -> str:
+    """Texto corto sin URLs ni controles para la vista publica."""
+    if not isinstance(valor, str):
+        return fallback
+    texto = " ".join(valor.split())[:180]
+    lower = texto.lower()
+    ruta_windows = len(texto) > 2 and texto[1] == ":" and texto[2] in ("/", "\\")
+    if (
+        ruta_windows
+        or texto.startswith(("/", "\\"))
+        or "://" in lower
+        or lower.startswith(("www.", "file:", "data:"))
+    ):
+        return fallback
+    return texto
+
+
+def resumen_broll_seguro(clip: dict, meta: dict | None = None) -> dict | None:
+    """Resumen v2 sin nombres de sidecar, assets, URLs ni rutas."""
+    if clip.get("pipeline_mode") != "v2" or not isinstance(clip.get("broll"), dict):
+        return None
+    broll = clip["broll"]
+    meta = meta if isinstance(meta, dict) else {}
+    config = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+    enabled = config.get("broll_enabled")
+    return {
+        "enabled": enabled if isinstance(enabled, bool) else None,
+        **{
+            k: _entero_publico(broll.get(k))
+            for k in ("planned", "resolved", "images", "videos", "fallbacks", "blocked", "omitted")
+        },
+        "manual_popups": _entero_publico(broll.get("manual_popups")),
+        "manual_clips": _entero_publico(broll.get("manual_clips")),
+    }
+
+
+def resumen_fx_seguro(clip: dict) -> dict | None:
+    """Auditoria FX v2 saneada; nunca devuelve intervalos internos completos."""
+    if clip.get("pipeline_mode") != "v2" or not isinstance(clip.get("fx"), dict):
+        return None
+    fx = clip["fx"]
+    preset = fx.get("preset") if fx.get("preset") in ("express", "pro", "premium") else None
+    conteos = ("punch", "flash", "scanner", "logo")
+    before = fx.get("before") if isinstance(fx.get("before"), dict) else {}
+    after = fx.get("after") if isinstance(fx.get("after"), dict) else {}
+    warnings = fx.get("warnings") if isinstance(fx.get("warnings"), list) else []
+    return {
+        "enabled": fx.get("enabled") if isinstance(fx.get("enabled"), bool) else None,
+        "preset": preset,
+        "before": {k: _entero_publico(before.get(k)) for k in conteos},
+        "after": {k: _entero_publico(after.get(k)) for k in conteos},
+        "removed": len(fx["removed"]) if isinstance(fx.get("removed"), list) else None,
+        "warnings": [_texto_publico(w) for w in warnings if _texto_publico(w)],
+    }
+
+
+def _estado_av(valor) -> str:
+    return valor if valor in ("pass", "fail", "skipped", "no_audio") else "unknown"
+
+
+def resumen_av_seguro(clip: dict) -> dict | None:
+    """Estados A/V y drift redondeado; excluye hashes y metadata de paquetes."""
+    if clip.get("pipeline_mode") != "v2" or not isinstance(clip.get("av"), dict):
+        return None
+    av = clip["av"]
+    if av.get("skipped"):
+        return {"integrity": "skipped", "sync": "skipped", "drift_s": None}
+    sync = av.get("sync") if isinstance(av.get("sync"), dict) else {}
+    integrity = av.get("integrity") if isinstance(av.get("integrity"), dict) else {}
+    drift = _num(sync.get("av_end_drift_s"))
+    allowed = _num(sync.get("allowed_end_drift_s"))
+    return {
+        "integrity": _estado_av(integrity.get("status")),
+        "sync": _estado_av(sync.get("status")),
+        "drift_s": round(drift, 3) if drift is not None else None,
+        "allowed_drift_s": round(allowed, 3) if allowed is not None else None,
+    }
+
+
+def leer_resolved_seguro(clip: dict, transcripts_dir: Path) -> dict | None:
+    """Lee el resolved v1 confinado y solo si pertenece a este clip/config."""
+    broll = clip.get("broll") if isinstance(clip.get("broll"), dict) else {}
+    p = resolver_sidecar_seguro(transcripts_dir, broll.get("resolved_sidecar"))
+    if p is None or not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    fingerprint = clip.get("config_fingerprint")
+    if not isinstance(data, dict) or data.get("version") != 1 or not fingerprint:
+        return None
+    return data if data.get("config_fingerprint") == fingerprint else None
+
+
+def markers_broll_resueltos(clip: dict, transcripts_dir: Path) -> list[dict]:
+    """Markers solo de ventanas que llegaron realmente al render."""
+    if clip.get("pipeline_mode") != "v2":
+        return []
+    data = leer_resolved_seguro(clip, transcripts_dir)
+    if data is None or not isinstance(data.get("decisions"), list):
+        return []
+    dur = _num(clip.get("dur_s")) or 0.0
+    markers = []
+    for decision in data["decisions"]:
+        if not isinstance(decision, dict):
+            continue
+        status, media = decision.get("status"), decision.get("final_media_type")
+        t, t_fin = _num(decision.get("start_s")), _num(decision.get("end_s"))
+        if status not in ("resolved", "fallback") or media not in ("image", "video"):
+            continue
+        if t is None or t_fin is None or t < 0 or t_fin <= t or (dur > 0 and t_fin > dur):
+            continue
+        markers.append(
+            {
+                "tipo": f"broll_{media}",
+                "t": t,
+                "t_fin": t_fin,
+                "texto": _texto_publico(decision.get("query"), f"B-roll {media}"),
+                "status": status,
+            }
+        )
+    return sorted(markers, key=lambda m: (m["t"], m["tipo"]))
+
+
+def _stem_de_clip(clip: dict) -> str | None:
+    """Stem para sidecars: alerts_file exacto o archivo sin sufijo de estilo."""
     qa = clip.get("qa") or {}
     fname = qa.get("alerts_file")
     if fname:
@@ -142,7 +271,11 @@ def _texto_alerta_qa(a: dict) -> str:
 
 
 def construir_markers(
-    dur_s: float, avisos: list[dict], qa_alertas: list[dict], brain_markers: list[tuple[str, float]]
+    dur_s: float,
+    avisos: list[dict],
+    qa_alertas: list[dict],
+    brain_markers: list[tuple[str, float]],
+    broll_markers: list[dict] | None = None,
 ) -> list[dict]:
     """Markers del timeline de revision (puro). No recalcula: traduce lo ya medido.
 
@@ -163,13 +296,20 @@ def construir_markers(
         m.append({"tipo": "qa", "t": _num(a.get("timestamp")), "texto": _texto_alerta_qa(a)})
     for tipo, t in brain_markers:
         m.append({"tipo": tipo, "t": _num(t), "texto": tipo})
+    m.extend(broll_markers or [])
     m = [x for x in m if x["t"] is not None]
     if dur_s and dur_s > 0:
         m = [x for x in m if x["t"] <= dur_s + 0.5]
     return sorted(m, key=lambda x: x["t"])
 
 
-def enriquecer_clip(clip: dict, pkg_id: str, pkg_dir: Path, transcripts_dir: Path) -> dict:
+def enriquecer_clip(
+    clip: dict,
+    pkg_id: str,
+    pkg_dir: Path,
+    transcripts_dir: Path,
+    package_meta: dict | None = None,
+) -> dict:
     """clip de paquete.json -> dict para el Editor. Estado y URL de preview incluidos.
 
     El estado sale de auto_report.estado_clip (mismo semaforo del REPORTE.md). La
@@ -183,7 +323,13 @@ def enriquecer_clip(clip: dict, pkg_id: str, pkg_dir: Path, transcripts_dir: Pat
         qa["alertas"] = alertas
     avisos = clip.get("avisos", [])
     dur_s = clip.get("dur_s", 0)
-    markers = construir_markers(dur_s, avisos, alertas, markers_de_brain(clip, transcripts_dir))
+    markers = construir_markers(
+        dur_s,
+        avisos,
+        alertas,
+        markers_de_brain(clip, transcripts_dir),
+        markers_broll_resueltos(clip, transcripts_dir),
+    )
     archivo = clip.get("archivo")
     ruta = resolver_archivo_paquete(pkg_dir, archivo)
     disponible = ruta is not None and ruta.is_file()
@@ -202,6 +348,12 @@ def enriquecer_clip(clip: dict, pkg_id: str, pkg_dir: Path, transcripts_dir: Pat
         "tramos_disponibles": clip.get("tramos_disponibles", True),
         "qa": qa or None,
         "markers": markers,
+        "pipeline_mode": clip.get("pipeline_mode"),
+        "pipeline_version": clip.get("pipeline_version"),
+        "brain_ok": clip.get("brain_ok") if clip.get("pipeline_mode") == "v2" else None,
+        "broll": resumen_broll_seguro(clip, package_meta),
+        "fx": resumen_fx_seguro(clip),
+        "av": resumen_av_seguro(clip),
     }
 
 
@@ -220,7 +372,10 @@ def vista_paquete(data: dict, pkg_id: str, pkg_dir: Path, transcripts_dir: Path)
         "resumen": auto_report.resumen_paquete(clips),
         "recomendacion": auto_report.recomendacion_final(clips),
         "reporte_url": f"/api/paquetes/{pkg_id}/reporte" if reporte.is_file() else None,
-        "clips": [enriquecer_clip(c, pkg_id, pkg_dir, transcripts_dir) for c in clips],
+        "clips": [
+            enriquecer_clip(c, pkg_id, pkg_dir, transcripts_dir, data.get("meta") or {})
+            for c in clips
+        ],
     }
 
 

@@ -344,17 +344,31 @@ def run_submagic_render(
 # --- Worker: modo automatico ---------------------------------------------------
 
 
-def run_auto(jid: str, mp4: Path, name: str, objetivo: str = "clips") -> None:
+def _error_publico_auto(exc: Exception) -> str:
+    """Traduce fallos del worker sin publicar paths, keys ni payloads internos."""
+    if type(exc).__name__ == "AudioIntegrityError":
+        return "La verificacion de integridad de audio no fue aprobada."
+    if type(exc).__name__ == "AVSyncError":
+        return "La verificacion de sincronizacion A/V no fue aprobada."
+    return "El procesamiento automatico no pudo completarse."
+
+
+def run_auto(jid: str, mp4: Path, name: str, objetivo: str = "clips", *, config=None) -> None:
     """Worker: Modo Automatico v1 — capa delgada sobre auto.ejecutar_auto (regla #19)."""
     try:
         import auto  # noqa: PLC0415
 
-        update_job(jid, status="running", progress=2, message="Iniciando Modo Automatico...")
+        inicial = (
+            "Iniciando Automatico v2..."
+            if config is not None and getattr(config, "mode", None) == "v2"
+            else "Iniciando Modo Automatico clasico..."
+        )
+        update_job(jid, status="running", progress=2, message=inicial)
 
         def _progress(pct: int, msg: str) -> None:
             update_job(jid, progress=pct, message=msg)
 
-        result = auto.ejecutar_auto(mp4, name, progress=_progress, objetivo=objetivo)
+        result = auto.ejecutar_auto(mp4, name, progress=_progress, objetivo=objetivo, config=config)
         n = len(result.get("clips", []))
         msg = result.get("resumen", f"{n} clip(s) en el paquete")
         if n == 0 and result.get("casi"):
@@ -365,4 +379,5 @@ def run_auto(jid: str, mp4: Path, name: str, objetivo: str = "clips") -> None:
             )
         update_job(jid, status="done", progress=100, message=msg, result=result)
     except Exception as exc:
-        update_job(jid, status="error", message=str(exc), error=str(exc))
+        mensaje = _error_publico_auto(exc)
+        update_job(jid, status="error", message=mensaje, error=mensaje)
