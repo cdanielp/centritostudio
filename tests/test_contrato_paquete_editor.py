@@ -62,27 +62,51 @@ def test_alertas_fail_open_si_sidecar_ausente(tmp_path):
 
 def test_enriquecer_clip_agrega_estado_y_urls(tmp_path):
     c = _clip(avisos=[{"t_ini": 1.0, "t_fin": 2.0, "texto": "revisa"}])
-    out = pe.enriquecer_clip(c, "vid_20260101-0000", tmp_path)
+    # video_url solo se construye si el MP4 existe (D32): lo creamos en el pkg_dir.
+    (tmp_path / "vid_clip1_corto_9x16_hormozi.mp4").write_bytes(b"\x00")
+    out = pe.enriquecer_clip(c, "vid_20260101-0000", tmp_path, tmp_path)
     # estado viene del mismo semaforo del REPORTE.md (avisos -> REQUIERE REVISION)
     assert out["estado"] == "REQUIERE REVISION"
-    assert out["video_url"] == "/output/paquetes/vid_20260101-0000/vid_clip1_corto_9x16_hormozi.mp4"
+    assert out["video_url"] == (
+        "/api/paquetes/vid_20260101-0000/video/vid_clip1_corto_9x16_hormozi.mp4"
+    )
+    assert out["video_disponible"] is True
     assert out["ruta_fs"].startswith("output/paquetes/")
     assert out["score"] == 84
 
 
+def test_enriquecer_clip_sin_mp4_url_null(tmp_path):
+    # mismo clip pero sin el MP4 en disco: no hay URL de video disponible.
+    out = pe.enriquecer_clip(_clip(), "vid_x", tmp_path, tmp_path)
+    assert out["video_url"] is None
+    assert out["video_disponible"] is False
+
+
+def test_enriquecer_clip_archivo_inseguro_no_produce_url(tmp_path):
+    out = pe.enriquecer_clip(_clip(archivo="../secreto.mp4"), "vid_x", tmp_path, tmp_path)
+    assert out["video_url"] is None
+    assert out["video_disponible"] is False
+    assert out["ruta_fs"] is None
+
+
 def test_enriquecer_clip_sin_metricas_es_no_publicar(tmp_path):
     c = _clip(avisos=[], tramos_disponibles=False)
-    out = pe.enriquecer_clip(c, "vid_x", tmp_path)
+    out = pe.enriquecer_clip(c, "vid_x", tmp_path, tmp_path)
     assert out["estado"] == "NO PUBLICAR AUN"
 
 
-def test_vista_paquete_incluye_resumen_y_recomendacion(tmp_path):
+def test_vista_paquete_reporte_url_solo_si_existe(tmp_path):
     data = {"clips": [_clip()], "meta": {"fecha": "20260101-0000", "t_total_s": 90.0}}
-    vista = pe.vista_paquete(data, "vid_20260101-0000", tmp_path)
+    # sin REPORTE.md en el pkg_dir -> reporte_url None (la recomendacion sigue saliendo)
+    vista = pe.vista_paquete(data, "vid_20260101-0000", tmp_path, tmp_path)
     assert vista["id"] == "vid_20260101-0000"
-    assert vista["reporte_url"].endswith("/REPORTE.md")
+    assert vista["reporte_url"] is None
     assert isinstance(vista["recomendacion"], list) and vista["recomendacion"]
     assert len(vista["clips"]) == 1
+    # con REPORTE.md presente -> endpoint validado /reporte
+    (tmp_path / "REPORTE.md").write_text("# ok", encoding="utf-8")
+    vista2 = pe.vista_paquete(data, "vid_20260101-0000", tmp_path, tmp_path)
+    assert vista2["reporte_url"] == "/api/paquetes/vid_20260101-0000/reporte"
 
 
 def test_construir_markers_ordena_y_tipa():
@@ -130,7 +154,7 @@ def test_markers_de_brain_fail_open_sin_archivo(tmp_path):
 
 def test_enriquecer_clip_incluye_markers(tmp_path):
     c = _clip(dur_s=30.0, avisos=[{"t_ini": 1.0, "t_fin": 2.0, "texto": "x"}])
-    out = pe.enriquecer_clip(c, "vid_x", tmp_path)
+    out = pe.enriquecer_clip(c, "vid_x", tmp_path, tmp_path)
     assert any(m["tipo"] == "tramo" for m in out["markers"])
 
 

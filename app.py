@@ -17,11 +17,12 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 import json
 
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 import core
 import jobs
+import studio_packages
 from styles import STYLES
 
 # ─── Directorios ──────────────────────────────────────────────────────────────
@@ -41,8 +42,29 @@ app = FastAPI(title="Centrito Studio")
 CLIPS_DIR = ROOT / "output" / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
 
+
+class _OutputSinPaquetes(StaticFiles):
+    """Mount de /output que NUNCA sirve el subarbol paquetes/ (S35, D32).
+
+    El binario y el REPORTE.md de un paquete se sirven SOLO por el router validado
+    (studio_packages); aqui se bloquea la ruta abierta para que /output/paquetes/...
+    no exponga paquete.json ni sidecars. El resto de output/ (renders de otras
+    estaciones) se sigue sirviendo igual.
+    """
+
+    async def get_response(self, path, scope):
+        # El primer segmento, normalizado como lo hace el FS de Windows (case-insensitive,
+        # sin puntos/espacios finales): asi /output/Paquetes o /output/paquetes./ tampoco
+        # escapan el confinamiento (bypass real detectado en revision).
+        norm = path.replace("\\", "/").strip("/")
+        primer = norm.split("/", 1)[0].rstrip(". ").lower()
+        if primer == "paquetes":
+            return PlainTextResponse("Not Found", status_code=404)
+        return await super().get_response(path, scope)
+
+
 app.mount("/input", StaticFiles(directory=str(INPUT_DIR)), name="input")
-app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+app.mount("/output", _OutputSinPaquetes(directory=str(OUTPUT_DIR)), name="output")
 app.mount("/clips", StaticFiles(directory=str(CLIPS_DIR)), name="clips")
 app.mount("/thumbs", StaticFiles(directory=str(THUMBS_DIR)), name="thumbs")
 
@@ -452,52 +474,10 @@ def start_auto(name: str, objetivo: str = "clips"):
     return {"job_id": jid}
 
 
-# ─── Editor de Paquete (S35, D26) ─────────────────────────────────────────────
-# Vista de revision SOLO-LECTURA sobre output/paquetes/. No reimplementa motores:
-# lee paquete.json + sidecars (paquete_editor.py) y los sirve para el Editor.
-PAQUETES_DIR = OUTPUT_DIR / "paquetes"
-
-
-def _leer_paquete_json(d: Path) -> dict | None:
-    pj = d / "paquete.json"
-    if not pj.exists():
-        return None
-    try:
-        return json.loads(pj.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-@app.get("/api/paquetes")
-def list_paquetes():
-    """Lista los paquetes generados (mas recientes primero). Fail-open por paquete."""
-    import paquete_editor as pe  # noqa: PLC0415
-
-    out = []
-    if not PAQUETES_DIR.exists():
-        return out
-    for d in sorted(PAQUETES_DIR.glob("*"), key=lambda p: p.name, reverse=True):
-        if not d.is_dir():
-            continue
-        data = _leer_paquete_json(d)
-        if data is None:  # corrida a medias / json ilegible: no se lista
-            continue
-        out.append(pe.resumen_lista_paquete(d.name, data))
-    return out
-
-
-@app.get("/api/paquetes/{pkg}")
-def get_paquete(pkg: str):
-    """Detalle de un paquete para el Editor. Valida traversal (solo hijos directos)."""
-    import paquete_editor as pe  # noqa: PLC0415
-
-    d = (PAQUETES_DIR / pkg).resolve()
-    if d.parent != PAQUETES_DIR.resolve() or not d.is_dir():
-        raise HTTPException(404, "Paquete no encontrado")
-    data = _leer_paquete_json(d)
-    if data is None:
-        raise HTTPException(404, "Paquete sin paquete.json (corrida incompleta)")
-    return pe.vista_paquete(data, d.name, TRANSCRIPTS)
+# ─── Editor de Paquete (S35, D26/D32) ─────────────────────────────────────────
+# Vista de revision SOLO-LECTURA sobre output/paquetes/. La logica vive en el router
+# studio_packages (contrato + servido de binario confinado); aqui solo se registra.
+app.include_router(studio_packages.router)
 
 
 # ─── Jobs / Estilos ───────────────────────────────────────────────────────────
