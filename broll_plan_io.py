@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from broll_plan_types import (
@@ -123,7 +124,12 @@ def broll_plan_to_dict(plan: BrollPlan) -> dict:
 
 
 def write_broll_plan(plan: BrollPlan, destination: Path, *, overwrite: bool = False) -> Path:
-    """Escribe el sidecar {stem}_broll_plan.json de forma atomica. No sobreescribe por default."""
+    """Escribe el sidecar {stem}_broll_plan.json de forma atomica. No sobreescribe por default.
+
+    S37-B: el temporal es UNICO (tempfile.mkstemp en el mismo directorio -> mismo
+    filesystem que os.replace exige); dos escrituras concurrentes al mismo destino ya
+    no pueden pisarse el .tmp. API publica y contrato de no-overwrite intactos.
+    """
     destination = Path(destination)
     if destination.suffix.lower() != ".json":
         raise BrollInputError(f"el destino debe terminar en .json: {destination.name}")
@@ -133,9 +139,13 @@ def write_broll_plan(plan: BrollPlan, destination: Path, *, overwrite: bool = Fa
         raise BrollInputError(f"el destino ya existe (usa overwrite=True): {destination.name}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(broll_plan_to_dict(plan), ensure_ascii=False, indent=2) + "\n"
-    tmp = destination.with_name(destination.name + ".tmp")
+    fd, tmp_name = tempfile.mkstemp(
+        dir=destination.parent, prefix=destination.name + ".", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(payload, encoding="utf-8", newline="")
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(payload)
         os.replace(tmp, destination)
     except OSError:
         if tmp.exists():

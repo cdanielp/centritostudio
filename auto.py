@@ -16,6 +16,10 @@ import shutil
 import time
 from pathlib import Path
 
+# Contrato del Modo Automatico (S37-B): puro, sin red ni disco; default mode="classic"
+# garantiza que ejecutar_auto(...) sin config = comportamiento historico exacto.
+from auto_config import AutoConfig
+
 # Reporte de calidad: funciones puras en auto_report.py (split s34 B1).
 # Se re-exportan aqui para compatibilidad (tests y jobs consumen auto.*).
 from auto_report import (  # noqa: F401
@@ -79,18 +83,52 @@ def _paquete_dir(name: str) -> tuple[Path, bool]:
     video (sin paquete.json = corrida interrumpida); si no hay, crea uno nuevo.
     Un autopiloto debe sobrevivir a un cierre de ventana / corte de luz (incidente
     s27): cada clip ya renderizado es un checkpoint que no se vuelve a pagar.
+    S37-B: los paquetes v2 ({name}_v2_*) se EXCLUYEN — classic jamas reanuda un
+    paquete v2 (ni al reves; ver _paquete_dir_v2).
     """
     PAQUETES_DIR.mkdir(parents=True, exist_ok=True)
     incompletos = sorted(
         d
         for d in PAQUETES_DIR.glob(f"{name}_*")
-        if d.is_dir() and not (d / "paquete.json").exists()
+        if d.is_dir() and not (d / "paquete.json").exists() and not d.name.startswith(f"{name}_v2_")
     )
     if incompletos:
         return incompletos[-1], True
     fecha = time.strftime("%Y%m%d-%H%M")
     nuevo = PAQUETES_DIR / f"{name}_{fecha}"
     nuevo.mkdir(parents=True, exist_ok=True)
+    return nuevo, False
+
+
+def _paquete_dir_v2(name: str, fingerprint: str) -> tuple[Path, bool]:
+    """Paquete v2 distinguible ({name}_v2_{fecha}) con marker de fingerprint.
+
+    Solo se reanuda un paquete v2 incompleto cuyo `auto_v2.json` tenga el MISMO
+    config_fingerprint (mismo pipeline). Fingerprint distinto -> paquete nuevo (el
+    anterior no se destruye). Un paquete clasico jamas se reutiliza como v2.
+    """
+    PAQUETES_DIR.mkdir(parents=True, exist_ok=True)
+    for d in sorted(PAQUETES_DIR.glob(f"{name}_v2_*"), reverse=True):
+        if not d.is_dir() or (d / "paquete.json").exists():
+            continue
+        marker = d / "auto_v2.json"
+        try:
+            datos = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else {}
+        except (ValueError, OSError):
+            continue
+        if datos.get("config_fingerprint") == fingerprint:
+            return d, True
+    fecha = time.strftime("%Y%m%d-%H%M")
+    nuevo = PAQUETES_DIR / f"{name}_v2_{fecha}"
+    n = 2
+    while nuevo.exists():  # config distinta en el mismo minuto: paquete NUEVO, no se pisa
+        nuevo = PAQUETES_DIR / f"{name}_v2_{fecha}-{n}"
+        n += 1
+    nuevo.mkdir(parents=True, exist_ok=True)
+    (nuevo / "auto_v2.json").write_text(
+        json.dumps({"config_fingerprint": fingerprint, "pipeline_mode": "v2"}, indent=2),
+        encoding="utf-8",
+    )
     return nuevo, False
 
 
@@ -202,19 +240,35 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
     }
 
 
-def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "clips") -> dict:
-    """Orquestador del Modo Automatico v1. Objetivo unico: clips virales.
+def ejecutar_auto(
+    video_path: Path,
+    name: str,
+    progress=None,
+    objetivo: str = "clips",
+    *,
+    config: AutoConfig | None = None,
+) -> dict:
+    """Orquestador del Modo Automatico. Objetivo unico: clips virales.
 
-    Pipeline (identico a s26 RUTA A): transcripcion -> clipper (analisis IA +
+    Pipeline classic (identico a s26 RUTA A): transcripcion -> clipper (analisis IA +
     corte, hasta MAX_CLIPS) -> reframe escenas -> captions hormozi + emojis
     fail-open. Devuelve {paquete, resumen, clips, meta}.
+
+    S37-B: `config` (keyword-only) activa el Modo Automatico v2 con
+    AutoConfig(mode="v2"): mismo camino hasta el clipper, y por clip agrega b-roll
+    automatico (planner S37-A + fetchers Pexels), FX express y verificacion A/V dura.
+    config=None o mode="classic" -> ruta historica EXACTA (sin planner, sin Pexels,
+    sin FX, sin sidecars nuevos).
 
     Reanudable: si una corrida previa quedo a medias (cierre de ventana, corte de
     luz), reusa transcript, analisis del clipper y clips ya renderizados; solo
     completa lo que falta. Cada clip final es un checkpoint (regla MAESTRO #20).
+    Los paquetes classic y v2 nunca se mezclan (naming + fingerprint).
     """
     if objetivo not in OBJETIVOS:
         raise ValueError(f"Objetivo '{objetivo}' no soportado. Opciones: {OBJETIVOS}")
+    es_v2 = config is not None and config.mode == "v2"
+    fingerprint = config.fingerprint() if es_v2 else None
     progress = progress or _progress_nulo
     t0 = time.time()
 
@@ -231,8 +285,14 @@ def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "c
         raise RuntimeError(resultado["error"])
     clips = resultado.get("clips", [])
 
-    paquete_dir, reanudado = _paquete_dir(name)
-    fecha = paquete_dir.name[len(name) + 1 :]
+    if es_v2:
+        import auto_v2  # noqa: PLC0415 (lazy: la ruta clasica jamas importa la capa v2)
+
+        paquete_dir, reanudado = _paquete_dir_v2(name, fingerprint)
+        fecha = paquete_dir.name[len(name) + 4 :]  # {name}_v2_{fecha}
+    else:
+        paquete_dir, reanudado = _paquete_dir(name)
+        fecha = paquete_dir.name[len(name) + 1 :]
     if reanudado:
         progress(28, f"Reanudando paquete {paquete_dir.name} (clips ya listos se conservan)...")
 
@@ -243,10 +303,25 @@ def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "c
         _stem, final_path = _final_path(clip, paquete_dir)
         sidecar = _sidecar_path(final_path)
         if sidecar.exists():
-            progress(pct, f"Clip {i}/{len(clips)}: ya listo (reanudacion, sin re-render)")
-            clips_info.append(json.loads(sidecar.read_text(encoding="utf-8")))
-            continue
-        if final_path.exists():
+            info_prev = json.loads(sidecar.read_text(encoding="utf-8"))
+            if not es_v2 or auto_v2.checkpoint_v2_valido(
+                info_prev, fingerprint, final_path, TRANSCRIPTS
+            ):
+                progress(pct, f"Clip {i}/{len(clips)}: ya listo (reanudacion, sin re-render)")
+                clips_info.append(info_prev)
+                continue
+            progress(pct, f"Clip {i}/{len(clips)}: checkpoint incompatible, se re-renderiza")
+        if es_v2:
+            progress(pct, f"Etapa 3-4/4: reencuadre + captions + b-roll (clip {i}/{len(clips)})...")
+            info = auto_v2.procesar_clip_v2(
+                clip,
+                paquete_dir,
+                config,
+                transcripts=TRANSCRIPTS,
+                clips_dir=CLIPS_DIR,
+                root=ROOT,
+            )
+        elif final_path.exists():
             progress(pct, f"Clip {i}/{len(clips)}: reutilizando render previo")
             info = _info_orfano(clip, final_path)
         else:
@@ -269,6 +344,10 @@ def ejecutar_auto(video_path: Path, name: str, progress=None, objetivo: str = "c
         "t_total_s": round(time.time() - t0, 1),
         "costo_usd": resultado.get("telemetria_resumen", {}).get("costo_usd", 0),
     }
+    if es_v2:  # solo v2 agrega campos; el meta clasico queda byte-identico
+        meta["pipeline_mode"] = "v2"
+        meta["config_fingerprint"] = fingerprint
+        meta["config"] = config.to_dict()
     (paquete_dir / "REPORTE.md").write_text(
         generar_reporte_md(name, clips_info, meta), encoding="utf-8"
     )
