@@ -926,3 +926,17 @@ Ninguna de estas se decidio en PR A: el planner solo produce INTENCION auditable
 **Deudas menores diferidas a PR C (no bloquean):** bloquear precedencia por INTENCION
 manual (hoy bloquea por elemento manual RESUELTO, documentado); toggle de b-roll y preset
 FX en Studio; rerender selectivo desde el Editor.
+
+### 48. S37-B — cierre visual y observaciones de K — **RESUELTA (s37, PR #12)**
+
+**VEREDICTO VISUAL DE K: APROBADO.** S37-B fue aprobada tecnica y visualmente; PR #12
+queda autorizado para merge. S37 sigue ABIERTA porque S37-C (Studio) esta PENDIENTE y NO
+fue iniciada.
+
+**Observaciones no bloqueantes:**
+
+- `cocina` puede detectarse falsamente como movimiento por su relacion morfologica con
+  `cocinar`.
+- Mejora futura: limpiar queries como `conectamos Ahora maquina tostado`.
+
+Ambas se registran como deuda/mejora futura y **NO bloquean S37-B**.

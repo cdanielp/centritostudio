@@ -1,8 +1,9 @@
 # S37-B — Modo Automatico v2: b-roll + FX end-to-end
 
 Evidencia de revision del PR B de la fase **S37 — Wiring del Modo Automatico**.
-Este PR **cambia salida visual** y por eso NO puede mergearse sin el veredicto de K
-(ver `CHECKLIST_VISUAL.md`). Studio (PR C) queda fuera.
+Este PR cambia salida visual. **VEREDICTO VISUAL DE K: APROBADO**; S37-B queda aprobada
+tecnica y visualmente y PR #12 esta autorizado para merge (ver `CHECKLIST_VISUAL.md`).
+Studio (PR C) queda fuera y S37-C NO fue iniciada.
 
 ## 1. Objetivo
 
@@ -210,6 +211,11 @@ compuerta valida es la suite local + fakes).
   entrada manual rota (imagen faltante) no bloquea auto. Documentado; si K prefiere
   bloquear por INTENCION, es un ajuste menor de PR C.
 - `caption_qa` en v2 es el mismo fail-open de classic (solo-lectura para el reporte).
+- `cocina` puede detectarse falsamente como movimiento por su relacion morfologica con
+  `cocinar`.
+- Mejora futura: limpiar queries como `conectamos Ahora maquina tostado`.
+
+Las dos ultimas observaciones NO bloquean S37-B.
 
 ## 29. Que no se toco
 

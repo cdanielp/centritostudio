@@ -1037,9 +1037,10 @@ archivos reales); total de la suite **915 passed, 1 skipped**. Smoke sintetico
 `revision/s37-broll-planner/`.
 
 **Track S37 (NO cerrada):** PR A (planner) MERGEADA (#11); **PR B** (auto-v2-render)
-IMPLEMENTADA EN PR ABIERTO, pendiente del veredicto visual de K (NO mergeada); **PR C**
-(Studio/toggle) PENDIENTE. S37-A no modifico el output; S37-B SI cambia salida visual y por
-eso no puede mergearse sin K (ver revision/s37-auto-v2-render/CHECKLIST_VISUAL.md).
+APROBADA tecnica y visualmente: **VEREDICTO VISUAL DE K: APROBADO**. PR #12 autorizado
+para merge. **PR C** (Studio/toggle) PENDIENTE y NO iniciada. S37-A no modifico el output;
+S37-B si cambia salida visual y ya completo su validacion. **S37 sigue ABIERTA** hasta
+terminar S37-C (ver `revision/s37-auto-v2-render/CHECKLIST_VISUAL.md`).
 
 ### D34 — Addendum S37-B: decisiones #47 aplicadas al Auto v2 (feat/s37-auto-v2-render)
 
@@ -1077,3 +1078,9 @@ temporal unico (unica modificacion autorizada a S37-A). **Evidencia:** 133 tests
 real (2 deltas de PTS distintos), demos sinteticos en output/revision-s37b/ (no
 versionados). Hallazgo documentado: el punch-in (zoompan) exige input CFR; el pipeline
 real lo garantiza via reframe.
+
+**Cierre de revision visual (K, 2026-07-18):** **VEREDICTO VISUAL DE K: APROBADO.**
+S37-B queda aprobada tecnica y visualmente y el PR #12 queda autorizado para merge.
+Observaciones no bloqueantes: `cocina` puede detectarse falsamente como movimiento por
+relacion morfologica con `cocinar`; y, a futuro, conviene limpiar queries como
+`conectamos Ahora maquina tostado`. Ninguna bloquea S37-B ni inicia S37-C.
