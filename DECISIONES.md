@@ -878,3 +878,47 @@ sigue siendo el de la persona, que empieza/termina en los tiempos correctos y qu
 corresponde a la query. La costura del loop solo se juzga en el video completo. Evidencia:
 `revision/broll-pexels-video-cutaway/` (README + gen_evidencia.py que se niega sin key +
 ejemplo_popups.json); MP4/clip/frames NO commiteados.
+
+## D32 - Editor de Paquete Alpha: backend solo-lectura, rutas confinadas, servido de binario confinado (refactor/studio-package-review-contract)
+
+**Contexto:** el Editor de Paquete (S35) ya leia paquete.json + sidecars via `paquete_editor.py`,
+pero (a) la logica HTTP vivia inline en `app.py` (ya un monolito de 569 lineas), (b) `video_url` se
+construia a ciegas desde `clip["archivo"]` (nombre de fichero venido de JSON, sin validar) y (c) el
+binario se servia por el mount estatico abierto `/output`, que expone TODO el arbol (paquete.json,
+REPORTE.md, sidecars). Antes del cierre visual (PR B), el contrato debia quedar pequeno, seguro,
+determinista y cubierto por tests.
+
+**Decision:** endurecer el backend SIN cambio visual y SIN tocar motores.
+
+1. **Extraccion de dominio, no migracion general.** Router propio `studio_packages.py` (APIRouter con
+   `list_paquetes`, `get_paquete`, `get_paquete_video`, `get_paquete_reporte`); `paquete_editor.py`
+   guarda la logica PURA (agregacion + validacion de rutas); `app.py` solo hace `include_router`. Sin
+   ciclos (studio_packages -> paquete_editor -> auto_report). El resto de rutas FastAPI queda intacto.
+
+2. **Path-safety como funciones puras.** `es_nombre_seguro` (rechaza vacio, '.', '..', separadores /
+   o \\, unidad de Windows) + `resolver_hijo_seguro` (combina el basename con resolve() y rechaza el
+   symlink que escapa del root) + `resolver_archivo_paquete`/`resolver_sidecar_seguro`. Los nombres de
+   paquete.json y de sidecars NUNCA se confian: se validan antes de tocar disco.
+
+3. **Servido de binario CONFINADO por DOS lados (seguridad, no cosmetico).** (a) El .mp4 de un clip
+   ya no se referencia por `/output/paquetes/...` sino por el endpoint validado
+   `/api/paquetes/{pkg}/video/{archivo}`, que solo entrega un basename seguro, existente y con sufijo
+   `.mp4`; el REPORTE.md por `/api/paquetes/{pkg}/reporte`. (b) Ademas el mount estatico `/output` se
+   subclasea (`_OutputSinPaquetes`): cualquier peticion a `/output/paquetes/**` devuelve 404, asi que
+   ni siquiera por la ruta abierta se exponen `paquete.json`, `REPORTE.md` ni sidecars. El resto de
+   `output/` (renders de Creador/Automatico/Submagic) se sigue sirviendo igual; la tarjeta de
+   resultado del Modo Automatico se repunto a los endpoints validados para no romperse.
+
+4. **Contrato fail-open controlado.** `video_url`/`video_disponible` reflejan si el MP4 existe (clip
+   sin binario -> null/false, el resto del detalle sigue); `reporte_url` es null si falta REPORTE.md;
+   sidecar QA/brain ausente o corrupto -> `[]`. Los errores de PROGRAMACION (RuntimeError/TypeError)
+   se PROPAGAN: nada de `except Exception` que trague un bug. Campo `salud` aditivo en la lista.
+
+5. **Solo-lectura, cero recalculo.** Estado y recomendacion salen de `auto_report` (fuente unica);
+   markers traducen lo ya medido (tramos/QA/brain), descartando tiempos invalidos y fuera de rango.
+   La entrada no se muta (el `qa` original no gana `alertas`). No se escribe, no se lanzan motores.
+
+**Alcance cerrado, sin ojo de K:** PR A es plomeria/seguridad sin salida visual. 40 tests nuevos
+(path-safety, endpoints via TestClient, confinamiento del video + del mount, fail-open, no-mutacion).
+La salida visual y el veredicto de K son del PR B. Evidencia:
+`revision/s35-editor-paquete-contract/README.md`.

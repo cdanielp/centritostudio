@@ -1567,6 +1567,7 @@ function renderAutoResult(result) {
   document.getElementById('auto-resumen').textContent = result.resumen || 'Paquete generado';
   const clipsEl = document.getElementById('auto-clips');
   clipsEl.innerHTML = '';
+  const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//, '') : '';
   (result.clips || []).forEach((c, i) => {
     const avisos = (c.avisos || []).map(a =>
       `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
@@ -1579,15 +1580,13 @@ function renderAutoResult(result) {
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${escHtml(c.emojis_msg || '')}</div>
       ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
-      <a href="/output/${result.paquete ? result.paquete.replace(/^output\//,'') + '/' : ''}${c.archivo}" download
+      <a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
          class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a>`;
     clipsEl.appendChild(div);
   });
-  const rep = result.paquete ? result.paquete.replace(/^output\//,'') : '';
-  const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//,'') : '';
-  document.getElementById('auto-reporte-link').innerHTML = rep
+  document.getElementById('auto-reporte-link').innerHTML = pkgId
     ? `<button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}')">Abrir en el Editor de Paquete →</button>
-       <div class="msg" style="margin-top:8px">Paquete en <code>${result.paquete}</code> · <a href="/output/${rep}/REPORTE.md" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a></div>`
+       <div class="msg" style="margin-top:8px">Paquete en <code>${escHtml(result.paquete)}</code> · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a></div>`
     : '';
   wrap.style.display = 'block';
 }
@@ -2125,7 +2124,9 @@ function selectRevClip(i) {
     <div class="rev-cols">
       <div class="rev-col-media">
         <div class="rev-video-wrap">
-          <video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>
+          ${c.video_url
+            ? `<video id="rev-video" src="${c.video_url}" controls preload="metadata"></video>`
+            : '<div class="no-video">Video no disponible para este clip.</div>'}
         </div>
         <div id="rev-timeline-slot"></div>
       </div>
@@ -2150,9 +2151,9 @@ function selectRevClip(i) {
           <ul style="margin:0 0 0 16px;font-size:13px;line-height:1.7">${rec}</ul>
         </div>
         <div class="rev-actions">
-          <a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>
-          <button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>
-          <a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>
+          ${c.video_url ? `<a class="btn secondary" href="${c.video_url}" download>Descargar clip</a>` : ''}
+          ${c.ruta_fs ? `<button class="btn secondary" onclick="copiarRuta('${esc(c.ruta_fs)}')">Copiar ruta</button>` : ''}
+          ${pkgActual.reporte_url ? `<a class="btn secondary" href="${pkgActual.reporte_url}" target="_blank">Abrir REPORTE.md</a>` : ''}
           <button class="btn ${aprobado?'secondary':''}" onclick="toggleAprobado('${esc(c.archivo)}')">
             ${aprobado?'✅ Aprobado (quitar)':'Marcar como aprobado'}</button>
         </div>
