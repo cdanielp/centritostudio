@@ -138,6 +138,15 @@ def test_lista_ordena_reciente_primero_y_omite_invalidos(cliente):
     assert ids == ["b_20260103-0000", "a_20260101-0000"]  # reciente primero, corruptos fuera
 
 
+def test_lista_ordena_por_fecha_no_por_nombre(cliente):
+    # nombre y fecha discrepan: "aaa" (fecha nueva) debe ir ANTES que "zzz" (fecha vieja).
+    c, paquetes, _t = cliente
+    _escribir_paquete(paquetes, "zzz_20260101-0000", [_clip()])
+    _escribir_paquete(paquetes, "aaa_20260305-0000", [_clip()])
+    ids = [p["id"] for p in c.get("/api/paquetes").json()]
+    assert ids == ["aaa_20260305-0000", "zzz_20260101-0000"]  # por fecha desc, no por nombre
+
+
 def test_lista_incluye_salud(cliente):
     c, paquetes, _t = cliente
     _escribir_paquete(paquetes, "ok_20260101-0000", [_clip()])

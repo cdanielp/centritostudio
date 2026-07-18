@@ -2,101 +2,86 @@
 
 Rama: `feat/studio-package-review-alpha` (parte de `main` con el PR A ya mergeado).
 
-> **Estado: NÚCLEO implementado — DETENIDO en el checkpoint visual B4.5, esperando el
-> veredicto de RUMBO de K antes de invertir en lo secundario (timeline barra fina,
-> responsive móvil, accesibilidad, extracción de archivos).**
-
-Este README te deja levantar el Studio en vivo con una fixture sintética y revisar el
-Editor de Paquete tal como lo verá un tester, sin abrir JSON ni terminal.
-
-## Qué es el Editor de Paquete
+> **Estado: implementada — pendiente del ojo (revisión visual final) de K.**
+> El checkpoint temprano B4.5 fue APROBADO por K con correcciones obligatorias; este
+> PR ya las incorpora. NO se mergea hasta el veredicto visual final de K.
 
 Vista **solo-lectura** sobre `output/paquetes/`: lee lo que el Modo Automático ya
-generó (`paquete.json` + `REPORTE.md` + sidecars de Caption QA/brain) y lo presenta
-para revisión humana. No edita, no re-renderiza, no toca motores.
+generó (`paquete.json` + `REPORTE.md` + sidecars QA/brain) y lo presenta para revisión
+humana. No edita, no re-renderiza, no toca motores.
 
 ## Cómo levantarlo (copiar/pegar desde la raíz del repo)
 
 ```powershell
-# 1) Generar la fixture local (3 clips sintéticos + sidecars). No usa red.
 venv\Scripts\python revision\s35-editor-paquete\gen_fixture.py
-
-# 2) Levantar el Studio (puerto 8799 para no chocar con arranque.bat/8787)
 venv\Scripts\python -m uvicorn app:app --port 8799 --log-level warning
 ```
 
-Luego abre en el navegador:
-
+URLs (deep-link por hash):
 - **Lista de paquetes:** http://127.0.0.1:8799/#paquetes
-- **Editor con un clip LISTO (con video):** http://127.0.0.1:8799/#revision/_s35_fixture_alpha/0
-- **Editor con el clip de video faltante (empty state):** http://127.0.0.1:8799/#revision/_s35_fixture_alpha/2
-- **Editor con el clip REQUIERE REVISIÓN (Caption QA + todos los marcadores):**
-  http://127.0.0.1:8799/#revision/_s35_fixture_alpha/1
+- **Editor, clip LISTO (con video):** http://127.0.0.1:8799/#revision/_s35_fixture_alpha/0
+- **Editor, clip REQUIERE REVISIÓN (Caption QA + 6 marcadores):** http://127.0.0.1:8799/#revision/_s35_fixture_alpha/1
+- **Editor, clip de video faltante (empty state):** http://127.0.0.1:8799/#revision/_s35_fixture_alpha/2
 
-Navegación manual: pestaña **Paquetes → "Revisar paquete"** en `_s35_fixture`, y luego
-clic en cada clip de la lista izquierda.
-
-Para borrar SOLO la fixture cuando termines (no toca paquetes reales):
-
-```powershell
-venv\Scripts\python revision\s35-editor-paquete\gen_fixture.py --clean
-```
+Borrar SOLO la fixture al terminar: `venv\Scripts\python revision\s35-editor-paquete\gen_fixture.py --clean`
 
 ## La fixture (`_s35_fixture_alpha`)
-
-Tres clips que cubren los estados y todos los tipos de marcador:
 
 | # | Estado | Video | Marcadores | Notas |
 |---|--------|-------|-----------|-------|
 | 1 | LISTO | sí | keyword, popup | hook limpio, sin alertas |
 | 2 | REQUIERE REVISIÓN | sí | 2 tramo (rango), 2 Caption QA, keyword, popup | QA 0:05 y keyword 0:05 casi simultáneos; título con comillas y `<script>` como TEXTO |
-| 3 | NO PUBLICAR AÚN | **no** | keyword, popup | empty state del preview; título con acentos/ñ; la lista de marcadores igual funciona sin video |
+| 3 | NO PUBLICAR AÚN | **no** | keyword, popup | empty state; título con acentos/ñ; la lista de marcadores funciona sin video |
 
-## Qué se implementó (núcleo) en este PR
+## Correcciones de K aplicadas (checkpoint B4.5)
 
-- **Lista de marcadores clicable** (B5 núcleo): cada marcador es un botón con tipo
-  (Tramo/Caption QA/Keyword/Popup) + tiempo + texto; clic → mueve el video (seek). Los
-  tramos muestran rango; markers simultáneos no se pisan; funciona aunque no haya video.
-- **Click-to-seek** en los timestamps de Caption QA y de los avisos por tramos (B6).
-- **Empty state** del preview cuando el clip no tiene MP4 (sin `<video src=null>`).
-- **Etiqueta "Solo lectura"**: aprobar/rechazar se aplicarán en una fase posterior; el
-  "aprobado" es solo local del navegador.
-- **Deep-link con índice de clip** (`#revision/<pkg>/<idx>`) para abrir un clip concreto.
-- **Fixture** `gen_fixture.py` (sin red, con `--clean` que se niega a rutas inesperadas).
-
-La lista de paquetes, el panel de clips, el detalle (preview + score + duración + estado
-+ razón), las alertas y la barra de timeline ya existían de sesiones previas; aquí se
-completaron los huecos reales del núcleo.
+1. **Preview vertical como elemento principal:** caja 9:16 determinista (`aspect-ratio`),
+   `object-fit:contain`, centrada, ~62–70vh de alto en desktop, sticky, sin deformar ni
+   recortar; un solo video a la vez. Empty state comparte esa huella vertical.
+2. **Responsive real:** a <=900px el editor se apila (selector → clips → video → estado →
+   alertas/tramos → marcadores → timeline → recomendación → acciones); el sidebar pasa
+   arriba, la nav superior usa scroll horizontal controlado, botones >=44px. Sin scroll
+   horizontal global (ver nota de verificación abajo).
+3. **Acción de aprobación:** ahora "Marcar como revisado en esta sesión" / "Revisado
+   (quitar)" con `aria-pressed` y aviso "**no se guarda** — no modifica el paquete".
+4. **Jerarquía:** video → estado/score/duración/razón → alertas → marcadores → timeline
+   compacto → recomendación → acciones.
+5. **Copy para testers:** "Sin elementos visuales adicionales" / "N elemento(s) visual(es)"
+   en vez de "overlays"; "Copiar ubicación"; "Score IA" con tooltip; títulos de clip a 2
+   líneas con `title` accesible y quiebre de tokens largos (no truncado destructivo).
+6. **Paquetes:** orden por `meta.fecha` **descendente** (fallback determinista por id);
+   el más reciente primero; CTA visible "Revisar paquete →"; tarjeta-botón accesible;
+   badges agrupados con conteo cuando hay muchos clips.
+7. **Timeline y marcadores:** lista clicable con tipo/tiempo/texto (tramo con rango),
+   simultáneos no se pisan, seek por click **y teclado** (son `<button>`), leyenda,
+   fallback como lista sin video/duración, sin división por cero; barra compacta debajo.
+8. **Accesibilidad:** `<button>` reales, `:focus-visible` visible, `aria-label`/`aria-current`,
+   estados con texto (no solo color), Enter/Espacio activan marcadores, sin quitar outline.
 
 ## Evidencia visual (capturas locales, NO versionadas)
 
-En `revision/s35-editor-paquete/screens/` (ignoradas por git vía `.git/info/exclude`):
+En `revision/s35-editor-paquete/screens/` (ignoradas por git):
+`home_1440`, `paquetes_1440`, `editor_listo_1440`, `editor_alertas_1440`,
+`editor_timeline_1440`, `editor_video_faltante_1440`, `paquetes_1280`, `editor_1280`,
+`paquetes_390`, `editor_390`.
 
-| Archivo | Qué muestra | Resolución REALMENTE probada |
-|---------|-------------|------------------------------|
-| `home_1440.png` | Inicio (3 modos) | 1440×900 ✓ |
-| `paquetes_1440.png` | Lista de paquetes con la fixture | 1440×900 ✓ |
-| `editor_listo_1440.png` | Editor, clip LISTO, video en preview + lista de marcadores | 1440×900 ✓ |
-| `editor_alertas_1440.png` | Editor, clip REVISIÓN: Caption QA + 6 marcadores | 1440×900 ✓ |
-| `editor_video_faltante_1440.png` | Editor, clip sin video → empty state | 1440×900 ✓ |
-| `paquetes_390.png` / `editor_390.png` | Vistas móviles | 390×844 ✓ (ver limitación) |
+**Honestidad sobre resoluciones (léelo):** Edge headless en este equipo (Windows a 125%)
+fija un viewport CSS mínimo de ~492px, así que las capturas "390" se tomaron a ~492px CSS
+(rango móvil, reglas responsive activas) — muestran el layout apilado real sin recortes.
+La ausencia de scroll horizontal a móvil se **verificó por medición**
+(`document.documentElement.scrollWidth == window.innerWidth`, sin overflow). El píxel-perfect
+a 390px exacto NO se pudo capturar en este headless; K puede confirmarlo en vivo con las
+devtools del navegador. Desktop 1440 y 1280 sí se probaron (con el mismo factor de escala).
 
-Capturadas con Edge headless (sin instalar nada). Honestidad: **solo se probaron 1440×900
-(desktop) y 390×844 (móvil)**. NO se probaron 1280×720 ni tablets.
+## Limitaciones / deuda (ver PREGUNTAS.md)
 
-## Limitaciones conocidas en este punto (aún NO trabajadas — secundario, post-checkpoint)
+- Extracción de `static/s35.css` / `s35.js`: **diferida** (riesgo de romper otras pestañas
+  frente a beneficio bajo; el monolito no creció de forma relevante).
+- Aprobar/rechazar **persistente** (server-side) y edición conjunta QA/keywords: fase
+  posterior. Hoy "revisado" es solo local del navegador.
+- La barra de timeline es una ayuda de mouse; el camino accesible por teclado es la lista.
 
-- **Responsive móvil:** a 390px el editor NO colapsa a una columna todavía → hay scroll
-  horizontal (visible en `editor_390.png`). Es trabajo secundario (B7), deferido hasta
-  que K apruebe el rumbo.
-- **Barra de timeline fina, accesibilidad completa, extracción `s35.css/js`:** secundario,
-  pendientes.
-- Orden de la lista: por nombre descendente (determinista); la fixture (`_s35_...`) queda
-  al final aunque su fecha sea la más reciente.
+## Qué debe revisar K
 
-## Checkpoint para K
-
-Ver `CHECKLIST_VISUAL.md`. La pregunta de este checkpoint es:
-
-> **"Checkpoint temprano: el lenguaje visual y la estructura, ¿van bien antes de seguir
-> con timeline, responsive y accesibilidad?"**
+`CHECKLIST_VISUAL.md`. Este es el **ojo final**: si aprueba, el PR queda listo para merge
+(lo hace K, no el agente).

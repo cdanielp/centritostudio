@@ -809,3 +809,30 @@ mismo filter_complex.
 **Pendiente (PR posterior):** soporte de N clips por render (varios inputs `-i` + overlays
 encadenados), politica de solape entre clips y con popups de imagen, y quiza `contain` como segundo
 modo de encaje (tambien diferido en D31). Nada de esto bloquea V1. Estado: **diferido, post-PR B**.
+
+### 37. Editor de Paquete (S35) — aprobar/rechazar persistente y edicion, DIFERIDOS
+
+El Editor de Paquete de Alpha 0.1 es SOLO-LECTURA (D32). Hoy "Marcar como revisado en esta sesion"
+guarda solo en `localStorage` del navegador y no toca el paquete. Quedan diferidos, para una fase de
+persistencia posterior: (a) aprobar/rechazar clips de forma persistente (server-side), (b) edicion
+manual conjunta de Caption QA / keywords desde el Editor, (c) acciones de re-render desde el Editor.
+Ninguno se implementa aun; requieren decidir modelo de persistencia (¿archivo por paquete? ¿estado en
+`paquete.json`?) y no romper la regla #19 (revision humana antes de publicar). Estado: **diferido**.
+
+### 38. Editor de Paquete (S35) — extraccion de `s35.css`/`s35.js`, DIFERIDA
+
+`static/index.html` sigue siendo el monolito de la UI. El PR B (cierre visual S35) toco solo unidades
+S35 sin refactor general. La extraccion de los bloques S35 a `static/s35.css` / `static/s35.js`
+(sugerida en el plan) se difiere: el riesgo de romper otras pestanas (los handlers `onclick` viven en
+scope global del `<script>` inline y varias funciones se comparten con Home/Creador/Automatico) supera
+el beneficio inmediato, y el monolito no crecio de forma relevante con S35. Estado: **diferido**; si
+`index.html` sigue creciendo, retomar extrayendo primero el CSS (menos acoplado) y luego el JS con
+cuidado de conservar las funciones publicas usadas por `onclick`.
+
+### 39. Editor de Paquete (S35) — captura pixel-perfect a 390px exacto (headless)
+
+Edge headless en el equipo de dev (Windows a 125%) fija un viewport CSS minimo de ~492px, asi que las
+capturas "moviles" se tomaron a ~492px (rango movil, reglas responsive activas) y la ausencia de scroll
+horizontal se verifico por medicion (`scrollWidth == innerWidth`). El render pixel-perfect a 390px
+exacto no se pudo capturar en este headless. No es un defecto del producto (se valida en vivo con
+devtools); es una limitacion de la herramienta de captura. Estado: **nota, no bloqueante**.
