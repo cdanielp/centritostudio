@@ -24,3 +24,7 @@ La limpieza solo elimina el paquete `test_s37c_demo_v2_20260718-1200` y `test_s3
 Capturas locales, si el navegador headless las permite, se guardan en `output/revision-s37c/` y no se versionan. La lista de aceptación vinculante está en `CHECKLIST_VISUAL.md`.
 
 En esta sesión Edge/Chrome headless produjo `auto_classic_desktop.png`, `editor_v2_desktop.png` y `editor_v2_mobile.png` (viewport 390 px). La automatización disponible no pudo ejecutar de forma fiable las interacciones de modo/toggles/resultado, por lo que `auto_v2_desktop.png`, `auto_v2_mobile.png` y `auto_v2_result.png` quedan deliberadamente para el recorrido manual de K; no se fabricaron capturas estáticas.
+
+## Veredicto final
+
+**VEREDICTO VISUAL DE K: APROBADO (2026-07-18).** PR #13 mergeado en main. S37 COMPLETA.

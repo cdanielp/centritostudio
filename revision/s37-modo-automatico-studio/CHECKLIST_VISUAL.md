@@ -51,10 +51,10 @@ Usar el fixture sintético descrito en `README.md`. Revisar sin publicar ni modi
 
 ## Veredicto de K
 
-- [ ] APROBADO
+- [x] APROBADO
 - [ ] CAMBIOS
 - [ ] RECHAZADO
 
-Comentarios:
+Comentarios: APROBADO 2026-07-18. PR #13 mergeado en main. S37 COMPLETA.
 
 ---

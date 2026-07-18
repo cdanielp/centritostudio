@@ -1101,3 +1101,24 @@ S37-C expone el pipeline ya aprobado sin reimplementarlo ni cambiar su resultado
 8. **Gobernanza visual.** El PR queda abierto y NO se mergea aunque la validación técnica esté verde. S37 sigue ABIERTA hasta el veredicto visual APROBADO de K en desktop/móvil y el merge posterior.
 
 Evidencia sintética y checklist: `revision/s37-modo-automatico-studio/`.
+
+## D35 addendum — Veredicto visual de K: S37-C APROBADA — S37 COMPLETA
+
+**Fecha:** 2026-07-18. **PR mergeado:** #13 (merge commit en main).
+
+**VEREDICTO VISUAL DE K: APROBADO.** S37-C queda aprobada técnica y visualmente.
+
+- S37-A: cerrada (PR #11 mergeado).
+- S37-B: cerrada (PR #12 mergeado).
+- S37-C: cerrada (PR #13 mergeado, veredicto visual de K APROBADO 2026-07-18).
+- **S37 COMPLETA.**
+
+Deudas declaradas fuera de alcance (no bloquean ninguna fase futura, no se resuelven en S37):
+- falso positivo morfológico `cocina`/`cocinar` (Caption QA, deuda #48);
+- limpieza futura de queries como `conectamos Ahora maquina tostado`;
+- extracción del monolito `static/index.html` (deuda #38);
+- aprobación/rechazo persistente en el Editor (deuda #37);
+- re-render selectivo desde el Editor (deuda #37);
+- SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente de S37).
+
+Auto clásico continúa como default. Auto v2 ya está disponible en Studio. El Editor muestra b-roll, FX y A/V en modo read-only.
