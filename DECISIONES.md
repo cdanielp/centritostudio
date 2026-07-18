@@ -993,3 +993,50 @@ index `1072`, ultimo `start_ms=2473300`/`end_ms=2474600`, `0` errores, `0` warni
 semantico PASS, original intacto (sha256 identico). README completo en `revision/s36-srt-import/`.
 **S36 NO esta cerrada** (faltan integracion con captions, word alignment, upload Studio, rebase tras
 cortes y templates 9:16 — ver ESTADO.md y PREGUNTAS.md).
+
+## D34 - S37-A: brain senala, planner decide, auto orquesta (feat/s37-broll-planner)
+
+**Contexto:** con el brain aportando senales (grupo, keyword, timestamp, emoji), el Modo
+Automatico v2 necesita una capa PURA que decida ventanas de b-roll antes de conectar cualquier
+resolver. S37-A entrega solo esa capa; no toca `brain.py` ni `auto.py`, no usa Pexels/FFmpeg/red,
+no descarga assets y no cambia la salida visual.
+
+**Decision:** separar responsabilidades en la cadena del Auto v2.
+
+Principios vinculantes:
+
+1. `brain.py` NO genera planes de b-roll: solo entrega senales editoriales.
+2. El planner recibe `groups + brain + duration + config` y devuelve un `BrollPlan v1`.
+3. El planner es PURO, determinista y sin red (misma entrada + config = mismo JSON semantico).
+4. El planner solicita INTENCION (ventana + tipo + query + duracion deseada); NO selecciona assets reales.
+5. Imagen es el default.
+6. Video requiere senal textual EXPLICITA de movimiento/accion/proceso.
+7. Maximo un video por clip en V1 (`max_video_windows` 0 o 1); el resto se degrada a imagen si cabe.
+8. Hook protegido 3.0s desde el inicio del clip; el lead-in nunca entra al hook.
+9. Densidad: target 27%, maximo duro 35% (nunca se supera).
+10. Imagen 2.5-4.5s (preferred 3.5); video 3-6s (preferred 4.5).
+11. `express` es el FX default del Auto v2; `pro` solo perfil viral fuerte; `premium` explicito.
+12. `premium` reserva outro de 2.5s; `express`/`pro` no reservan outro.
+13. El sidecar manual `{stem}_popups.json` JAMAS se sobreescribe.
+14. `{stem}_broll_plan.json` es AUDITORIA, no el sidecar de render.
+15. Errores por capas (D31): input superior invalido lanza; item malformado se rechaza y continua;
+    bug de programacion se propaga (sin `except Exception: return empty`).
+16. IDs de ventana deterministas (`broll-0001`...) tras ordenar por inicio.
+17. Solo stdlib; sin dependencias nuevas. Cinco modulos <=400 lineas, funciones <=50.
+
+**Arquitectura entregada:** `broll_plan_types.py` (tipos/errores/codigos/validacion de config),
+`broll_plan_query.py` (normalizacion + query determinista + deteccion de movimiento),
+`broll_plan_place.py` (colocacion temporal + greedy de cobertura), `broll_planner.py`
+(orquestacion pura + `plan_broll`, fachada publica) y `broll_plan_io.py` (contrato JSON v1 +
+escritura atomica del sidecar).
+
+**Evidencia:** 161 tests nuevos en `tests/test_broll_planner.py` (sin red/GPU/FFmpeg/Pexels/keys/
+archivos reales); total de la suite **915 passed, 1 skipped**. Smoke sintetico
+(`revision/s37-broll-planner/smoke_broll_planner.py`): `signals=8`, `windows=2` (image 1, video 1),
+`coverage=25.0%`, `overlaps=0`, determinista PASS, sidecar PASS. README completo en
+`revision/s37-broll-planner/`.
+
+**Track S37 (NO cerrada):** PR A (planner) ENTREGADA; **PR B** (auto-v2-render: consumir el plan,
+resolver assets, materializar `{stem}_popups.auto.json`, arbitrar FX/b-roll, integridad A/V)
+PENDIENTE; **PR C** (Studio/toggle) PENDIENTE. PR B y PR C requieren veredicto visual de K.
+S37-A NO modifica el comportamiento historico del producto.
