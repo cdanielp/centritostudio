@@ -950,3 +950,46 @@ con correcciones obligatorias, todas incorporadas):
 
 Evidencia y como levantarlo: `revision/s35-editor-paquete/` (README + CHECKLIST_VISUAL + gen_fixture.py).
 Pendiente: ojo visual final de K antes del merge (el agente NO mergea el PR B).
+
+## D33 — S36-A: el SRT es un documento de CUES, no un transcript word-by-word (feat/s36-srt-import-contract)
+
+Apertura de **S36 (SRT round-trip + composicion 9:16)**. Este primer bloque, **S36-A**, es
+infraestructura pura: una capa SRT pequena, pura y reusable, **sin salida visual** y **sin tocar**
+captions, render, FFmpeg ni la UI. Objetivo: base extremadamente confiable para que S36-B/C puedan
+usar un `.srt` como fuente oficial de captions, conservar el texto corregido por el usuario y respetar
+sus timestamps.
+
+**Principios (vinculantes para S36-B/C):**
+
+1. El texto y los limites de cue del SRT son **autoridad** (se conservan tal cual: acentos, ñ, emojis,
+   `<i>`/`<script>` como texto literal, mayusculas, comillas, espacios internos).
+2. Los tiempos canonicos se guardan en **milisegundos enteros** (nunca floats).
+3. El parser **nunca inventa timing por palabra**: un SRT solo tiene timing a nivel de cue/frase.
+4. El **orden fuente** se conserva; no se reordena por timestamp; `source_position` 0-based.
+5. Los **overlaps se diagnostican** (warning), no se corrigen en silencio.
+6. El **original nunca se sobreescribe** (normalize exige `--output` distinto; contrato no sobreescribe).
+7. **Round-trip v1 es semantico, no byte-identico** (BOM/line-endings se normalizan; decimal -> coma).
+8. La **alineacion palabra-por-palabra** pertenece a **S36-B**.
+9. Los **templates 9:16** pertenecen a **S36-C**.
+10. El SRT real del usuario es **evidencia local, nunca fixture versionada** (gitignoreado en `input/`).
+
+**Contraste con el modelo actual (diagnostico):** hoy una palabra es
+`{"w": texto, "s": segundos_float, "e": segundos_float, "prob": float}` (Whisper, `core.transcribe_video`)
+y los grupos de caption se derivan de esas palabras. Un SRT **no** tiene timing ni confianza por palabra;
+aporta **texto corregido + limites de frase + tiempos enteros**. Por eso repartir el tiempo del cue a
+palabras exige un motor de alineacion (S36-B) y no puede hacerse en este PR sin fabricar datos.
+
+**Arquitectura entregada:** `srt_types.py` (tipos/excepciones/limites/codigos), `srt_time.py`
+(timestamps), `srt_parse.py` (decode UTF-8/BOM/cp1252 + parser de estado + `load_srt`),
+`srt_validate.py` (validacion independiente), `srt_serialize.py` (serializacion + contrato JSON v1),
+`srt_import.py` (**fachada publica**, unico punto de import) y `srt_tool.py` (CLI local:
+validate/inspect/normalize/contract). Cero dependencias nuevas (solo stdlib). Todos los archivos de
+produccion <=400 lineas; funciones <=50. Excepciones tipadas (`SrtError` base + `SrtDecodeError`/
+`SrtParseError`/`SrtLimitError`); sin catch-all en la libreria.
+
+**Evidencia:** 132 tests nuevos en `tests/test_srt_import.py` (sin red/GPU/FFmpeg). Smoke real
+(`revision/s36-srt-import/smoke_srt_real.py` sobre `input/0717_corregido.srt`): `n_cues=1072`, ultimo
+index `1072`, ultimo `start_ms=2473300`/`end_ms=2474600`, `0` errores, `0` warnings, round-trip
+semantico PASS, original intacto (sha256 identico). README completo en `revision/s36-srt-import/`.
+**S36 NO esta cerrada** (faltan integracion con captions, word alignment, upload Studio, rebase tras
+cortes y templates 9:16 — ver ESTADO.md y PREGUNTAS.md).
