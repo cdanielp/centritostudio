@@ -856,3 +856,52 @@ decidir y NO se resolvio en este PR (no preguntar lo ya cerrado por D33):
 - (g) **Nombre definitivo del sidecar** del contrato SRT en produccion (¿`{stem}_srt.json`?): en S36-A
   el JSON solo es contrato/evidencia local; el nombre se decide en S36-B.
 - (h) **UI:** si el Studio permitira editar los saltos de linea originales del cue o solo el texto.
+
+### 41. S37 densidad de b-roll (Automatico v2) — **RESUELTA (D34, s37)**
+
+- target **27%**;
+- maximo duro **35%** (nunca se supera);
+- el target detiene el greedy; puede quedar por debajo si faltan senales validas.
+
+### 42. S37 duracion de b-roll — **RESUELTA (D34, s37)**
+
+- imagen **2.5-4.5s** (preferred 3.5);
+- video **3-6s** (preferred 4.5);
+- el planner solicita la duracion deseada; la duracion real del asset remoto es de PR B.
+
+### 43. S37 imagen vs video — **RESUELTA (D34, s37)**
+
+- **imagen es el default**;
+- **video** solo con senal textual EXPLICITA de movimiento/accion/proceso;
+- **maximo un video** por clip en V1; el resto se degrada a imagen (`video_limit_fallback_to_image`).
+
+### 44. S37 hook — **RESUELTA (D34, s37)**
+
+- **3.0 segundos** protegidos desde el inicio del clip ya rebasado;
+- el lead-in nunca entra al hook; una senal con `kw_ts` dentro del hook se rechaza.
+
+### 45. S37 FX default del Automatico v2 — **RESUELTA (D34, s37)**
+
+- **express** por default;
+- **pro** solo para perfil viral fuerte;
+- **premium** explicito (reserva outro de 2.5s). El planner solo INFORMA el preset; el render lo aplica en PR B.
+
+### 46. S37 b-roll default — **RESUELTA (D34, s37)**
+
+- **ON solo en Automatico v2**;
+- el toggle vive en PR C;
+- el **Auto clasico permanece identico** (sin b-roll automatico, sin cambios de salida).
+
+### 47. S37-B — deudas REALES abiertas para el resolver (NO decidir en PR A)
+
+Emergen del contrato del planner y se deciden cuando PR B conecte Pexels/render:
+
+- (a) **Ningun video de Pexels cubre la duracion pedida:** loop del clip corto o fallback a imagen.
+- (b) **Precedencia por ventana entre manual y automatico** al fusionar `{stem}_popups.json` (manual)
+  con `{stem}_popups.auto.json` (generado).
+- (c) **Formato final del merge** manual/auto y su orden de resolucion.
+- (d) **Tolerancia A/V** y politica de sincronizacion al componer el b-roll.
+- (e) **Politica de desplazamiento de punch-in** si un asset real difiere de la ventana planeada.
+- (f) **Cache de assets automaticos** (reuso entre clips/renders).
+
+Ninguna de estas se decide en PR A: el planner solo produce INTENCION auditable.

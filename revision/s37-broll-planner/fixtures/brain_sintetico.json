@@ -1,0 +1,15 @@
+{
+  "provider": "mock",
+  "latency_s": 0.0,
+  "tokens": {"prompt": 0, "completion": 0, "total": 0},
+  "groups": [
+    {"g": 0, "kw": 4, "kw_ts": 1.5, "emoji": null},
+    {"g": 1, "kw": 1, "kw_ts": 3.6, "emoji": "☕"},
+    "item malformado que no es un objeto",
+    {"g": 3, "kw": 0, "kw_ts": 13.0, "emoji": null},
+    {"g": 4, "kw": null, "emoji": null},
+    {"g": 5, "kw": 0, "kw_ts": 23.0, "emoji": null},
+    {"g": 6, "kw": 2, "kw_ts": 28.8, "emoji": null},
+    {"g": 99, "kw": 0, "kw_ts": 5.0, "emoji": null}
+  ]
+}
