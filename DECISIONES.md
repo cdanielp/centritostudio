@@ -1036,7 +1036,51 @@ archivos reales); total de la suite **915 passed, 1 skipped**. Smoke sintetico
 `coverage=25.0%`, `overlaps=0`, determinista PASS, sidecar PASS. README completo en
 `revision/s37-broll-planner/`.
 
-**Track S37 (NO cerrada):** PR A (planner) ENTREGADA; **PR B** (auto-v2-render: consumir el plan,
-resolver assets, materializar `{stem}_popups.auto.json`, arbitrar FX/b-roll, integridad A/V)
-PENDIENTE; **PR C** (Studio/toggle) PENDIENTE. PR B y PR C requieren veredicto visual de K.
-S37-A NO modifica el comportamiento historico del producto.
+**Track S37 (NO cerrada):** PR A (planner) MERGEADA (#11); **PR B** (auto-v2-render)
+APROBADA tecnica y visualmente: **VEREDICTO VISUAL DE K: APROBADO**. PR #12 autorizado
+para merge. **PR C** (Studio/toggle) PENDIENTE y NO iniciada. S37-A no modifico el output;
+S37-B si cambia salida visual y ya completo su validacion. **S37 sigue ABIERTA** hasta
+terminar S37-C (ver `revision/s37-auto-v2-render/CHECKLIST_VISUAL.md`).
+
+### D34 — Addendum S37-B: decisiones #47 aplicadas al Auto v2 (feat/s37-auto-v2-render)
+
+Vinculantes para el resolver/render del Modo Automatico v2:
+
+1. **47a — video corto:** NUNCA loop automatico; si ningun candidato de Pexels cubre la
+   duracion pedida -> fallback a IMAGEN (`video_no_cover_fallback_image`); fallos operativos
+   de busqueda/descarga de video tambien caen a imagen con codigo propio; si la imagen de
+   fallback tambien falla, la ventana se omite con ambos pasos registrados.
+2. **47b — precedencia:** el sidecar manual GANA por conflicto temporal ([start, end); tocar
+   borde no bloquea); la ventana auto bloqueada se omite ANTES de descargar
+   (`manual_precedence`); el manual jamas se desplaza ni se modifica (hash intacto). Un clip
+   manual ocupa el slot de video: la ventana auto de video se degrada a imagen.
+3. **47c — merge:** fuentes SEPARADAS (`_popups.json` manual intocable, `_broll_plan.json`,
+   `_popups.auto.json` solo con lo que llego al render, `_broll_resolved.json` auditoria);
+   la combinacion manual+auto ocurre EN MEMORIA; no existe sidecar hibrido.
+4. **47d — tolerancias A/V (compuertas DURAS, excepciones tipadas, nunca fail-open):**
+   integridad = payload de audio identico por hash de paquetes (ffprobe data_hash sha256,
+   fallback ADTS documentado); sync = start audio <=0.050s, duracion audio <=0.050s, delta
+   inicial A/V <=0.120s, drift final <= max(0.120s, 2/fps_final).
+5. **47e — FX:** un punch/flash/scanner que traslapa un cutaway se ELIMINA, no se desplaza
+   (codigos `*_removed_cutaway`); el logo/outro se conserva; conflicto manual en zona de
+   outro -> warning `premium_outro_manual_conflict`.
+6. **47f — cache:** `cache_policy = existing_fetcher_cache` (la de broll_stock /
+   broll_video_stock); sin cache paralela; sin keys/URLs firmadas en sidecars.
+7. **Compatibilidad:** `ejecutar_auto` sin config = classic EXACTO (sin planner, sin Pexels,
+   sin FX, sin sidecars S37); paquetes v2 con naming `{name}_v2_{fecha}` + fingerprint
+   SHA256 de config; checkpoints v2 solo se reutilizan con fingerprint identico y A/V pass.
+
+**Arquitectura entregada:** `auto_config.py`, `auto_v2.py`, `auto_broll.py`,
+`auto_broll_io.py`, `auto_fx.py`, `auto_av.py` (todos <=400 lineas, cero dependencias
+nuevas); `auto.py`/`auto_report.py` extendidos de forma aditiva; `broll_plan_io` con
+temporal unico (unica modificacion autorizada a S37-A). **Evidencia:** 133 tests nuevos
+(suite 1048 passed, 1 skipped), E2E sin red con render FFmpeg real, CFR 29.97 real, VFR
+real (2 deltas de PTS distintos), demos sinteticos en output/revision-s37b/ (no
+versionados). Hallazgo documentado: el punch-in (zoompan) exige input CFR; el pipeline
+real lo garantiza via reframe.
+
+**Cierre de revision visual (K, 2026-07-18):** **VEREDICTO VISUAL DE K: APROBADO.**
+S37-B queda aprobada tecnica y visualmente y el PR #12 queda autorizado para merge.
+Observaciones no bloqueantes: `cocina` puede detectarse falsamente como movimiento por
+relacion morfologica con `cocinar`; y, a futuro, conviene limpiar queries como
+`conectamos Ahora maquina tostado`. Ninguna bloquea S37-B ni inicia S37-C.

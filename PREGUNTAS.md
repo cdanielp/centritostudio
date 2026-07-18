@@ -892,7 +892,7 @@ decidir y NO se resolvio en este PR (no preguntar lo ya cerrado por D33):
 - el toggle vive en PR C;
 - el **Auto clasico permanece identico** (sin b-roll automatico, sin cambios de salida).
 
-### 47. S37-B — deudas REALES abiertas para el resolver (NO decidir en PR A)
+### 47. S37-B — deudas del resolver — **RESUELTA (D34 addendum, s37 PR B)**
 
 Emergen del contrato del planner y se deciden cuando PR B conecte Pexels/render:
 
@@ -904,4 +904,39 @@ Emergen del contrato del planner y se deciden cuando PR B conecte Pexels/render:
 - (e) **Politica de desplazamiento de punch-in** si un asset real difiere de la ventana planeada.
 - (f) **Cache de assets automaticos** (reuso entre clips/renders).
 
-Ninguna de estas se decide en PR A: el planner solo produce INTENCION auditable.
+Ninguna de estas se decidio en PR A: el planner solo produce INTENCION auditable.
+
+**RESOLUCION (S37-B, valores exactos aplicados y testeados):**
+
+- (a) video que no cubre la duracion: **fallback a imagen, NUNCA loop**
+  (`video_no_cover_fallback_image`); fallos operativos de busqueda/descarga tambien caen a
+  imagen; doble fallo -> ventana omitida con ambos pasos registrados.
+- (b) precedencia por ventana: **manual gana por conflicto temporal** ([start, end), tocar
+  borde no bloquea); la ventana auto bloqueada se omite ANTES de descargar; un clip manual
+  ocupa el slot de video (auto video -> imagen).
+- (c) formato del merge: **fuentes separadas + combinacion en memoria**; `_popups.auto.json`
+  (solo lo renderizado, formato compatible) + `_broll_resolved.json` (auditoria); el manual
+  jamas se toca; sin sidecar hibrido.
+- (d) tolerancia A/V: **integridad = payload identico por hash de paquetes**; sync = start
+  audio <=0.050s, duracion audio <=0.050s, delta inicial A/V <=0.120s, drift final <=
+  max(0.120s, 2/fps_final). Excepciones tipadas, nunca fail-open.
+- (e) punch-in vs cutaway: **el FX se ELIMINA, no se desplaza** (D34 addendum, #47e).
+- (f) cache: **la existente de los fetchers** (`existing_fetcher_cache`), sin cache paralela.
+
+**Deudas menores diferidas a PR C (no bloquean):** bloquear precedencia por INTENCION
+manual (hoy bloquea por elemento manual RESUELTO, documentado); toggle de b-roll y preset
+FX en Studio; rerender selectivo desde el Editor.
+
+### 48. S37-B — cierre visual y observaciones de K — **RESUELTA (s37, PR #12)**
+
+**VEREDICTO VISUAL DE K: APROBADO.** S37-B fue aprobada tecnica y visualmente; PR #12
+queda autorizado para merge. S37 sigue ABIERTA porque S37-C (Studio) esta PENDIENTE y NO
+fue iniciada.
+
+**Observaciones no bloqueantes:**
+
+- `cocina` puede detectarse falsamente como movimiento por su relacion morfologica con
+  `cocinar`.
+- Mejora futura: limpiar queries como `conectamos Ahora maquina tostado`.
+
+Ambas se registran como deuda/mejora futura y **NO bloquean S37-B**.

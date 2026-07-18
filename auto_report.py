@@ -256,6 +256,48 @@ def recomendacion_final(clips_info: list[dict]) -> list[str]:
     return lineas
 
 
+def _linea_av(av: dict) -> str:
+    """Una linea humana del resultado A/V de un clip v2. Puro."""
+    integ = (av.get("integrity") or {}).get("status", "?")
+    sync = (av.get("sync") or {}).get("status", "?")
+    if av.get("skipped"):
+        return "verificacion A/V omitida por config"
+    return f"audio {integ} / sincronizacion {sync}"
+
+
+def _lineas_v2_paquete(clips_info: list[dict]) -> list[str]:
+    """Seccion del REPORTE.md SOLO para paquetes v2 (S37-B). Puro.
+
+    Sin clips v2 devuelve [] -> el reporte clasico queda byte-identico (golden test).
+    """
+    v2 = [(i, c) for i, c in enumerate(clips_info, 1) if c.get("pipeline_mode") == "v2"]
+    if not v2:
+        return []
+    lineas = ["", "## Modo Automatico v2 (b-roll + FX)", ""]
+    for i, c in v2:
+        b = c.get("broll") or {}
+        fxs = c.get("fx") or {}
+        eliminados = len(fxs.get("removed") or [])
+        lineas += [
+            f"- Clip {i}: b-roll {b.get('resolved', 0)}/{b.get('planned', 0)} "
+            f"({b.get('images', 0)} imagen(es), {b.get('videos', 0)} video(s), "
+            f"{b.get('fallbacks', 0)} fallback(s), {b.get('blocked', 0)} bloqueada(s) "
+            f"por manual, {b.get('omitted', 0)} omitida(s))",
+            f"  - Manual respetado: {b.get('manual_popups', 0)} popup(s), "
+            f"{b.get('manual_clips', 0)} clip(s) (el sidecar manual nunca se toca)",
+            f"  - FX: preset {fxs.get('preset') or 'apagado'}, "
+            f"{eliminados} efecto(s) eliminados por colision con b-roll",
+            f"  - A/V: {_linea_av(c.get('av') or {})}",
+            f"  - Sidecars: {b.get('plan_sidecar', '?')}, {b.get('auto_sidecar', '?')}, "
+            f"{b.get('resolved_sidecar', '?')}",
+        ]
+    lineas += [
+        "",
+        "REVISION HUMANA: mira el b-roll y los FX en el video completo antes de publicar.",
+    ]
+    return lineas
+
+
 def generar_reporte_md(name: str, clips_info: list[dict], meta: dict) -> str:
     """REPORTE.md del paquete. Puro."""
     algun_emoji = any(_clip_usa_emojis(c) for c in clips_info)
@@ -286,6 +328,7 @@ def generar_reporte_md(name: str, clips_info: list[dict], meta: dict) -> str:
         lineas += _lineas_clip(i, c, mostrar_emojis=algun_emoji)
     lineas += ["## Recomendacion final", ""]
     lineas += recomendacion_final(clips_info)
+    lineas += _lineas_v2_paquete(clips_info)  # [] sin clips v2: reporte clasico intacto
     lineas += [
         "",
         "## Telemetria",
