@@ -940,3 +940,16 @@ fue iniciada.
 - Mejora futura: limpiar queries como `conectamos Ahora maquina tostado`.
 
 Ambas se registran como deuda/mejora futura y **NO bloquean S37-B**.
+
+### 49. S37-C — contrato de Studio y Editor v2 — **RESUELTA (D35, pendiente ojo de K)**
+
+No quedan preguntas técnicas abiertas para implementar S37-C: classic es default, v2 es explícito, b-roll/FX son configurables, express es default, A/V y manual sidecars permanecen ON, el preview previo es solo resumen, el plan real es post-proceso y el Editor es read-only. El PR no se mergea hasta el veredicto visual de K.
+
+**Deudas no bloqueantes, fuera de S37-C:**
+
+- falso positivo morfológico `cocina`/`cocinar` y limpieza futura de queries como `conectamos Ahora maquina tostado`;
+- extracción futura del monolito `static/index.html` (continúa la deuda #38);
+- aprobación/rechazo persistente en el Editor (continúa la deuda #37);
+- re-render selectivo futuro desde el Editor (continúa la deuda #37).
+
+Ninguna se resuelve en este PR y ninguna bloquea la revisión visual de S37-C.

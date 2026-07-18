@@ -423,38 +423,67 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 <div id="tab-auto" class="tab">
   <div class="home-wrap" style="max-width:920px">
     <h2 class="section-title">Modo Automático</h2>
-    <div class="msg" style="margin-bottom:16px">De un video largo a un paquete de clips verticales listo para revisar. Cinco pasos; el pipeline hace el resto.</div>
+    <div class="msg" style="margin-bottom:16px">Dos modos, un solo motor. Elige cuánto automatizar y termina siempre con una revisión humana.</div>
 
     <div class="step">
-      <div class="step-head"><span class="step-num">1</span> Elige el video</div>
+      <div class="step-head"><span class="step-num">1</span> Video</div>
       <select id="auto-video-select" style="width:100%">
         <option value="">— Elegir video —</option>
+      </select>
+      <select id="auto-objetivo" aria-label="Objetivo" hidden>
+        <option value="clips">Clips virales</option>
       </select>
       <div class="msg" style="margin-top:6px">¿No aparece? Súbelo desde Creador → Biblioteca de videos.</div>
     </div>
 
     <div class="step">
-      <div class="step-head"><span class="step-num">2</span> Elige el objetivo</div>
-      <select id="auto-objetivo" style="width:100%">
-        <option value="clips">Clips virales (hasta 3, verticales, con captions)</option>
-      </select>
+      <div class="step-head"><span class="step-num">2</span> Modo</div>
+      <input type="hidden" id="auto-mode" value="classic">
+      <div class="auto-mode-grid" role="group" aria-label="Modo Automático">
+        <button type="button" class="auto-mode-card selected" data-auto-mode="classic" aria-pressed="true" onclick="setAutoMode('classic')">
+          <b>Clásico</b><span>Reframe, captions y emojis con el flujo histórico.</span>
+        </button>
+        <button type="button" class="auto-mode-card" data-auto-mode="v2" aria-pressed="false" onclick="setAutoMode('v2')">
+          <b>Automático v2</b><span>Agrega b-roll automático, FX y verificación A/V al mismo pipeline.</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="step" id="auto-v2-config" hidden>
+      <div class="step-head"><span class="step-num">3</span> Configuración v2</div>
+      <label class="auto-toggle"><span><b>B-roll automático</b><small>El planner decide la densidad por clip.</small></span><input type="checkbox" id="auto-broll-enabled" checked onchange="updateAutoConfigUI()"></label>
+      <label class="auto-toggle"><span><b>FX</b><small>Efectos del motor existente, con colisiones eliminadas.</small></span><input type="checkbox" id="auto-fx-enabled" checked onchange="updateAutoConfigUI()"></label>
+      <label class="auto-preset"><span>Preset FX</span>
+        <select id="auto-fx-preset" onchange="updateAutoConfigUI()">
+          <option value="express" selected>Express</option>
+          <option value="pro">Pro</option>
+          <option value="premium">Premium</option>
+        </select>
+      </label>
+      <div class="cap-grid auto-fixed-rules">
+        <span class="cap-chip">Captions siempre ON</span><span class="cap-chip">Reframe 9:16</span>
+        <span class="cap-chip">Audio verificado</span><span class="cap-chip">Manual gana</span>
+        <span class="cap-chip">Máximo un video</span><span class="cap-chip">Hook protegido 3s</span>
+      </div>
+      <div class="msg" style="margin-top:9px">Tus ajustes manuales tienen prioridad en conflictos. La densidad la administra el planner.</div>
+      <div id="auto-pexels-status" class="msg" style="margin-top:6px"></div>
     </div>
 
     <div class="step">
-      <div class="step-head"><span class="step-num">3</span> Qué incluye el paquete</div>
-      <div class="cap-grid" id="auto-incluye"></div>
-      <div class="msg" style="margin-top:8px">Estas etapas están fijas en el Modo Automático (no se configuran aquí).</div>
+      <div class="step-head"><span class="step-num">4</span> Resumen de configuración</div>
+      <div id="auto-config-summary"></div>
+      <div class="msg" style="margin-top:9px"><b>El plan temporal real se calcula por clip después del análisis.</b></div>
     </div>
 
     <div class="step">
-      <div class="step-head"><span class="step-num">4</span> Genera el paquete</div>
-      <button class="btn" id="auto-btn" onclick="startAuto()">Generar paquete</button>
+      <div class="step-head"><span class="step-num">5</span> Generar</div>
+      <button class="btn auto-submit" id="auto-btn" onclick="startAuto()">Generar paquete clásico</button>
       <div id="auto-status" style="margin-top:10px"></div>
     </div>
 
     <div id="auto-result" style="display:none">
       <div class="step done">
-        <div class="step-head"><span class="step-num">5</span> Revisa en el Editor</div>
+        <div class="step-head"><span class="step-num">6</span> Resultado y revisión</div>
         <div id="auto-resumen" style="font-size:14px;font-weight:500;margin-bottom:12px"></div>
         <div id="auto-clips" style="display:flex;flex-direction:column;gap:10px"></div>
         <div id="auto-reporte-link" style="margin-top:12px;font-size:12px"></div>
@@ -632,6 +661,34 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   background:var(--purple-dim);border:0.5px solid var(--purple);color:#fff;font-size:12px;flex-shrink:0}
 .step.done .step-num{background:#0f2417;border-color:#1c5334;color:#4ade80}
 .cap-chip.soon{opacity:.5}
+.auto-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.auto-mode-card{display:flex;flex-direction:column;gap:5px;text-align:left;min-width:0;padding:14px;
+  color:var(--text);background:#101019;border:0.5px solid #2a2a3e;border-radius:10px;cursor:pointer;font:inherit}
+.auto-mode-card span{font-size:12px;line-height:1.45;color:var(--muted)}
+.auto-mode-card.selected{border-color:var(--purple);background:#140f24;box-shadow:0 0 0 1px rgba(124,58,237,.2)}
+.auto-mode-card:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.auto-toggle,.auto-preset{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:11px 0;
+  border-bottom:0.5px solid #202032;font-size:13px}
+.auto-toggle span{display:flex;flex-direction:column;gap:3px;min-width:0}.auto-toggle small{color:var(--muted);font-size:11px;font-weight:400}
+.auto-toggle input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--purple);cursor:pointer}
+.auto-preset select{min-width:min(180px,45%)}.auto-fixed-rules{margin-top:12px}.auto-fixed-rules .cap-chip{font-size:11px}
+.auto-summary-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;font-size:12px;color:var(--muted)}
+.auto-summary-list span::before{content:'✓';color:var(--green);margin-right:7px}.auto-submit{min-height:40px;min-width:220px}
+.auto-result-card{border:var(--border);border-radius:10px;padding:13px;min-width:0}.auto-result-head{display:flex;gap:9px;
+  justify-content:space-between;align-items:flex-start;flex-wrap:wrap}.auto-v2-badge{display:inline-flex;color:var(--cyan);border:0.5px solid #1d6570;
+  background:#081b20;border-radius:999px;padding:2px 8px;font-size:10px;letter-spacing:.5px;font-weight:600}
+.auto-diag-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.auto-diag{background:#0c0c16;border:0.5px solid #202033;border-radius:8px;padding:9px;font-size:11px;line-height:1.55;min-width:0}
+.auto-diag b{display:block;color:var(--text);font-size:11px;margin-bottom:2px}.auto-pass{color:var(--green)}
+.av-state{font-weight:600}.av-state.pass{color:var(--green)}.av-state.fail{color:var(--red)}.av-state.skipped,.av-state.unknown{color:var(--muted)}
+.mk-tag.broll_image{color:#67e8f9;border-color:#0891b2}.mk-tag.broll_video{color:#a78bfa;border-color:#7c3aed}
+.tl .tl-mk.broll_image{background:#06b6d4;width:3px}.tl .tl-mk.broll_video{background:#8b5cf6;width:3px}
+.tl .tl-broll{position:absolute;top:5px;height:28px;border-radius:3px;opacity:.55}.tl .tl-broll.broll_image{background:#0891b2}.tl .tl-broll.broll_video{background:#7c3aed}
+@media (max-width:620px){
+  #tab-auto .home-wrap{padding:20px 14px}.auto-mode-grid,.auto-summary-list,.auto-diag-grid{grid-template-columns:1fr}
+  .auto-mode-card,.auto-toggle{min-height:52px}.auto-preset{align-items:flex-start;flex-direction:column;gap:7px}
+  .auto-preset select,.auto-submit{width:100%;min-width:0;min-height:44px}.auto-result-head{flex-direction:column}
+}
 </style>
 
 <script>
@@ -645,6 +702,8 @@ let origGroups    = [];   // copia para restaurar
 let editorVideo   = null; // <video> element
 let syncInterval  = null;
 let brainMap      = {};   // {groupId: {g, kw, emoji}} — datos de análisis IA
+let autoCapabilities = null;
+let autoRunning = false;
 
 // ═══════════════════════════════════════════════════════
 // Tabs
@@ -674,25 +733,61 @@ function showTab(id) {
   else if (id === 'auto') renderAutoIncluye();
 }
 
-// Paso 3 del Automatico: etapas FIJAS del paquete (no toggles — el pipeline no
-// cambia). Solo informan que trae el paquete; lo no conectado se marca "proximamente".
+// Automatico: capabilities locales + resumen honesto. El plan temporal real solo
+// existe despues del clipper; esta pantalla nunca fabrica ventanas previas.
 function renderAutoIncluye() {
-  const el = document.getElementById('auto-incluye');
-  if (!el) return;
-  const items = [
-    {n:'Reframe escenas (9:16)', on:true},
-    {n:'Captions Hormozi', on:true},
-    {n:'Caption QA (revisión)', on:true},
-    {n:'Reporte de calidad', on:true},
-    {n:'Popups / Emojis', on:true, note:'requiere ComfyUI'},
-    {n:'Keyword manual', soon:true},
-  ];
-  el.innerHTML = items.map(i => `
-    <span class="cap-chip ${i.soon?'soon':''}">
-      <span class="dot ${i.on?'':'off'}"></span>${i.n}${
-        i.soon?' <span style="color:var(--muted);font-size:11px">(próximamente)</span>':
-        (i.note?` <span style="color:var(--muted);font-size:11px">(${i.note})</span>`:'')}
-    </span>`).join('');
+  loadAutoCapabilities();
+  updateAutoConfigUI();
+}
+async function loadAutoCapabilities() {
+  try {
+    const res = await fetch('/api/auto/capabilities');
+    if (!res.ok) return;
+    autoCapabilities = await res.json();
+    const p = autoCapabilities.pexels || {};
+    const ready = !!(p.images?.enabled || p.videos?.enabled);
+    const el = document.getElementById('auto-pexels-status');
+    if (el) el.textContent = ready ? 'Pexels listo para b-roll.' : 'Pexels no configurado: el pipeline seguirá y aplicará omisiones/fallbacks.';
+  } catch (e) { /* capabilities es informativo; los defaults HTML siguen seguros */ }
+}
+function setAutoMode(mode) {
+  if (autoRunning || !['classic','v2'].includes(mode)) return;
+  document.getElementById('auto-mode').value = mode;
+  document.querySelectorAll('[data-auto-mode]').forEach(b => {
+    const selected = b.dataset.autoMode === mode;
+    b.classList.toggle('selected', selected);
+    b.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  updateAutoConfigUI();
+}
+function updateAutoConfigUI() {
+  const mode = document.getElementById('auto-mode')?.value || 'classic';
+  const v2 = mode === 'v2';
+  const config = document.getElementById('auto-v2-config');
+  if (config) config.hidden = !v2;
+  const fx = document.getElementById('auto-fx-enabled')?.checked ?? true;
+  const preset = document.getElementById('auto-fx-preset');
+  if (preset) preset.disabled = autoRunning || !fx;
+  const broll = document.getElementById('auto-broll-enabled')?.checked ?? true;
+  const summary = document.getElementById('auto-config-summary');
+  if (summary) summary.innerHTML = v2 ? `<div class="auto-summary-list">
+    <span>Transcript, clipper, reframe y captions</span><span>B-roll ${broll?'activado':'desactivado'}</span>
+    <span>FX ${fx?'activado · '+escHtml(preset?.value || 'express'):'desactivado'}</span><span>Verificación A/V obligatoria</span>
+    <span>Sidecars manuales respetados</span><span>Revisión del paquete en el Editor</span></div>`
+    : `<div class="auto-summary-list"><span>Transcript y clipper</span><span>Reframe 9:16</span>
+       <span>Captions y emojis</span><span>Reporte histórico</span></div>
+       <div class="msg" style="margin-top:8px">Usa el flujo clásico histórico; no envía AutoConfig ni activa motores v2.</div>`;
+  const btn = document.getElementById('auto-btn');
+  if (btn) btn.textContent = v2 ? 'Generar paquete Auto v2' : 'Generar paquete clásico';
+}
+function setAutoControlsLocked(locked) {
+  autoRunning = locked;
+  ['auto-video-select','auto-broll-enabled','auto-fx-enabled','auto-fx-preset'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = locked;
+  });
+  document.querySelectorAll('[data-auto-mode]').forEach(b => b.disabled = locked);
+  document.getElementById('auto-btn').disabled = locked;
+  updateAutoConfigUI();
 }
 
 // esc(): escapa comillas simples para uso seguro en atributos onclick inline
@@ -901,13 +996,15 @@ async function transcribeVideo(name, btn) {
 // ═══════════════════════════════════════════════════════
 // Polling de jobs
 // ═══════════════════════════════════════════════════════
-function pollJob(jid, cb, interval=900) {
+function pollJob(jid, cb, interval=900, onFailure=null) {
   const tick = async () => {
-    const r = await fetch('/api/jobs/' + jid);
-    if (!r.ok) return;
-    const j = await r.json();
-    cb(j);
-    if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
+    try {
+      const r = await fetch('/api/jobs/' + jid);
+      if (!r.ok) { if (onFailure) onFailure('No se pudo consultar el progreso.'); return; }
+      const j = await r.json();
+      cb(j);
+      if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
+    } catch (e) { if (onFailure) onFailure('Se perdió la conexión con el Studio.'); }
   };
   tick();
 }
@@ -1567,65 +1664,118 @@ async function startReframe(stem, btn) {
 async function startAuto() {
   const name = document.getElementById('auto-video-select').value;
   const objetivo = document.getElementById('auto-objetivo').value;
+  const mode = document.getElementById('auto-mode').value;
   const status = document.getElementById('auto-status');
-  const btn = document.getElementById('auto-btn');
-  if (!name) {
-    status.innerHTML = '<span class="msg err">Elige un video primero.</span>';
+  if (!name || autoRunning) {
+    status.innerHTML = `<span class="msg err">Elige un video primero.</span>
+      <button class="btn secondary" style="margin-top:6px" onclick="showTab('videos')">Ir a Biblioteca</button>`;
     return;
   }
-  btn.disabled = true;
+  setAutoControlsLocked(true);
   document.getElementById('auto-result').style.display = 'none';
   status.textContent = 'Iniciando...';
   const t0 = Date.now();
   try {
-    const res = await fetch(`/api/videos/${name}/auto?objetivo=${objetivo}`, {method:'POST'});
+    const params = new URLSearchParams({objetivo, mode});
+    if (mode === 'v2') {
+      params.set('broll_enabled', document.getElementById('auto-broll-enabled').checked ? 'true' : 'false');
+      params.set('fx_enabled', document.getElementById('auto-fx-enabled').checked ? 'true' : 'false');
+      params.set('fx_preset', document.getElementById('auto-fx-preset').value);
+    }
+    const res = await fetch(`/api/videos/${encodeURIComponent(name)}/auto?${params}`, {method:'POST'});
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
     pollJob(data.job_id, (j) => {
       const el = Math.round((Date.now() - t0) / 1000);
-      status.innerHTML = `<div class="msg">${j.message || '...'} (${el}s)</div>
-        <div class="progress-bar"><div class="fill" style="width:${j.progress || 0}%"></div></div>`;
+      const pct = Math.max(0, Math.min(100, Number(j.progress) || 0));
+      const stage = autoProgressStage(pct);
+      status.innerHTML = `<div class="msg"><b>${escHtml(stage)}</b> · ${escHtml(j.message || '...')} · ${el}s</div>
+        <div class="progress-bar"><div class="fill" style="width:${pct}%"></div></div>`;
       if (j.status === 'done') {
-        btn.disabled = false;
+        setAutoControlsLocked(false);
         status.innerHTML = '';
         renderAutoResult(j.result || {});
       } else if (j.status === 'error') {
-        btn.disabled = false;
-        status.innerHTML = `<span class="msg err">Error: ${j.message || j.error}</span>
+        setAutoControlsLocked(false);
+        status.innerHTML = `<span class="msg err">Error: ${escHtml(j.message || j.error || 'Error desconocido')}</span>
           <button class="btn secondary" style="margin-top:6px" onclick="startAuto()">Reintentar</button>`;
       }
+    }, 900, (message) => {
+      setAutoControlsLocked(false);
+      status.innerHTML = `<span class="msg err">${escHtml(message)}</span>
+        <button class="btn secondary" style="margin-top:6px" onclick="startAuto()">Reintentar</button>`;
     });
   } catch (e) {
-    btn.disabled = false;
-    status.innerHTML = `<span class="msg err">Error: ${e.message}</span>`;
+    setAutoControlsLocked(false);
+    status.innerHTML = `<span class="msg err">Error: ${escHtml(e.message)}</span>
+      <button class="btn secondary" style="margin-top:6px" onclick="startAuto()">Reintentar</button>`;
   }
 }
 
+function autoProgressStage(pct) {
+  if (pct < 20) return 'Transcripción';
+  if (pct < 30) return 'Clipper IA';
+  if (pct < 90) return 'Reframe + captions + b-roll + FX';
+  if (pct < 100) return 'Verificación y paquete';
+  return 'Listo';
+}
+function _n(v) { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; }
+function _diagN(v) { const n = Number(v); return v !== null && v !== undefined && Number.isFinite(n) && n >= 0 ? n : '—'; }
+function _avLabel(v) {
+  const s = String(v || 'unknown').toLowerCase();
+  return {pass:'PASS',fail:'FAIL',skipped:'SKIPPED',no_audio:'NO AUDIO'}[s] || 'SIN DATO';
+}
+function _autoDownload(pkgId, c) {
+  if (!pkgId || !c.archivo) return '';
+  return `<a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
+    class="btn secondary" style="font-size:12px;padding:5px 12px;display:inline-block">Descargar</a>`;
+}
+function renderAutoClassicClip(c, i, pkgId) {
+  const avisos = (c.avisos || []).map(a =>
+    `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
+  return `<div style="border:var(--border);border-radius:8px;padding:12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:13px;font-weight:500">${i+1}. ${escHtml(c.titulo || c.archivo)}</span>
+      <span style="color:var(--purple);font-weight:500">${c.score ?? '—'}/100</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${escHtml(c.emojis_msg || '')}</div>
+    ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
+    <a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
+      class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a></div>`;
+}
+function renderAutoV2Clip(c, i, pkgId) {
+  const b = c.broll || {}, fx = c.fx || {}, av = c.av || {};
+  const removed = Array.isArray(fx.removed) ? fx.removed.length : _diagN(fx.removed);
+  const integ = av.skipped ? 'skipped' : av.integrity?.status;
+  const sync = av.skipped ? 'skipped' : av.sync?.status;
+  const extras = [b.fallbacks?`${_n(b.fallbacks)} fallback(s)`:null,b.blocked?`${_n(b.blocked)} bloqueado(s)`:null,
+    b.omitted?`${_n(b.omitted)} omitido(s)`:null].filter(Boolean).join(' · ');
+  const avisos = [...(c.avisos || []).map(a => a.texto), ...(fx.warnings || [])];
+  return `<div class="auto-result-card">
+    <div class="auto-result-head"><div><span class="auto-v2-badge">AUTO V2</span>
+      <span style="font-size:13px;font-weight:500;margin-left:7px">${i+1}. ${escHtml(c.titulo || c.archivo)}</span></div>
+      <span style="color:var(--purple);font-weight:500">${c.score ?? '—'}/100</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">Duración ${fmtTime(c.dur_s || 0)} · Brain ${c.brain_ok===true?'disponible':(c.brain_ok===false?'fail-open':'sin dato')}</div>
+    <div class="auto-diag-grid">
+      <div class="auto-diag"><b>B-roll</b>${_diagN(b.resolved)}/${_diagN(b.planned)} resueltos · ${_diagN(b.images)} imagen(es) · ${_diagN(b.videos)} video(s)${extras?`<br>${escHtml(extras)}`:''}</div>
+      <div class="auto-diag"><b>FX</b>Preset ${escHtml(fx.preset || 'apagado')}<br>${removed} eliminado(s) por colisión</div>
+      <div class="auto-diag"><b>Integridad A/V</b>Audio <span class="av-state ${escHtml(String(integ||'unknown'))}">${_avLabel(integ)}</span><br>Sync <span class="av-state ${escHtml(String(sync||'unknown'))}">${_avLabel(sync)}</span></div>
+    </div>
+    ${avisos.length?`<div class="msg warn" style="margin-top:8px">${avisos.map(escHtml).join(' · ')}</div>`:''}
+    <div class="rev-actions" style="margin-top:10px">${_autoDownload(pkgId,c)}
+      <button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}',${i})">Abrir paquete en Editor</button></div>
+  </div>`;
+}
 function renderAutoResult(result) {
   const wrap = document.getElementById('auto-result');
   document.getElementById('auto-resumen').textContent = result.resumen || 'Paquete generado';
   const clipsEl = document.getElementById('auto-clips');
-  clipsEl.innerHTML = '';
   const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//, '') : '';
-  (result.clips || []).forEach((c, i) => {
-    const avisos = (c.avisos || []).map(a =>
-      `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
-    const div = document.createElement('div');
-    div.style.cssText = 'border:var(--border);border-radius:8px;padding:12px';
-    div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span style="font-size:13px;font-weight:500">${i+1}. ${escHtml(c.titulo || c.archivo)}</span>
-        <span style="color:var(--purple);font-weight:500">${c.score ?? '—'}/100</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtTime(c.dur_s || 0)} · ${escHtml(c.emojis_msg || '')}</div>
-      ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
-      <a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
-         class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a>`;
-    clipsEl.appendChild(div);
-  });
+  const clips = result.clips || [];
+  const v2 = result.meta?.pipeline_mode === 'v2' || clips.some(c => c.pipeline_mode === 'v2');
+  clipsEl.innerHTML = clips.map((c,i) => v2 ? renderAutoV2Clip(c,i,pkgId) : renderAutoClassicClip(c,i,pkgId)).join('');
   document.getElementById('auto-reporte-link').innerHTML = pkgId
     ? `<button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}')">Abrir en el Editor de Paquete →</button>
-       <div class="msg" style="margin-top:8px">Paquete en <code>${escHtml(result.paquete)}</code> · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" style="color:var(--purple)">Ver REPORTE.md</a></div>`
+       <div class="msg" style="margin-top:8px">Paquete ${escHtml(pkgId)} · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" rel="noopener" style="color:var(--purple)">Ver REPORTE.md</a></div>`
     : '';
   wrap.style.display = 'block';
 }
@@ -2145,6 +2295,33 @@ function renderRevClips() {
     </button>`).join('');
 }
 
+function _fxTotal(conteos) {
+  const vals = Object.values(conteos || {}).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)));
+  return vals.length ? vals.reduce((a,v) => a + Number(v), 0) : '—';
+}
+function renderRevV2Blocks(c) {
+  if (c.pipeline_mode !== 'v2') return '';
+  const b = c.broll || {}, fx = c.fx || {}, av = c.av || {};
+  const brollState = b.enabled === false ? 'OFF' : (b.enabled === true ? 'ON' : 'según paquete');
+  const warnings = (fx.warnings || []).length
+    ? `<div class="msg warn" style="margin-top:7px">${(fx.warnings||[]).map(escHtml).join('<br>')}</div>` : '';
+  const drift = av.drift_s == null ? '' : `<span>Drift final: <b>${Number(av.drift_s).toFixed(3)}s</b></span>`;
+  return `<div class="rev-block"><h4>Producción</h4><div class="rev-kv">
+      <span class="auto-v2-badge">AUTO V2</span><span>Brain: <b>${c.brain_ok===true?'OK':(c.brain_ok===false?'fail-open':'sin dato')}</b></span>
+      <span>B-roll: <b>${escHtml(brollState)}</b></span><span>FX: <b>${escHtml(fx.preset || 'apagado')}</b></span></div></div>
+    <div class="rev-block"><h4>B-roll</h4><div class="rev-kv">
+      <span>Planeados: <b>${_diagN(b.planned)}</b></span><span>Resueltos: <b>${_diagN(b.resolved)}</b></span>
+      <span>Imágenes: <b>${_diagN(b.images)}</b></span><span>Videos: <b>${_diagN(b.videos)}</b></span>
+      <span>Fallbacks: <b>${_diagN(b.fallbacks)}</b></span><span>Bloqueados por manual: <b>${_diagN(b.blocked)}</b></span>
+      <span>Omitidos: <b>${_diagN(b.omitted)}</b></span></div></div>
+    <div class="rev-block"><h4>FX</h4><div class="rev-kv"><span>Preset: <b>${escHtml(fx.preset || 'apagado')}</b></span>
+      <span>Antes: <b>${_fxTotal(fx.before)}</b></span><span>Después: <b>${_fxTotal(fx.after)}</b></span>
+      <span>Eliminados: <b>${_diagN(fx.removed)}</b></span></div>${warnings}</div>
+    <div class="rev-block"><h4>Integridad A/V</h4><div class="rev-kv">
+      <span>Audio: <span class="av-state ${escHtml(av.integrity||'unknown')}">${_avLabel(av.integrity)}</span></span>
+      <span>Sync: <span class="av-state ${escHtml(av.sync||'unknown')}">${_avLabel(av.sync)}</span></span>${drift}</div></div>`;
+}
+
 function selectRevClip(i) {
   revClipSel = i;
   renderRevClips();
@@ -2192,6 +2369,7 @@ function selectRevClip(i) {
           </div>
           <div class="msg" style="margin-top:8px">${escHtml(c.razon||'')}</div>
         </div>
+        ${renderRevV2Blocks(c)}
         <div class="rev-block">
           <h4>Alertas de subtítulos (Caption QA)</h4>${alertasHtml}
         </div>
@@ -2230,7 +2408,8 @@ function _copyElementos(msg) {
   if (m) return `${m[1]} elemento(s) visual(es)`;
   return s;
 }
-const MK_LABEL = { tramo: 'Tramo', qa: 'Caption QA', keyword: 'Keyword', popup: 'Popup' };
+const MK_LABEL = { tramo: 'Tramo', qa: 'Caption QA', keyword: 'Keyword', popup: 'Popup',
+  broll_image: 'B-roll imagen', broll_video: 'B-roll video' };
 function revSeek(t) {
   const v = document.getElementById('rev-video');
   if (!v) return;                       // clip sin video: la lista igual funciona
@@ -2241,7 +2420,7 @@ function renderMarkerList(c) {
   if (!markers.length) return '<div class="mk-empty">Sin marcadores en este clip.</div>';
   const rows = markers.map(m => {
     const t = Number(m.t) || 0;
-    const rango = (m.tipo === 'tramo' && m.t_fin != null) ? `${fmtTime(t)}–${fmtTime(m.t_fin)}` : fmtTime(t);
+    const rango = (m.t_fin != null) ? `${fmtTime(t)}–${fmtTime(m.t_fin)}` : fmtTime(t);
     const label = MK_LABEL[m.tipo] || m.tipo;
     return `<button type="button" class="mk-row" onclick="revSeek(${t})" title="Ir a ${rango}">
       <span class="mk-tag ${escHtml(m.tipo)}">${escHtml(label)}</span>
@@ -2249,13 +2428,15 @@ function renderMarkerList(c) {
       <span class="mk-text">${escHtml(m.texto || label)}</span>
     </button>`;
   }).join('');
-  const cuenta = { tramo: 0, qa: 0, keyword: 0, popup: 0 };
+  const cuenta = { tramo: 0, qa: 0, keyword: 0, popup: 0, broll_image: 0, broll_video: 0 };
   markers.forEach(m => cuenta[m.tipo] = (cuenta[m.tipo] || 0) + 1);
   const legend = `<div class="tl-legend" style="margin-top:8px">
     <span><i style="background:var(--orange)"></i>Tramos (${cuenta.tramo})</span>
     <span><i style="background:var(--cyan)"></i>Caption QA (${cuenta.qa})</span>
     <span><i style="background:var(--yellow)"></i>Keywords (${cuenta.keyword})</span>
     <span><i style="background:var(--purple)"></i>Popups (${cuenta.popup})</span>
+    <span><i style="background:#0891b2"></i>B-roll imagen (${cuenta.broll_image})</span>
+    <span><i style="background:#7c3aed"></i>B-roll video (${cuenta.broll_video})</span>
   </div>`;
   return `<div class="mk-list">${rows}</div>${legend}
     <div class="msg" style="margin-top:6px">Clic en un marcador para llevar el video a ese punto.</div>`;
@@ -2271,11 +2452,17 @@ function renderTimeline(c) {
   const markers = c.markers || [];
   if (!dur || !markers.length) { slot.innerHTML = ''; return; }
   const tramos = markers.filter(m => m.tipo === 'tramo');
-  const puntos = markers.filter(m => m.tipo !== 'tramo');
+  const broll = markers.filter(m => m.tipo === 'broll_image' || m.tipo === 'broll_video');
+  const puntos = markers.filter(m => m.tipo !== 'tramo' && !m.tipo.startsWith('broll_'));
   const bars = tramos.map(m => {
     const l = Math.max(0, (m.t / dur) * 100);
     const w = Math.max(0.6, (((m.t_fin || m.t) - m.t) / dur) * 100);
     return `<div class="tl-tramo" style="left:${l}%;width:${w}%" title="${_escAttr(m.texto)}"></div>`;
+  }).join('');
+  const brollBars = broll.map(m => {
+    const l = Math.max(0, (m.t / dur) * 100);
+    const w = Math.max(0.8, (((m.t_fin || m.t) - m.t) / dur) * 100);
+    return `<div class="tl-broll ${m.tipo}" style="left:${l}%;width:${w}%" title="${fmtTime(m.t)} — ${_escAttr(m.texto)}"></div>`;
   }).join('');
   const mks = puntos.map(m => {
     const l = Math.min(100, Math.max(0, (m.t / dur) * 100));
@@ -2284,7 +2471,7 @@ function renderTimeline(c) {
   slot.innerHTML = `
     <div class="rev-block">
       <h4>Timeline (compacto)</h4>
-      <div class="tl" onclick="tlSeek(event, ${dur})" title="Clic para mover el video a ese punto">${bars}${mks}</div>
+      <div class="tl" onclick="tlSeek(event, ${dur})" title="Clic para mover el video a ese punto">${bars}${brollBars}${mks}</div>
       <div class="msg" style="margin-top:6px">Vista rápida de dónde caen los marcadores; clic en la barra para saltar. Para precisión y teclado, usa la lista de marcadores de arriba.</div>
     </div>`;
 }

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 import core
 import jobs
+import studio_auto
 import studio_packages
 from styles import STYLES
 
@@ -453,24 +454,61 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
 
 
 def _resolver_video_input(name: str) -> Path | None:
-    """Busca el video en input/ probando extensiones (.mp4 primero, luego .mov)."""
+    """Busca un basename confinado en input/ (.mp4 primero, luego .mov)."""
+    if not name or Path(name).name != name or PureWindowsPath(name).name != name:
+        return None
+    root = INPUT_DIR.resolve()
     for ext in (".mp4", ".mov", ".MP4", ".MOV"):
-        candidate = INPUT_DIR / f"{name}{ext}"
-        if candidate.exists():
+        candidate = (root / f"{name}{ext}").resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate.is_file():
             return candidate
     return None
 
 
+@app.get("/api/auto/capabilities")
+def auto_capabilities():
+    """Capacidades seguras del Automatico; solo estado local, sin requests de red."""
+    return studio_auto.capacidades_auto()
+
+
 @app.post("/api/videos/{name}/auto")
-def start_auto(name: str, objetivo: str = "clips"):
-    """Modo Automatico v1: video + objetivo -> paquete listo para revisar (regla #19)."""
+def start_auto(
+    name: str,
+    objetivo: str = "clips",
+    mode: str = "classic",
+    broll_enabled: bool = True,
+    fx_enabled: bool = True,
+    fx_preset: str = "express",
+):
+    """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
     mp4 = _resolver_video_input(name)
     if mp4 is None:
         raise HTTPException(404, f"Video {name} no encontrado en input/")
     if objetivo != "clips":
         raise HTTPException(400, "objetivo debe ser 'clips' (unico soportado en v1)")
-    jid = jobs.new_job(f"Modo Automatico: {name}...")
-    threading.Thread(target=jobs.run_auto, args=(jid, mp4, name, objetivo), daemon=True).start()
+    try:
+        config = studio_auto.construir_auto_config(
+            mode=mode,
+            broll_enabled=broll_enabled,
+            fx_enabled=fx_enabled,
+            fx_preset=fx_preset,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from None
+    try:
+        jid = jobs.new_job(f"Modo Automatico {mode}: {name}...")
+        threading.Thread(
+            target=jobs.run_auto,
+            args=(jid, mp4, name, objetivo),
+            kwargs={"config": config},
+            daemon=True,
+        ).start()
+    except Exception:
+        raise HTTPException(500, "No se pudo iniciar el Modo Automatico") from None
     return {"job_id": jid}
 
 
