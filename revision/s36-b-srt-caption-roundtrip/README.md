@@ -7,11 +7,16 @@ Whisper/DeepSeek reales. Solo texto SINTÉTICO. Nada generado se versiona.
 
 1. `caption.py VIDEO --srt corregido.srt` usa el **texto del SRT como fuente oficial**;
    Whisper solo aporta **timings** por palabra.
-2. Alineación real: `exact_match`, `substitution_match` (1:1 entre anclas reales) y
-   **fallback honesto** por cue cuando no hay cobertura (sin karaoke falso).
-3. **No se inventan timings** word-by-word: los cues sin cobertura total caen a estático.
-4. Round-trip del clipper: `slice_srt` recorta/rebasa el SRT contra el `clip.start` real.
-5. El **SRT fuente nunca se modifica**; los derivados son documentos nuevos.
+2. Alineación real: `exact_match`, `substitution_match` **conservador** (requiere ancla
+   exacta en el cue + similitud Levenshtein ≥0.60) y **fallback honesto** por cue (sin
+   karaoke falso). Texto arbitrario de igual longitud → fallback, nunca word-by-word.
+3. **No se inventan ni modifican timings**: los ms reales se preservan exactos; un timing
+   inválido/no monótono degrada el cue a estático.
+4. Los **flags opcionales** (`--emojis`, `--popups`, `--fx`, `--preset`) reutilizan los
+   motores históricos; el preset anima SOLO los cues alineados y deja el fallback estático.
+   `--caption-qa` se **rechaza** con `--srt` (el SRT es el texto oficial).
+5. Round-trip del clipper: `slice_srt` recorta/rebasa el SRT contra el `clip.start` real.
+6. El **SRT fuente nunca se modifica**; los derivados son documentos nuevos.
 
 ## Cómo correr
 

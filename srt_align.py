@@ -33,6 +33,14 @@ ALIGN_VERSION = 1
 # honesto en vez de inventarle timing. Ver D36B-2/D36B-3 y PREGUNTAS (threshold final).
 DEFAULT_MIN_COVERAGE = 1.0
 
+# Similitud lexica minima (0..1) para aceptar una SUSTITUCION como ancla real. Se calcula
+# con distancia de Levenshtein normalizada por la longitud maxima de los tokens
+# NORMALIZADOS. Ademas, una sustitucion solo cuenta si el cue tiene >=1 exact_match: asi
+# una frase completamente distinta con el mismo numero de tokens NO alcanza cobertura 1.0.
+# 0.60 admite correcciones tipograficas (p.ej. "ola" -> "hola" = 0.75) y rechaza texto
+# arbitrario ("gatos" -> "lunes" = 0.20). Ver D36 (politica conservadora de substitution).
+SUBSTITUTION_MIN_SIM = 0.60
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Resultados tipados (frozen: nunca se mutan)
@@ -64,6 +72,9 @@ class AlignedCue:
     n_matched: int
     coverage: float
     reason: str
+    n_exact: int = 0
+    n_substitution: int = 0
+    n_rejected_sub: int = 0
 
     @property
     def text(self) -> str:
@@ -84,6 +95,9 @@ class AlignmentResult:
     source_sha256: str = ""
     min_coverage: float = DEFAULT_MIN_COVERAGE
     video_duration_ms: int | None = None
+    n_exact: int = 0
+    n_substitution: int = 0
+    n_rejected_sub: int = 0
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -172,8 +186,8 @@ def _prepare_words(timing_words: list[dict]) -> tuple[list[int], list[dict]]:
     for w in timing_words:
         s_ms = int(round(float(w["s"]) * 1000))
         e_ms = int(round(float(w["e"]) * 1000))
-        if e_ms <= s_ms:
-            e_ms = s_ms + 1
+        # Los ms se PRESERVAN exactos (D36B-2): no se corrige un e<=s. Un timing invalido
+        # se propaga tal cual y hara caer el cue a fallback en _timings_validos.
         prepared.append(
             {
                 "w": w["w"],
@@ -206,62 +220,124 @@ def _claim_window(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _align_cue(cue, window: list[dict], min_coverage: float) -> AlignedCue:
+def _levenshtein(a: str, b: str) -> int:
+    """Distancia de edicion clasica (stdlib pura). O(len(a)*len(b))."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _similarity(a: str, b: str) -> float:
+    """Similitud 0..1 = 1 - Levenshtein/longitud_maxima (sobre tokens NORMALIZADOS)."""
+    if not a and not b:
+        return 1.0
+    m = max(len(a), len(b))
+    return 1.0 - _levenshtein(a, b) / m if m else 1.0
+
+
+def _timings_validos(words: tuple[AlignedWord, ...]) -> bool:
+    """end>start en cada palabra y starts no decrecientes. No corrige: solo valida."""
+    last_start = -1
+    for w in words:
+        if w.end_ms <= w.start_ms or w.start_ms < last_start:
+            return False
+        last_start = w.start_ms
+    return True
+
+
+def _fallback_reason(n_matched: int, n_tok: int, n_rejected: int, has_exact: bool) -> str:
+    """Motivo determinista y sin texto privado para caer a cue_fallback."""
+    if n_rejected and not has_exact:
+        return "solo_sustituciones_sin_ancla_exacta"
+    if n_rejected:
+        return "sustitucion_poco_similar"
+    return "cobertura_insuficiente"
+
+
+def _align_cue(cue, window: list[dict], min_coverage: float) -> AlignedCue:  # noqa: C901
     tokens = _tokenize_cue(cue.lines)
     n_tok = len(tokens)
     if n_tok == 0:  # no deberia ocurrir (validador exige texto), pero fail-open honesto
-        return _fallback_cue(cue, 0, 0, "cue sin tokens")
+        return _fallback_cue(cue, 0, 0, 0, 0, 0, "cue_sin_tokens")
 
     src_norm = [normalize_token(t) for t, _ in tokens]
     tw_norm = [w["norm"] for w in window]
     ops = _align_ops(src_norm, tw_norm)
 
-    timing_by_src: dict[int, tuple[dict, str]] = {}
+    # 1) Recolectar exactos y CANDIDATOS a sustitucion (con su similitud), en orden de src.
+    exacts: dict[int, dict] = {}
+    sub_cands: dict[int, tuple[dict, float]] = {}
     for kind, i, j in ops:
-        if kind in ("match", "sub") and i >= 0 and j >= 0:
-            timing_by_src[i] = (
-                window[j],
-                "exact_match" if kind == "match" else "substitution_match",
-            )
+        if i < 0 or j < 0:
+            continue
+        if kind == "match":
+            exacts[i] = window[j]
+        elif kind == "sub":
+            sub_cands[i] = (window[j], _similarity(src_norm[i], tw_norm[j]))
 
-    n_matched = len(timing_by_src)
+    has_exact = bool(exacts)
+    n_exact = len(exacts)
+
+    # 2) Politica conservadora: una sustitucion solo ancla si el cue tiene >=1 exact_match
+    #    y su similitud lexica alcanza SUBSTITUTION_MIN_SIM. Si no, se rechaza (token sin ancla).
+    accepted: dict[int, tuple[dict, str]] = {i: (w, "exact_match") for i, w in exacts.items()}
+    n_rejected = 0
+    for i, (w, sim) in sub_cands.items():
+        if has_exact and sim >= SUBSTITUTION_MIN_SIM:
+            accepted[i] = (w, "substitution_match")
+        else:
+            n_rejected += 1
+
+    n_sub = sum(1 for _w, k in accepted.values() if k == "substitution_match")
+    n_matched = len(accepted)
     coverage = n_matched / n_tok
-    # word_aligned exige anclar TODOS los tokens (sin inserciones) y superar el umbral.
-    if n_matched == n_tok and coverage >= min_coverage:
-        words = tuple(
-            AlignedWord(tokens[i][0], w["s_ms"], w["e_ms"], tokens[i][1], k)
-            for i, (w, k) in sorted(timing_by_src.items())
+
+    # 3) word_aligned exige anclar TODOS los tokens (sin inserciones/rechazos) y superar umbral.
+    if n_matched != n_tok or coverage < min_coverage:
+        reason = _fallback_reason(n_matched, n_tok, n_rejected, has_exact)
+        return _fallback_cue(cue, n_tok, n_matched, n_exact, n_sub, n_rejected, reason)
+
+    # 4) Construir words con los timings REALES EXACTOS (sin sumar ni mover ms).
+    words = tuple(
+        AlignedWord(tokens[i][0], w["s_ms"], w["e_ms"], tokens[i][1], k)
+        for i, (w, k) in sorted(accepted.items())
+    )
+    # 5) Validar tiempos reales: end>start y orden no decreciente. Si no, fallback honesto.
+    if not _timings_validos(words):
+        return _fallback_cue(
+            cue, n_tok, n_matched, n_exact, n_sub, n_rejected, "non_monotonic_timings"
         )
-        words = _enforce_monotonic(words)
-        return AlignedCue(
-            cue.index,
-            cue.start_ms,
-            cue.end_ms,
-            cue.lines,
-            "word_aligned",
-            words,
-            n_tok,
-            n_matched,
-            round(coverage, 4),
-            "todos los tokens anclados",
-        )
-    reason = f"cobertura {coverage:.2f} < {min_coverage:.2f}" if n_tok else "cue vacio"
-    return _fallback_cue(cue, n_tok, n_matched, reason)
+
+    return AlignedCue(
+        cue.index,
+        cue.start_ms,
+        cue.end_ms,
+        cue.lines,
+        "word_aligned",
+        words,
+        n_tok,
+        n_matched,
+        round(coverage, 4),
+        "all_tokens_anchored",
+        n_exact,
+        n_sub,
+        n_rejected,
+    )
 
 
-def _enforce_monotonic(words: tuple[AlignedWord, ...]) -> tuple[AlignedWord, ...]:
-    """Garantiza start<end y no-decreciente. No inventa: solo empuja +1ms un choque exacto."""
-    out: list[AlignedWord] = []
-    last_end = -1
-    for w in words:
-        start = max(w.start_ms, last_end)
-        end = max(w.end_ms, start + 1)
-        out.append(AlignedWord(w.text, start, end, w.line_idx, w.kind))
-        last_end = end
-    return tuple(out)
-
-
-def _fallback_cue(cue, n_tok: int, n_matched: int, reason: str) -> AlignedCue:
+def _fallback_cue(
+    cue, n_tok: int, n_matched: int, n_exact: int, n_sub: int, n_rejected: int, reason: str
+) -> AlignedCue:
     cov = round(n_matched / n_tok, 4) if n_tok else 0.0
     return AlignedCue(
         cue.index,
@@ -274,6 +350,9 @@ def _fallback_cue(cue, n_tok: int, n_matched: int, reason: str) -> AlignedCue:
         n_matched,
         cov,
         reason,
+        n_exact,
+        n_sub,
+        n_rejected,
     )
 
 
@@ -318,12 +397,16 @@ def align_srt_to_words(
         source_sha256=document.source_sha256,
         min_coverage=min_coverage,
         video_duration_ms=video_duration_ms,
+        n_exact=sum(c.n_exact for c in aligned),
+        n_substitution=sum(c.n_substitution for c in aligned),
+        n_rejected_sub=sum(c.n_rejected_sub for c in aligned),
     )
 
 
 __all__ = [
     "ALIGN_VERSION",
     "DEFAULT_MIN_COVERAGE",
+    "SUBSTITUTION_MIN_SIM",
     "AlignedWord",
     "AlignedCue",
     "AlignmentResult",

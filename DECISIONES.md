@@ -1176,3 +1176,39 @@ Evidencia sintética y checklist visual: `revision/s36-b-srt-caption-roundtrip/`
 
 **Gobernanza.** PR abierto y NO mergeado: cambia el resultado visual de captions y requiere
 veredicto visual de K. S36 sigue ABIERTA (S36-C pendiente).
+
+### D36 addendum — Endurecimiento tras revisión técnica (2º commit del PR #14)
+
+Se corrigen 5 bloqueantes técnicos detectados en la revisión, antes del veredicto visual:
+
+1. **Flags no ignorados con `--srt`.** `_process_srt` recibe y usa `use_emojis`, `use_popups`,
+   `fx_preset` y `qa_opts`. La ruta SRT reutiliza EXACTAMENTE los mismos motores downstream
+   que la histórica (preset CVE, `cve_popups`/`cve_clips`, `assets_comfy`, FX,
+   `burn_video`/`burn_video_with_emojis`) vía el helper único `_resolver_capas_y_quemar`.
+   Ningún flag se acepta y luego se ignora sin mensaje.
+2. **Preset CVE completo pero acotado.** `_aplicar_preset_srt` separa los groups por
+   `timing_mode`, corre `cve.aplicar_preset` SOLO sobre los `word_aligned` y reinserta los
+   `cue_fallback` intactos, preservando orden temporal e IDs deterministas. Un preset jamás
+   convierte un fallback en word-by-word.
+3. **`substitution_match` conservador.** Una sustitución solo ancla si (a) el cue tiene ≥1
+   `exact_match` y (b) la similitud léxica (Levenshtein normalizado por longitud máxima sobre
+   tokens normalizados) es ≥ `SUBSTITUTION_MIN_SIM` = **0.60**. Texto arbitrario de igual
+   longitud (`gatos verdes corren` vs `lunes martes miércoles`) o un único token distinto ya
+   NO alcanzan cobertura 1.0 → `cue_fallback`. El texto visible siempre es el del SRT.
+4. **Timestamps reales sin modificar.** Se elimina todo desplazamiento: no hay `+1 ms`, no se
+   mueve `start`, no se extiende `end`. Se preservan los ms exactos de la timing word. Se
+   valida `end>start`, orden no decreciente y uso único; si el cue queda temporalmente
+   inválido/no monótono → `cue_fallback` con razón `non_monotonic_timings`.
+5. **Sin `sys.exit` en la API.** `_process_srt` propaga `SrtError` (error de usuario tipado);
+   `main()` lo traduce a mensaje corto con basename y exit≠0. Los bugs no se tragan.
+
+**Caption QA con `--srt`:** política cerrada — `--caption-qa` (cualquier modo) se RECHAZA con
+`--srt` (Caption QA opera sobre el transcript de Whisper, no sobre el SRT autoritativo; no hay
+auditor de SRT en S36-B). QA específico de SRT queda para S36-C.
+
+**Naming:** el sufijo SRT es determinista e incluye las capas activas
+(`{stem}{variante}_srt[_emojis][_popups][_fx-<preset>].mp4`), sin colisiones; los nombres sin
+`--srt` no cambian.
+
+**Sidecar:** añade `exact_matches`, `substitution_matches`, `rejected_substitutions` (agregado
+y por cue) y `fallback_reason` por cue. Sin texto privado adicional en logs.

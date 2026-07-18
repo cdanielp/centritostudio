@@ -135,6 +135,9 @@ def alignment_a_sidecar(
             "cue_fallback": result.cue_fallback,
             "coverage": result.coverage,
             "min_coverage": result.min_coverage,
+            "exact_matches": result.n_exact,
+            "substitution_matches": result.n_substitution,
+            "rejected_substitutions": result.n_rejected_sub,
             "n_warnings": n_warnings,
         },
         "cues": [
@@ -146,6 +149,10 @@ def alignment_a_sidecar(
                 "n_tokens": c.n_tokens,
                 "n_matched": c.n_matched,
                 "coverage": c.coverage,
+                "exact_matches": c.n_exact,
+                "substitution_matches": c.n_substitution,
+                "rejected_substitutions": c.n_rejected_sub,
+                "fallback_reason": c.reason if c.mode == "cue_fallback" else None,
                 "reason": c.reason,
                 "text": c.text,
             }

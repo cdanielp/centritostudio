@@ -961,6 +961,12 @@ Resuelto en D36 (sesión 38): el texto del SRT es autoritativo; Whisper es fuent
 no hay equal-spacing; fallback a nivel de cue; Caption QA no modifica el SRT; el round-trip
 usa `clip.start` real; hay un SRT derivado por clip; toda la funcionalidad es opt-in.
 
+Resuelto en el addendum D36 (endurecimiento, 2º commit): `substitution_match` conservador
+(exige ancla exacta en el cue + similitud Levenshtein ≥0.60; texto arbitrario → fallback);
+timestamps reales nunca se modifican (timing inválido/no monótono → fallback); Caption QA se
+RECHAZA con `--srt`; los flags opcionales (emojis/popups/FX/preset) reutilizan los motores
+históricos y ya no se ignoran; el preset solo anima cues alineados.
+
 **Preguntas/deudas auténticas que quedan abiertas (S36-C o posterior, NO se resuelven aquí):**
 
 - **Threshold final de alineación.** Hoy `word_aligned` exige cobertura 1.0 (todos los

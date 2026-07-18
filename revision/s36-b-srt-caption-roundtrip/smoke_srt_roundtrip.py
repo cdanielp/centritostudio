@@ -101,7 +101,40 @@ def render_principal() -> None:
     _check(s["n_cues"] == 4, "4 cues en el sidecar")
     _check(s["word_aligned"] == 3, "3 cues word-aligned (exacto+sustitucion+acentos)")
     _check(s["cue_fallback"] == 1, "1 cue fallback honesto (sin audio)")
+    _check(s["substitution_matches"] >= 1, "al menos 1 substitution_match (prueva->prueba)")
+    _check(s["rejected_substitutions"] == 0, "0 sustituciones rechazadas en el fixture")
     print(f"[smoke] cobertura agregada: {s['coverage']:.2f}")
+
+    # El cue de fallback debe ser UN evento estatico (sin karaoke), aun mezclado con aligned.
+    ass = (WORK / f"{STEM}_clean_srt.ass").read_text(encoding="utf-8")
+    fb_lines = [ln for ln in ass.splitlines() if ln.startswith("Dialogue:") and "Texto" in ln]
+    _check(len(fb_lines) == 1, "cue fallback = 1 evento estatico")
+    _check("\\kf" not in fb_lines[0] and "\\t(" not in fb_lines[0], "fallback sin animacion")
+
+
+def render_preset_fx() -> None:
+    print("[smoke] 1b) Render con preset CVE + FX sobre cues alineados (offline)")
+    _run(
+        [
+            str(PY),
+            "caption.py",
+            str(VIDEO),
+            "--srt",
+            str(SRT_FUENTE),
+            "--preset",
+            "keyword_punch",
+            "--fx",
+            "express",
+            "--output-dir",
+            str(WORK),
+        ],
+        "render preset+fx",
+    )
+    outs = [p for p in WORK.glob(f"{STEM}_*_srt*fx-express.mp4")]
+    _check(bool(outs), "MP4 con preset CVE + FX generado")
+    info = _ffprobe(outs[0])
+    _check(info["w"] == 1080 and info["h"] == 1920, "resolucion 9:16 con preset+fx")
+    _check(info["audio"], "audio presente con preset+fx")
 
 
 def _clip_words(start_s: float, end_s: float) -> list[dict]:
@@ -177,6 +210,7 @@ def main() -> None:
         raise SystemExit("[smoke] falta el fixture. Corre gen_fixture.py --create primero.")
     antes = SRT_FUENTE.read_bytes()
     render_principal()
+    render_preset_fx()
     round_trip_clip()
     verificar_fuente_intacta(antes)
     print("\n[smoke] ===== ROUND-TRIP SRT OK (sintetico, offline) =====")

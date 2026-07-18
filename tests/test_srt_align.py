@@ -294,3 +294,87 @@ def test_timing_words_vacio_todo_fallback():
     doc = _cue_doc("hola mundo")
     r = align_srt_to_words(doc, [])
     assert r.word_aligned == 0 and r.cue_fallback == 1
+
+
+# ============ S36-B ENDURECIMIENTO: substitution conservador + timestamps ============
+
+
+def test_tres_palabras_no_relacionadas_fallback():
+    # igual numero de tokens pero texto arbitrario: NO debe alcanzar cobertura 1.0
+    doc = _cue_doc("gatos verdes corren")
+    c = _one(
+        align_srt_to_words(
+            doc, _tw(("lunes", 0.0, 0.3), ("martes", 0.4, 0.7), ("miercoles", 0.8, 1.1))
+        )
+    )
+    assert c.mode == "cue_fallback"
+    assert c.reason == "solo_sustituciones_sin_ancla_exacta"
+    assert c.n_rejected_sub == 3
+
+
+def test_un_token_distinto_fallback():
+    doc = _cue_doc("hola")
+    c = _one(align_srt_to_words(doc, _tw(("adios", 0.0, 0.5))))
+    assert c.mode == "cue_fallback"  # sin ancla exacta, no puede ser substitution
+
+
+def test_todas_sustituciones_fallback():
+    doc = _cue_doc("casa roja")  # cosa/rojo son similares pero NO hay ningun exact_match
+    c = _one(align_srt_to_words(doc, _tw(("cosa", 0.0, 0.4), ("rojo", 0.5, 0.9))))
+    assert c.mode == "cue_fallback"
+    assert c.n_exact == 0
+
+
+def test_sustitucion_similar_con_ancla_exacta_word_aligned():
+    doc = _cue_doc("hola munda")  # "munda" ~ "mundo" (sim alta) + ancla exacta "hola"
+    c = _one(align_srt_to_words(doc, _tw(("hola", 0.0, 0.4), ("mundo", 0.5, 0.9))))
+    assert c.mode == "word_aligned"
+    assert c.words[1].kind == "substitution_match"
+    assert c.words[1].text == "munda"  # texto del SRT, no de Whisper
+
+
+def test_sustitucion_poco_similar_con_ancla_fallback():
+    doc = _cue_doc("hola xyzzyq")  # segundo token no se parece a "planeta"
+    c = _one(align_srt_to_words(doc, _tw(("hola", 0.0, 0.4), ("planeta", 0.5, 0.9))))
+    assert c.mode == "cue_fallback"  # la sustitucion se rechaza -> cobertura incompleta
+    assert c.n_rejected_sub == 1
+    assert c.reason == "sustitucion_poco_similar"
+
+
+def test_timestamps_exactos_preservados():
+    doc = _cue_doc("uno dos")
+    c = _one(align_srt_to_words(doc, _tw(("uno", 0.123, 0.456), ("dos", 0.789, 1.111))))
+    assert (c.words[0].start_ms, c.words[0].end_ms) == (123, 456)
+    assert (c.words[1].start_ms, c.words[1].end_ms) == (789, 1111)
+
+
+def test_timestamps_no_monotonicos_fallback():
+    # "uno" corto y tardio, "dos" largo y temprano: al anclar, el start decrece -> fallback
+    doc = _cue_doc("uno dos", end="00:00:08,000")
+    c = _one(align_srt_to_words(doc, _tw(("uno", 3.0, 3.1), ("dos", 0.0, 7.0))))
+    assert c.mode == "cue_fallback"
+    assert c.reason == "non_monotonic_timings"
+
+
+def test_ningun_mas_uno_ms():
+    # timing word con e==s: end no se empuja a s+1; el cue cae a fallback honesto
+    doc = _cue_doc("uno dos")
+    c = _one(align_srt_to_words(doc, _tw(("uno", 1.0, 1.0), ("dos", 1.2, 1.5))))
+    assert c.mode == "cue_fallback"
+    assert c.reason == "non_monotonic_timings"
+
+
+def test_ninguna_timing_word_reutilizada_dos_cues():
+    # una sola "hola" no puede anclar dos cues distintos
+    doc = parse_srt_text(
+        "1\n00:00:00,000 --> 00:00:01,000\nhola\n\n2\n00:00:01,000 --> 00:00:02,000\nhola\n"
+    )
+    r = align_srt_to_words(doc, _tw(("hola", 0.2, 0.6)))
+    modes = [c.mode for c in r.cues]
+    assert modes.count("word_aligned") == 1 and modes.count("cue_fallback") == 1
+
+
+def test_agregados_provenance_en_result():
+    doc = _cue_doc("hola munda")
+    r = align_srt_to_words(doc, _tw(("hola", 0.0, 0.4), ("mundo", 0.5, 0.9)))
+    assert r.n_exact == 1 and r.n_substitution == 1 and r.n_rejected_sub == 0
