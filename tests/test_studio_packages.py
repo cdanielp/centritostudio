@@ -147,6 +147,52 @@ def test_lista_ordena_por_fecha_no_por_nombre(cliente):
     assert ids == ["aaa_20260305-0000", "zzz_20260101-0000"]  # por fecha desc, no por nombre
 
 
+def test_lista_fallback_mtime_cuando_falta_fecha(cliente):
+    # sin meta.fecha valida -> ordena por mtime del dir; con fecha valida, sin cambios.
+    import os
+    from datetime import datetime
+
+    c, paquetes, _t = cliente
+    _escribir_paquete(paquetes, "aaa_20250101-0000", [_clip()])  # fecha vieja (2025)
+    _escribir_paquete(paquetes, "ccc_20260701-0000", [_clip()])  # fecha nueva (2026-07)
+    # B: SIN meta.fecha; mtime intermedio (2026-06) -> debe quedar entre C y A
+    db = paquetes / "paquetesinfecha"
+    db.mkdir()
+    (db / "paquete.json").write_text(json.dumps({"clips": [_clip()], "meta": {}}), encoding="utf-8")
+    mt = datetime(2026, 6, 1, 12, 0).timestamp()
+    os.utime(db, (mt, mt))
+    ids = [p["id"] for p in c.get("/api/paquetes").json()]
+    assert ids == ["ccc_20260701-0000", "paquetesinfecha", "aaa_20250101-0000"]
+
+
+def test_escattr_escapa_ampersand_primero_y_comillas(tmp_path):
+    # _escAttr (JS) debe escapar & PRIMERO, y luego < > " ' sin doble-escapar.
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node no disponible para ejercitar el helper JS")
+    html = (Path(__file__).parent.parent / "static" / "index.html").read_text(encoding="utf-8")
+    m = re.search(r"function _escAttr\(s\)\s*\{.*?\}", html, re.S)
+    assert m, "no se encontro _escAttr en index.html"
+    js = m.group(0) + (
+        "\nconst cc = String.fromCharCode;\n"
+        "const inp = 'Tom ' + cc(38) + ' A ' + cc(34) + 'x' + cc(34) + ' '"
+        " + cc(60) + 'b' + cc(62) + ' ' + cc(39) + 'q' + cc(39);\n"
+        "const out = _escAttr(inp);\n"
+        "const exp = 'Tom &amp; A &quot;x&quot; &lt;b&gt; &#39;q&#39;';\n"
+        "if (out !== exp) { console.error('got:' + out); process.exit(1); }\n"
+        "process.exit(0);\n"
+    )
+    f = tmp_path / "escattr_check.js"
+    f.write_text(js, encoding="utf-8")
+    r = subprocess.run([node, str(f)], capture_output=True, text=True)  # noqa: S603 (node fijo, sin shell)
+    assert r.returncode == 0, r.stderr or r.stdout
+
+
 def test_lista_incluye_salud(cliente):
     c, paquetes, _t = cliente
     _escribir_paquete(paquetes, "ok_20260101-0000", [_clip()])

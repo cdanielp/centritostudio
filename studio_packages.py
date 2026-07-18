@@ -11,6 +11,7 @@ ni sidecars por la ruta publica del video. Cero escritura, cero recalculo (regla
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -44,25 +45,43 @@ def _dir_paquete(pkg: str) -> Path:
     return d
 
 
+def _epoch_paquete(card: dict, d: Path) -> float:
+    """Instante del paquete para ordenar (mas reciente primero). Determinista.
+
+    `card['fecha']` ya viene resuelta por resumen_lista_paquete (meta.fecha o, si
+    falta, el sufijo del id 'nombre_YYYYMMDD-HHMM'). La parseamos a epoch; solo si
+    NINGUNA de las dos parsea caemos al mtime del directorio, para que un paquete
+    real sin fecha no se hunda ni desordene la lista. No recalcula nada del paquete.
+    """
+    fecha = card.get("fecha") or ""
+    try:
+        return datetime.strptime(fecha, "%Y%m%d-%H%M").timestamp()
+    except (ValueError, TypeError):
+        try:
+            return d.stat().st_mtime
+        except OSError:
+            return 0.0
+
+
 @router.get("/api/paquetes")
 def list_paquetes() -> list[dict]:
-    """Lista los paquetes (mas recientes primero por meta.fecha). Fail-open por paquete.
+    """Lista los paquetes (mas recientes primero). Fail-open por paquete.
 
-    Orden determinista: por `fecha` descendente y, a igualdad o si falta fecha,
-    por `id` descendente (desempate estable). No se recalcula nada.
+    Orden determinista por instante (meta.fecha, o mtime del dir si falta/invalida)
+    descendente; ultimo desempate por `id`. No se recalcula nada.
     """
-    out: list[dict] = []
+    entradas: list[tuple[Path, dict]] = []
     if not PAQUETES_DIR.exists():
-        return out
+        return []
     for d in PAQUETES_DIR.glob("*"):
         if not d.is_dir():
             continue
         data = _leer_paquete_json(d)
         if data is None:  # corrida a medias / json ilegible: no se lista
             continue
-        out.append(pe.resumen_lista_paquete(d.name, data))
-    out.sort(key=lambda c: (c.get("fecha") or "", c["id"]), reverse=True)
-    return out
+        entradas.append((d, pe.resumen_lista_paquete(d.name, data)))
+    entradas.sort(key=lambda e: (_epoch_paquete(e[1], e[0]), e[1]["id"]), reverse=True)
+    return [card for _d, card in entradas]
 
 
 @router.get("/api/paquetes/{pkg}")
