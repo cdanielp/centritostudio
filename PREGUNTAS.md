@@ -836,3 +836,23 @@ capturas "moviles" se tomaron a ~492px (rango movil, reglas responsive activas) 
 horizontal se verifico por medicion (`scrollWidth == innerWidth`). El render pixel-perfect a 390px
 exacto no se pudo capturar en este headless. No es un defecto del producto (se valida en vivo con
 devtools); es una limitacion de la herramienta de captura. Estado: **nota, no bloqueante**.
+
+### 40. S36 (SRT round-trip) — decisiones que S36-A dejo ABIERTAS (para S36-B/C)
+
+S36-A (D33) entrego solo el contrato/parser/validacion/serializacion del SRT. Lo siguiente sigue sin
+decidir y NO se resolvio en este PR (no preguntar lo ya cerrado por D33):
+
+- (a) **Politica de overlaps al render:** mantener cues simultaneos, desplazarlos o rechazarlos. Hoy
+  solo se **diagnostican** como warning.
+- (b) **Markup del SRT en ASS:** tratar `<i>`/etiquetas como texto literal, permitir un subset, o hacer
+  strip seguro. Hoy se conservan como TEXTO, sin interpretar.
+- (c) **Alineacion palabra-por-palabra (S36-B):** motor (forced alignment / Whisper) y umbral de
+  confianza; el SRT NO trae timing por palabra.
+- (d) **Fallback de timing** cuando no hay alineacion fiable: proporcional por caracteres, por palabras
+  o a nivel de frase completa.
+- (e) **Bloques posteriores a la duracion del video:** hoy se marcan como warning
+  (`cue_after_video`/`cue_partially_out_of_video`); falta la politica de que hacer con ellos al render.
+- (f) **Rebase de cues despues de cortes** (clipper/depurador): como remapear tiempos tras editar.
+- (g) **Nombre definitivo del sidecar** del contrato SRT en produccion (¿`{stem}_srt.json`?): en S36-A
+  el JSON solo es contrato/evidencia local; el nombre se decide en S36-B.
+- (h) **UI:** si el Studio permitira editar los saltos de linea originales del cue o solo el texto.
