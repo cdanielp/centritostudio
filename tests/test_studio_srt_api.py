@@ -201,12 +201,16 @@ def test_srt_no_monotonico_rango_real_y_get_sin_500(api):
     body = r.json()
     assert body["summary"]["start_ms"] == 0
     assert body["summary"]["end_ms"] == 2000
+    assert body["summary"]["n_cues"] == 2
+    assert body["summary"]["n_errors"] == 0
+    assert body["summary"]["n_warnings"] >= 1
     assert any(d["code"] == "time_not_monotonic" for d in body["diagnostics"])
 
     g = client.get("/api/videos/demo/srt")
     assert g.status_code == 200  # antes: 500 por rango degenerado
-    assert g.json()["summary"]["start_ms"] == 0
-    assert g.json()["summary"]["end_ms"] == 2000
+    # writer/reader compatibles: el summary que persiste el POST es EXACTAMENTE el que
+    # el GET saneado devuelve (mismo rango, mismos conteos), no solo start/end.
+    assert g.json()["summary"] == body["summary"]
 
     r2 = _upload(client, "demo", no_mono)
     assert r2.status_code == 200  # idempotente: mismo SHA, storage integro

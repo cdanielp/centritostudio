@@ -264,7 +264,14 @@ def test_build_manifest_rango_real_no_monotonico():
     )
     assert manifest["summary"]["start_ms"] == 0
     assert manifest["summary"]["end_ms"] == 2000
+    assert manifest["summary"]["n_cues"] == 2
+    assert manifest["summary"]["n_errors"] == 0
+    assert manifest["summary"]["n_warnings"] >= 1
     assert any(d["code"] == "time_not_monotonic" for d in manifest["diagnostics"])
+    # El fix NO reordena document.cues: el orden fuente (no monotono) se conserva tal cual;
+    # el rango real sale de min/max, no de mover los cues.
+    assert (doc.cues[0].start_ms, doc.cues[0].end_ms) == (1000, 2000)
+    assert (doc.cues[1].start_ms, doc.cues[1].end_ms) == (0, 1000)
 
 
 def test_manifest_no_expone_texto_ni_rutas(tmp_path):
