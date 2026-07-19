@@ -73,16 +73,18 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(
         core, "burn_video_with_emojis", lambda *a, **k: fake_burn(a[0], a[1], a[2]) or 1.5
     )
+    # Video de entrada real que coincide con el filename de la seleccion por defecto (demo.mp4).
+    (out / "demo.mp4").write_bytes(b"MP4-input")
     return trans, out, captured
 
 
-def _selection(trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000):
+def _selection(trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000, video_filename=None):
     doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=dur)
     studio_srt.store_and_associate(
         doc,
         diags,
         video_stem=stem,
-        video_filename=f"{stem}.mp4",
+        video_filename=video_filename or f"{stem}.mp4",
         video_duration_ms=dur,
         data=data,
         storage_root=trans / "studio_srt",
@@ -93,11 +95,11 @@ def _selection(trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000):
     return rt.resolve_selected_srt(stem, storage_root=trans / "studio_srt", manifest_dir=trans)
 
 
-def _run_srt(sel, name="demo", **kw):
+def _run_srt(sel, name="demo", video=None, **kw):
     jid = jobs_registry.new_job("test")
     jobs_render.run_render(
         jid,
-        jobs_render.OUTPUT_DIR / f"{name}.mp4",
+        video if video is not None else jobs_render.OUTPUT_DIR / f"{name}.mp4",
         None,
         name,
         "hormozi",
@@ -175,7 +177,7 @@ def test_integridad_rota_error_publico_sin_fallback(env):
     assert job["status"] == "error"
     assert "no existe" in job["message"] or "administrado" in job["message"]
     assert str(trans) not in job["message"]
-    assert list(out.glob("*.mp4")) == []  # no se produjo output
+    assert list(out.glob("*_srt*.mp4")) == []  # no se produjo output de render SRT
 
 
 def test_sin_words_error(env):
@@ -183,6 +185,29 @@ def test_sin_words_error(env):
     sel = _selection(trans, words=None)  # sin words.json
     job = _run_srt(sel)
     assert job["status"] == "error"
+
+
+def test_worker_rechaza_video_que_no_coincide(env, monkeypatch):
+    # Seleccion asociada a demo.mov pero el worker recibe demo.mp4: aborta ANTES de FFmpeg.
+    trans, out, cap = env
+    (out / "demo.mov").write_bytes(b"MOV-input")
+    sel = _selection(trans, video_filename="demo.mov")
+    monkeypatch.setattr(core, "get_video_info", lambda _p: pytest.fail("no debe leer video info"))
+    job = _run_srt(sel, video=out / "demo.mp4")  # extension equivocada
+    assert job["status"] == "error"
+    assert "coincide" in job["message"] or "disponible" in job["message"]
+    assert "groups" not in cap and "out" not in cap  # ni ASS ni MP4
+    assert not (trans / "demo_srt_alignment.json").exists()  # ni sidecar
+    assert "demo.mov" not in job["message"] and "demo.mp4" not in job["message"]
+
+
+def test_worker_acepta_video_que_coincide(env):
+    trans, out, _cap = env
+    (out / "demo.mov").write_bytes(b"MOV-input")
+    sel = _selection(trans, video_filename="demo.mov")
+    job = _run_srt(sel, video=out / "demo.mov")
+    assert job["status"] == "done"
+    assert job["result"]["output"].endswith("_srt.mp4")
 
 
 def test_srt_no_modifica_fuente(env):

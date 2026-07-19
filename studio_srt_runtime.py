@@ -41,12 +41,18 @@ class StudioSrtIntegrityError(StudioSrtStorageError):
     """El archivo administrado no existe, escapa del root o su hash no coincide."""
 
 
+class StudioSrtSelectedVideoMissing(StudioSrtRuntimeError):
+    """La selección existe pero el archivo de video EXACTO (manifest.video.filename) no está
+    disponible en input/. NO hereda de StudioSrtStorageError: no dispara reparación del SRT."""
+
+
 # ─── Tipos frozen (internos: nunca se serializan a HTTP) ───────────────────────
 @dataclass(frozen=True)
 class SelectedSrtRuntime:
     """Seleccion SRT resuelta y verificada. INTERNO: contiene Paths, no sale por API."""
 
     video_stem: str
+    video_filename: str
     source_name: str | None
     source_sha256: str
     managed_file: str
@@ -109,11 +115,18 @@ def resolve_selected_srt(
         raise StudioSrtIntegrityError("sha256 de la seleccion invalido")
     if not manifest_mod.is_safe_basename(managed_file) or managed_file != f"{source_sha256}.srt":
         raise StudioSrtIntegrityError("managed_file no coincide con el sha")
+    # El filename del video es AUTORITATIVO (video↔SRT): identifica el archivo exacto contra el
+    # que se validó la selección. El manifiesto saneado (C1) lo garantiza; se relee defensivo.
+    video_meta = manifest.get("video", {}) if isinstance(manifest, dict) else {}
+    video_filename = video_meta.get("filename")
+    if not isinstance(video_filename, str) or not video_filename:
+        raise StudioSrtIntegrityError("filename de video invalido en el manifiesto")
     storage_root = Path(storage_root)
     managed_path = _managed_path_confinada(storage_root, video_stem, managed_file)
     _verificar_hash(managed_path, source_sha256)
     return SelectedSrtRuntime(
         video_stem=video_stem,
+        video_filename=video_filename,
         source_name=selection.get("source_name"),
         source_sha256=source_sha256,
         managed_file=managed_file,
@@ -132,6 +145,62 @@ def verify_runtime_integrity(runtime: SelectedSrtRuntime) -> None:
         runtime.storage_root, runtime.video_stem, runtime.managed_file
     )
     _verificar_hash(managed_path, runtime.source_sha256)
+
+
+# ─── Identidad del video (video↔SRT): filename EXACTO del manifiesto ───────────
+_ALLOWED_VIDEO_EXT = frozenset({".mp4", ".mov"})
+
+
+def _validar_filename_video(runtime: SelectedSrtRuntime) -> str:
+    """Valida el filename autoritativo de la selección. Un filename inconsistente con el
+    manifiesto (vacío/inseguro/extensión/stem) es corrupción del manifiesto -> Integrity."""
+    fn = runtime.video_filename
+    if not isinstance(fn, str) or not fn:
+        raise StudioSrtIntegrityError("filename de video vacio")
+    if not manifest_mod.is_safe_basename(fn):
+        raise StudioSrtIntegrityError("filename de video inseguro")
+    name_path = Path(fn)
+    if name_path.suffix.lower() not in _ALLOWED_VIDEO_EXT:
+        raise StudioSrtIntegrityError("extension de video no permitida")
+    if name_path.stem != runtime.video_stem:
+        raise StudioSrtIntegrityError("el filename no corresponde al video de la seleccion")
+    return fn
+
+
+def resolve_selected_video(runtime: SelectedSrtRuntime, *, input_dir: Path) -> Path:
+    """Ruta EXACTA del video asociado, según `manifest.video.filename`. NUNCA por stem ni por
+    prioridad de extensión: un `.mp4` y un `.mov` con el mismo stem no pueden cruzarse.
+
+    Construye sólo `input_dir / filename`, confina (resolve+relative_to) y exige archivo regular.
+    Filename inconsistente con el manifiesto -> StudioSrtIntegrityError (500). Archivo exacto
+    ausente o no confinado -> StudioSrtSelectedVideoMissing (409). No expone rutas en el error.
+    """
+    fn = _validar_filename_video(runtime)
+    input_dir = Path(input_dir)
+    candidate = input_dir / fn
+    try:
+        candidate.resolve().relative_to(input_dir.resolve())
+    except ValueError:
+        raise StudioSrtSelectedVideoMissing("el video asociado no esta disponible") from None
+    if not candidate.is_file():
+        raise StudioSrtSelectedVideoMissing("el video asociado ya no esta disponible")
+    return candidate
+
+
+def verify_selected_video_match(runtime: SelectedSrtRuntime, video_path: Path) -> None:
+    """Exige que `video_path` sea EXACTAMENTE el video de la selección (nombre+stem+extensión+
+    regular). Protege contra que el worker reciba otro archivo o un cambio de extensión entre
+    endpoint y worker. No vuelve a resolver por stem. Mismatch -> SelectedVideoMissing (sin ruta).
+    """
+    video_path = Path(video_path)
+    if (
+        video_path.name != runtime.video_filename
+        or video_path.stem != runtime.video_stem
+        or video_path.suffix.lower() not in _ALLOWED_VIDEO_EXT
+    ):
+        raise StudioSrtSelectedVideoMissing("el video no coincide con la seleccion")
+    if not video_path.is_file():
+        raise StudioSrtSelectedVideoMissing("el video asociado ya no esta disponible")
 
 
 # ─── Preparacion de groups (delega en S36-B; no duplica parser/alineador) ──────
@@ -210,7 +279,10 @@ __all__ = [
     "StudioSrtSelectionMissing",
     "StudioSrtTimingMissing",
     "StudioSrtIntegrityError",
+    "StudioSrtSelectedVideoMissing",
     "resolve_selected_srt",
+    "resolve_selected_video",
+    "verify_selected_video_match",
     "verify_runtime_integrity",
     "prepare_selected_srt_groups",
 ]

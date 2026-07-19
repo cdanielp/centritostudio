@@ -439,21 +439,23 @@ def _start_render_srt(
     """Render de Studio con el SRT seleccionado como texto oficial (S36-C2A1, D38).
 
     Opt-in explicito: exige una asociacion SRT activa (sin autodiscovery) y un transcript de
-    palabras (solo timings). Rechaza combinaciones incompatibles con 400. Resuelve la seleccion
-    de forma segura y confinada; nunca expone rutas ni cae al transcript. El worker recibe el
-    objeto interno de seleccion, no una ruta enviada por el cliente.
+    palabras (solo timings). Rechaza combinaciones incompatibles con 400. El video se resuelve
+    por el FILENAME EXACTO del manifiesto (`manifest.video.filename`), NUNCA por stem ni por
+    prioridad de extension: un `.mp4` y un `.mov` con el mismo stem no pueden cruzarse. Nunca
+    expone rutas ni cae al transcript. El worker recibe el objeto interno de seleccion.
     """
+    import studio_srt_manifest  # noqa: PLC0415
+    import studio_srt_runtime  # noqa: PLC0415
+
     if caption_qa is not None:
         raise HTTPException(400, "Caption QA no esta disponible cuando el SRT es el texto oficial.")
     if words_per_group is not None:
         raise HTTPException(400, "words_per_group no aplica cuando el SRT define los cues.")
     if use_emphasis:
         raise HTTPException(400, "use_emphasis no esta disponible para SRT en S36-C2A1.")
-    video = _resolver_video_input(name)
-    if video is None:
-        raise HTTPException(404, f"Video {name} no encontrado en input/")
-    import studio_srt_runtime  # noqa: PLC0415
-
+    # Confina el stem sin resolver por extension (la ruta SRT NO usa _resolver_video_input).
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(404, "Video no encontrado en input/.")
     try:
         selection = studio_srt_runtime.resolve_selected_srt(
             name, storage_root=TRANSCRIPTS / "studio_srt", manifest_dir=TRANSCRIPTS
@@ -462,6 +464,13 @@ def _start_render_srt(
         raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
     if selection is None:
         raise HTTPException(400, "No hay un SRT seleccionado para este video.")
+    # El video EXACTO registrado en la seleccion (no el que priorice el resolver por stem).
+    try:
+        video = studio_srt_runtime.resolve_selected_video(selection, input_dir=INPUT_DIR)
+    except studio_srt_runtime.StudioSrtSelectedVideoMissing:
+        raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
     if not (TRANSCRIPTS / f"{name}_words.json").exists():
         raise HTTPException(400, "Transcribe el video antes de renderizar el SRT.")
     etiqueta = preset or style

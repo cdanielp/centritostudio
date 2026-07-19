@@ -1382,3 +1382,28 @@ no alcanza (no se activa automaticamente; solo se registra el numero). **El merg
 visual de K** (este PR modifica salida de video cuando `caption_source=srt`). Evidencia sintetica
 (FFmpeg real, offline) en `revision/s36-c2a1-studio-srt-render/`; checkpoint privado real PENDIENTE
 (no existe asociacion explicita del usuario).
+
+### D38 addendum — Identidad video↔SRT: `manifest.video.filename` es autoritativo (P2, PR #18)
+
+Corrige un P2 detectado en revisión: la ruta SRT resolvía el video con el resolver genérico
+`_resolver_video_input(name)`, que busca por stem y **prioriza `.mp4`**. Una selección asociada y
+validada contra `demo.mov` podía renderizarse sobre un `demo.mp4` aparecido después (mismo stem).
+
+**Invariante:** para `caption_source=srt`, el video se identifica por el **filename EXACTO** del
+manifiesto (`manifest.video.filename`), nunca por stem ni por prioridad de extensión. El stem por sí
+solo NO identifica el video. No hay búsqueda por extensiones, glob, autodiscovery ni primer
+coincidente; nunca se cruza `.mov`↔`.mp4`. Si el archivo exacto no está disponible, el render se
+**bloquea** (no cae a otra extensión ni al transcript).
+
+**Runtime:** `SelectedSrtRuntime` gana `video_filename` (del manifiesto saneado). `resolve_selected_video(runtime, *, input_dir)` construye sólo `input_dir/filename`, confina (resolve+relative_to) y
+exige archivo regular; filename inconsistente con el manifiesto → `StudioSrtIntegrityError` (500),
+archivo exacto ausente/no confinado → `StudioSrtSelectedVideoMissing` (409). El worker revalida con
+`verify_selected_video_match(runtime, video_path)` (nombre+stem+extensión+regular) **antes** de leer
+video info / alinear / generar ASS / escribir output; mismatch → job error saneado, sin ASS/MP4/
+sidecar, sin ruta, sin fallback. **La ruta transcript histórica no cambia** (sigue usando
+`_resolver_video_input` en Auto y demás endpoints, intactos).
+
+**HTTP:** sin selección → 400; **archivo exacto ausente → 409** ("El video asociado al SRT ya no está
+disponible."); manifiesto/storage corrupto → 500. Ningún mensaje refleja name/filename/extensión/ruta.
+Comentario P2 de PR #18 resuelto. +20 tests (runtime/endpoint/worker) + E2E: MOV asociado (4s) +
+decoy MP4 (2s) → el render usa el MOV (4s), nunca el decoy. Sigue requiriendo veredicto visual de K.

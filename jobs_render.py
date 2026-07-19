@@ -270,6 +270,9 @@ def _run_render_srt(
     try:
         update_job(jid, status="running", progress=8, message="Cargando seleccion SRT...")
         rt.verify_runtime_integrity(srt_selection)  # revalida integridad al iniciar el worker
+        # El worker exige el video EXACTO de la seleccion (nombre+stem+ext). No re-resuelve por
+        # stem; un mp4 pasado por error o un cambio .mov<->.mp4 aborta ANTES de tocar FFmpeg.
+        rt.verify_selected_video_match(srt_selection, mp4)
 
         update_job(jid, progress=15, message="Leyendo video info...")
         info = core.get_video_info(mp4)

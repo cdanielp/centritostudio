@@ -70,13 +70,13 @@ def api(tmp_path, monkeypatch):
     return TestClient(studio_app.app), trans
 
 
-def _associate(trans, stem="demo", data=_SRT_MIX, dur=6000):
+def _associate(trans, stem="demo", data=_SRT_MIX, dur=6000, video_filename=None):
     doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=dur)
     studio_srt.store_and_associate(
         doc,
         diags,
         video_stem=stem,
-        video_filename=f"{stem}.mp4",
+        video_filename=video_filename or f"{stem}.mp4",
         video_duration_ms=dur,
         data=data,
         storage_root=trans / "studio_srt",
@@ -230,3 +230,73 @@ def test_srt_no_arranca_job_si_validacion_falla(api):
     # sin asociacion -> 400 y ningun thread/worker
     client.post("/api/videos/demo/render?caption_source=srt")
     assert FakeThread.created == []
+
+
+# ─── Identidad video↔SRT (P2): filename exacto del manifiesto ──────────────────
+def test_seleccion_mov_con_decoy_mp4_usa_mov(api):
+    # El SRT se asocio a demo.mov; luego aparece demo.mp4 (decoy, mismo stem). El render
+    # DEBE usar demo.mov (el filename registrado), no el .mp4 que prioriza el resolver generico.
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")  # el .mp4 ya lo crea el fixture
+    _associate(trans, video_filename="demo.mov")
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 200
+    video = _thread().args[1]
+    assert video.name == "demo.mov"  # NUNCA demo.mp4
+
+
+def test_seleccion_mp4_con_decoy_mov_usa_mp4(api):
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-decoy")
+    _associate(trans, video_filename="demo.mp4")  # el .mp4 lo crea el fixture
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 200
+    assert _thread().args[1].name == "demo.mp4"
+
+
+def test_video_exacto_ausente_409(api):
+    # Asociado a demo.mov, pero el .mov no existe (solo el decoy .mp4 del fixture) -> 409, sin job.
+    client, trans = api
+    _associate(trans, video_filename="demo.mov")
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 409
+    assert FakeThread.created == []
+
+
+def test_409_no_expone_filename_ni_ruta(api):
+    client, trans = api
+    _associate(trans, video_filename="demo.mov")
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    body = r.text
+    assert "demo.mov" not in body and "demo.mp4" not in body
+    assert "input" not in body and str(trans) not in body
+
+
+def test_srt_no_usa_resolver_generico(api, monkeypatch):
+    # La ruta SRT NO debe usar _resolver_video_input (que prioriza .mp4 por stem).
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")
+    _associate(trans, video_filename="demo.mov")
+    _write_words(trans)
+    monkeypatch.setattr(
+        studio_app,
+        "_resolver_video_input",
+        lambda *_a, **_k: pytest.fail("SRT NO usa el resolver generico"),
+    )
+    assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 200
+
+
+def test_transcript_no_usa_resolve_selected_video(api, monkeypatch):
+    client, _ = api
+    import studio_srt_runtime
+
+    monkeypatch.setattr(
+        studio_srt_runtime,
+        "resolve_selected_video",
+        lambda *_a, **_k: pytest.fail("transcript NO resuelve video SRT"),
+    )
+    assert client.post("/api/videos/demo/render").status_code == 200

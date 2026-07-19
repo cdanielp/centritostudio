@@ -1056,3 +1056,10 @@ Resuelto en D38:
 (`transcripts/*_srt_selection.json`); por gobernanza no se asoció ni se adivinó el archivo privado.
 El PR queda abierto y no cierra visualmente S36-C2A1 hasta el veredicto visual de K. Evidencia
 sintética (FFmpeg real, offline) en `revision/s36-c2a1-studio-srt-render/`.
+
+**Corrección P2 (mismo PR #18, D38 addendum) — identidad video↔SRT:** el render SRT usa el
+**filename EXACTO** del manifiesto (`manifest.video.filename`), no el resolver genérico por stem
+(que priorizaba `.mp4`). Un `.mov` asociado y un `.mp4` decoy con el mismo stem no pueden cruzarse.
+`SelectedSrtRuntime.video_filename` + `resolve_selected_video` (confina + archivo regular; ausente →
+409, filename corrupto → 500) + `verify_selected_video_match` en el worker (antes de FFmpeg; mismatch
+→ job error sin fallback). Transcript intacto. Comentario P2 de la revisión resuelto.

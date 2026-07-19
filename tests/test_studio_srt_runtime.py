@@ -51,7 +51,7 @@ def _paths(tmp_path):
     return storage, manifests
 
 
-def _associate(tmp_path, data=_SRT_MIX, stem="demo", dur=_DUR):
+def _associate(tmp_path, data=_SRT_MIX, stem="demo", dur=_DUR, video_filename=None):
     """Asocia un SRT usando el backend real de C1. Devuelve (storage, manifests)."""
     storage, manifests = _paths(tmp_path)
     doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=dur)
@@ -59,13 +59,29 @@ def _associate(tmp_path, data=_SRT_MIX, stem="demo", dur=_DUR):
         doc,
         diags,
         video_stem=stem,
-        video_filename=f"{stem}.mp4",
+        video_filename=video_filename or f"{stem}.mp4",
         video_duration_ms=dur,
         data=data,
         storage_root=storage,
         manifest_dir=manifests,
     )
     return storage, manifests
+
+
+def _rt(video_filename, stem="demo"):
+    """SelectedSrtRuntime mínimo para probar resolve_selected_video/verify (sin storage real)."""
+    from pathlib import Path
+
+    return rt.SelectedSrtRuntime(
+        video_stem=stem,
+        video_filename=video_filename,
+        source_name=None,
+        source_sha256="0" * 64,
+        managed_file="0" * 64 + ".srt",
+        managed_path=Path("_unused_"),
+        storage_root=Path("_unused_"),
+        manifest={},
+    )
 
 
 def _write_words(manifests, words=_WORDS_MIX, stem="demo"):
@@ -284,6 +300,75 @@ def test_sidecar_escrito_y_sin_rutas(tmp_path):
 def test_groups_llevan_texto_oficial(tmp_path):
     _sel, prepared, _m = _prepare(tmp_path)
     assert prepared.groups[0]["text"] == "Hola mundo"  # texto del SRT, no del transcript
+
+
+# ─── Identidad del video (P2): filename EXACTO del manifiesto ──────────────────
+def _input(tmp_path, *files):
+    inp = tmp_path / "input"
+    inp.mkdir()
+    for f in files:
+        (inp / f).write_bytes(b"video-" + f.encode())
+    return inp
+
+
+def test_resolve_video_mov_con_decoy_mp4(tmp_path):
+    inp = _input(tmp_path, "demo.mov", "demo.mp4")
+    assert rt.resolve_selected_video(_rt("demo.mov"), input_dir=inp).name == "demo.mov"
+
+
+def test_resolve_video_mp4_con_decoy_mov(tmp_path):
+    inp = _input(tmp_path, "demo.mov", "demo.mp4")
+    assert rt.resolve_selected_video(_rt("demo.mp4"), input_dir=inp).name == "demo.mp4"
+
+
+def test_resolve_video_exacto_ausente_no_cae_a_otra_extension(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")  # solo el decoy; el .mov asociado no existe
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.resolve_selected_video(_rt("demo.mov"), input_dir=inp)
+
+
+@pytest.mark.parametrize("fn", ["../demo.mp4", "sub/demo.mp4", "demo.txt", "otro.mp4", ""])
+def test_resolve_video_filename_invalido_es_integrity(tmp_path, fn):
+    # traversal / no-basename / extension distinta / stem distinto / vacío -> manifiesto corrupto
+    inp = _input(tmp_path, "demo.mp4", "demo.mov", "otro.mp4")
+    with pytest.raises(rt.StudioSrtIntegrityError):
+        rt.resolve_selected_video(_rt(fn), input_dir=inp)
+
+
+def test_resolve_video_confina_y_rechaza_symlink_fuera(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    got = rt.resolve_selected_video(_rt("demo.mp4"), input_dir=inp)
+    assert got.resolve().parent == inp.resolve()  # confinado dentro de input/
+    outside = tmp_path / "outside.mov"
+    outside.write_bytes(b"x")
+    link = inp / "linked.mov"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        return  # sin privilegios de symlink: la confinación positiva de arriba cubre el invariante
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.resolve_selected_video(_rt("linked.mov"), input_dir=inp)
+
+
+def test_resolve_video_error_no_expone_ruta(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    try:
+        rt.resolve_selected_video(_rt("demo.mov"), input_dir=inp)
+    except rt.StudioSrtSelectedVideoMissing as exc:
+        assert str(inp) not in str(exc) and "demo.mov" not in str(exc)
+
+
+def test_runtime_conserva_video_filename(tmp_path):
+    storage, manifests = _associate(tmp_path, video_filename="demo.mov")
+    sel = _resolve(storage, manifests)
+    assert sel.video_filename == "demo.mov"  # el filename autoritativo se preserva
+
+
+def test_verify_selected_video_match_ok_y_mismatch(tmp_path):
+    inp = _input(tmp_path, "demo.mov", "demo.mp4")
+    rt.verify_selected_video_match(_rt("demo.mov"), inp / "demo.mov")  # no lanza
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_match(_rt("demo.mov"), inp / "demo.mp4")  # extension cruzada
 
 
 def test_no_muta_words_ni_srt(tmp_path):

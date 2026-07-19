@@ -49,6 +49,14 @@ Alineación del fixture: **word_aligned=3** (incl. **1 sustitución**: SRT dice 
 Renders A (`demo_hormozi_srt.mp4`) y B (`demo_viral_bounce_srt_emojis.mp4`): 1080x1920, 4s,
 con audio, sin flash negro.
 
+## Corrección P2 — identidad video↔SRT
+La ruta SRT usa el **filename exacto** registrado en el manifiesto (`manifest.video.filename`); no
+resuelve por stem ni cambia de extensión. Un `.mov` asociado y un `.mp4` decoy con el mismo stem no
+pueden cruzarse. `resolve_selected_video` confina + exige archivo regular (ausente → 409, filename
+corrupto → 500); el worker revalida con `verify_selected_video_match` antes de FFmpeg (mismatch → job
+error sin ASS/MP4/sidecar/ruta/fallback). El smoke incluye el escenario: MOV asociado (4s) + decoy MP4
+(2s) → el render usa el MOV (dur ≈ 4s, nunca los 2s del decoy).
+
 ## Checkpoint privado real
 **PENDIENTE: no existe una asociación explícita** (`transcripts/*_srt_selection.json`) creada por
 el usuario. Por gobernanza NO se asocia el archivo privado ni se adivina a qué video pertenece;

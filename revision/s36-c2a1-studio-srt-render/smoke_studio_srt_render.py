@@ -79,6 +79,56 @@ def _render(sel, mp4: Path, label: str, **kw) -> dict:
     return job
 
 
+def _dur(path: Path) -> float:
+    return float(_ffprobe(path)["format"]["duration"])
+
+
+def smoke_p2_identity() -> None:
+    """P2: SRT asociado a demo.mov + decoy demo.mp4 de OTRA duracion. El render usa el MOV."""
+    import shutil
+
+    work = EVID / "work_p2"
+    out_p2 = EVID / "out_p2"
+    if work.exists():
+        shutil.rmtree(work)
+    inp = work / "input"
+    trans = work / "transcripts"
+    inp.mkdir(parents=True)
+    trans.mkdir(parents=True)
+    out_p2.mkdir(parents=True, exist_ok=True)
+    generar_video(inp / "demo.mov", dur=4.0)  # video ASOCIADO
+    generar_video(inp / "demo.mp4", dur=2.0)  # decoy con el mismo stem, OTRA duracion
+    (trans / "demo_words.json").write_text(
+        (FIXTURES / "demo_words.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    data = (FIXTURES / "demo.srt").read_bytes()
+    doc, diags = studio_srt.parse_and_validate(data, source_name="demo.srt", video_duration_ms=DUR_MS)
+    studio_srt.store_and_associate(
+        doc, diags, video_stem="demo", video_filename="demo.mov", video_duration_ms=DUR_MS,
+        data=data, storage_root=trans / "studio_srt", manifest_dir=trans,
+    )
+    jobs_render.TRANSCRIPTS = trans
+    jobs_render.OUTPUT_DIR = out_p2
+    sel = rt.resolve_selected_srt("demo", storage_root=trans / "studio_srt", manifest_dir=trans)
+    video = rt.resolve_selected_video(sel, input_dir=inp)
+    job = _render(sel, video, "P2-mov")
+    out = out_p2 / job["result"]["output"]
+    dur_out = _dur(out)
+
+    assert sel.video_filename == "demo.mov", "filename autoritativo perdido"
+    assert video.name == "demo.mov", f"resolve_selected_video eligio {video.name}, no el MOV"
+    assert abs(dur_out - 4.0) < 0.35, f"el output NO corresponde al MOV (dur={dur_out}, decoy=2s)"
+
+    print("-" * 60)
+    print("P2 — IDENTIDAD VIDEO<->SRT (OK)")
+    print(f"asociado          : demo.mov (4s)  |  decoy: demo.mp4 (2s)")
+    print(f"video_filename    : {sel.video_filename}")
+    print(f"resolve_video     : {video.name} (nunca el decoy .mp4)")
+    print(f"output            : {out.name}  dur={dur_out}s (~4s del MOV, NO 2s del decoy)")
+    print("-" * 60)
+    shutil.rmtree(work)  # limpia los videos/fixtures generados (no se versionan)
+
+
 def main() -> None:
     EVID.mkdir(parents=True, exist_ok=True)
     work = EVID / "work"
@@ -137,6 +187,8 @@ def main() -> None:
     print(f"job result keys A : {sorted(job_a['result'])}  (sin rutas ni texto)")
     print(f"frames            : output/revision-s36-c2a1/frame_*.png")
     print("=" * 60)
+
+    smoke_p2_identity()
 
 
 if __name__ == "__main__":
