@@ -547,6 +547,51 @@ def test_sanitize_acepta_diagnostico_valido_conocido(tmp_path):
     assert any(x["code"] == "cue_after_video" for x in sel["diagnostics"])
 
 
+# ─── S36-C1.1: invariantes cerrados del manifiesto ─────────────────────────────
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        # video.filename: otro basename, extension falsa, ruta, control C1
+        lambda d: d["video"].update(filename="otro.mp4"),
+        lambda d: d["video"].update(filename="video_demo.txt"),
+        lambda d: d["video"].update(filename="C:\\privado\\video_demo.mp4"),
+        lambda d: d["video"].update(filename="../video_demo.mp4"),
+        lambda d: d["video"].update(filename="video_demo.mp4\x85"),  # C1 tras basename valido
+        # duration_ms: None y 0 no son duraciones reales
+        lambda d: d["video"].update(duration_ms=None),
+        lambda d: d["video"].update(duration_ms=0),
+        # managed_file: cualquier basename seguro distinto del SHA
+        lambda d: d["selection"].update(managed_file="benigno.srt"),
+        lambda d: d["selection"].update(managed_file=f"{_SHA_OK}.txt"),
+        # summary: rango temporal degenerado end==start
+        lambda d: d["summary"].update(end_ms=d["summary"]["start_ms"]),
+        # control C1 U+0085 (NEL) en un basename
+        lambda d: d["selection"].update(source_name="ctrl\x85name.srt"),
+    ],
+)
+def test_sanitize_cierra_invariantes_c11(tmp_path, mutator):
+    _, _, _, _, manifests = _store(tmp_path)
+    _tamper(manifests, mutator)
+    with pytest.raises(studio_srt.StudioSrtStorageError):
+        studio_srt.read_selection("video_demo", manifests)
+
+
+@pytest.mark.parametrize("ext", [".mp4", ".MP4", ".mov", ".MOV"])
+def test_sanitize_acepta_extension_video_valida(tmp_path, ext):
+    _, _, _, _, manifests = _store(tmp_path)
+    _tamper(manifests, lambda d: d["video"].update(filename=f"video_demo{ext}"))
+    sel = studio_srt.read_selection("video_demo", manifests)
+    assert sel["video"]["filename"] == f"video_demo{ext}"
+    assert sel["video"]["duration_ms"] == _DUR
+
+
+def test_sanitize_acepta_basename_con_acentos_y_espacios(tmp_path):
+    _, _, _, _, manifests = _store(tmp_path, stem="mi vídeo")
+    sel = studio_srt.read_selection("mi vídeo", manifests)
+    assert sel["video"]["name"] == "mi vídeo"
+    assert sel["video"]["filename"] == "mi vídeo.mp4"
+
+
 def test_read_selection_json_corrupto_rechaza(tmp_path):
     _, _, _, _, manifests = _store(tmp_path)
     _manifest_file(manifests).write_text("no es json {", encoding="utf-8")

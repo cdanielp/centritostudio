@@ -14,6 +14,7 @@ Nunca incluye texto de cues, rutas absolutas ni tracebacks. Tiempos en ms entero
 
 from __future__ import annotations
 
+import unicodedata
 from pathlib import Path, PureWindowsPath
 
 import srt_types
@@ -26,6 +27,9 @@ _HEX = frozenset("0123456789abcdef")
 # Encodings que el parser (S36-A) puede emitir en `document.encoding`. Allowlist estricta.
 _ALLOWED_ENCODINGS = frozenset({"utf-8", "windows-1252"})
 
+# Extensiones de video validas (case-insensitive). Misma politica que resolver_video_input.
+_ALLOWED_VIDEO_EXT = frozenset({".mp4", ".mov"})
+
 # Codigos de diagnostico validos: todos los ERR_*/WARN_* declarados por S36-A (en sync).
 _KNOWN_CODES = frozenset(
     value
@@ -36,8 +40,12 @@ _KNOWN_CODES = frozenset(
 
 # ─── Helpers de seguridad ──────────────────────────────────────────────────────
 def _has_control(text: str) -> bool:
-    """True si text contiene algun caracter de control (C0 0x00-0x1F o DEL 0x7F)."""
-    return any(ord(c) < 0x20 or ord(c) == 0x7F for c in text)
+    """True si text contiene algun caracter de control Unicode (categoria Cc).
+
+    Cubre C0 (U+0000-U+001F), DEL (U+007F) y C1 (U+0080-U+009F). No rechaza letras
+    acentuadas (Ll/Lu), emojis (So) ni espacios normales (Zs).
+    """
+    return any(unicodedata.category(c) == "Cc" for c in text)
 
 
 def is_safe_basename(name: object) -> bool:
@@ -169,17 +177,24 @@ def _clean_diagnostic(d: object) -> dict:
 def _clean_video(video: object, video_stem: str) -> dict:
     """Reconstruye el bloque video validado. Lanza ValueError si viola el contrato.
 
-    `filename` debe ser un basename seguro (sin ruta ni control); `duration_ms` None o int >= 0.
+    `filename` debe ser un basename seguro (sin ruta ni control), con extension .mp4/.mov
+    (case-insensitive) y stem identico al video real. `duration_ms` debe ser int estricto > 0
+    (el endpoint solo asocia tras determinar una duracion real valida; nunca None ni 0).
     """
     if not isinstance(video, dict) or video.get("name") != video_stem:
         raise ValueError("video no coincide")
     filename = video.get("filename")
     if not is_safe_basename(filename):
         raise ValueError("filename invalido")
+    name_path = Path(filename)
+    if name_path.suffix.lower() not in _ALLOWED_VIDEO_EXT:
+        raise ValueError("extension de video invalida")
+    if name_path.stem != video_stem:
+        raise ValueError("filename no corresponde al video")
     return {
         "name": video_stem,
         "filename": filename,
-        "duration_ms": _opt_int_at_least(video.get("duration_ms"), 0),
+        "duration_ms": _int_at_least(video.get("duration_ms"), 1),
     }
 
 
@@ -194,12 +209,14 @@ def _clean_selection(selection: object) -> dict:
     managed_file = selection.get("managed_file")
     source_sha256 = selection.get("source_sha256")
     encoding = selection.get("encoding")
-    if not is_safe_basename(managed_file):
-        raise ValueError("managed_file inseguro")
-    if source_name is not None and not is_safe_basename(source_name):
-        raise ValueError("source_name inseguro")
     if not is_sha256(source_sha256):
         raise ValueError("sha256 invalido")
+    # El archivo administrado se nombra SIEMPRE por su hash completo: no se acepta ningun
+    # otro basename aunque sea seguro. `{sha}.srt` con sha 64-hex ya es un basename puro.
+    if managed_file != f"{source_sha256}.srt":
+        raise ValueError("managed_file no coincide con el sha")
+    if source_name is not None and not is_safe_basename(source_name):
+        raise ValueError("source_name inseguro")
     if encoding not in _ALLOWED_ENCODINGS:
         raise ValueError("encoding no permitido")
     return {
@@ -212,7 +229,7 @@ def _clean_selection(selection: object) -> dict:
 
 
 def _clean_summary(summary: object) -> dict:
-    """Valida los numeros del summary con semantica: no negativos, end>=start, sin errores.
+    """Valida los numeros del summary con semantica: no negativos, end>start, sin errores.
 
     Un manifiesto `ready` siempre tiene n_errors == 0 (los errores abortan la asociacion).
     """
@@ -220,7 +237,7 @@ def _clean_summary(summary: object) -> dict:
         raise ValueError("summary invalido")
     n_cues = _int_at_least(summary.get("n_cues"), 1)
     start_ms = _int_at_least(summary.get("start_ms"), 0)
-    end_ms = _int_at_least(summary.get("end_ms"), start_ms)
+    end_ms = _int_at_least(summary.get("end_ms"), start_ms + 1)  # rango real: end > start
     n_errors = _int_at_least(summary.get("n_errors"), 0)
     n_warnings = _int_at_least(summary.get("n_warnings"), 0)
     if n_errors != 0:
