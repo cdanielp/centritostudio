@@ -78,7 +78,9 @@ def env(tmp_path, monkeypatch):
     return trans, out, captured
 
 
-def _selection(trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000, video_filename=None):
+def _selection(
+    trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000, video_filename=None, words_video=None
+):
     doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=dur)
     studio_srt.store_and_associate(
         doc,
@@ -91,7 +93,12 @@ def _selection(trans, stem="demo", data=_SRT_MIX, words=_WORDS, dur=6000, video_
         manifest_dir=trans,
     )
     if words is not None:
-        (trans / f"{stem}_words.json").write_text(json.dumps(words), encoding="utf-8")
+        import transcript_provenance as tp
+
+        # procedencia del video que recibira el worker (por defecto OUTPUT_DIR/demo.mp4 del fixture)
+        vid = words_video if words_video is not None else jobs_render.OUTPUT_DIR / f"{stem}.mp4"
+        w = tp.attach_video_provenance(dict(words), vid)
+        (trans / f"{stem}_words.json").write_text(json.dumps(w), encoding="utf-8")
     return rt.resolve_selected_srt(stem, storage_root=trans / "studio_srt", manifest_dir=trans)
 
 
@@ -201,10 +208,27 @@ def test_worker_rechaza_video_que_no_coincide(env, monkeypatch):
     assert "demo.mov" not in job["message"] and "demo.mp4" not in job["message"]
 
 
+def test_worker_revalida_procedencia_toctou(env):
+    # Procedencia valida al asociar; entre endpoint y worker las words cambian a otra
+    # procedencia. El worker DEBE abortar (sin ASS/MP4/sidecar) y no caer al transcript.
+    trans, out, cap = env
+    sel = _selection(trans)  # words con procedencia out/demo.mp4 (coincide con el video)
+    import transcript_provenance as tp
+
+    (out / "demo.mov").write_bytes(b"otro-video")
+    bad = tp.attach_video_provenance(dict(_WORDS), out / "demo.mov")  # ahora dicen demo.mov
+    (trans / "demo_words.json").write_text(json.dumps(bad), encoding="utf-8")
+    job = _run_srt(sel)  # worker recibe out/demo.mp4; las words no le pertenecen
+    assert job["status"] == "error"
+    assert "groups" not in cap and "out" not in cap
+    assert list(out.glob("*_srt*.mp4")) == []
+    assert not (trans / "demo_srt_alignment.json").exists()
+
+
 def test_worker_acepta_video_que_coincide(env):
     trans, out, _cap = env
     (out / "demo.mov").write_bytes(b"MOV-input")
-    sel = _selection(trans, video_filename="demo.mov")
+    sel = _selection(trans, video_filename="demo.mov", words_video=out / "demo.mov")
     job = _run_srt(sel, video=out / "demo.mov")
     assert job["status"] == "done"
     assert job["result"]["output"].endswith("_srt.mp4")

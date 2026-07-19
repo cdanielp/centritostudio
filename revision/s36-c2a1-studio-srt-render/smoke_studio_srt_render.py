@@ -56,9 +56,7 @@ def _setup(work: Path) -> rt.SelectedSrtRuntime:
     inp.mkdir(parents=True)
     trans.mkdir(parents=True)
     generar_video(inp / "demo.mp4", dur=DUR_MS / 1000)
-    (trans / "demo_words.json").write_text(
-        (FIXTURES / "demo_words.json").read_text(encoding="utf-8"), encoding="utf-8"
-    )
+    _write_words_prov(trans / "demo_words.json", inp / "demo.mp4")  # timings ligados a demo.mp4
     # brain sintetico: marca keywords (MUNDO@0.5, FUNCIONA@1.5) para que viral_bounce
     # (keywords="brain", D20) tenga enfasis semantico y NO coincida con hormozi limpio.
     (trans / "demo.brain.json").write_text(
@@ -94,8 +92,17 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def smoke_p2_identity() -> None:
-    """P2: SRT asociado a demo.mov + decoy demo.mp4 de OTRA duracion. El render usa el MOV."""
+def _write_words_prov(dst: Path, video: Path) -> None:
+    """Simula run_transcribe: words del fixture + procedencia (`source_video`) del video EXACTO."""
+    import transcript_provenance as tp
+
+    words = json.loads((FIXTURES / "demo_words.json").read_text(encoding="utf-8"))
+    Path(dst).write_text(json.dumps(tp.attach_video_provenance(words, video)), encoding="utf-8")
+
+
+def smoke_p2_provenance() -> None:
+    """P2: video E identidad de timings. SRT asociado a demo.mov + decoy demo.mp4 (otra dur).
+    Words de demo.mp4 -> render RECHAZADO; tras 'transcribir' el MOV -> render usa el MOV."""
     import shutil
 
     work = EVID / "work_p2"
@@ -109,9 +116,6 @@ def smoke_p2_identity() -> None:
     out_p2.mkdir(parents=True, exist_ok=True)
     generar_video(inp / "demo.mov", dur=4.0)  # video ASOCIADO
     generar_video(inp / "demo.mp4", dur=2.0)  # decoy con el mismo stem, OTRA duracion
-    (trans / "demo_words.json").write_text(
-        (FIXTURES / "demo_words.json").read_text(encoding="utf-8"), encoding="utf-8"
-    )
     data = (FIXTURES / "demo.srt").read_bytes()
     doc, diags = studio_srt.parse_and_validate(
         data, source_name="demo.srt", video_duration_ms=DUR_MS
@@ -124,20 +128,32 @@ def smoke_p2_identity() -> None:
     jobs_render.OUTPUT_DIR = out_p2
     sel = rt.resolve_selected_srt("demo", storage_root=trans / "studio_srt", manifest_dir=trans)
     video = rt.resolve_selected_video(sel, input_dir=inp)
-    job = _render(sel, video, "P2-mov")
+    assert sel.video_filename == "demo.mov" and video.name == "demo.mov"
+
+    # C+D: words con procedencia demo.mp4 (video equivocado) -> render RECHAZADO, sin output.
+    _write_words_prov(trans / "demo_words.json", inp / "demo.mp4")
+    jid = jobs_registry.new_job("P2-reject")
+    jobs_render.run_render(jid, video, None, "demo", "hormozi", None, srt_selection=sel)
+    rej = jobs_registry.get_job(jid)
+    assert rej["status"] == "error", "el render con timings ajenos debio rechazarse"
+    assert not list(out_p2.glob("*_srt*.mp4")), "no debe producir output con timings ajenos"
+    assert not (trans / "demo_srt_alignment.json").exists(), "no debe escribir sidecar"
+
+    # E: 'transcribir' el MOV exacto -> words con procedencia demo.mov. G: render OK, 4s.
+    _write_words_prov(trans / "demo_words.json", inp / "demo.mov")
+    saved = json.loads((trans / "demo_words.json").read_text(encoding="utf-8"))
+    assert saved["source_video"]["filename"] == "demo.mov"
+    job = _render(sel, video, "P2-ok")
     out = out_p2 / job["result"]["output"]
     dur_out = _dur(out)
-
-    assert sel.video_filename == "demo.mov", "filename autoritativo perdido"
-    assert video.name == "demo.mov", f"resolve_selected_video eligio {video.name}, no el MOV"
     assert abs(dur_out - 4.0) < 0.35, f"el output NO corresponde al MOV (dur={dur_out}, decoy=2s)"
 
     print("-" * 60)
-    print("P2 — IDENTIDAD VIDEO<->SRT (OK)")
+    print("P2 — IDENTIDAD VIDEO<->SRT + PROCEDENCIA DE TIMINGS (OK)")
     print("asociado          : demo.mov (4s)  |  decoy: demo.mp4 (2s)")
-    print(f"video_filename    : {sel.video_filename}")
-    print(f"resolve_video     : {video.name} (nunca el decoy .mp4)")
-    print(f"output            : {out.name}  dur={dur_out}s (~4s del MOV, NO 2s del decoy)")
+    print(f"video_filename    : {sel.video_filename}  |  resolve_video: {video.name}")
+    print(f"words de demo.mp4 : render RECHAZADO ({rej['message']})")
+    print(f"words de demo.mov : render OK -> {out.name} dur={dur_out}s (~4s del MOV)")
     print("-" * 60)
     shutil.rmtree(work)  # limpia los videos/fixtures generados (no se versionan)
 
@@ -226,7 +242,7 @@ def main() -> None:
     print("frames            : output/revision-s36-c2a1/frame_*.png")
     print("=" * 60)
 
-    smoke_p2_identity()
+    smoke_p2_provenance()
 
 
 if __name__ == "__main__":

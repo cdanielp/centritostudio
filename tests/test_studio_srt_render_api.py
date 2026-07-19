@@ -84,8 +84,12 @@ def _associate(trans, stem="demo", data=_SRT_MIX, dur=6000, video_filename=None)
     )
 
 
-def _write_words(trans, stem="demo"):
-    (trans / f"{stem}_words.json").write_text(json.dumps(_WORDS), encoding="utf-8")
+def _write_words(trans, stem="demo", video="demo.mp4"):
+    # Adjunta procedencia del video EXACTO (ligada a filename+size+mtime), como run_transcribe.
+    import transcript_provenance as tp
+
+    words = tp.attach_video_provenance(dict(_WORDS), studio_app.INPUT_DIR / video)
+    (trans / f"{stem}_words.json").write_text(json.dumps(words), encoding="utf-8")
 
 
 def _thread():
@@ -239,7 +243,7 @@ def test_seleccion_mov_con_decoy_mp4_usa_mov(api):
     client, trans = api
     (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")  # el .mp4 ya lo crea el fixture
     _associate(trans, video_filename="demo.mov")
-    _write_words(trans)
+    _write_words(trans, video="demo.mov")  # timings del video asociado
     r = client.post("/api/videos/demo/render?caption_source=srt")
     assert r.status_code == 200
     video = _thread().args[1]
@@ -281,13 +285,79 @@ def test_srt_no_usa_resolver_generico(api, monkeypatch):
     client, trans = api
     (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")
     _associate(trans, video_filename="demo.mov")
-    _write_words(trans)
+    _write_words(trans, video="demo.mov")
     monkeypatch.setattr(
         studio_app,
         "_resolver_video_input",
         lambda *_a, **_k: pytest.fail("SRT NO usa el resolver generico"),
     )
     assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 200
+
+
+def test_srt_words_de_otro_video_mismo_stem_409(api):
+    # ROJO P2: SRT asociado a demo.mov, pero demo_words.json trae timings de demo.mp4
+    # (mismo stem). Hoy el render arranca con timings cruzados; DEBE rechazar con 409.
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")
+    mp4 = studio_app.INPUT_DIR / "demo.mp4"  # el fixture ya lo creo
+    _associate(trans, video_filename="demo.mov")
+    import transcript_provenance as tp
+
+    words = tp.attach_video_provenance(dict(_WORDS), mp4)  # procedencia = demo.mp4
+    (trans / "demo_words.json").write_text(json.dumps(words), encoding="utf-8")
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 409
+    assert FakeThread.created == []
+
+
+def test_srt_words_legacy_sin_procedencia_409(api):
+    # ROJO P2: words historicas sin source_video no sirven para render SRT -> 409.
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov-real")
+    _associate(trans, video_filename="demo.mov")
+    (trans / "demo_words.json").write_text(json.dumps(_WORDS), encoding="utf-8")  # legacy
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 409
+    assert FakeThread.created == []
+
+
+def test_srt_words_de_mov_para_seleccion_mp4_409(api):
+    # selección demo.mp4 pero words con procedencia demo.mov -> 409 por identidad.
+    client, trans = api
+    (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov")
+    _associate(trans, video_filename="demo.mp4")
+    _write_words(trans, video="demo.mov")
+    assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
+    assert FakeThread.created == []
+
+
+@pytest.mark.parametrize(
+    "mut",
+    [
+        lambda sv: sv.update(size_bytes=sv["size_bytes"] + 1),  # tamaño distinto
+        lambda sv: sv.update(mtime_ns=sv["mtime_ns"] + 1),  # mtime distinto
+        lambda sv: sv.update(version=99),  # version invalida
+        lambda sv: sv.pop("filename"),  # metadata corrupta
+    ],
+)
+def test_srt_procedencia_manipulada_409(api, mut):
+    client, trans = api
+    _associate(trans)  # selección demo.mp4 (video del fixture)
+    import transcript_provenance as tp
+
+    w = tp.attach_video_provenance(dict(_WORDS), studio_app.INPUT_DIR / "demo.mp4")
+    mut(w["source_video"])
+    (trans / "demo_words.json").write_text(json.dumps(w), encoding="utf-8")
+    assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
+    assert FakeThread.created == []
+
+
+def test_srt_words_corruptas_409(api):
+    client, trans = api
+    _associate(trans)
+    (trans / "demo_words.json").write_text("{no es json", encoding="utf-8")
+    assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
+    assert FakeThread.created == []
 
 
 def test_transcript_no_usa_resolve_selected_video(api, monkeypatch):

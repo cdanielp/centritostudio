@@ -48,6 +48,17 @@
 - [x] Ruta transcript intacta (sigue usando `_resolver_video_input`); SRT confina el stem sin él.
 - [x] E2E: MOV(4s) + decoy MP4(2s) → output ≈ 4s (del MOV).
 
+## Procedencia de timings (P2)
+- [x] `transcript_provenance.py` (puro): `build`/`attach`/`validate` con `source_video`
+      (version=1 int estricto, basename seguro, ext .mp4/.mov, filename+size+mtime exactos).
+- [x] `jobs.run_transcribe` graba `source_video` del video EXACTO; no toca words/language/timings.
+- [x] `POST /transcribe?caption_source=srt` transcribe el video exacto asociado (400/409/500).
+- [x] Render SRT valida procedencia en endpoint: legacy/otro archivo/size/mtime/corrupta → 409.
+- [x] Worker revalida procedencia (TOCTOU) antes de FFmpeg; mismatch → job error, sin fallback.
+- [x] `StudioSrtTimingSourceMismatch` (endpoint→409, worker→job error); no dispara reparación.
+- [x] Words legacy: transcript las acepta; render SRT las rechaza (retranscribir). No se migran.
+- [x] E2E: words de demo.mp4 → render rechazado; tras transcribir el MOV → render usa el MOV.
+
 ## Privacidad y seguridad
 - [x] SRT original nunca modificado; bytes/SHA administrados intactos.
 - [x] Sidecar sin rutas absolutas; resumen público sin cues/texto/rutas.

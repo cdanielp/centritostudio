@@ -273,6 +273,13 @@ def _run_render_srt(
         # El worker exige el video EXACTO de la seleccion (nombre+stem+ext). No re-resuelve por
         # stem; un mp4 pasado por error o un cambio .mov<->.mp4 aborta ANTES de tocar FFmpeg.
         rt.verify_selected_video_match(srt_selection, mp4)
+        # TOCTOU: revalida que los timings pertenezcan a ESTE video (por si words cambio entre
+        # el endpoint y el worker). Mismatch/legacy -> error saneado, sin caer al transcript.
+        rt.verify_timing_provenance(
+            mp4,
+            words_path=TRANSCRIPTS / f"{name}_words.json",
+            expected_filename=srt_selection.video_filename,
+        )
 
         update_job(jid, progress=15, message="Leyendo video info...")
         info = core.get_video_info(mp4)

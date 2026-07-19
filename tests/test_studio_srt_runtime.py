@@ -371,6 +371,41 @@ def test_verify_selected_video_match_ok_y_mismatch(tmp_path):
         rt.verify_selected_video_match(_rt("demo.mov"), inp / "demo.mp4")  # extension cruzada
 
 
+def _words_file(tmp_path, video, name="demo_words.json"):
+    import transcript_provenance as tp
+
+    wp = tmp_path / name
+    payload = tp.attach_video_provenance(
+        {"words": [{"w": "a", "s": 0.0, "e": 1.0}], "language": "es"}, video
+    )
+    wp.write_text(json.dumps(payload), encoding="utf-8")
+    return wp
+
+
+def test_verify_timing_provenance_ok_y_mismatch(tmp_path):
+    inp = _input(tmp_path, "demo.mp4", "demo.mov")
+    wp = _words_file(tmp_path, inp / "demo.mp4")  # procedencia demo.mp4
+    rt.verify_timing_provenance(inp / "demo.mp4", words_path=wp, expected_filename="demo.mp4")  # ok
+    with pytest.raises(rt.StudioSrtTimingSourceMismatch):
+        rt.verify_timing_provenance(inp / "demo.mov", words_path=wp, expected_filename="demo.mov")
+
+
+def test_verify_timing_provenance_words_ausentes(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    with pytest.raises(rt.StudioSrtTimingMissing):
+        rt.verify_timing_provenance(
+            inp / "demo.mp4", words_path=tmp_path / "nope.json", expected_filename="demo.mp4"
+        )
+
+
+def test_verify_timing_provenance_legacy_rechazado(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    wp = tmp_path / "demo_words.json"
+    wp.write_text(json.dumps({"words": [], "language": "es"}), encoding="utf-8")  # sin source_video
+    with pytest.raises(rt.StudioSrtTimingSourceMismatch):
+        rt.verify_timing_provenance(inp / "demo.mp4", words_path=wp, expected_filename="demo.mp4")
+
+
 def test_no_muta_words_ni_srt(tmp_path):
     words = _words(("hola", 0.0, 0.5), ("mundo", 0.6, 1.0))
     snapshot = json.dumps(words)

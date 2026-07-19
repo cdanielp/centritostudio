@@ -20,6 +20,7 @@ from pathlib import Path
 import srt_caption
 import studio_srt
 import studio_srt_manifest as manifest_mod
+import transcript_provenance
 from srt_import import SrtError
 from studio_srt import StudioSrtError, StudioSrtStorageError
 
@@ -44,6 +45,12 @@ class StudioSrtIntegrityError(StudioSrtStorageError):
 class StudioSrtSelectedVideoMissing(StudioSrtRuntimeError):
     """La selección existe pero el archivo de video EXACTO (manifest.video.filename) no está
     disponible en input/. NO hereda de StudioSrtStorageError: no dispara reparación del SRT."""
+
+
+class StudioSrtTimingSourceMismatch(StudioSrtRuntimeError):
+    """El artefacto de timings (`{stem}_words.json`) no pertenece al video seleccionado
+    (procedencia ausente=legacy, filename/size/mtime distintos). Requiere retranscribir el
+    video asociado. NO hereda de StudioSrtStorageError: no dispara reparación ni 500."""
 
 
 # ─── Tipos frozen (internos: nunca se serializan a HTTP) ───────────────────────
@@ -203,6 +210,30 @@ def verify_selected_video_match(runtime: SelectedSrtRuntime, video_path: Path) -
         raise StudioSrtSelectedVideoMissing("el video asociado ya no esta disponible")
 
 
+def verify_timing_provenance(video_path: Path, *, words_path: Path, expected_filename: str) -> None:
+    """Exige que `{stem}_words.json` declare provenir del video EXACTO seleccionado.
+
+    Liga los timings al video (no solo al stem): filename exacto + size + mtime del video.
+    Words ausentes -> StudioSrtTimingMissing (400). Words ilegibles, legacy (sin procedencia)
+    o de otro archivo/otra versión -> StudioSrtTimingSourceMismatch (409). Nunca expone rutas.
+    """
+    words_path = Path(words_path)
+    if not words_path.is_file():
+        raise StudioSrtTimingMissing("no hay transcript de palabras para este video")
+    try:
+        raw = json.loads(words_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise StudioSrtTimingSourceMismatch("el transcript de palabras es ilegible") from None
+    try:
+        transcript_provenance.validate_video_provenance(
+            raw, expected_video=Path(video_path), expected_filename=expected_filename
+        )
+    except transcript_provenance.TimingProvenanceError:
+        raise StudioSrtTimingSourceMismatch(
+            "los timings no corresponden al video asociado al SRT"
+        ) from None
+
+
 # ─── Preparacion de groups (delega en S36-B; no duplica parser/alineador) ──────
 def _cargar_words(words_path: Path) -> list:
     """Lista `words` de `{stem}_words.json`. Solo timings. Lanza StudioSrtTimingMissing si falta."""
@@ -280,9 +311,11 @@ __all__ = [
     "StudioSrtTimingMissing",
     "StudioSrtIntegrityError",
     "StudioSrtSelectedVideoMissing",
+    "StudioSrtTimingSourceMismatch",
     "resolve_selected_srt",
     "resolve_selected_video",
     "verify_selected_video_match",
+    "verify_timing_provenance",
     "verify_runtime_integrity",
     "prepare_selected_srt_groups",
 ]

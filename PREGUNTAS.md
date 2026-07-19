@@ -1063,3 +1063,12 @@ sintética (FFmpeg real, offline) en `revision/s36-c2a1-studio-srt-render/`.
 `SelectedSrtRuntime.video_filename` + `resolve_selected_video` (confina + archivo regular; ausente →
 409, filename corrupto → 500) + `verify_selected_video_match` en el worker (antes de FFmpeg; mismatch
 → job error sin fallback). Transcript intacto. Comentario P2 de la revisión resuelto.
+
+**Corrección P2 procedencia de timings (mismo PR #18, D38 addendum):** `{stem}_words.json` era
+stem-only; ahora declara `source_video` (version+filename+size_bytes+mtime_ns del video EXACTO) vía
+el módulo puro `transcript_provenance.py`. `run_transcribe` la graba; `POST
+/transcribe?caption_source=srt` transcribe el video exacto asociado (por `manifest.video.filename`).
+El render SRT valida la procedencia en el endpoint (words legacy/de otro archivo/size/mtime distintos/
+corruptas → 409 `StudioSrtTimingSourceMismatch`) y el worker la revalida (TOCTOU) antes de FFmpeg;
+mismatch → job error sin fallback. La ruta transcript histórica sigue aceptando words legacy; el
+render SRT no. Ambos comentarios P2 de la revisión resueltos.

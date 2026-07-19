@@ -1407,3 +1407,36 @@ sidecar, sin ruta, sin fallback. **La ruta transcript histórica no cambia** (si
 disponible."); manifiesto/storage corrupto → 500. Ningún mensaje refleja name/filename/extensión/ruta.
 Comentario P2 de PR #18 resuelto. +20 tests (runtime/endpoint/worker) + E2E: MOV asociado (4s) +
 decoy MP4 (2s) → el render usa el MOV (4s), nunca el decoy. Sigue requiriendo veredicto visual de K.
+
+### D38 addendum — Procedencia de timings: `{stem}_words.json` ligado al video EXACTO (P2, PR #18)
+
+Cierra un segundo P2 de identidad: el video exacto ya se resolvía por `manifest.video.filename`,
+pero `{stem}_words.json` era **stem-only**. Con `demo.mov` seleccionado y un `demo.mp4` del mismo
+stem transcrito, el render alineaba el texto oficial del MOV contra timings del MP4 (subtítulos
+mal-timed silenciosos). El `cue_fallback` NO es garantía suficiente (mismo contenido con timings
+desplazados sí alinea).
+
+**Invariante:** el video, el SRT y las words comparten la MISMA identidad. `{stem}_words.json`
+declara `source_video` = `{version:1, filename exacto, size_bytes, mtime_ns}` del video del que
+salieron los timings. Módulo puro nuevo `transcript_provenance.py` (`build_video_provenance` /
+`attach_video_provenance` / `validate_video_provenance`): int estricto (bool no cuenta), basename
+seguro, extensión .mp4/.mov, filename == esperado, size+mtime == `stat()` real; nunca refleja
+valores manipulados ni rutas.
+
+**Producción:** `jobs.run_transcribe` adjunta `source_video` del video EXACTO recibido (sin tocar
+words/language/timings/groups). `POST /transcribe?caption_source=srt` transcribe el video EXACTO
+asociado (por `manifest.video.filename`); sin selección→400, video ausente→409, storage corrupto→500;
+la ruta transcript histórica no cambia. El render SRT valida la procedencia en el ENDPOINT
+(`verify_timing_provenance`): words legacy (sin `source_video`), de otro archivo/versión, con
+size/mtime distintos o corruptas → **409** ("Los timings no corresponden al video asociado al SRT.
+Transcribe nuevamente el video asociado.") sin thread/job/ASS/MP4/sidecar/fallback. El WORKER
+revalida la procedencia (TOCTOU) antes de FFmpeg; mismatch → job error saneado, sin fallback.
+Error tipado `StudioSrtTimingSourceMismatch` (endpoint→409, worker→job error), NO hereda de
+StudioSrtStorageError (no dispara reparación ni retranscripción automática dentro del render).
+
+**Legacy:** los `{stem}_words.json` históricos sin `source_video` los sigue aceptando la ruta
+transcript, pero el render SRT los rechaza con 409 (retranscribir el video asociado). No se migran
+ni se adivina la procedencia. No rompe una feature mergeada porque S36-C2A1 sigue en PR. +50 tests
+(procedencia + transcribe API + run_transcribe + render endpoint + worker TOCTOU) + E2E: words de
+`demo.mp4` → render rechazado; tras transcribir el MOV → render usa el MOV (4s). Comentario P2 de
+Codex resuelto (la respuesta anterior de "follow-up" queda superada).

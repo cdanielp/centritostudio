@@ -29,6 +29,11 @@ def run_transcribe(jid: str, mp4: Path, lang: str, model_arg: str, name: str) ->
         update_job(jid, progress=15, message=f"Transcribiendo con {label}...")
 
         result = core.transcribe_video(mp4, lang, device, compute, model_path)
+        # Liga los timings al video EXACTO recibido (procedencia): filename + size + mtime.
+        # No modifica words/language/timings; solo agrega metadata segura `source_video`.
+        import transcript_provenance  # noqa: PLC0415
+
+        result = transcript_provenance.attach_video_provenance(result, mp4)
         update_job(jid, progress=60, message="Agrupando palabras...")
 
         groups = core.group_words(result["words"])

@@ -65,3 +65,11 @@ la cobertura real se registrará cuando exista una asociación explícita. El PR
 
 ## Estado
 PR ABIERTO Y NO MERGEADO. Pendiente **VEREDICTO VISUAL DE K**.
+
+## Corrección P2 — procedencia de timings
+El video exacto ya se resolvía por `manifest.video.filename`, pero `{stem}_words.json` era
+stem-only. Ahora los timings declaran `source_video` (filename+size+mtime del video EXACTO):
+`run_transcribe` la graba; `POST /transcribe?caption_source=srt` transcribe el video exacto
+asociado; el render SRT rechaza con **409** words legacy o de otro archivo/versión (endpoint +
+worker TOCTOU), sin fallback. El smoke lo cubre: words de `demo.mp4` → render rechazado; tras
+transcribir el MOV → render usa el MOV (4s).
