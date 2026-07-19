@@ -242,6 +242,38 @@ def test_manifest_version_1_y_summary(tmp_path):
     assert manifest["video"]["duration_ms"] == _DUR
 
 
+def test_build_manifest_rango_real_no_monotonico():
+    """SRT no monotono valido: el summary usa min(start)/max(end), no el primer/ultimo cue.
+
+    Con cue1 1000-2000 y cue2 0-1000 el rango real es 0-2000. Tomar cues[0].start y
+    cues[-1].end daria 1000-1000 (degenerado), que luego el saneamiento rechaza.
+    """
+    import studio_srt_manifest
+
+    no_mono = _srt((1, 1000, 2000, "uno"), (2, 0, 1000, "dos"))
+    doc, diags = studio_srt.parse_and_validate(
+        no_mono, source_name="subs.srt", video_duration_ms=_DUR
+    )
+    manifest = studio_srt_manifest.build_manifest(
+        video_stem="video_demo",
+        video_filename="video_demo.mp4",
+        video_duration_ms=_DUR,
+        document=doc,
+        diagnostics=diags,
+        managed_name=f"{hashlib.sha256(no_mono).hexdigest()}.srt",
+    )
+    assert manifest["summary"]["start_ms"] == 0
+    assert manifest["summary"]["end_ms"] == 2000
+    assert manifest["summary"]["n_cues"] == 2
+    assert manifest["summary"]["n_errors"] == 0
+    assert manifest["summary"]["n_warnings"] >= 1
+    assert any(d["code"] == "time_not_monotonic" for d in manifest["diagnostics"])
+    # El fix NO reordena document.cues: el orden fuente (no monotono) se conserva tal cual;
+    # el rango real sale de min/max, no de mover los cues.
+    assert (doc.cues[0].start_ms, doc.cues[0].end_ms) == (1000, 2000)
+    assert (doc.cues[1].start_ms, doc.cues[1].end_ms) == (0, 1000)
+
+
 def test_manifest_no_expone_texto_ni_rutas(tmp_path):
     manifest, *_ = _store(tmp_path)
     blob = str(manifest)

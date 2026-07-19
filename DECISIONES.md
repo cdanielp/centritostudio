@@ -1286,7 +1286,7 @@ Antes del merge se endureció el almacenamiento tras revisión técnica (5 bloqu
    HTTP 200; el contenido seleccionado no cambió).
 4. **Sin colisiones de hash.** El archivo administrado usa el **SHA256 completo** como basename
    (`{sha}.srt`): `hash(archivo) == manifest.source_sha256` SIEMPRE; se elimina la ambigüedad
-   del prefijo corto. (Aún no mergeado ⇒ sin migración de históricos.)
+   del prefijo corto. (Al mergearse el PR #15 no había históricos previos ⇒ sin migración.)
 5. **Temporales únicos por operación.** `tempfile.mkstemp` en el mismo directorio (nunca
    `{pid}` compartido) + fsync + `os.replace` con reintento acotado ante `PermissionError`
    transitorio de Windows (last-writer-wins con archivos completos; nunca parciales ni `.tmp`).
@@ -1309,3 +1309,27 @@ introspección); números semánticos (`n_cues≥1`, `start_ms≥0`, `end_ms≥s
 en un manifiesto `ready`, `n_warnings≥0`, `duration_ms≥0`, `cue_position≥0`, `cue_index≥1`);
 y `status` debe ser exactamente `ready`. Cualquier violación → 500 genérico sin reflejar el valor
 manipulado. +30 tests (dominio + API contra reflexión de valores). Suite 1385, 1 warning.
+
+### D37 addendum — Cierre del contrato del manifiesto SRT (S36-C1 CERRADA, sesión 40)
+
+**El PR #15 quedó mergeado en main (`937c81e`); S36-C1 está CERRADA.** El backend (dominio +
+router + endurecimiento + saneamiento de valores) dejó de ser "solo en PR". Dos hotfixes
+posteriores cerraron invariantes del manifiesto **sin abrir S36-C2** ni tocar la superficie
+visual/render/Auto:
+
+- **S36-C1.1 (PR #16, mergeado `46d24ec`) — invariantes de `sanitize_manifest`.** El saneamiento
+  por whitelist garantiza que cualquier manifiesto leído de disco que viole el contrato v1
+  (rango degenerado, tipos, códigos, status) produce `ValueError` → 500 genérico sin filtrar el
+  valor manipulado. CERRADA.
+
+- **S36-C1.2 (esta tarea) — rango temporal REAL del summary.** `build_manifest` calculaba el
+  rango con `cues[0].start_ms` / `cues[-1].end_ms` (primer y último cue en orden fuente). Con un
+  SRT **válido pero no monótono** —el warning `time_not_monotonic` NO aborta la asociación— eso
+  daba un rango degenerado: p.ej. cue1 1000–2000, cue2 0–1000 ⇒ `start_ms=1000, end_ms=1000`.
+  El POST devolvía 201 y persistía ese manifiesto, pero el GET posterior lo saneaba con
+  `_clean_summary` (que exige `end_ms > start_ms`) → `ValueError` → **500**. **Fix:** el rango
+  usa `min(start)/max(end)` sobre TODOS los cues (garantiza `start ≤ end` y refleja el tramo real
+  del SRT); el `else 0` para 0 cues es defensivo (el parser ya rechaza SRT sin cues, pero
+  `build_manifest` es puro y `min([])` reventaría). **No se relajó `sanitize_manifest`**: sigue
+  rechazando rangos degenerados; el fix corrige el productor, no el validador. +2 tests (unit de
+  `build_manifest` no monótono + E2E POST→GET→re-upload con bytes/SHA idénticos). CERRADA.

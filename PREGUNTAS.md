@@ -981,7 +981,7 @@ históricos y ya no se ignoran; el preset solo anima cues alineados.
 - **Integración con Auto v2** (hoy SRT no se conecta al modo automático).
 - **Edición de SRT desde la UI.**
 
-### 51. S36-C1 — contrato backend de asociación video↔SRT en Studio — **RESUELTA (D37, sesión 39, PR abierto no mergeado)**
+### 51. S36-C1 — contrato backend de asociación video↔SRT en Studio — **CERRADA (D37, sesión 39, PR #15 mergeado en main `937c81e`; hotfixes C1.1/C1.2 mergeados)**
 
 Resuelto en D37 (solo backend/API):
 
@@ -1008,3 +1008,16 @@ completo (sin colisiones de prefijo); temporales únicos por operación; manifie
 reconstruido por whitelist; errores públicos que no reflejan el `name` del usuario. Deuda menor
 para C2: si el cache `info.json` no trae `duration` válida y no hay ffprobe disponible, el POST
 responde 500 (aceptable; C2 podrá cachear la duración al asociar).
+
+**Cierre backend (S36-C1 CERRADA):** el PR #15 ya está **mergeado en main** (`937c81e`); el
+endurecimiento y el saneamiento de valores dejaron de ser "solo en PR". Dos hotfixes posteriores,
+también **mergeados**, cerraron el contrato del manifiesto sin abrir S36-C2:
+
+- **S36-C1.1 (PR #16, `46d24ec`) — invariantes del saneamiento.** Endureció `sanitize_manifest`
+  para que un manifiesto en disco manipulado (rango degenerado, códigos desconocidos, etc.) nunca
+  filtre contenido: siempre `ValueError` → 500 genérico.
+- **S36-C1.2 (esta tarea) — rango temporal REAL.** `build_manifest` calcula el rango del summary
+  con `min(start)/max(end)` sobre TODOS los cues, no con el primer/último cue. Un SRT válido pero
+  no monótono (warning `time_not_monotonic`, que no aborta) daba antes un rango degenerado
+  `start==end` que el propio saneamiento del GET rechazaba (500 tras un POST 201). Ahora el POST
+  persiste el rango real y el GET responde 200. Sin relajar `sanitize_manifest`.
