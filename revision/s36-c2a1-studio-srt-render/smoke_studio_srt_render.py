@@ -21,12 +21,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import core  # noqa: E402
+from gen_fixture import generar_video  # noqa: E402
+
 import jobs_registry  # noqa: E402
 import jobs_render  # noqa: E402
 import studio_srt  # noqa: E402
 import studio_srt_runtime as rt  # noqa: E402
-from gen_fixture import generar_video  # noqa: E402
 
 HERE = Path(__file__).parent
 FIXTURES = HERE / "fixtures"
@@ -59,8 +59,15 @@ def _setup(work: Path) -> rt.SelectedSrtRuntime:
     (trans / "demo_words.json").write_text(
         (FIXTURES / "demo_words.json").read_text(encoding="utf-8"), encoding="utf-8"
     )
+    # brain sintetico: marca keywords (MUNDO@0.5, FUNCIONA@1.5) para que viral_bounce
+    # (keywords="brain", D20) tenga enfasis semantico y NO coincida con hormozi limpio.
+    (trans / "demo.brain.json").write_text(
+        (FIXTURES / "demo.brain.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     data = (FIXTURES / "demo.srt").read_bytes()
-    doc, diags = studio_srt.parse_and_validate(data, source_name="demo.srt", video_duration_ms=DUR_MS)
+    doc, diags = studio_srt.parse_and_validate(
+        data, source_name="demo.srt", video_duration_ms=DUR_MS
+    )
     studio_srt.store_and_associate(
         doc, diags, video_stem="demo", video_filename="demo.mp4", video_duration_ms=DUR_MS,
         data=data, storage_root=trans / "studio_srt", manifest_dir=trans,
@@ -83,6 +90,10 @@ def _dur(path: Path) -> float:
     return float(_ffprobe(path)["format"]["duration"])
 
 
+def _sha(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def smoke_p2_identity() -> None:
     """P2: SRT asociado a demo.mov + decoy demo.mp4 de OTRA duracion. El render usa el MOV."""
     import shutil
@@ -102,7 +113,9 @@ def smoke_p2_identity() -> None:
         (FIXTURES / "demo_words.json").read_text(encoding="utf-8"), encoding="utf-8"
     )
     data = (FIXTURES / "demo.srt").read_bytes()
-    doc, diags = studio_srt.parse_and_validate(data, source_name="demo.srt", video_duration_ms=DUR_MS)
+    doc, diags = studio_srt.parse_and_validate(
+        data, source_name="demo.srt", video_duration_ms=DUR_MS
+    )
     studio_srt.store_and_associate(
         doc, diags, video_stem="demo", video_filename="demo.mov", video_duration_ms=DUR_MS,
         data=data, storage_root=trans / "studio_srt", manifest_dir=trans,
@@ -121,7 +134,7 @@ def smoke_p2_identity() -> None:
 
     print("-" * 60)
     print("P2 — IDENTIDAD VIDEO<->SRT (OK)")
-    print(f"asociado          : demo.mov (4s)  |  decoy: demo.mp4 (2s)")
+    print("asociado          : demo.mov (4s)  |  decoy: demo.mp4 (2s)")
     print(f"video_filename    : {sel.video_filename}")
     print(f"resolve_video     : {video.name} (nunca el decoy .mp4)")
     print(f"output            : {out.name}  dur={dur_out}s (~4s del MOV, NO 2s del decoy)")
@@ -145,21 +158,36 @@ def main() -> None:
     out_a = EVID / job_a["result"]["output"]
     sum_a = job_a["result"]["srt"]
 
-    # B) preset CVE + emojis (offline)
+    # B) preset CVE viral_bounce + emojis (offline). Con brain sintetico marca keywords -> el
+    # ASS/MP4 difiere del hormozi limpio (enfasis por keyword: pop mayor + color de keyword).
     job_b = _render(sel, mp4, "B-preset-emojis", preset="viral_bounce", use_emojis=True)
     out_b = EVID / job_b["result"]["output"]
+    ass_a = EVID / "demo_hormozi_srt.ass"
+    ass_b = EVID / "demo_viral_bounce_srt.ass"
 
     # Verificaciones
     probe = _ffprobe(out_a)
     dur = float(probe["format"]["duration"])
     tipos = {s["codec_type"] for s in probe["streams"]}
-    sidecar = json.loads((work / "transcripts" / "demo_srt_alignment.json").read_text(encoding="utf-8"))
+    sidecar_path = work / "transcripts" / "demo_srt_alignment.json"
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sha_despues = hashlib.sha256(sel.managed_path.read_bytes()).hexdigest()
+    sha_a, sha_b = _sha(out_a), _sha(out_b)
 
-    # Frames: inicio (word_aligned), sustitucion (~2.6s), fallback (~3.5s), final
-    for t, nombre in [(0.5, "word_aligned"), (1.5, "word_aligned2"), (2.6, "substitution"), (3.5, "fallback")]:
+    # Frames A (hormozi limpio) y B (viral_bounce): word_aligned, keyword/bounce, sustitucion,
+    # fallback, inicio, mitad, final.
+    for t, nombre in [(0.5, "word_aligned"), (2.6, "substitution"), (3.5, "fallback")]:
         _frame(out_a, t, EVID / f"frame_A_{nombre}.png")
-    _frame(out_b, 0.5, EVID / "frame_B_preset.png")
+    for t, nombre in [
+        (0.2, "inicio"),
+        (0.7, "bounce_MUNDO"),  # keyword: pop mayor + color de keyword
+        (0.5, "word_aligned"),
+        (1.7, "bounce_FUNCIONA"),
+        (2.6, "substitution"),
+        (3.5, "fallback"),
+        (3.9, "final"),
+    ]:
+        _frame(out_b, t, EVID / f"frame_B_{nombre}.png")
 
     assert "video" in tipos and "audio" in tipos, "falta audio o video"
     assert abs(dur - DUR_MS / 1000) < 0.35, f"duracion fuera de tolerancia: {dur}"
@@ -167,6 +195,14 @@ def main() -> None:
     assert sum_a["word_aligned"] + sum_a["cue_fallback"] == sum_a["n_cues"], "summary inconsistente"
     assert sum_a["source_sha256"] == sha_fuente == sha_despues, "SHA de la fuente cambio"
     assert "cues" not in sum_a and "text" not in json.dumps(sum_a), "el summary expone contenido"
+    # GUARD anti-duplicacion (FASE 3): los dos renders NO pueden ser el mismo archivo/SHA.
+    assert out_a.name == "demo_hormozi_srt.mp4", f"basename A inesperado: {out_a.name}"
+    assert out_b.name == "demo_viral_bounce_srt_emojis.mp4", f"basename B inesperado: {out_b.name}"
+    assert out_a.name != out_b.name, "los basenames deben diferir"
+    assert sha_a != sha_b, "los dos renders son identicos (viral_bounce no difiere de hormozi)"
+    assert _sha(ass_a) != _sha(ass_b), "los ASS son identicos (el preset no anima distinto)"
+    _pmsg = job_b["result"].get("preset_msg")
+    assert _pmsg is None, f"viral_bounce cayo a clasico: {_pmsg}"
 
     print("=" * 60)
     print("SMOKE S36-C2A1 — RENDER SRT DE STUDIO (OK)")
@@ -180,12 +216,14 @@ def main() -> None:
     print(f"rejected_subs      : {sum_a['rejected_substitutions']}")
     print(f"coverage          : {sum_a['coverage']}")
     print(f"n_warnings        : {sum_a['n_warnings']}")
-    print(f"source_sha256     : {sum_a['source_sha256'][:12]}... (fuente intacta: {sha_fuente == sha_despues})")
-    print(f"sidecar           : {sum_a['alignment_sidecar']} (n_cues={sidecar['summary']['n_cues']})")
-    print(f"render A (limpio) : {out_a.name}")
-    print(f"render B (preset) : {out_b.name}")
+    print(f"source_sha256     : {sum_a['source_sha256'][:12]}... (intacta: {sha_fuente == sha_despues})")  # noqa: E501
+    print(f"sidecar           : {sum_a['alignment_sidecar']} (n_cues={sidecar['summary']['n_cues']})")  # noqa: E501
+    print(f"render A (limpio) : {out_a.name}  sha={sha_a[:16]}")
+    print(f"render B (preset) : {out_b.name}  sha={sha_b[:16]}")
+    print(f"renders distintos : {sha_a != sha_b}  (ASS distintos: {_sha(ass_a) != _sha(ass_b)})")
+    print(f"preset_msg B      : {_pmsg}  (None = sin fallback a clasico)")
     print(f"job result keys A : {sorted(job_a['result'])}  (sin rutas ni texto)")
-    print(f"frames            : output/revision-s36-c2a1/frame_*.png")
+    print("frames            : output/revision-s36-c2a1/frame_*.png")
     print("=" * 60)
 
     smoke_p2_identity()

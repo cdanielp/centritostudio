@@ -1,0 +1,7 @@
+{
+  "provider": "sintetico",
+  "groups": [
+    {"kw_ts": 0.5},
+    {"kw_ts": 1.5}
+  ]
+}

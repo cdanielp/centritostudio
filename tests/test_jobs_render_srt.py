@@ -210,6 +210,21 @@ def test_worker_acepta_video_que_coincide(env):
     assert job["result"]["output"].endswith("_srt.mp4")
 
 
+def test_preset_viral_bounce_cambia_los_groups(env):
+    # Guard anti-evidencia-duplicada: viral_bounce con brain (keyword) DEBE producir groups
+    # distintos al render clasico; si no, ambos renders saldrian identicos (byte a byte).
+    trans, _out, cap = env
+    (trans / "demo.brain.json").write_text(
+        json.dumps({"groups": [{"kw_ts": 0.6}]}), encoding="utf-8"
+    )  # marca "mundo" (start 0.6) como keyword
+    sel = _selection(trans)
+    _run_srt(sel)  # A: hormozi sin preset
+    a = json.dumps(cap["groups"], sort_keys=True)
+    _run_srt(sel, preset="viral_bounce")  # B: viral_bounce con keyword
+    b = json.dumps(cap["groups"], sort_keys=True)
+    assert a != b  # el preset cambia los groups -> renders distintos
+
+
 def test_srt_no_modifica_fuente(env):
     trans, _out, _cap = env
     sel = _selection(trans)
