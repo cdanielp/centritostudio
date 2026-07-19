@@ -104,8 +104,12 @@ def build_manifest(
 ) -> dict:
     """Manifiesto v1 saneado: sin texto de cues, sin rutas, sin `message` de diagnosticos."""
     cues = document.cues
-    start = cues[0].start_ms if cues else 0
-    end = cues[-1].end_ms if cues else 0
+    # Rango REAL del SRT: los cues pueden venir fuera de orden (warning time_not_monotonic no
+    # aborta), asi que el primer/ultimo cue no marcan el rango. min/max sobre TODOS los cues
+    # garantiza start <= end. El `else 0` es defensivo: parse_and_validate ya rechaza 0 cues,
+    # pero build_manifest es puro y min([]) reventaria.
+    start = min(c.start_ms for c in cues) if cues else 0
+    end = max(c.end_ms for c in cues) if cues else 0
     return {
         "version": MANIFEST_VERSION,
         "video": {

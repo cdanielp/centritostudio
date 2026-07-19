@@ -184,6 +184,39 @@ def test_warning_no_bloquea(api):
     assert r.json()["summary"]["n_warnings"] >= 1
 
 
+def test_srt_no_monotonico_rango_real_y_get_sin_500(api):
+    """SRT no monotono valido (S36-C1.2): POST 201 con rango real, GET no revienta con 500.
+
+    cue1 1000-2000, cue2 0-1000: warning time_not_monotonic (no aborta). El summary debe
+    reportar el rango REAL 0-2000; con el bug (primer/ultimo cue) daba 1000-1000, que el
+    saneamiento del GET rechazaba -> 500. Ademas el re-upload es idempotente (200) y el
+    archivo administrado conserva los bytes y el SHA originales.
+    """
+    client, tmp_path = api
+    no_mono = _srt((1, 1000, 2000, "uno"), (2, 0, 1000, "dos"))
+    sha = hashlib.sha256(no_mono).hexdigest()
+
+    r = _upload(client, "demo", no_mono)
+    assert r.status_code == 201
+    body = r.json()
+    assert body["summary"]["start_ms"] == 0
+    assert body["summary"]["end_ms"] == 2000
+    assert any(d["code"] == "time_not_monotonic" for d in body["diagnostics"])
+
+    g = client.get("/api/videos/demo/srt")
+    assert g.status_code == 200  # antes: 500 por rango degenerado
+    assert g.json()["summary"]["start_ms"] == 0
+    assert g.json()["summary"]["end_ms"] == 2000
+
+    r2 = _upload(client, "demo", no_mono)
+    assert r2.status_code == 200  # idempotente: mismo SHA, storage integro
+
+    managed = tmp_path / "transcripts" / "studio_srt" / "demo" / f"{sha}.srt"
+    stored = managed.read_bytes()
+    assert stored == no_mono
+    assert hashlib.sha256(stored).hexdigest() == sha
+
+
 def test_error_bloquea(api):
     client, _ = api
     data = _srt((1, 0, 1000, "ok"), (2, 2000, 2000, "end<=start"))
