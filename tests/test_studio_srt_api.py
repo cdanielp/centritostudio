@@ -440,6 +440,32 @@ def test_get_no_refleja_valores_manipulados(api, needle, mutator):
         assert str(tmp_path) not in r.text and "Traceback" not in r.text
 
 
+# ─── S36-C1.1: invariantes del manifiesto no se reflejan (HTTP 500 generico) ───
+# Cada manipulacion viola un invariante cerrado -> 500 exacto y valor manipulado ausente.
+_MANIPULACIONES_C11 = [
+    ("otra_basename.mp4", lambda d: d["video"].update(filename="otra_basename.mp4")),
+    ("privado", lambda d: d["video"].update(filename="C:\\privado\\demo.mp4")),
+    ("demo.txt", lambda d: d["video"].update(filename="demo.txt")),
+    ("managed_intruso.srt", lambda d: d["selection"].update(managed_file="managed_intruso.srt")),
+    (None, lambda d: d["video"].update(duration_ms=0)),
+    (None, lambda d: d["summary"].update(end_ms=d["summary"]["start_ms"])),
+    ("ctrlC1name.srt", lambda d: d["selection"].update(source_name="ctrl\x85C1name.srt")),
+]
+
+
+@pytest.mark.parametrize(("needle", "mutator"), _MANIPULACIONES_C11)
+def test_get_invariante_manifiesto_500_sin_reflejar(api, needle, mutator):
+    client, tmp_path = api
+    _upload(client, "demo", _OK)
+    _tamper_manifest(tmp_path, mutator)
+    r = client.get("/api/videos/demo/srt")
+    assert r.status_code == 500  # invariante violado -> error generico, no 200
+    assert str(tmp_path) not in r.text and "Traceback" not in r.text
+    if needle is not None:
+        assert needle not in r.text  # el valor manipulado nunca se refleja
+    assert "\x85" not in r.text  # ningun caracter de control C1 se filtra
+
+
 def test_get_campo_extra_benigno_no_se_refleja(api):
     client, tmp_path = api
     _upload(client, "demo", _OK)
