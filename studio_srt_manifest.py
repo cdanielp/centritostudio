@@ -16,20 +16,36 @@ from __future__ import annotations
 
 from pathlib import Path, PureWindowsPath
 
+import srt_types
 from srt_types import SrtDiagnostic, SrtDocument
 
 MANIFEST_VERSION = 1
 _ALLOWED_SEVERITY = frozenset({"warning", "error"})
 _HEX = frozenset("0123456789abcdef")
 
+# Encodings que el parser (S36-A) puede emitir en `document.encoding`. Allowlist estricta.
+_ALLOWED_ENCODINGS = frozenset({"utf-8", "windows-1252"})
+
+# Codigos de diagnostico validos: todos los ERR_*/WARN_* declarados por S36-A (en sync).
+_KNOWN_CODES = frozenset(
+    value
+    for name in dir(srt_types)
+    if name.startswith(("ERR_", "WARN_")) and isinstance((value := getattr(srt_types, name)), str)
+)
+
 
 # ─── Helpers de seguridad ──────────────────────────────────────────────────────
+def _has_control(text: str) -> bool:
+    """True si text contiene algun caracter de control (C0 0x00-0x1F o DEL 0x7F)."""
+    return any(ord(c) < 0x20 or ord(c) == 0x7F for c in text)
+
+
 def is_safe_basename(name: object) -> bool:
-    """True solo si name es un basename puro (sin ruta, sin NUL, no vacio)."""
+    """True solo si name es un basename puro: str no vacio, sin ruta y sin caracteres de control."""
     return (
         isinstance(name, str)
         and name != ""
-        and "\x00" not in name
+        and not _has_control(name)
         and Path(name).name == name
         and PureWindowsPath(name).name == name
     )
@@ -45,6 +61,21 @@ def _as_int(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("se esperaba un entero")
     return value
+
+
+def _int_at_least(value: object, minimum: int) -> int:
+    """Entero estricto con cota inferior semantica. Lanza ValueError si viola."""
+    result = _as_int(value)
+    if result < minimum:
+        raise ValueError("entero fuera de rango")
+    return result
+
+
+def _opt_int_at_least(value: object, minimum: int) -> int | None:
+    """None o entero estricto >= minimum."""
+    if value is None:
+        return None
+    return _int_at_least(value, minimum)
 
 
 def _basename(name: str | None) -> str | None:
@@ -112,42 +143,51 @@ def empty_selection(video_stem: str) -> dict:
 
 
 # ─── Saneamiento por whitelist (reconstruccion + validacion del contrato v1) ───
+# INVARIANTE: las cotas semanticas de abajo (cue_index>=1, n_errors==0, start/end validos)
+# se apoyan en que studio_srt.parse_and_validate ABORTA ante cualquier diagnostico `error`
+# (indice<=0, start<0, end<=start, sin cues). Si esa politica se relajara, revisar estas cotas.
 def _clean_diagnostic(d: object) -> dict:
-    """Reconstruye un diagnostico con solo las 4 claves aprobadas. Lanza ValueError si viola."""
+    """Reconstruye un diagnostico con solo las 4 claves aprobadas. Lanza ValueError si viola.
+
+    `code` debe ser uno de los codigos conocidos de S36-A; `severity` de la allowlist;
+    `cue_position` (0-based) >= 0 o None; `cue_index` (indice SRT positivo) >= 1 o None.
+    """
     if not isinstance(d, dict):
         raise ValueError("diagnostico no es objeto")
     code = d.get("code")
     severity = d.get("severity")
-    cue_position = d.get("cue_position")
-    cue_index = d.get("cue_index")
-    if not isinstance(code, str) or severity not in _ALLOWED_SEVERITY:
+    if code not in _KNOWN_CODES or severity not in _ALLOWED_SEVERITY:
         raise ValueError("diagnostico invalido")
-    for pos in (cue_position, cue_index):
-        if pos is not None and (isinstance(pos, bool) or not isinstance(pos, int)):
-            raise ValueError("posicion de cue invalida")
     return {
         "code": code,
         "severity": severity,
-        "cue_position": cue_position,
-        "cue_index": cue_index,
+        "cue_position": _opt_int_at_least(d.get("cue_position"), 0),
+        "cue_index": _opt_int_at_least(d.get("cue_index"), 1),
     }
 
 
 def _clean_video(video: object, video_stem: str) -> dict:
-    """Reconstruye el bloque video validado. Lanza ValueError si viola el contrato."""
+    """Reconstruye el bloque video validado. Lanza ValueError si viola el contrato.
+
+    `filename` debe ser un basename seguro (sin ruta ni control); `duration_ms` None o int >= 0.
+    """
     if not isinstance(video, dict) or video.get("name") != video_stem:
         raise ValueError("video no coincide")
     filename = video.get("filename")
-    if not isinstance(filename, str) or not filename:
+    if not is_safe_basename(filename):
         raise ValueError("filename invalido")
-    duration_ms = video.get("duration_ms")
-    if duration_ms is not None:
-        duration_ms = _as_int(duration_ms)
-    return {"name": video_stem, "filename": filename, "duration_ms": duration_ms}
+    return {
+        "name": video_stem,
+        "filename": filename,
+        "duration_ms": _opt_int_at_least(video.get("duration_ms"), 0),
+    }
 
 
 def _clean_selection(selection: object) -> dict:
-    """Reconstruye el bloque selection validado. Lanza ValueError si viola el contrato."""
+    """Reconstruye el bloque selection validado. Lanza ValueError si viola el contrato.
+
+    `encoding` debe pertenecer a la allowlist de encodings que el parser puede emitir.
+    """
     if not isinstance(selection, dict) or selection.get("selected") is not True:
         raise ValueError("seleccion invalida")
     source_name = selection.get("source_name")
@@ -160,8 +200,8 @@ def _clean_selection(selection: object) -> dict:
         raise ValueError("source_name inseguro")
     if not is_sha256(source_sha256):
         raise ValueError("sha256 invalido")
-    if not isinstance(encoding, str) or not encoding:
-        raise ValueError("encoding invalido")
+    if encoding not in _ALLOWED_ENCODINGS:
+        raise ValueError("encoding no permitido")
     return {
         "selected": True,
         "source_name": source_name,
@@ -172,23 +212,40 @@ def _clean_selection(selection: object) -> dict:
 
 
 def _clean_summary(summary: object) -> dict:
+    """Valida los numeros del summary con semantica: no negativos, end>=start, sin errores.
+
+    Un manifiesto `ready` siempre tiene n_errors == 0 (los errores abortan la asociacion).
+    """
     if not isinstance(summary, dict):
         raise ValueError("summary invalido")
+    n_cues = _int_at_least(summary.get("n_cues"), 1)
+    start_ms = _int_at_least(summary.get("start_ms"), 0)
+    end_ms = _int_at_least(summary.get("end_ms"), start_ms)
+    n_errors = _int_at_least(summary.get("n_errors"), 0)
+    n_warnings = _int_at_least(summary.get("n_warnings"), 0)
+    if n_errors != 0:
+        raise ValueError("un manifiesto ready no puede tener errores")
     return {
-        key: _as_int(summary.get(key))
-        for key in ("n_cues", "start_ms", "end_ms", "n_errors", "n_warnings")
+        "n_cues": n_cues,
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "n_errors": n_errors,
+        "n_warnings": n_warnings,
     }
 
 
 def sanitize_manifest(raw: object, video_stem: str) -> dict:
     """Reconstruye el manifiesto publico por whitelist y valida el contrato v1.
 
-    Nunca devuelve campos extra del archivo. Si algo viola el contrato (version, nombre de
-    video, basenames, sha256, tipos), lanza ValueError sin filtrar contenido.
+    Nunca devuelve campos extra del archivo. Si algo viola el contrato (version, status,
+    nombre de video, basenames, sha256, encoding, codigos, numeros semanticos), lanza
+    ValueError sin filtrar contenido.
     """
     try:
         if not isinstance(raw, dict) or raw.get("version") != MANIFEST_VERSION:
             raise ValueError("version invalida")
+        if raw.get("status") != "ready":
+            raise ValueError("status invalido")
         diagnostics = raw["diagnostics"]
         if not isinstance(diagnostics, list):
             raise ValueError("diagnostics invalido")

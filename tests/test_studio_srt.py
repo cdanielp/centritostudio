@@ -486,15 +486,46 @@ def test_sanitize_descarta_campo_extra_privado(tmp_path):
 @pytest.mark.parametrize(
     "mutator",
     [
+        # basenames / rutas
         lambda d: d["selection"].update(managed_file="../escape.srt"),
         lambda d: d["selection"].update(managed_file="sub/dir.srt"),
+        lambda d: d["selection"].update(managed_file="ctrl\x01.srt"),  # caracter de control
+        lambda d: d["selection"].update(source_name="a/b.srt"),
+        lambda d: d["selection"].update(source_name="ctrl\tname.srt"),  # tab de control
+        # identidad del video
         lambda d: d["video"].update(name="otro_video"),
+        lambda d: d["video"].update(filename="../evil.mp4"),
+        lambda d: d["video"].update(filename="ctrl\x00.mp4"),
+        lambda d: d["video"].update(filename=123),
+        lambda d: d["video"].update(duration_ms=-5),
+        # sha / version / status
         lambda d: d["selection"].update(source_sha256="zz"),
         lambda d: d["selection"].update(source_sha256="abc"),
+        lambda d: d["selection"].update(source_sha256="A" * 64),  # mayusculas no hex validas
         lambda d: d.update(version=2),
+        lambda d: d.update(status="pending"),
+        lambda d: d.pop("status"),
+        # encoding allowlist
         lambda d: d["selection"].update(encoding=""),
+        lambda d: d["selection"].update(encoding="latin-1"),
+        lambda d: d["selection"].update(encoding="utf-16"),
+        # numeros semanticos
         lambda d: d["summary"].update(n_cues="dos"),
+        lambda d: d["summary"].update(n_cues=0),
+        lambda d: d["summary"].update(start_ms=-1),
+        lambda d: d["summary"].update(end_ms=d["summary"]["start_ms"] - 1),
+        lambda d: d["summary"].update(n_errors=1),
+        lambda d: d["summary"].update(n_warnings=-2),
+        lambda d: d["summary"].update(n_cues=True),  # bool no es int valido
+        # diagnostics
         lambda d: d["diagnostics"].append({"code": "x", "severity": "critico"}),
+        lambda d: d["diagnostics"].append({"code": "codigo_inventado", "severity": "warning"}),
+        lambda d: d["diagnostics"].append(
+            {"code": "overlap", "severity": "warning", "cue_position": -1}
+        ),
+        lambda d: d["diagnostics"].append(
+            {"code": "overlap", "severity": "warning", "cue_index": 0}
+        ),
     ],
 )
 def test_sanitize_rechaza_contrato_violado(tmp_path, mutator):
@@ -502,6 +533,18 @@ def test_sanitize_rechaza_contrato_violado(tmp_path, mutator):
     _tamper(manifests, mutator)
     with pytest.raises(studio_srt.StudioSrtStorageError):
         studio_srt.read_selection("video_demo", manifests)
+
+
+def test_sanitize_acepta_diagnostico_valido_conocido(tmp_path):
+    _, _, _, _, manifests = _store(tmp_path)
+    _tamper(
+        manifests,
+        lambda d: d["diagnostics"].append(
+            {"code": "cue_after_video", "severity": "warning", "cue_position": 0, "cue_index": 1}
+        ),
+    )
+    sel = studio_srt.read_selection("video_demo", manifests)
+    assert any(x["code"] == "cue_after_video" for x in sel["diagnostics"])
 
 
 def test_read_selection_json_corrupto_rechaza(tmp_path):

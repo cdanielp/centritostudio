@@ -80,16 +80,20 @@ No versiona MP4, manifiesto ni SRT privado; solo `fixtures/demo.srt` es sintéti
    de Windows (last-writer-wins, nunca parcial ni `.tmp`).
 6. **Manifiesto público reconstruido por whitelist** (`sanitize_manifest`); contrato violado o
    ilegible → 500 sin filtrar. Errores del router no reflejan el `name`; resolver rechaza NUL.
+7. **Saneamiento de VALORES** (3º commit): basenames que rechazan caracteres de control;
+   `filename` basename; `encoding` en allowlist; `code` en el conjunto de S36-A; números
+   semánticos (`n_cues≥1`, `end_ms≥start_ms`, `n_errors==0`, …); `status` exactamente `ready`.
+   Cualquier valor manipulado → 500 y nunca se refleja en la respuesta.
 
 ## Tests
 
-- `tests/test_studio_srt.py` — 69 casos de dominio (confinamiento, validación, almacenamiento por
-  hash completo, integridad/reparación, atomicidad con temporales únicos y concurrencia,
-  idempotencia, reemplazo, saneamiento por whitelist, independencia entre videos).
-- `tests/test_studio_srt_api.py` — 50 casos de API (status HTTP, lectura acotada, cache de
-  duración, errores públicos sin reflejar input, privacidad, mounts, historia intacta, sin
-  jobs/render/Auto/Whisper).
-- Suite total: **1355 passed, 1 warning** preexistente (`StarletteDeprecationWarning`).
+- `tests/test_studio_srt.py` — dominio (confinamiento, validación, almacenamiento por hash
+  completo, integridad/reparación, atomicidad con temporales únicos y concurrencia, idempotencia,
+  reemplazo, saneamiento por whitelist + validación de VALORES, independencia entre videos).
+- `tests/test_studio_srt_api.py` — API (status HTTP, lectura acotada, cache de duración, errores
+  públicos sin reflejar input, reflexión de valores manipulados, privacidad, mounts, historia
+  intacta, sin jobs/render/Auto/Whisper).
+- Suite total: **1385 passed, 1 warning** preexistente (`StarletteDeprecationWarning`).
 
 ## Fuera de alcance (S36-C2)
 

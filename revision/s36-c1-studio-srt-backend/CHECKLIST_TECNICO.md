@@ -75,9 +75,20 @@ Rama: `feat/s36-c1-studio-srt-backend` · D37 · PR abierto, NO mergeado.
 - [x] Manifiesto público reconstruido por whitelist; contrato violado/ilegible → 500 sin filtrar
 - [x] Errores del router no reflejan el `name`; resolver rechaza NUL/control (antes 500)
 
+## Saneamiento de VALORES del manifiesto (3º commit)
+- [x] Basenames estrictos: rechazan rutas Y caracteres de control (C0 0x00-0x1F, DEL 0x7F)
+- [x] `video.filename` validado como basename seguro
+- [x] `encoding` restringido a allowlist (`utf-8`, `windows-1252`) que el parser puede emitir
+- [x] `diagnostics[].code` ∈ conjunto de códigos `ERR_*/WARN_*` de S36-A (sync por introspección)
+- [x] Números semánticos: `n_cues≥1`, `start_ms≥0`, `end_ms≥start_ms`, `n_errors==0`, `n_warnings≥0`
+- [x] `duration_ms≥0` (o None); `cue_position≥0` (o None); `cue_index≥1` (o None)
+- [x] `status` debe ser exactamente `ready`
+- [x] Tests API contra reflexión: valor manipulado → 500 y nunca aparece en el body
+- [x] Campo extra benigno desconocido se descarta (200), no se refleja
+
 ## Verificación
 - [x] `ruff check .` verde · `ruff format --check .` verde
-- [x] 1355 passed, 1 warning preexistente · `check.bat` verde
-- [x] 7 tests de bloqueantes verificados ROJOS contra HEAD d63d69f, verdes con el nuevo código
+- [x] 1385 passed, 1 warning preexistente · `check.bat` verde
+- [x] Tests de bloqueantes ROJOS contra HEAD d63d69f y de valores ROJOS contra e944f8a, verdes con el nuevo código
 - [x] Fixture + smoke API sintético PASS (incl. reparación, hash match, whitelist, lectura acotada)
 - [x] Working tree sin binarios ni datos privados

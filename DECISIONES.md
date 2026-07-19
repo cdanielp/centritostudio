@@ -1299,3 +1299,13 @@ sin filtrar contenido. Los mensajes de error del router ya **no reflejan el `nam
 `stat` (antes un NUL en `name` reventaba con 500). +49 tests nuevos (suite 1355, 1 warning).
 La construcción/saneamiento del manifiesto se extrajo a `studio_srt_manifest.py` (whitelist)
 para mantener cada módulo bajo el límite de 400 líneas (`studio_srt.py` 328, manifest 204).
+
+**Cierre del saneamiento de VALORES (3º commit, `fix: cerrar saneamiento del manifiesto SRT`):**
+la whitelist no solo filtra claves, ahora valida cada valor: basenames estrictos que rechazan
+caracteres de control (C0/DEL) además de rutas; `video.filename` validado como basename seguro;
+`encoding` restringido a la allowlist que el parser puede emitir (`utf-8`, `windows-1252`);
+`diagnostics[].code` validado contra el conjunto de códigos `ERR_*/WARN_*` de S36-A (en sync por
+introspección); números semánticos (`n_cues≥1`, `start_ms≥0`, `end_ms≥start_ms`, `n_errors==0`
+en un manifiesto `ready`, `n_warnings≥0`, `duration_ms≥0`, `cue_position≥0`, `cue_index≥1`);
+y `status` debe ser exactamente `ready`. Cualquier violación → 500 genérico sin reflejar el valor
+manipulado. +30 tests (dominio + API contra reflexión de valores). Suite 1385, 1 warning.

@@ -396,6 +396,59 @@ def test_manifest_corrupto_no_filtra_internos(api):
     assert str(tmp_path) not in r.text and "Traceback" not in r.text
 
 
+def _tamper_manifest(tmp_path, mutator):
+    p = tmp_path / "transcripts" / "demo_srt_selection.json"
+    d = json.loads(p.read_text(encoding="utf-8"))
+    mutator(d)
+    p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+
+# Cada mutator inyecta un valor manipulado que DEBE ser rechazado (500) y NUNCA reflejado.
+_MANIPULACIONES = [
+    ("SECRETO_PWD_9931", lambda d: d.update(secreto="SECRETO_PWD_9931")),
+    ("cue text: uno", lambda d: d.update(cues=[{"text": "cue text: uno"}])),
+    ("latin-1", lambda d: d["selection"].update(encoding="latin-1")),
+    (
+        "codigo_inventado_zz",
+        lambda d: d["diagnostics"].append({"code": "codigo_inventado_zz", "severity": "warning"}),
+    ),
+    ("../../evil.mp4", lambda d: d["video"].update(filename="../../evil.mp4")),
+    ("ctrl\x01mf", lambda d: d["selection"].update(managed_file="ctrl\x01mf.srt")),
+    ("pending", lambda d: d.update(status="pending")),
+]
+
+
+@pytest.mark.parametrize(("needle", "mutator"), _MANIPULACIONES)
+def test_get_no_refleja_valores_manipulados(api, needle, mutator):
+    client, tmp_path = api
+    _upload(client, "demo", _OK)
+    _tamper_manifest(tmp_path, mutator)
+    r = client.get("/api/videos/demo/srt")
+    # Un valor que viola el contrato -> 500; uno benigno extra -> se descarta en 200.
+    assert r.status_code in (200, 500)
+    assert needle not in r.text  # el valor manipulado nunca se refleja
+    if r.status_code == 200:
+        assert set(r.json()) == {
+            "version",
+            "video",
+            "selection",
+            "summary",
+            "diagnostics",
+            "status",
+        }
+    else:
+        assert str(tmp_path) not in r.text and "Traceback" not in r.text
+
+
+def test_get_campo_extra_benigno_no_se_refleja(api):
+    client, tmp_path = api
+    _upload(client, "demo", _OK)
+    _tamper_manifest(tmp_path, lambda d: d.update(nota_interna="ruta/privada/xy"))
+    r = client.get("/api/videos/demo/srt")
+    assert r.status_code == 200  # campo extra desconocido se descarta, no rompe
+    assert "nota_interna" not in r.text and "ruta/privada/xy" not in r.text
+
+
 # ─── Privacidad / mounts ───────────────────────────────────────────────────────
 def test_respuesta_no_expone_ruta_ni_texto(api):
     client, tmp_path = api
