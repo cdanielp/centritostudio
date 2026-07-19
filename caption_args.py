@@ -49,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Densidad de keywords automaticas del preset (doble freno D21; default: del preset)",
     )
     parser.add_argument("--lang", default="es")
+    parser.add_argument(
+        "--srt",
+        default=None,
+        metavar="PATH",
+        help="Usa un SRT corregido como texto oficial; Whisper aporta unicamente timings (S36-B)",
+    )
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
     parser.add_argument("--words-per-group", type=int, default=None, metavar="N")

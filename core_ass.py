@@ -127,6 +127,25 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
     return _join_parts(parts)
 
 
+def _static_cue_text(group_words: list[dict], style_cfg: StyleConfig) -> str:
+    """Texto ASS estatico de un cue de fallback SRT (S36-B, D36B-3): sin word-by-word.
+
+    Preserva el texto y los saltos de linea (via line_idx). Sin tags de color inline:
+    se pinta con el color primario del estilo -> caption estatico honesto, no karaoke
+    falso. Aditivo: solo se usa cuando el group trae timing_mode="cue_fallback".
+    """
+    parts: list[str] = []
+    prev_line = None
+    for w in group_words:
+        if prev_line is not None and w["line_idx"] != prev_line:
+            if parts and parts[-1] != "\\N":
+                parts.append("\\N")
+        disp = w["text"].upper() if style_cfg.uppercase else w["text"]
+        parts.append(_escape_ass(disp))
+        prev_line = w["line_idx"]
+    return _join_parts(parts)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cerebro editorial — aplicacion de brain.json
 # ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +242,18 @@ def build_ass(
     subs = pysubs2.SSAFile()
     _make_ass_style(subs, video_width, video_height, style_cfg)
     for group in groups:
+        # S36-B: cue de fallback SRT -> UN evento estatico con el texto exacto del cue
+        # (sin animacion word-by-word). Aditivo: los groups historicos no traen la clave.
+        if group.get("timing_mode") == "cue_fallback":
+            subs.events.append(
+                pysubs2.SSAEvent(
+                    start=pysubs2.make_time(s=group["start"]),
+                    end=pysubs2.make_time(s=max(group["end"], group["start"] + 0.05)),
+                    text=_static_cue_text(group["words"], style_cfg),
+                    layer=0,
+                )
+            )
+            continue
         gw = group["words"]
         con_glow = glow_on and any(w.get("is_keyword", False) for w in gw)
         glow_text = _glow_event_text(gw, style_cfg) if con_glow else None

@@ -954,3 +954,29 @@ No quedan preguntas técnicas abiertas para S37-C: classic es default, v2 es exp
 - aprobación/rechazo persistente en el Editor (continúa la deuda #37);
 - re-render selectivo desde el Editor (continúa la deuda #37);
 - SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente).
+
+### 50. S36-B — integración SRT con captions y clips — **CERRADA (veredicto visual de K APROBADO 2026-07-18, PR #14 mergeado en main)**
+
+Resuelto en D36 (sesión 38): el texto del SRT es autoritativo; Whisper es fuente temporal;
+no hay equal-spacing; fallback a nivel de cue; Caption QA no modifica el SRT; el round-trip
+usa `clip.start` real; hay un SRT derivado por clip; toda la funcionalidad es opt-in.
+
+Resuelto en el addendum D36 (endurecimiento, 2º commit): `substitution_match` conservador
+(exige ancla exacta en el cue + similitud Levenshtein ≥0.60; texto arbitrario → fallback);
+timestamps reales nunca se modifican (timing inválido/no monótono → fallback); Caption QA se
+RECHAZA con `--srt`; los flags opcionales (emojis/popups/FX/preset) reutilizan los motores
+históricos y ya no se ignoran; el preset solo anima cues alineados.
+
+**Preguntas/deudas auténticas que quedan abiertas (S36-C o posterior, NO se resuelven aquí):**
+
+- **Threshold final de alineación.** Hoy `word_aligned` exige cobertura 1.0 (todos los
+  tokens anclados) para no inventar timing; falta calibrar contra SRT reales si eso deja
+  demasiados cues en fallback.
+- **Inserciones no audibles.** Palabras presentes en el SRT y ausentes en el audio hoy
+  degradan el cue completo a fallback; falta decidir si merece un tratamiento intermedio.
+- **Forced aligner futuro** (WhisperX / stable-ts / MFA) si la cobertura real no alcanza;
+  fuera de alcance de S36-B (sin dependencias nuevas).
+- **Asociación video↔SRT en Studio** y **autodiscovery** del SRT derivado por clip.
+- **Soporte batch** de `--srt` (hoy solo un video individual).
+- **Integración con Auto v2** (hoy SRT no se conecta al modo automático).
+- **Edición de SRT desde la UI.**

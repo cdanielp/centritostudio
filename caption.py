@@ -14,6 +14,7 @@ from pathlib import Path
 
 import core
 from caption_args import build_parser, qa_opts_de_args
+from srt_import import SrtError as _SrtUserError  # error de USUARIO del SRT (no bug); stdlib
 from styles import get_style
 
 _TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
@@ -109,6 +110,206 @@ def _resolver_plan_fx(fx_preset: str | None, stem: str, duration: float):
         return None
 
 
+def _resolver_capas_y_quemar(
+    video_path: Path,
+    ass_path: Path,
+    out_path: Path,
+    groups: list,
+    style_cfg,
+    stem: str,
+    width: int,
+    height: int,
+    duration: float,
+    use_emojis: bool,
+    use_popups: bool,
+    fx_preset: str | None,
+) -> None:
+    """Resuelve popups/clips/FX/emojis y quema. Fuente UNICA para el flujo clasico y SRT.
+
+    Reutiliza exactamente los motores existentes (cve_popups/cve_clips/assets_comfy/fx +
+    core.burn_video/burn_video_with_emojis); no duplica ni reimplementa internals. Cada
+    capa opcional es fail-open dentro de su propio resolver.
+    """
+    popups: list = []
+    clips: list = []
+    if use_popups:
+        import cve_clips  # noqa: PLC0415
+        import cve_popups  # noqa: PLC0415
+
+        popups = cve_popups.resolver_popups(groups, stem, video_w=width, video_h=height)
+        clips = cve_clips.resolver_clips(stem, video_w=width, video_h=height)
+
+    fx_plan = _resolver_plan_fx(fx_preset, stem, duration)
+
+    if use_emojis:
+        import assets_comfy as ac  # noqa: PLC0415
+
+        groups_path = _TRANSCRIPTS_DIR / f"{stem}_groups.json"
+        brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
+        overlays = ac.resolver_overlays(groups_path, brain_path)
+        if overlays:
+            print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
+        else:
+            print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
+        core.burn_video_with_emojis(
+            video_path, ass_path, out_path, overlays, style_cfg, popups, fx_plan, clips=clips
+        )
+    elif popups or clips or fx_plan is not None:
+        core.burn_video_with_emojis(
+            video_path, ass_path, out_path, [], style_cfg, popups, fx_plan, clips=clips
+        )
+    else:
+        core.burn_video(video_path, ass_path, out_path)
+
+
+def _variante_tag(
+    plan, style: str, pop: str | None, rebote: bool | None, intensidad, densidad
+) -> str:
+    """Sufijo de variante para el nombre de salida (mismo criterio que el flujo clasico)."""
+    if plan:
+        import cve  # noqa: PLC0415
+
+        return cve.tag_variante(plan.preset, intensidad, densidad)
+    pop_tag = f"_{pop}" if pop else ""
+    reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
+    return f"_{style}{pop_tag}{reb_tag}"
+
+
+def _aplicar_preset_srt(
+    groups: list, plan, stem: str, width: int, height: int
+) -> tuple[list, object]:
+    """Aplica el motor CVE SOLO a los grupos word_aligned; conserva intactos los fallback.
+
+    Un preset jamas convierte un cue_fallback en word-by-word (D36B-3). Reune de nuevo
+    preservando el orden temporal y reasigna IDs deterministas.
+    """
+    import cve  # noqa: PLC0415
+
+    word_idx = [i for i, g in enumerate(groups) if g.get("timing_mode") != "cue_fallback"]
+    word_groups = [groups[i] for i in word_idx]
+    brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
+    manual_kw_path = _TRANSCRIPTS_DIR / f"{stem}_keywords.json"
+    processed, plan, aviso = cve.aplicar_preset(
+        word_groups, plan, brain_path, width, height, manual_kw_path
+    )
+    if aviso:
+        print(f"[cve] {aviso}")
+    merged = list(groups)
+    if len(processed) == len(word_idx):
+        for pos, g in zip(word_idx, processed, strict=True):
+            merged[pos] = g
+    else:  # defensivo: el preset altero el conteo -> conservar grupos originales (fail-open)
+        print("[cve] AVISO: el preset altero el numero de grupos; se conservan los originales")
+    for new_id, g in enumerate(merged):
+        g["id"] = new_id
+    return merged, plan
+
+
+def _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset) -> str:
+    """Sufijo determinista para SRT: `_srt` + capas activas (no colisiona con historicos)."""
+    fx_tag = f"_fx-{fx_preset}" if fx_preset else ""
+    return (
+        f"{stem}{variante}_srt"
+        + ("_emojis" if use_emojis else "")
+        + ("_popups" if use_popups else "")
+        + fx_tag
+    )
+
+
+def _process_srt(
+    video_path: Path,
+    style: str,
+    lang: str,
+    output_dir: Path,
+    model_arg: str,
+    out_stem: str | None,
+    pop: str | None,
+    rebote: bool | None,
+    preset: str | None,
+    intensidad: str | None,
+    densidad: str | None,
+    use_emojis: bool,
+    use_popups: bool,
+    fx_preset: str | None,
+    qa_opts: dict | None,
+    srt_path: Path,
+) -> tuple[float, dict]:
+    """Render con SRT como texto oficial (S36-B). Whisper solo aporta timings.
+
+    El texto del SRT nunca se sustituye ni se pasa por Caption QA (D36B-1/D36B-5): con
+    `--srt`, Caption QA se RECHAZA (SrtError). Reutiliza las mismas capas downstream que la
+    ruta historica (preset CVE, popups, clips, emojis, FX, burn). Presets solo animan cues
+    word_aligned; los fallback quedan estaticos. Errores de usuario propagan como SrtError
+    (nunca sys.exit dentro de la API); `main()` los traduce a exit no cero.
+    """
+    import srt_caption  # noqa: PLC0415
+    from srt_import import SrtError  # noqa: PLC0415
+
+    if qa_opts:
+        raise SrtError(
+            "--caption-qa no esta disponible junto con --srt en S36-B; el SRT es el texto oficial"
+        )
+
+    t0 = time.time()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    device, compute = core.detect_device()
+    model_path, label = core.resolve_model(model_arg)
+    print(f"[model] {label} | {device} | {compute}")
+
+    plan = _resolver_plan_preset(preset, intensidad, densidad)
+    style_cfg = plan.style_cfg if plan else get_style(style, pop, rebote)
+    stem = out_stem or video_path.stem
+
+    vinfo = core.get_video_info(video_path)
+    width, height = vinfo["width"], vinfo["height"]
+    print(f"[video] {width}x{height}")
+    video_ms = int(round(vinfo["duration"] * 1000)) or None
+
+    transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
+    groups, result, payload = srt_caption.preparar_desde_srt(
+        srt_path, transcript["words"], video_duration_ms=video_ms, words_file=f"{stem}_words.json"
+    )
+    print(
+        f"[srt] {result.n_cues} cues | {result.word_aligned} word-aligned | "
+        f"{result.cue_fallback} fallback | cobertura {result.coverage:.2f}"
+    )
+
+    if plan:  # preset CVE: enriquece SOLO los cues alineados; los fallback siguen estaticos
+        groups, plan = _aplicar_preset_srt(groups, plan, stem, width, height)
+        style_cfg = plan.style_cfg
+
+    variante = _variante_tag(plan, style, pop, rebote, intensidad, densidad)
+    base = _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset)
+    ass_path = output_dir / f"{stem}{variante}_srt.ass"
+    out_path = output_dir / f"{base}.mp4"
+    core.build_ass(groups, width, height, style_cfg, ass_path)
+    print(f"[ass] {ass_path.name} generado ({len(groups)} grupos)")
+
+    _resolver_capas_y_quemar(
+        video_path,
+        ass_path,
+        out_path,
+        groups,
+        style_cfg,
+        stem,
+        width,
+        height,
+        vinfo["duration"],
+        use_emojis,
+        use_popups,
+        fx_preset,
+    )
+    if plan:
+        import cve  # noqa: PLC0415
+
+        cve.escribir_sidecar_seleccion(groups, plan, out_path)
+    srt_caption.escribir_sidecar(payload, _TRANSCRIPTS_DIR / f"{stem}_srt_alignment.json")
+
+    total = time.time() - t0
+    print(f"[ok] {video_path.name} -> {out_path.name} en {total:.1f}s\n")
+    return total, transcript
+
+
 def process_video(
     video_path: Path,
     style: str,
@@ -126,7 +327,28 @@ def process_video(
     densidad: str | None = None,
     qa_opts: dict | None = None,
     fx_preset: str | None = None,
+    *,
+    srt_path: Path | None = None,
 ) -> tuple[float, dict]:
+    if srt_path is not None:
+        return _process_srt(
+            video_path,
+            style,
+            lang,
+            output_dir,
+            model_arg,
+            out_stem,
+            pop,
+            rebote,
+            preset,
+            intensidad,
+            densidad,
+            use_emojis,
+            use_popups,
+            fx_preset,
+            qa_opts,
+            srt_path,
+        )
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -180,36 +402,20 @@ def process_video(
     core.build_ass(groups, width, height, style_cfg, ass_path)
     print(f"[ass] {ass_path.name} generado ({sum(len(g['words']) for g in groups)} eventos)")
 
-    popups: list = []
-    clips: list = []
-    if use_popups:
-        import cve_clips  # noqa: PLC0415
-        import cve_popups  # noqa: PLC0415
-
-        popups = cve_popups.resolver_popups(groups, stem, video_w=width, video_h=height)
-        clips = cve_clips.resolver_clips(stem, video_w=width, video_h=height)
-
-    fx_plan = _resolver_plan_fx(fx_preset, stem, vinfo["duration"])
-
-    if use_emojis:
-        import assets_comfy as ac  # noqa: PLC0415
-
-        groups_path = _TRANSCRIPTS_DIR / f"{stem}_groups.json"
-        brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
-        overlays = ac.resolver_overlays(groups_path, brain_path)
-        if overlays:
-            print(f"[emojis] {len(overlays)} overlay(s) generados - ComfyUI OK")
-        else:
-            print("[emojis] Sin overlays disponibles (ComfyUI apagado o sin keywords)")
-        core.burn_video_with_emojis(
-            video_path, ass_path, out_path, overlays, style_cfg, popups, fx_plan, clips=clips
-        )
-    elif popups or clips or fx_plan is not None:
-        core.burn_video_with_emojis(
-            video_path, ass_path, out_path, [], style_cfg, popups, fx_plan, clips=clips
-        )
-    else:
-        core.burn_video(video_path, ass_path, out_path)
+    _resolver_capas_y_quemar(
+        video_path,
+        ass_path,
+        out_path,
+        groups,
+        style_cfg,
+        stem,
+        width,
+        height,
+        vinfo["duration"],
+        use_emojis,
+        use_popups,
+        fx_preset,
+    )
 
     if plan:
         import cve  # noqa: PLC0415
@@ -248,8 +454,8 @@ def _run_depurar_cli(input_path: Path, mode: str, output_dir: Path) -> None:
     print(f"[depurar] Listo: {result['cuts']} cortes, -{result['saved_s']}s ahorrados")
 
 
-def _run_clips_cli(input_path: Path, tipos: str) -> None:
-    """Genera clips virales desde la CLI."""
+def _run_clips_cli(input_path: Path, tipos: str, srt_path: Path | None = None) -> None:
+    """Genera clips virales desde la CLI. Con --srt genera ademas un SRT rebasado por clip."""
     if not input_path.is_file():
         print(f"[ERROR] No existe: {input_path}")
         sys.exit(1)
@@ -261,10 +467,21 @@ def _run_clips_cli(input_path: Path, tipos: str) -> None:
 
     import clipper  # noqa: PLC0415
 
+    srt_document = None
+    if srt_path is not None:
+        from srt_import import load_srt  # noqa: PLC0415
+
+        try:
+            srt_document = load_srt(srt_path)
+        except Exception as exc:
+            print(f"[clips] ERROR SRT: {exc}")
+            sys.exit(1)
+        print(f"[clips] SRT fuente: {srt_path.name} ({len(srt_document.cues)} cues)")
+
     raw = json.loads(words_path.read_text(encoding="utf-8"))
     words = raw.get("words", [])
     print(f"[clips] {len(words)} palabras | tipos={tipos}")
-    result = clipper.generar_clips(input_path, words, tipos)
+    result = clipper.generar_clips(input_path, words, tipos, srt_document=srt_document)
     n = len(result.get("clips", []))
     err = result.get("error")
     if err:
@@ -280,13 +497,29 @@ def main() -> None:
     input_path = Path(args.input)
     rebote = None if args.rebote is None else (args.rebote == "on")
     qa_opts = qa_opts_de_args(args)
+    srt_path = Path(args.srt) if args.srt else None
+
+    # Guardas de --srt (S36-B): opt-in, un solo video, y sin Caption QA (el SRT es el texto
+    # oficial; Caption QA opera sobre el transcript de Whisper y en S36-B no hay auditor SRT).
+    if srt_path is not None:
+        if input_path.is_dir() and not args.clips:
+            print(
+                "[ERROR] --srt requiere un video individual, no una carpeta (S36-B; batch en S36-C)"
+            )
+            sys.exit(1)
+        if qa_opts is not None:
+            print(
+                "[ERROR] --caption-qa no esta disponible junto con --srt en S36-B; "
+                "el SRT es el texto oficial (QA de SRT llegara en S36-C)"
+            )
+            sys.exit(1)
 
     if args.depurar:
         _run_depurar_cli(input_path, args.depurar, output_dir)
         return
 
     if args.clips:
-        _run_clips_cli(input_path, args.clips)
+        _run_clips_cli(input_path, args.clips, srt_path)
         return
 
     if input_path.is_dir():
@@ -317,24 +550,30 @@ def main() -> None:
             total += t
         print(f"[batch] Total: {total:.1f}s")
     elif input_path.is_file():
-        process_video(
-            input_path,
-            args.style,
-            args.lang,
-            output_dir,
-            args.model,
-            args.words_per_group,
-            args.out_stem,
-            use_emojis=args.emojis,
-            use_popups=args.popups,
-            pop=args.pop,
-            rebote=rebote,
-            preset=args.preset,
-            intensidad=args.intensidad,
-            densidad=args.densidad,
-            qa_opts=qa_opts,
-            fx_preset=args.fx,
-        )
+        try:
+            process_video(
+                input_path,
+                args.style,
+                args.lang,
+                output_dir,
+                args.model,
+                args.words_per_group,
+                args.out_stem,
+                use_emojis=args.emojis,
+                use_popups=args.popups,
+                pop=args.pop,
+                rebote=rebote,
+                preset=args.preset,
+                intensidad=args.intensidad,
+                densidad=args.densidad,
+                qa_opts=qa_opts,
+                fx_preset=args.fx,
+                srt_path=srt_path,
+            )
+        except _SrtUserError as exc:
+            # Errores de USUARIO del SRT: mensaje corto con basename, exit no cero (no traceback).
+            print(f"[ERROR] SRT invalido ({input_path.name}): {exc}")
+            sys.exit(1)
     else:
         print(f"[ERROR] No existe: {input_path}")
         sys.exit(1)

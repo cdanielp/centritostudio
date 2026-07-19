@@ -1122,3 +1122,112 @@ Deudas declaradas fuera de alcance (no bloquean ninguna fase futura, no se resue
 - SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente de S37).
 
 Auto clásico continúa como default. Auto v2 ya está disponible en Studio. El Editor muestra b-roll, FX y A/V en modo read-only.
+
+## D36 — S36-B: Texto SRT autoritativo, timings reales, fallback por cue y round-trip
+
+**Fecha:** 2026-07-18. **Rama:** `feat/s36-b-srt-caption-roundtrip`. **Sesión:** 38.
+
+Conecta la capa SRT pura de S36-A con el pipeline de captions y el clipper, sin tocar los
+motores aprobados de S37. Funcionalidad **opt-in**: sin `--srt` el comportamiento es
+byte-idéntico al histórico.
+
+1. **El texto del SRT es la fuente oficial (D36B-1).** Con `--srt`, el texto visible sale
+   tal cual del SRT: no se sustituye por Whisper, no se corrige, no se cambian acentos ni
+   puntuación, no lo toca Caption QA. Whisper (o un transcript existente) aporta ÚNICAMENTE
+   timings por palabra.
+2. **No se inventan timings (D36B-2).** Solo tres tipos: `exact_match`, `substitution_match`
+   (1:1 entre anclas reales) y `cue_fallback`. Prohibido `duración/n_palabras`. Un token del
+   SRT sin ancla real NO recibe timing fabricado.
+3. **Alineación.** `srt_align.py` (puro): normaliza SOLO para comparar (NFKC + casefold +
+   sin acentos + sin puntuación de borde; preserva números/emoji y SIEMPRE el token
+   original). Particiona las timing words por punto medio dentro de la ventana de cada cue
+   (disjunta, sin reusar una word dos veces) y alinea con edit-distance determinista
+   (traceback estable). Complejidad O(n_tokens_cue · n_words_ventana), acotada; sin matriz
+   global. Un cue es `word_aligned` solo si TODOS sus tokens anclan (cobertura 1.0,
+   `min_coverage` por defecto 1.0); si no, `cue_fallback`.
+4. **Fallback honesto (D36B-3).** El cue conserva su texto y sus start/end exactos y se
+   pinta ESTÁTICO (un solo evento ASS, sin color/animación inline), nunca karaoke falso.
+   Cambio mínimo y aditivo en `core_ass.build_ass`: los groups con
+   `timing_mode="cue_fallback"` emiten un evento estático; los groups históricos (sin la
+   clave) son byte-idénticos.
+5. **Validación (D36B-4).** Errores estructurales del SRT abortan el render (no se toca el
+   original); los warnings (cue fuera del video, etc.) se reportan y no abortan. Se valida
+   contra la duración real del video.
+6. **Caption QA (D36B-5).** Con `--srt`, Caption QA NO se aplica al texto oficial;
+   `--caption-qa-mode auto_seguro` se RECHAZA con error claro (exit≠0). El modo alertas no
+   modifica nada.
+7. **Compatibilidad (D36B-6).** Sin `--srt`: CLI, batch, Auto clásico/v2, clipper, nombres
+   de salida y sidecars idénticos. Con `--srt`: la salida lleva sufijo `_srt`
+   (`{stem}_{style}_srt.mp4/.ass`) y se escribe `transcripts/{stem}_srt_alignment.json`.
+8. **Batch (D36B-7).** `--srt` explícito solo con un video individual; carpeta + `--srt` se
+   rechaza. El mapeo video↔SRT es S36-C.
+9. **Round-trip del clipper (D36B-8/9).** Con `srt_document`, por cada clip: `slice_srt`
+   recorta los cues al intervalo real `[clip.start, clip.end)` (semántica fin-exclusivo),
+   los rebasa contra el `clip.start` REAL (con padding, no la primera palabra), reindexa
+   desde 1, preserva líneas/texto, y guarda `transcripts/{clip_stem}.srt` +
+   `_srt.json` + metadata saneada en `clips.json`. La fuente nunca se modifica; un fallo del
+   SRT derivado no borra el MP4 ya cortado. Sin `srt_document`: comportamiento histórico
+   exacto (no lee ni genera SRT).
+10. **Auto/Studio (D36B-10).** No se conecta SRT con Auto v2 ni con Studio en esta sesión;
+    `auto*.py`, `studio_*.py`, `app.py`, `jobs.py`, `static/index.html` quedan intactos.
+
+Módulos nuevos (puros salvo el adaptador): `srt_align.py`, `srt_slice.py`, `srt_caption.py`.
+Evidencia sintética y checklist visual: `revision/s36-b-srt-caption-roundtrip/`.
+
+**Gobernanza.** PR abierto y NO mergeado: cambia el resultado visual de captions y requiere
+veredicto visual de K. S36 sigue ABIERTA (S36-C pendiente).
+
+### D36 addendum — Endurecimiento tras revisión técnica (2º commit del PR #14)
+
+Se corrigen 5 bloqueantes técnicos detectados en la revisión, antes del veredicto visual:
+
+1. **Flags no ignorados con `--srt`.** `_process_srt` recibe y usa `use_emojis`, `use_popups`,
+   `fx_preset` y `qa_opts`. La ruta SRT reutiliza EXACTAMENTE los mismos motores downstream
+   que la histórica (preset CVE, `cve_popups`/`cve_clips`, `assets_comfy`, FX,
+   `burn_video`/`burn_video_with_emojis`) vía el helper único `_resolver_capas_y_quemar`.
+   Ningún flag se acepta y luego se ignora sin mensaje.
+2. **Preset CVE completo pero acotado.** `_aplicar_preset_srt` separa los groups por
+   `timing_mode`, corre `cve.aplicar_preset` SOLO sobre los `word_aligned` y reinserta los
+   `cue_fallback` intactos, preservando orden temporal e IDs deterministas. Un preset jamás
+   convierte un fallback en word-by-word.
+3. **`substitution_match` conservador.** Una sustitución solo ancla si (a) el cue tiene ≥1
+   `exact_match` y (b) la similitud léxica (Levenshtein normalizado por longitud máxima sobre
+   tokens normalizados) es ≥ `SUBSTITUTION_MIN_SIM` = **0.60**. Texto arbitrario de igual
+   longitud (`gatos verdes corren` vs `lunes martes miércoles`) o un único token distinto ya
+   NO alcanzan cobertura 1.0 → `cue_fallback`. El texto visible siempre es el del SRT.
+4. **Timestamps reales sin modificar.** Se elimina todo desplazamiento: no hay `+1 ms`, no se
+   mueve `start`, no se extiende `end`. Se preservan los ms exactos de la timing word. Se
+   valida `end>start`, orden no decreciente y uso único; si el cue queda temporalmente
+   inválido/no monótono → `cue_fallback` con razón `non_monotonic_timings`.
+5. **Sin `sys.exit` en la API.** `_process_srt` propaga `SrtError` (error de usuario tipado);
+   `main()` lo traduce a mensaje corto con basename y exit≠0. Los bugs no se tragan.
+
+**Caption QA con `--srt`:** política cerrada — `--caption-qa` (cualquier modo) se RECHAZA con
+`--srt` (Caption QA opera sobre el transcript de Whisper, no sobre el SRT autoritativo; no hay
+auditor de SRT en S36-B). QA específico de SRT queda para S36-C.
+
+**Naming:** el sufijo SRT es determinista e incluye las capas activas
+(`{stem}{variante}_srt[_emojis][_popups][_fx-<preset>].mp4`), sin colisiones; los nombres sin
+`--srt` no cambian.
+
+**Sidecar:** añade `exact_matches`, `substitution_matches`, `rejected_substitutions` (agregado
+y por cue) y `fallback_reason` por cue. Sin texto privado adicional en logs.
+
+### D36 addendum — Veredicto visual de K: S36-B APROBADA — S36-B CERRADA
+
+**Fecha:** 2026-07-18. **PR mergeado:** #14 (commits `e844ba2` + `3cf2cb8` + docs).
+
+**VEREDICTO VISUAL DE K: APROBADO.** S36-B queda cerrada técnica y visualmente. Confirmado en
+la revisión visual:
+
+- El texto del SRT es la fuente oficial; Whisper solo aporta timings.
+- `substitution_match` conservador aprobado (ancla exacta + similitud ≥0.60).
+- Los timestamps reales no se modifican (sin `+1 ms`; inválido/no monótono → fallback).
+- El cue fallback permanece estático (un evento, sin karaoke falso).
+- Preset CVE + FX funcionan solo sobre los cues alineados; el fallback no se anima.
+- Round-trip del clip aprobado (SRT rebasado contra `clip.start` real, arranca en t=0).
+- Audio idéntico entre renders; SRT fuente intacto; sin datos privados.
+
+**S36-B CERRADA. S36 sigue ABIERTA: S36-C pendiente** (upload/selección de SRT en Studio,
+mapeo video↔SRT y batch, integración Auto v2, edición de SRT en UI, forced aligner si la
+cobertura real no alcanza). S37 permanece COMPLETA. Avance 86/100 sin cambios.
