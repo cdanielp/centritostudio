@@ -26,3 +26,4 @@ max-complexity = 12
 [lint.per-file-ignores]
 # B008: File/Body en defaults de FastAPI es el patron idiomatico del framework
 "app.py" = ["B008"]
+"studio_srt_routes.py" = ["B008"]

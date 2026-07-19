@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -24,6 +24,8 @@ import core
 import jobs
 import studio_auto
 import studio_packages
+import studio_srt
+import studio_srt_routes
 from styles import STYLES
 
 # ─── Directorios ──────────────────────────────────────────────────────────────
@@ -454,19 +456,12 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
 
 
 def _resolver_video_input(name: str) -> Path | None:
-    """Busca un basename confinado en input/ (.mp4 primero, luego .mov)."""
-    if not name or Path(name).name != name or PureWindowsPath(name).name != name:
-        return None
-    root = INPUT_DIR.resolve()
-    for ext in (".mp4", ".mov", ".MP4", ".MOV"):
-        candidate = (root / f"{name}{ext}").resolve()
-        try:
-            candidate.relative_to(root)
-        except ValueError:
-            continue
-        if candidate.is_file():
-            return candidate
-    return None
+    """Busca un basename confinado en input/ (.mp4 primero, luego .mov).
+
+    Delega en el helper puro compartido (studio_srt) para no divergir del confinamiento
+    usado por el contrato SRT; usa el INPUT_DIR de este modulo (monkeypatcheable en tests).
+    """
+    return studio_srt.resolver_video_input(name, INPUT_DIR)
 
 
 @app.get("/api/auto/capabilities")
@@ -516,6 +511,12 @@ def start_auto(
 # Vista de revision SOLO-LECTURA sobre output/paquetes/. La logica vive en el router
 # studio_packages (contrato + servido de binario confinado); aqui solo se registra.
 app.include_router(studio_packages.router)
+
+# ─── Contrato SRT de Studio (S36-C1, D37) ─────────────────────────────────────
+# Asociacion privada video<->SRT: upload, validacion, almacenamiento y consulta.
+# La logica vive en studio_srt (dominio puro) + studio_srt_routes (HTTP); aqui solo
+# se registra. El almacenamiento (transcripts/studio_srt/) nunca se monta.
+app.include_router(studio_srt_routes.router)
 
 
 # ─── Jobs / Estilos ───────────────────────────────────────────────────────────

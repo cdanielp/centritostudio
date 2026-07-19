@@ -1231,3 +1231,81 @@ la revisión visual:
 **S36-B CERRADA. S36 sigue ABIERTA: S36-C pendiente** (upload/selección de SRT en Studio,
 mapeo video↔SRT y batch, integración Auto v2, edición de SRT en UI, forced aligner si la
 cobertura real no alcanza). S37 permanece COMPLETA. Avance 86/100 sin cambios.
+
+## D37 — S36-C1: Studio administra SRT privados por asociación explícita video↔SRT
+
+**Fecha:** 2026-07-18. **Sesión 39.** **Rama:** `feat/s36-c1-studio-srt-backend`. **PR abierto,
+NO mergeado.** Solo backend/API; sin UI, sin render, sin Auto (S36-C2 conectará eso).
+
+**Decisiones:**
+
+1. **Un SRT seleccionado por video.** La asociación es EXPLÍCITA por el endpoint del video
+   (`POST /api/videos/{name}/srt`). Sin autodiscovery, sin buscar por nombre parecido, sin
+   asociar por orden de subida, sin aplicar un SRT a varios videos.
+2. **Almacenamiento privado.** Los bytes originales válidos se guardan por hash en
+   `transcripts/studio_srt/{video_stem}/{sha256_corto}.srt` (nunca montado, nunca servido por
+   `/input`, `/output`, `/clips`, `/static` ni endpoint de descarga; `transcripts/` ya está
+   gitignored). El manifiesto de asociación vive en `transcripts/{video_stem}_srt_selection.json`.
+3. **Manifest v1 saneado.** `version, video{name,filename,duration_ms}, selection{selected,
+   source_name, managed_file(basename), source_sha256, encoding}, summary{n_cues,start_ms,
+   end_ms,n_errors,n_warnings}, diagnostics[{code,severity,cue_position,cue_index}], status`.
+   NO incluye texto de cues, rutas absolutas, `message`, bytes ni tracebacks.
+4. **Bytes originales preservados.** El SHA256 se calcula sobre los bytes recibidos; el archivo
+   administrado son esos bytes tal cual (no se re-serializa el documento).
+5. **Validación reutilizando S36-A** (`srt_import`: parseo tolerante + `validate_srt` contra la
+   duración real del video). Warnings NO abortan; errors abortan; SRT sin cues utilizables aborta.
+6. **Idempotencia y reemplazo.** Mismo video + mismo SHA ya seleccionado → no duplica, `ready`,
+   respuesta determinista (200). SHA distinto → valida completo, escribe el nuevo archivo y solo
+   entonces promueve el manifiesto (escritura atómica tmp+os.replace; el archivo administrado va
+   primero, el manifiesto al final). La selección anterior no se borra.
+7. **Delete solo desasocia.** Elimina el manifiesto activo (idempotente); no borra archivos
+   administrados, ni el SRT original del usuario, ni captions/words/groups/clips.
+8. **Errores tipados** (`StudioSrtNotFound/Invalid/TooLarge/Unsupported/StorageError`) → HTTP
+   404/400/413/415/500; la extensión y el parser son la autoridad (no se confía en el MIME).
+9. **Arquitectura:** `studio_srt.py` (dominio puro, cero FastAPI) + `studio_srt_routes.py`
+   (APIRouter). `app.py` solo registra el router y delega su `_resolver_video_input` al helper
+   puro compartido para no divergir del confinamiento.
+
+**Auto/render/captions/UI NO se conectan aún.** S36-C2 pendiente. S36 sigue ABIERTA.
+
+### D37 addendum — Endurecimiento del backend SRT (2º commit del PR #15, sesión 39)
+
+Antes del merge se endureció el almacenamiento tras revisión técnica (5 bloqueantes + extras):
+
+1. **Lectura acotada real.** El upload se lee por chunks de 64 KiB con límite DURO
+   (`_read_upload_limited`); `file.size` solo sirve como rechazo temprano, nunca como única
+   defensa. Acepta exactamente `MAX_SRT_BYTES`, rechaza `+1` con 413 antes de parsear/almacenar.
+2. **Duración real, no cache obsoleto.** `{name}_info.json` solo se reutiliza si existe, es
+   regular, su mtime ≥ mtime del video y `duration` es numérica, finita y > 0 (rechaza
+   NaN/Infinity/0/negativo/bool/str). Si no, cae a `core.get_video_info`; si tampoco hay una
+   duración válida → `StudioSrtStorageError` (500 genérico). Nunca se valida el SRT con `0`.
+3. **Idempotencia que verifica el storage.** Mismo SHA solo es idempotente si el archivo
+   administrado existe, es regular, está confinado en el dir del video y sus bytes + hash
+   coinciden. Si el manifiesto coincide pero el archivo falta/está corrupto/apunta a un basename
+   inseguro/hash distinto, se RECONSTRUYE atómicamente y se regenera el manifiesto (`repaired`,
+   HTTP 200; el contenido seleccionado no cambió).
+4. **Sin colisiones de hash.** El archivo administrado usa el **SHA256 completo** como basename
+   (`{sha}.srt`): `hash(archivo) == manifest.source_sha256` SIEMPRE; se elimina la ambigüedad
+   del prefijo corto. (Aún no mergeado ⇒ sin migración de históricos.)
+5. **Temporales únicos por operación.** `tempfile.mkstemp` en el mismo directorio (nunca
+   `{pid}` compartido) + fsync + `os.replace` con reintento acotado ante `PermissionError`
+   transitorio de Windows (last-writer-wins con archivos completos; nunca parciales ni `.tmp`).
+
+Extras: el manifiesto público se **reconstruye por whitelist** (`sanitize_manifest`) y se valida
+contra el contrato v1 (version, `video.name`, basenames, sha256 de 64 hex, tipos enteros,
+diagnósticos de 4 claves); si viola el contrato o es ilegible → `StudioSrtStorageError` (500)
+sin filtrar contenido. Los mensajes de error del router ya **no reflejan el `name`** del usuario
+("Video no encontrado en input."), y el resolver rechaza NUL/control y captura `ValueError` de
+`stat` (antes un NUL en `name` reventaba con 500). +49 tests nuevos (suite 1355, 1 warning).
+La construcción/saneamiento del manifiesto se extrajo a `studio_srt_manifest.py` (whitelist)
+para mantener cada módulo bajo el límite de 400 líneas (`studio_srt.py` 328, manifest 204).
+
+**Cierre del saneamiento de VALORES (3º commit, `fix: cerrar saneamiento del manifiesto SRT`):**
+la whitelist no solo filtra claves, ahora valida cada valor: basenames estrictos que rechazan
+caracteres de control (C0/DEL) además de rutas; `video.filename` validado como basename seguro;
+`encoding` restringido a la allowlist que el parser puede emitir (`utf-8`, `windows-1252`);
+`diagnostics[].code` validado contra el conjunto de códigos `ERR_*/WARN_*` de S36-A (en sync por
+introspección); números semánticos (`n_cues≥1`, `start_ms≥0`, `end_ms≥start_ms`, `n_errors==0`
+en un manifiesto `ready`, `n_warnings≥0`, `duration_ms≥0`, `cue_position≥0`, `cue_index≥1`);
+y `status` debe ser exactamente `ready`. Cualquier violación → 500 genérico sin reflejar el valor
+manipulado. +30 tests (dominio + API contra reflexión de valores). Suite 1385, 1 warning.
