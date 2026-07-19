@@ -999,3 +999,12 @@ Resuelto en D37 (solo backend/API):
 **Siguen ABIERTAS para S36-C2 (NO se resuelven aquí):** selección visual en UI; integración con
 Auto v2; render con SRT; soporte batch; edición de SRT desde la UI; QA específico de SRT; forced
 aligner (WhisperX/stable-ts/MFA) si la cobertura real no alcanza; templates 9:16.
+
+**Endurecimiento resuelto en el 2º commit del PR #15 (D37 addendum):** lectura del upload
+acotada por chunks con límite duro (no se confía en `file.size`); la duración solo reutiliza el
+cache si es reciente y numéricamente válida (finita y > 0), si no ffprobe, si no 500 genérico;
+idempotencia que verifica la integridad del archivo administrado y lo repara; basename por SHA256
+completo (sin colisiones de prefijo); temporales únicos por operación; manifiesto público
+reconstruido por whitelist; errores públicos que no reflejan el `name` del usuario. Deuda menor
+para C2: si el cache `info.json` no trae `duration` válida y no hay ffprobe disponible, el POST
+responde 500 (aceptable; C2 podrá cachear la duración al asociar).

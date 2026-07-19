@@ -3,22 +3,31 @@ r"""studio_srt.py — Logica pura de asociacion video<->SRT para Studio (S36-C1,
 Capa de DOMINIO: sin FastAPI, sin HTML, sin render, sin Auto, sin jobs. Reutiliza
 exclusivamente la fachada `srt_import` (S36-A) para parsear y validar; aqui solo se
 confina el video, se almacena el SRT de forma privada y se administra la asociacion
-(un SRT seleccionado por video) mediante un manifiesto v1 saneado.
+(un SRT seleccionado por video). La construccion/saneamiento del manifiesto v1 vive en
+`studio_srt_manifest` (whitelist); este modulo orquesta storage, integridad y atomicidad.
 
-Reglas duras:
+Reglas duras (endurecidas en la 2a pasada de S36-C1):
 - Tiempos SIEMPRE en milisegundos enteros.
-- Escrituras atomicas: archivo temporal + fsync + os.replace; nunca queda `.tmp`.
-- El manifiesto NUNCA incluye texto de cues, rutas absolutas ni tracebacks.
-- `managed_file` es siempre un basename (sin `/` ni `\`).
+- Escrituras atomicas: temporal UNICO por operacion (mkstemp en el mismo dir) + fsync +
+  os.replace; nunca queda `.tmp` ni se comparte temporal entre threads.
+- El archivo administrado se nombra por el SHA256 COMPLETO ({sha}.srt): sin colisiones de
+  prefijo; su hash real SIEMPRE coincide con `source_sha256` del manifiesto.
+- La idempotencia verifica el storage: mismo SHA solo evita reescribir si el archivo existe,
+  es regular, esta dentro del dir del video y sus bytes coinciden; si no, se REPARA.
+- El manifiesto se RECONSTRUYE por whitelist al leerse (studio_srt_manifest.sanitize_manifest).
 - Los bytes originales del usuario se guardan tal cual; el sha256 es sobre esos bytes.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import tempfile
+import time
 from pathlib import Path, PureWindowsPath
 
+import studio_srt_manifest as manifest_mod
 from srt_import import (
     SrtDecodeError,
     SrtError,
@@ -27,9 +36,8 @@ from srt_import import (
     validate_srt,
 )
 from srt_types import MAX_CUES, MAX_SRT_BYTES, SrtDiagnostic, SrtDocument
+from studio_srt_manifest import MANIFEST_VERSION, build_manifest, empty_selection
 
-MANIFEST_VERSION = 1
-MANAGED_SHA_LEN = 12
 SELECTION_SUFFIX = "_srt_selection.json"
 
 
@@ -55,7 +63,7 @@ class StudioSrtUnsupported(StudioSrtError):
 
 
 class StudioSrtStorageError(StudioSrtError):
-    """Fallo inesperado de almacenamiento; la seleccion previa permanece intacta."""
+    """Fallo de almacenamiento/integridad; la seleccion previa permanece intacta."""
 
 
 # ─── Confinamiento del video ───────────────────────────────────────────────────
@@ -63,19 +71,20 @@ def resolver_video_input(name: str, input_dir: Path) -> Path | None:
     """Basename confinado en input_dir (.mp4 primero, luego .mov). Sin traversal.
 
     Misma politica que el resolver historico de Studio: rechaza rutas POSIX y Windows,
-    drive letters, UNC, `..` y cualquier candidato que escape de input/ tras resolve().
+    drive letters, UNC, NUL/control, `..` y cualquier candidato que escape de input/.
     """
-    if not name or Path(name).name != name or PureWindowsPath(name).name != name:
+    if not name or "\x00" in name or Path(name).name != name or PureWindowsPath(name).name != name:
         return None
     root = Path(input_dir).resolve()
     for ext in (".mp4", ".mov", ".MP4", ".MOV"):
-        candidate = (root / f"{name}{ext}").resolve()
         try:
+            candidate = (root / f"{name}{ext}").resolve()
             candidate.relative_to(root)
-        except ValueError:
+            if candidate.is_file():
+                return candidate
+        except (OSError, ValueError):
+            # ValueError: escape de root o caracter invalido en la ruta; OSError: stat fallido.
             continue
-        if candidate.is_file():
-            return candidate
     return None
 
 
@@ -120,80 +129,33 @@ def parse_and_validate(
     return document, diagnostics
 
 
-# ─── Manifiesto v1 (saneado; sirve tanto para almacenar como para responder) ───
-def _basename(name: str | None) -> str | None:
-    if not name:
-        return None
-    return PureWindowsPath(name).name
+# ─── Escritura atomica con temporal UNICO por operacion ────────────────────────
+def _replace_with_retry(tmp: Path, path: Path, attempts: int = 6) -> None:
+    """os.replace con reintento acotado ante PermissionError transitorio de Windows.
+
+    Bajo escritura concurrente al mismo destino, MoveFileEx puede fallar con WinError 5;
+    el resultado sigue siendo last-writer-wins con archivos completos (nunca parciales).
+    """
+    for i in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.005 * (i + 1))
 
 
-def build_manifest(
-    *,
-    video_stem: str,
-    video_filename: str,
-    video_duration_ms: int | None,
-    document: SrtDocument,
-    diagnostics: tuple[SrtDiagnostic, ...],
-    managed_name: str,
-) -> dict:
-    """Manifiesto v1 saneado: sin texto de cues, sin rutas, sin `message` de diagnosticos."""
-    cues = document.cues
-    start = cues[0].start_ms if cues else 0
-    end = cues[-1].end_ms if cues else 0
-    return {
-        "version": MANIFEST_VERSION,
-        "video": {
-            "name": video_stem,
-            "filename": video_filename,
-            "duration_ms": int(video_duration_ms) if video_duration_ms is not None else None,
-        },
-        "selection": {
-            "selected": True,
-            "source_name": _basename(document.source_name),
-            "managed_file": managed_name,
-            "source_sha256": document.source_sha256,
-            "encoding": document.encoding,
-        },
-        "summary": {
-            "n_cues": len(cues),
-            "start_ms": start,
-            "end_ms": end,
-            "n_errors": sum(1 for d in diagnostics if d.severity == "error"),
-            "n_warnings": sum(1 for d in diagnostics if d.severity == "warning"),
-        },
-        "diagnostics": [
-            {
-                "code": d.code,
-                "severity": d.severity,
-                "cue_position": d.cue_position,
-                "cue_index": d.cue_index,
-            }
-            for d in diagnostics
-        ],
-        "status": "ready",
-    }
-
-
-def empty_selection(video_stem: str) -> dict:
-    """Respuesta publica cuando no hay SRT seleccionado para el video."""
-    return {
-        "version": MANIFEST_VERSION,
-        "video": {"name": video_stem},
-        "selection": {"selected": False},
-        "status": "none",
-    }
-
-
-# ─── Escritura atomica ─────────────────────────────────────────────────────────
 def _atomic_write_bytes(path: Path, data: bytes) -> None:
     path = Path(path)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    fd, tmpname = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(tmpname)
     try:
-        with open(tmp, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
@@ -202,19 +164,21 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
 def _atomic_write_json(path: Path, obj: dict) -> None:
     path = Path(path)
     payload = json.dumps(obj, ensure_ascii=False, indent=2)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    fd, tmpname = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(tmpname)
     try:
-        with open(tmp, "w", encoding="utf-8", newline="") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(payload)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
 
 
 def _read_manifest(path: Path) -> dict | None:
+    """Lectura tolerante (para la ruta de escritura): None si falta o es JSON ilegible."""
     path = Path(path)
     if not path.is_file():
         return None
@@ -228,6 +192,36 @@ def _manifest_path(manifest_dir: Path, video_stem: str) -> Path:
     return Path(manifest_dir) / f"{video_stem}{SELECTION_SUFFIX}"
 
 
+# ─── Integridad del archivo administrado ───────────────────────────────────────
+def _managed_file_ok(
+    video_dir: Path, managed_name: object, expected_sha: str, expected_data: bytes
+) -> bool:
+    """True solo si el archivo administrado existe, es regular, esta confinado y su hash y
+    bytes coinciden con lo validado. Un basename inseguro o cualquier discrepancia -> False."""
+    if not manifest_mod.is_safe_basename(managed_name):
+        return False
+    video_dir = Path(video_dir)
+    managed_path = video_dir / managed_name
+    try:
+        managed_path.resolve().relative_to(video_dir.resolve())
+    except ValueError:
+        return False
+    if not managed_path.is_file():
+        return False
+    try:
+        actual = managed_path.read_bytes()
+    except OSError:
+        return False
+    if not actual or hashlib.sha256(actual).hexdigest() != expected_sha:
+        return False
+    return actual == expected_data
+
+
+def _selection_matches(existing: dict, sha: str) -> bool:
+    selection = existing.get("selection", {})
+    return bool(selection.get("selected")) and selection.get("source_sha256") == sha
+
+
 # ─── Asociacion (un SRT seleccionado por video) ────────────────────────────────
 def store_and_associate(
     document: SrtDocument,
@@ -239,27 +233,36 @@ def store_and_associate(
     data: bytes,
     storage_root: Path,
     manifest_dir: Path,
-) -> tuple[dict, bool]:
-    """Almacena el SRT por hash y actualiza la asociacion. Devuelve (manifiesto, creado).
+) -> tuple[dict, bool, bool]:
+    """Almacena el SRT por hash completo y actualiza la asociacion.
 
-    Idempotente: mismo video + mismo sha256 ya seleccionado -> no reescribe, creado=False.
-    Reemplazo: nuevo sha -> escribe el nuevo archivo administrado y solo entonces promueve
-    el manifiesto; la seleccion previa nunca se borra. Orden: archivo administrado primero,
-    manifiesto al final, para que un fallo tardio conserve la seleccion previa.
+    Devuelve (manifiesto, creado, reparado):
+    - creado=True  -> nueva seleccion o reemplazo (HTTP 201).
+    - creado=False, reparado=False -> idempotente: mismo SHA, storage integro (HTTP 200).
+    - creado=False, reparado=True  -> mismo SHA pero storage roto/incompleto: se reconstruye
+      atomicamente y se regenera el manifiesto (HTTP 200; el contenido seleccionado no cambio).
+
+    El archivo administrado se escribe primero y el manifiesto al final, para que un fallo
+    tardio conserve la seleccion previa. La seleccion anterior nunca se borra.
     """
     sha = document.source_sha256
-    managed_name = f"{sha[:MANAGED_SHA_LEN]}.srt"
+    managed_name = f"{sha}.srt"
     manifest_path = _manifest_path(manifest_dir, video_stem)
+    video_dir = Path(storage_root) / video_stem
+    managed_path = video_dir / managed_name
 
     existing = _read_manifest(manifest_path)
-    if (
-        existing
-        and existing.get("selection", {}).get("selected")
-        and existing.get("selection", {}).get("source_sha256") == sha
+    same_selection = bool(existing) and _selection_matches(existing, sha)
+    if same_selection and _managed_file_ok(
+        video_dir, existing.get("selection", {}).get("managed_file"), sha, data
     ):
-        return existing, False
+        try:
+            return manifest_mod.sanitize_manifest(existing, video_stem), False, False
+        except ValueError:
+            pass  # manifiesto viola el contrato -> reparar abajo (same_selection sigue True)
 
-    manifest = build_manifest(
+    repaired = same_selection
+    new_manifest = build_manifest(
         video_stem=video_stem,
         video_filename=video_filename,
         video_duration_ms=video_duration_ms,
@@ -267,24 +270,35 @@ def store_and_associate(
         diagnostics=diagnostics,
         managed_name=managed_name,
     )
-    video_dir = Path(storage_root) / video_stem
-    managed_path = video_dir / managed_name
     try:
         video_dir.mkdir(parents=True, exist_ok=True)
-        if not managed_path.is_file():
+        if not _managed_file_ok(video_dir, managed_name, sha, data):
             _atomic_write_bytes(managed_path, data)
-        _atomic_write_json(manifest_path, manifest)
+        _atomic_write_json(manifest_path, new_manifest)
     except OSError:
         raise StudioSrtStorageError("no se pudo almacenar la seleccion SRT") from None
-    return manifest, True
+    return new_manifest, (not repaired), repaired
 
 
 def read_selection(video_stem: str, manifest_dir: Path) -> dict:
-    """Manifiesto publico saneado del video, o estado `none` si no hay seleccion activa."""
-    data = _read_manifest(_manifest_path(manifest_dir, video_stem))
-    if not data or not data.get("selection", {}).get("selected"):
+    """Manifiesto publico saneado del video, o estado `none` si no hay seleccion activa.
+
+    Si el manifiesto existe y esta seleccionado pero es ilegible o viola el contrato v1,
+    lanza StudioSrtStorageError (el router responde 500 generico, sin filtrar contenido).
+    """
+    path = _manifest_path(manifest_dir, video_stem)
+    if not path.is_file():
         return empty_selection(video_stem)
-    return data
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise StudioSrtStorageError("manifiesto SRT ilegible") from None
+    if not isinstance(raw, dict) or raw.get("selection", {}).get("selected") is not True:
+        return empty_selection(video_stem)
+    try:
+        return manifest_mod.sanitize_manifest(raw, video_stem)
+    except ValueError:
+        raise StudioSrtStorageError("manifiesto SRT invalido") from None
 
 
 def disassociate(video_stem: str, manifest_dir: Path) -> dict:

@@ -1267,3 +1267,35 @@ NO mergeado.** Solo backend/API; sin UI, sin render, sin Auto (S36-C2 conectará
    puro compartido para no divergir del confinamiento.
 
 **Auto/render/captions/UI NO se conectan aún.** S36-C2 pendiente. S36 sigue ABIERTA.
+
+### D37 addendum — Endurecimiento del backend SRT (2º commit del PR #15, sesión 39)
+
+Antes del merge se endureció el almacenamiento tras revisión técnica (5 bloqueantes + extras):
+
+1. **Lectura acotada real.** El upload se lee por chunks de 64 KiB con límite DURO
+   (`_read_upload_limited`); `file.size` solo sirve como rechazo temprano, nunca como única
+   defensa. Acepta exactamente `MAX_SRT_BYTES`, rechaza `+1` con 413 antes de parsear/almacenar.
+2. **Duración real, no cache obsoleto.** `{name}_info.json` solo se reutiliza si existe, es
+   regular, su mtime ≥ mtime del video y `duration` es numérica, finita y > 0 (rechaza
+   NaN/Infinity/0/negativo/bool/str). Si no, cae a `core.get_video_info`; si tampoco hay una
+   duración válida → `StudioSrtStorageError` (500 genérico). Nunca se valida el SRT con `0`.
+3. **Idempotencia que verifica el storage.** Mismo SHA solo es idempotente si el archivo
+   administrado existe, es regular, está confinado en el dir del video y sus bytes + hash
+   coinciden. Si el manifiesto coincide pero el archivo falta/está corrupto/apunta a un basename
+   inseguro/hash distinto, se RECONSTRUYE atómicamente y se regenera el manifiesto (`repaired`,
+   HTTP 200; el contenido seleccionado no cambió).
+4. **Sin colisiones de hash.** El archivo administrado usa el **SHA256 completo** como basename
+   (`{sha}.srt`): `hash(archivo) == manifest.source_sha256` SIEMPRE; se elimina la ambigüedad
+   del prefijo corto. (Aún no mergeado ⇒ sin migración de históricos.)
+5. **Temporales únicos por operación.** `tempfile.mkstemp` en el mismo directorio (nunca
+   `{pid}` compartido) + fsync + `os.replace` con reintento acotado ante `PermissionError`
+   transitorio de Windows (last-writer-wins con archivos completos; nunca parciales ni `.tmp`).
+
+Extras: el manifiesto público se **reconstruye por whitelist** (`sanitize_manifest`) y se valida
+contra el contrato v1 (version, `video.name`, basenames, sha256 de 64 hex, tipos enteros,
+diagnósticos de 4 claves); si viola el contrato o es ilegible → `StudioSrtStorageError` (500)
+sin filtrar contenido. Los mensajes de error del router ya **no reflejan el `name`** del usuario
+("Video no encontrado en input."), y el resolver rechaza NUL/control y captura `ValueError` de
+`stat` (antes un NUL en `name` reventaba con 500). +49 tests nuevos (suite 1355, 1 warning).
+La construcción/saneamiento del manifiesto se extrajo a `studio_srt_manifest.py` (whitelist)
+para mantener cada módulo bajo el límite de 400 líneas (`studio_srt.py` 328, manifest 204).

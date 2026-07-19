@@ -17,9 +17,11 @@ video de `input/` y **un** archivo SRT seleccionado:
 ## Módulos
 
 - `studio_srt.py` — dominio puro (cero FastAPI): confinamiento de video, validación de nombre,
-  parseo+validación, almacenamiento por hash, manifest v1 saneado, idempotencia/reemplazo,
-  escritura atómica, delete-desasocia, capacidades. Errores tipados
+  parseo+validación, almacenamiento por hash, idempotencia/reparación/reemplazo, escritura
+  atómica, delete-desasocia, capacidades. Errores tipados
   (`StudioSrtNotFound/Invalid/TooLarge/Unsupported/StorageError`).
+- `studio_srt_manifest.py` — construcción y **saneamiento por whitelist** del manifiesto v1
+  (helpers de basename/sha256, `build_manifest`, `sanitize_manifest`). Puro, sin FastAPI.
 - `studio_srt_routes.py` — APIRouter delgado que traduce errores tipados a HTTP.
 - `app.py` — solo `include_router(...)` + delegación de `_resolver_video_input` al helper puro.
 
@@ -35,9 +37,12 @@ video de `input/` y **un** archivo SRT seleccionado:
 ## Almacenamiento privado
 
 ```
-transcripts/studio_srt/{video_stem}/{sha256_corto}.srt   # bytes originales, nunca montado
-transcripts/{video_stem}_srt_selection.json              # manifiesto v1 saneado
+transcripts/studio_srt/{video_stem}/{sha256_completo}.srt  # bytes originales, nunca montado
+transcripts/{video_stem}_srt_selection.json                # manifiesto v1 saneado
 ```
+
+El basename usa el **SHA256 completo** (64 hex): `hash(archivo) == manifest.source_sha256`
+siempre, sin colisiones de prefijo.
 
 `transcripts/` ya está gitignored. Ningún mount (`/input`, `/output`, `/clips`, `/static`)
 sirve estos archivos; no existe endpoint de descarga.
@@ -63,13 +68,28 @@ capabilities → none → upload → idempotencia → reemplazo → delete, veri
 administrado no se publica por ningún mount y que **no** se inicia ningún job/render/Auto.
 No versiona MP4, manifiesto ni SRT privado; solo `fixtures/demo.srt` es sintético y versionado.
 
+## Endurecimiento (2º commit, D37 addendum)
+
+1. **Lectura acotada** por chunks de 64 KiB con límite duro; `file.size` solo rechazo temprano.
+2. **Duración validada**: cache reutilizado solo si reciente (mtime ≥ video) y finito > 0
+   (rechaza NaN/Inf/0/negativo); si no ffprobe; si no `StudioSrtStorageError` (500). Nunca `0`.
+3. **Idempotencia que verifica el storage**: hash + bytes del archivo administrado; si falta o
+   está corrupto, lo REPARA (200, `repaired`).
+4. **SHA256 completo** como basename → sin colisiones (`hash(archivo) == manifest.source_sha256`).
+5. **Temporales únicos** (`mkstemp`) + fsync + `os.replace` con reintento anti-`PermissionError`
+   de Windows (last-writer-wins, nunca parcial ni `.tmp`).
+6. **Manifiesto público reconstruido por whitelist** (`sanitize_manifest`); contrato violado o
+   ilegible → 500 sin filtrar. Errores del router no reflejan el `name`; resolver rechaza NUL.
+
 ## Tests
 
-- `tests/test_studio_srt.py` — 47 casos de dominio (confinamiento, validación, almacenamiento,
-  atomicidad, idempotencia, reemplazo, desasociación, independencia entre videos).
-- `tests/test_studio_srt_api.py` — 23 casos de API (status HTTP, privacidad, mounts, historia
-  intacta, sin jobs/render/Auto/Whisper).
-- Suite total: **1306 passed, 1 warning** preexistente (`StarletteDeprecationWarning`).
+- `tests/test_studio_srt.py` — 69 casos de dominio (confinamiento, validación, almacenamiento por
+  hash completo, integridad/reparación, atomicidad con temporales únicos y concurrencia,
+  idempotencia, reemplazo, saneamiento por whitelist, independencia entre videos).
+- `tests/test_studio_srt_api.py` — 50 casos de API (status HTTP, lectura acotada, cache de
+  duración, errores públicos sin reflejar input, privacidad, mounts, historia intacta, sin
+  jobs/render/Auto/Whisper).
+- Suite total: **1355 passed, 1 warning** preexistente (`StarletteDeprecationWarning`).
 
 ## Fuera de alcance (S36-C2)
 

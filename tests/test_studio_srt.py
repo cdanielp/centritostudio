@@ -1,14 +1,17 @@
 """test_studio_srt.py — Contrato de dominio del administrador SRT de Studio (S36-C1, D37).
 
 Sin red, sin GPU, sin FFmpeg. Cubre confinamiento de video, validacion de nombre,
-parseo+validacion contra duracion, almacenamiento privado por hash, atomicidad,
-idempotencia, reemplazo y desasociacion. Nunca toca transcripts/ reales: todo va a
-tmp_path. El SRT real del usuario NO se usa aqui.
+parseo+validacion contra duracion, almacenamiento privado por hash COMPLETO, integridad
+y reparacion del archivo administrado, idempotencia, reemplazo, atomicidad con temporales
+unicos (incl. concurrencia) y saneamiento por whitelist del manifiesto. Nunca toca
+transcripts/ reales: todo va a tmp_path. El SRT real del usuario NO se usa aqui.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import threading
 
 import pytest
 
@@ -30,6 +33,7 @@ def _srt(*cues: tuple[int, int, int, str]) -> bytes:
 
 _OK = _srt((1, 0, 1000, "uno"), (2, 1000, 2000, "dos"))
 _DUR = 12_000
+_SHA_OK = hashlib.sha256(_OK).hexdigest()
 
 
 # ─── Confinamiento del video (resolver) ────────────────────────────────────────
@@ -77,7 +81,6 @@ def test_resolver_symlink_fuera_de_input_se_rechaza(tmp_path):
         (inp / "link.mp4").symlink_to(outside / "real.mp4")
     except (OSError, NotImplementedError):
         pytest.skip("symlinks no disponibles en este entorno")
-    # El resolver confina por resolve()+relative_to: un symlink que escapa no resuelve dentro.
     resolved = studio_srt.resolver_video_input("link", inp)
     assert resolved is None or resolved.resolve().parent == inp.resolve()
 
@@ -125,14 +128,12 @@ def test_documento_vacio_rechazado():
 
 
 def test_bloque_con_error_estructural_aborta():
-    # segundo bloque con end<=start -> error estructural -> se descarta y aborta por error
     data = _srt((1, 0, 1000, "ok"), (2, 2000, 2000, "malo"))
     with pytest.raises(studio_srt.StudioSrtInvalid):
         studio_srt.parse_and_validate(data, source_name="s.srt", video_duration_ms=_DUR)
 
 
 def test_warnings_no_abortan():
-    # indices no consecutivos -> warning, no aborta
     data = _srt((1, 0, 1000, "uno"), (5, 1000, 2000, "dos"))
     doc, diags = studio_srt.parse_and_validate(data, source_name="s.srt", video_duration_ms=_DUR)
     assert len(doc.cues) == 2
@@ -164,12 +165,17 @@ def test_entrada_no_es_mutada():
 
 
 # ─── Almacenamiento y asociacion ───────────────────────────────────────────────
-def _store(tmp_path, data=_OK, stem="video_demo"):
+def _paths(tmp_path):
     storage = tmp_path / "studio_srt"
     manifests = tmp_path / "transcripts"
     manifests.mkdir(exist_ok=True)
+    return storage, manifests
+
+
+def _store(tmp_path, data=_OK, stem="video_demo"):
+    storage, manifests = _paths(tmp_path)
     doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=_DUR)
-    manifest, created = studio_srt.store_and_associate(
+    manifest, created, repaired = studio_srt.store_and_associate(
         doc,
         diags,
         video_stem=stem,
@@ -179,24 +185,50 @@ def _store(tmp_path, data=_OK, stem="video_demo"):
         storage_root=storage,
         manifest_dir=manifests,
     )
-    return manifest, created, storage, manifests
+    return manifest, created, repaired, storage, manifests
 
 
-def test_almacenamiento_por_hash_y_bytes_preservados(tmp_path):
-    manifest, created, storage, _ = _store(tmp_path)
-    assert created is True
-    sha = hashlib.sha256(_OK).hexdigest()
-    managed = storage / "video_demo" / f"{sha[:12]}.srt"
+def _manifest_file(manifests, stem="video_demo"):
+    return manifests / f"{stem}_srt_selection.json"
+
+
+def _tamper(manifests, mutator, stem="video_demo"):
+    p = _manifest_file(manifests, stem)
+    d = json.loads(p.read_text(encoding="utf-8"))
+    mutator(d)
+    p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+
+def test_almacenamiento_por_hash_completo_y_bytes_preservados(tmp_path):
+    manifest, created, repaired, storage, _ = _store(tmp_path)
+    assert (created, repaired) == (True, False)
+    managed = storage / "video_demo" / f"{_SHA_OK}.srt"
     assert managed.is_file()
     assert managed.read_bytes() == _OK  # bytes originales tal cual
-    assert manifest["selection"]["source_sha256"] == sha
-    assert manifest["selection"]["managed_file"] == f"{sha[:12]}.srt"
+    assert manifest["selection"]["source_sha256"] == _SHA_OK
+    assert manifest["selection"]["managed_file"] == f"{_SHA_OK}.srt"  # SHA COMPLETO
 
 
 def test_managed_file_es_basename_seguro(tmp_path):
     manifest, *_ = _store(tmp_path)
     mf = manifest["selection"]["managed_file"]
     assert "/" not in mf and "\\" not in mf
+    assert len(mf) == 64 + len(".srt")
+
+
+def test_manifest_y_archivo_comparten_sha_completo(tmp_path):
+    manifest, _, _, storage, _ = _store(tmp_path)
+    managed = storage / "video_demo" / manifest["selection"]["managed_file"]
+    assert (
+        hashlib.sha256(managed.read_bytes()).hexdigest() == manifest["selection"]["source_sha256"]
+    )
+
+
+def test_contenidos_distintos_nombres_distintos(tmp_path):
+    _store(tmp_path)
+    otro = _srt((1, 0, 1000, "otro"), (2, 1000, 3000, "texto"))
+    m2, *_ = _store(tmp_path, data=otro)
+    assert m2["selection"]["managed_file"] != f"{_SHA_OK}.srt"
 
 
 def test_manifest_version_1_y_summary(tmp_path):
@@ -211,45 +243,90 @@ def test_manifest_version_1_y_summary(tmp_path):
 
 
 def test_manifest_no_expone_texto_ni_rutas(tmp_path):
-    manifest, _, storage, manifests = _store(tmp_path)
+    manifest, *_ = _store(tmp_path)
     blob = str(manifest)
-    assert "uno" not in blob and "dos" not in blob  # sin texto de cues
-    assert str(tmp_path) not in blob  # sin rutas absolutas
+    assert "uno" not in blob and "dos" not in blob
+    assert str(tmp_path) not in blob
     assert "managed_path" not in blob
     for d in manifest["diagnostics"]:
         assert set(d.keys()) == {"code", "severity", "cue_position", "cue_index"}
 
 
 def test_no_quedan_tmp(tmp_path):
-    _, _, storage, manifests = _store(tmp_path)
+    _, _, _, storage, manifests = _store(tmp_path)
     assert not list(storage.rglob("*.tmp"))
     assert not list(manifests.rglob("*.tmp"))
 
 
-def test_idempotencia_mismo_sha(tmp_path):
+# ─── Idempotencia que verifica el storage (Bloqueante 3) ───────────────────────
+def test_idempotencia_archivo_correcto_no_reescribe(tmp_path):
     _store(tmp_path)
-    manifest2, created2, storage, _ = _store(tmp_path)
-    assert created2 is False
+    manifest2, created2, repaired2, storage, _ = _store(tmp_path)
+    assert (created2, repaired2) == (False, False)
     managed = list((storage / "video_demo").glob("*.srt"))
     assert len(managed) == 1  # no duplica
 
 
+def test_idempotencia_repara_archivo_faltante(tmp_path):
+    _, _, _, storage, _ = _store(tmp_path)
+    managed = storage / "video_demo" / f"{_SHA_OK}.srt"
+    managed.unlink()  # storage roto: archivo administrado desaparece
+    manifest2, created2, repaired2, _, manifests = _store(tmp_path)
+    assert (created2, repaired2) == (False, True)  # reconstruido, no idempotencia falsa
+    assert managed.is_file() and managed.read_bytes() == _OK
+    assert not list(manifests.rglob("*.tmp"))
+
+
+def test_idempotencia_repara_bytes_corruptos(tmp_path):
+    _, _, _, storage, _ = _store(tmp_path)
+    managed = storage / "video_demo" / f"{_SHA_OK}.srt"
+    managed.write_bytes(b"corrupto")  # hash ya no coincide
+    manifest2, created2, repaired2, *_ = _store(tmp_path)
+    assert (created2, repaired2) == (False, True)
+    assert managed.read_bytes() == _OK  # reparado con los bytes validados
+
+
+def test_idempotencia_managed_file_inseguro_no_sale_del_root(tmp_path):
+    _, _, _, storage, manifests = _store(tmp_path)
+    _tamper(manifests, lambda d: d["selection"].update(managed_file="../evil.srt"))
+    manifest2, created2, repaired2, *_ = _store(tmp_path)
+    assert (created2, repaired2) == (False, True)
+    assert manifest2["selection"]["managed_file"] == f"{_SHA_OK}.srt"  # nombre canonico
+    assert not (storage / "evil.srt").exists()  # nunca escribe fuera del dir del video
+    assert (storage / "video_demo" / f"{_SHA_OK}.srt").is_file()
+
+
+def test_idempotencia_manifest_truncado_comportamiento_seguro(tmp_path):
+    _, _, _, storage, manifests = _store(tmp_path)
+    _manifest_file(manifests).write_text("{ truncado", encoding="utf-8")  # JSON roto
+    manifest2, created2, repaired2, *_ = _store(tmp_path)
+    assert manifest2["version"] == 1 and manifest2["status"] == "ready"
+    assert (storage / "video_demo" / f"{_SHA_OK}.srt").is_file()
+
+
+def test_prefijo_colision_no_reutiliza_bytes_ajenos(tmp_path):
+    # Un archivo administrado con hash real distinto al esperado NUNCA se acepta como valido.
+    _, _, _, storage, _ = _store(tmp_path)
+    managed = storage / "video_demo" / f"{_SHA_OK}.srt"
+    assert studio_srt._managed_file_ok(managed.parent, managed.name, _SHA_OK, _OK) is True
+    assert studio_srt._managed_file_ok(managed.parent, managed.name, _SHA_OK, b"ajeno") is False
+
+
+# ─── Reemplazo ─────────────────────────────────────────────────────────────────
 def test_nuevo_sha_reemplaza_y_conserva_anterior(tmp_path):
     _store(tmp_path)
     otro = _srt((1, 0, 1000, "otro"), (2, 1000, 3000, "contenido"))
-    manifest2, created2, storage, _ = _store(tmp_path, data=otro)
-    assert created2 is True
-    sha_old = hashlib.sha256(_OK).hexdigest()
+    manifest2, created2, repaired2, storage, _ = _store(tmp_path, data=otro)
+    assert (created2, repaired2) == (True, False)
     sha_new = hashlib.sha256(otro).hexdigest()
     assert manifest2["selection"]["source_sha256"] == sha_new
-    # la seleccion anterior no se borra: su archivo administrado sigue en disco
-    assert (storage / "video_demo" / f"{sha_old[:12]}.srt").is_file()
-    assert (storage / "video_demo" / f"{sha_new[:12]}.srt").is_file()
+    assert (storage / "video_demo" / f"{_SHA_OK}.srt").is_file()  # anterior conservado
+    assert (storage / "video_demo" / f"{sha_new}.srt").is_file()
 
 
 def test_fallo_antes_del_manifest_conserva_seleccion_previa(tmp_path, monkeypatch):
-    manifest1, _, storage, manifests = _store(tmp_path)
-    manifest_path = manifests / "video_demo_srt_selection.json"
+    manifest1, _, _, storage, manifests = _store(tmp_path)
+    manifest_path = _manifest_file(manifests)
     antes = manifest_path.read_bytes()
 
     def _boom(_path, _obj):
@@ -273,9 +350,78 @@ def test_fallo_antes_del_manifest_conserva_seleccion_previa(tmp_path, monkeypatc
     assert not list(manifests.rglob("*.tmp"))
 
 
+# ─── Escritura atomica con temporales unicos (Bloqueante 5) ────────────────────
+def test_atomic_write_bytes_concurrente_targets_distintos(tmp_path):
+    barrier = threading.Barrier(6)
+
+    def worker(i):
+        barrier.wait()
+        studio_srt._atomic_write_bytes(tmp_path / f"f{i}.bin", f"payload-{i}".encode() * 2000)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    for i in range(6):
+        assert (tmp_path / f"f{i}.bin").read_bytes() == f"payload-{i}".encode() * 2000
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_atomic_write_bytes_mismo_target_nunca_parcial(tmp_path):
+    # Contrato: last-writer-wins con archivo COMPLETO. Bajo contencion extrema un perdedor
+    # puede fallar tras reintentos (PermissionError de Windows); jamas queda un `.tmp` ni un
+    # payload parcial/mezclado. Recogemos excepciones para no dejar excepcion de hilo suelta.
+    target = tmp_path / "shared.bin"
+    payloads = [bytes([65 + i]) * (40_000 + i) for i in range(6)]
+    barrier = threading.Barrier(6)
+    errors: list[BaseException] = []
+
+    def worker(i):
+        barrier.wait()
+        try:
+            studio_srt._atomic_write_bytes(target, payloads[i])
+        except OSError as exc:  # last-writer-wins: un perdedor puede fallar limpiamente
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert target.read_bytes() in payloads  # payload completo, nunca mezcla parcial
+    assert not list(tmp_path.glob("*.tmp"))  # ningun temporal huerfano
+    assert all(isinstance(e, PermissionError) for e in errors)  # solo choque de reemplazo
+
+
+def test_atomic_write_json_concurrente_sin_tmp(tmp_path):
+    barrier = threading.Barrier(6)
+
+    def worker(i):
+        barrier.wait()
+        studio_srt._atomic_write_json(tmp_path / f"m{i}.json", {"i": i, "pad": "x" * 5000})
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    for i in range(6):
+        assert json.loads((tmp_path / f"m{i}.json").read_text(encoding="utf-8"))["i"] == i
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_atomic_write_bytes_excepcion_no_deja_tmp(tmp_path):
+    # Escritura sobre un dir inexistente falla al crear el temporal; no debe quedar `.tmp`.
+    target = tmp_path / "sub_inexistente" / "x.bin"
+    with pytest.raises(OSError):
+        studio_srt._atomic_write_bytes(target, b"data")
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+# ─── Lectura / desasociacion ───────────────────────────────────────────────────
 def test_read_selection_none_cuando_no_hay(tmp_path):
-    manifests = tmp_path / "transcripts"
-    manifests.mkdir()
+    _, manifests = _paths(tmp_path)
     sel = studio_srt.read_selection("video_demo", manifests)
     assert sel == {
         "version": 1,
@@ -285,26 +431,25 @@ def test_read_selection_none_cuando_no_hay(tmp_path):
     }
 
 
-def test_read_selection_devuelve_manifest(tmp_path):
+def test_read_selection_devuelve_manifest_saneado(tmp_path):
     _store(tmp_path)
     sel = studio_srt.read_selection("video_demo", tmp_path / "transcripts")
     assert sel["selection"]["selected"] is True
     assert sel["status"] == "ready"
+    assert set(sel.keys()) == {"version", "video", "selection", "summary", "diagnostics", "status"}
 
 
 def test_delete_desasocia_y_es_idempotente(tmp_path):
-    _, _, storage, manifests = _store(tmp_path)
+    _, _, _, storage, manifests = _store(tmp_path)
     r1 = studio_srt.disassociate("video_demo", manifests)
     assert r1 == {
         "video": {"name": "video_demo"},
         "selection": {"selected": False},
         "status": "none",
     }
-    # no borra archivos administrados
-    assert list((storage / "video_demo").glob("*.srt"))
-    # idempotente: segunda vez no falla
+    assert list((storage / "video_demo").glob("*.srt"))  # no borra administrados
     r2 = studio_srt.disassociate("video_demo", manifests)
-    assert r2 == r1
+    assert r2 == r1  # idempotente
     assert studio_srt.read_selection("video_demo", manifests)["status"] == "none"
 
 
@@ -319,6 +464,51 @@ def test_dos_videos_asociaciones_independientes(tmp_path):
     studio_srt.disassociate("uno", manifests)
     assert studio_srt.read_selection("uno", manifests)["status"] == "none"
     assert studio_srt.read_selection("dos", manifests)["status"] == "ready"
+
+
+# ─── Saneamiento del manifiesto por whitelist ──────────────────────────────────
+def test_sanitize_descarta_campo_extra_privado(tmp_path):
+    _, _, _, _, manifests = _store(tmp_path)
+
+    def _add_extra(d):
+        d["secreto"] = "texto privado del usuario"
+        d["selection"]["managed_path"] = "/ruta/absoluta/interna"
+        d["cues"] = [{"text": "uno"}]
+
+    _tamper(manifests, _add_extra)
+    sel = studio_srt.read_selection("video_demo", manifests)
+    blob = json.dumps(sel)
+    assert "secreto" not in blob and "texto privado" not in blob
+    assert "managed_path" not in blob and "cues" not in sel
+    assert set(sel.keys()) == {"version", "video", "selection", "summary", "diagnostics", "status"}
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda d: d["selection"].update(managed_file="../escape.srt"),
+        lambda d: d["selection"].update(managed_file="sub/dir.srt"),
+        lambda d: d["video"].update(name="otro_video"),
+        lambda d: d["selection"].update(source_sha256="zz"),
+        lambda d: d["selection"].update(source_sha256="abc"),
+        lambda d: d.update(version=2),
+        lambda d: d["selection"].update(encoding=""),
+        lambda d: d["summary"].update(n_cues="dos"),
+        lambda d: d["diagnostics"].append({"code": "x", "severity": "critico"}),
+    ],
+)
+def test_sanitize_rechaza_contrato_violado(tmp_path, mutator):
+    _, _, _, _, manifests = _store(tmp_path)
+    _tamper(manifests, mutator)
+    with pytest.raises(studio_srt.StudioSrtStorageError):
+        studio_srt.read_selection("video_demo", manifests)
+
+
+def test_read_selection_json_corrupto_rechaza(tmp_path):
+    _, _, _, _, manifests = _store(tmp_path)
+    _manifest_file(manifests).write_text("no es json {", encoding="utf-8")
+    with pytest.raises(studio_srt.StudioSrtStorageError):
+        studio_srt.read_selection("video_demo", manifests)
 
 
 # ─── Capacidades ───────────────────────────────────────────────────────────────

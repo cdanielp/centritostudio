@@ -11,6 +11,9 @@ Uso:
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -95,7 +98,49 @@ def main() -> int:
             "/api/videos/demo/srt", files={"file": ("demo.srt", _SRT_V2.encode(), "x")}
         )
         assert rep.status_code == 201, "reemplazo 201"
+        managed = rep.json()["selection"]["managed_file"]  # ahora apunta a la V2
         print("[smoke] reemplazo OK")
+
+        # 5b) hash del archivo administrado == source_sha256 del manifiesto
+        managed_path = storage / "demo" / managed
+        sha_file = hashlib.sha256(managed_path.read_bytes()).hexdigest()
+        assert sha_file == rep.json()["selection"]["source_sha256"] == managed[:-4], "hash match"
+        print("[smoke] hash archivo == hash manifest OK")
+
+        # 5c) manifiesto publico saneado: solo claves de whitelist, sin texto de cues
+        sel = client.get("/api/videos/demo/srt").json()
+        assert set(sel) == {"version", "video", "selection", "summary", "diagnostics", "status"}
+        assert "Segunda version" not in client.get("/api/videos/demo/srt").text, "sin texto de cues"
+        print("[smoke] manifiesto publico saneado OK")
+
+        # 5d) reparacion: si el archivo administrado desaparece, un re-upload lo reconstruye
+        managed_path.unlink()
+        again = client.post(
+            "/api/videos/demo/srt", files={"file": ("demo.srt", _SRT_V2.encode(), "x")}
+        )
+        assert again.status_code == 200, "reparacion 200"
+        assert managed_path.is_file(), "archivo administrado reconstruido"
+        assert hashlib.sha256(managed_path.read_bytes()).hexdigest() == sha_file, "reparado integro"
+        print("[smoke] reparacion de archivo administrado faltante OK")
+
+        # 5e) lectura acotada: file.size no confiable, limite duro por chunks
+        import studio_srt  # noqa: PLC0415
+
+        class _Fake:
+            def __init__(self, data, size):
+                self._b, self.size, self.filename = io.BytesIO(data), size, "x.srt"
+
+            async def read(self, n=-1):
+                return self._b.read(n)
+
+        ok = asyncio.run(studio_srt_routes._read_upload_limited(_Fake(b"z" * 100, None), 100))
+        assert ok == b"z" * 100, "exacto max acotado"
+        try:
+            asyncio.run(studio_srt_routes._read_upload_limited(_Fake(b"z" * 101, 1), 100))
+            _fail("lectura acotada no rechazo max+1 con size mentiroso")
+        except studio_srt.StudioSrtTooLarge:
+            pass
+        print("[smoke] lectura acotada (size no confiable) OK")
 
         # 6) el archivo administrado no se publica por ningun mount
         for prefix in ("/input", "/output", "/clips", "/static", "/transcripts"):
