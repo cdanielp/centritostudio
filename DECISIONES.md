@@ -1212,3 +1212,22 @@ auditor de SRT en S36-B). QA específico de SRT queda para S36-C.
 
 **Sidecar:** añade `exact_matches`, `substitution_matches`, `rejected_substitutions` (agregado
 y por cue) y `fallback_reason` por cue. Sin texto privado adicional en logs.
+
+### D36 addendum — Veredicto visual de K: S36-B APROBADA — S36-B CERRADA
+
+**Fecha:** 2026-07-18. **PR mergeado:** #14 (commits `e844ba2` + `3cf2cb8` + docs).
+
+**VEREDICTO VISUAL DE K: APROBADO.** S36-B queda cerrada técnica y visualmente. Confirmado en
+la revisión visual:
+
+- El texto del SRT es la fuente oficial; Whisper solo aporta timings.
+- `substitution_match` conservador aprobado (ancla exacta + similitud ≥0.60).
+- Los timestamps reales no se modifican (sin `+1 ms`; inválido/no monótono → fallback).
+- El cue fallback permanece estático (un evento, sin karaoke falso).
+- Preset CVE + FX funcionan solo sobre los cues alineados; el fallback no se anima.
+- Round-trip del clip aprobado (SRT rebasado contra `clip.start` real, arranca en t=0).
+- Audio idéntico entre renders; SRT fuente intacto; sin datos privados.
+
+**S36-B CERRADA. S36 sigue ABIERTA: S36-C pendiente** (upload/selección de SRT en Studio,
+mapeo video↔SRT y batch, integración Auto v2, edición de SRT en UI, forced aligner si la
+cobertura real no alcanza). S37 permanece COMPLETA. Avance 86/100 sin cambios.

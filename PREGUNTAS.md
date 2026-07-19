@@ -955,7 +955,7 @@ No quedan preguntas técnicas abiertas para S37-C: classic es default, v2 es exp
 - re-render selectivo desde el Editor (continúa la deuda #37);
 - SRT con captions word-by-word y soporte multi-video (S36-B/C, independiente).
 
-### 50. S36-B — integración SRT con captions y clips — **IMPLEMENTADA EN PR (pendiente veredicto visual de K)**
+### 50. S36-B — integración SRT con captions y clips — **CERRADA (veredicto visual de K APROBADO 2026-07-18, PR #14 mergeado en main)**
 
 Resuelto en D36 (sesión 38): el texto del SRT es autoritativo; Whisper es fuente temporal;
 no hay equal-spacing; fallback a nivel de cue; Caption QA no modifica el SRT; el round-trip

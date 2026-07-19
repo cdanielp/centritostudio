@@ -1,5 +1,8 @@
 # S36-B — SRT como fuente oficial de captions + round-trip de clips
 
+> **VEREDICTO VISUAL DE K: APROBADO (2026-07-18).** S36-B aprobada técnica y visualmente;
+> PR #14 mergeado en `main`. Ver `CHECKLIST_VISUAL.md`. S36 sigue ABIERTA (S36-C pendiente).
+
 Evidencia sintética de la sesión 38. **Todo offline**: sin GPU, sin internet, sin
 Whisper/DeepSeek reales. Solo texto SINTÉTICO. Nada generado se versiona.
 
