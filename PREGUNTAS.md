@@ -980,3 +980,22 @@ históricos y ya no se ignoran; el preset solo anima cues alineados.
 - **Soporte batch** de `--srt` (hoy solo un video individual).
 - **Integración con Auto v2** (hoy SRT no se conecta al modo automático).
 - **Edición de SRT desde la UI.**
+
+### 51. S36-C1 — contrato backend de asociación video↔SRT en Studio — **RESUELTA (D37, sesión 39, PR abierto no mergeado)**
+
+Resuelto en D37 (solo backend/API):
+
+- **Ubicación privada del SRT.** Archivos administrados por hash en
+  `transcripts/studio_srt/{video_stem}/{sha256_corto}.srt` (nunca montado ni servido);
+  manifiesto en `transcripts/{video_stem}_srt_selection.json`. `transcripts/` ya gitignored.
+- **Asociación explícita.** Un SRT seleccionado por video vía `POST /api/videos/{name}/srt`;
+  sin autodiscovery, sin buscar por nombre parecido, sin asociar por orden de subida.
+- **Reemplazo/idempotencia.** Mismo SHA ya asociado → idempotente (no duplica, 200); SHA
+  distinto → valida completo y reemplaza (escritura atómica, manifiesto al final), sin borrar
+  la selección anterior.
+- **Delete/desasociación.** `DELETE` elimina solo el manifiesto activo (idempotente); no borra
+  archivos administrados, ni el SRT original, ni captions/words/groups/clips.
+
+**Siguen ABIERTAS para S36-C2 (NO se resuelven aquí):** selección visual en UI; integración con
+Auto v2; render con SRT; soporte batch; edición de SRT desde la UI; QA específico de SRT; forced
+aligner (WhisperX/stable-ts/MFA) si la cobertura real no alcanza; templates 9:16.

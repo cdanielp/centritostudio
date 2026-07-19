@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:02,000
+Hola desde Centrito Studio
+
+2
+00:00:02,000 --> 00:00:04,500
+Este es un SRT sintetico de prueba
+
+3
+00:00:04,500 --> 00:00:07,000
+Solo para el smoke de S36-C1

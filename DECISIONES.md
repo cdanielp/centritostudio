@@ -1231,3 +1231,39 @@ la revisión visual:
 **S36-B CERRADA. S36 sigue ABIERTA: S36-C pendiente** (upload/selección de SRT en Studio,
 mapeo video↔SRT y batch, integración Auto v2, edición de SRT en UI, forced aligner si la
 cobertura real no alcanza). S37 permanece COMPLETA. Avance 86/100 sin cambios.
+
+## D37 — S36-C1: Studio administra SRT privados por asociación explícita video↔SRT
+
+**Fecha:** 2026-07-18. **Sesión 39.** **Rama:** `feat/s36-c1-studio-srt-backend`. **PR abierto,
+NO mergeado.** Solo backend/API; sin UI, sin render, sin Auto (S36-C2 conectará eso).
+
+**Decisiones:**
+
+1. **Un SRT seleccionado por video.** La asociación es EXPLÍCITA por el endpoint del video
+   (`POST /api/videos/{name}/srt`). Sin autodiscovery, sin buscar por nombre parecido, sin
+   asociar por orden de subida, sin aplicar un SRT a varios videos.
+2. **Almacenamiento privado.** Los bytes originales válidos se guardan por hash en
+   `transcripts/studio_srt/{video_stem}/{sha256_corto}.srt` (nunca montado, nunca servido por
+   `/input`, `/output`, `/clips`, `/static` ni endpoint de descarga; `transcripts/` ya está
+   gitignored). El manifiesto de asociación vive en `transcripts/{video_stem}_srt_selection.json`.
+3. **Manifest v1 saneado.** `version, video{name,filename,duration_ms}, selection{selected,
+   source_name, managed_file(basename), source_sha256, encoding}, summary{n_cues,start_ms,
+   end_ms,n_errors,n_warnings}, diagnostics[{code,severity,cue_position,cue_index}], status`.
+   NO incluye texto de cues, rutas absolutas, `message`, bytes ni tracebacks.
+4. **Bytes originales preservados.** El SHA256 se calcula sobre los bytes recibidos; el archivo
+   administrado son esos bytes tal cual (no se re-serializa el documento).
+5. **Validación reutilizando S36-A** (`srt_import`: parseo tolerante + `validate_srt` contra la
+   duración real del video). Warnings NO abortan; errors abortan; SRT sin cues utilizables aborta.
+6. **Idempotencia y reemplazo.** Mismo video + mismo SHA ya seleccionado → no duplica, `ready`,
+   respuesta determinista (200). SHA distinto → valida completo, escribe el nuevo archivo y solo
+   entonces promueve el manifiesto (escritura atómica tmp+os.replace; el archivo administrado va
+   primero, el manifiesto al final). La selección anterior no se borra.
+7. **Delete solo desasocia.** Elimina el manifiesto activo (idempotente); no borra archivos
+   administrados, ni el SRT original del usuario, ni captions/words/groups/clips.
+8. **Errores tipados** (`StudioSrtNotFound/Invalid/TooLarge/Unsupported/StorageError`) → HTTP
+   404/400/413/415/500; la extensión y el parser son la autoridad (no se confía en el MIME).
+9. **Arquitectura:** `studio_srt.py` (dominio puro, cero FastAPI) + `studio_srt_routes.py`
+   (APIRouter). `app.py` solo registra el router y delega su `_resolver_video_input` al helper
+   puro compartido para no divergir del confinamiento.
+
+**Auto/render/captions/UI NO se conectan aún.** S36-C2 pendiente. S36 sigue ABIERTA.
