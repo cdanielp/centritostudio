@@ -165,55 +165,40 @@ def _resolver_capas_y_quemar(
 def _variante_tag(
     plan, style: str, pop: str | None, rebote: bool | None, intensidad, densidad
 ) -> str:
-    """Sufijo de variante para el nombre de salida (mismo criterio que el flujo clasico)."""
-    if plan:
-        import cve  # noqa: PLC0415
+    """Sufijo de variante para el nombre de salida (delegado a srt_render; fuente unica)."""
+    import srt_render  # noqa: PLC0415
 
-        return cve.tag_variante(plan.preset, intensidad, densidad)
-    pop_tag = f"_{pop}" if pop else ""
-    reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
-    return f"_{style}{pop_tag}{reb_tag}"
+    return srt_render.variante_tag(plan, style, pop, rebote, intensidad, densidad)
 
 
 def _aplicar_preset_srt(
     groups: list, plan, stem: str, width: int, height: int
 ) -> tuple[list, object]:
-    """Aplica el motor CVE SOLO a los grupos word_aligned; conserva intactos los fallback.
+    """Aplica el motor CVE SOLO a los grupos word_aligned (delegado a srt_render, D36B-3).
 
-    Un preset jamas convierte un cue_fallback en word-by-word (D36B-3). Reune de nuevo
-    preservando el orden temporal y reasigna IDs deterministas.
+    Conserva intactos los `cue_fallback` y reasigna IDs deterministas. El `aviso` del engine
+    se imprime aqui para preservar exactamente la salida de la CLI historica.
     """
-    import cve  # noqa: PLC0415
+    import srt_render  # noqa: PLC0415
 
-    word_idx = [i for i, g in enumerate(groups) if g.get("timing_mode") != "cue_fallback"]
-    word_groups = [groups[i] for i in word_idx]
-    brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
-    manual_kw_path = _TRANSCRIPTS_DIR / f"{stem}_keywords.json"
-    processed, plan, aviso = cve.aplicar_preset(
-        word_groups, plan, brain_path, width, height, manual_kw_path
+    merged, plan, aviso = srt_render.apply_preset_to_srt_groups(
+        groups,
+        plan,
+        brain_path=_TRANSCRIPTS_DIR / f"{stem}.brain.json",
+        width=width,
+        height=height,
+        manual_keywords_path=_TRANSCRIPTS_DIR / f"{stem}_keywords.json",
     )
     if aviso:
         print(f"[cve] {aviso}")
-    merged = list(groups)
-    if len(processed) == len(word_idx):
-        for pos, g in zip(word_idx, processed, strict=True):
-            merged[pos] = g
-    else:  # defensivo: el preset altero el conteo -> conservar grupos originales (fail-open)
-        print("[cve] AVISO: el preset altero el numero de grupos; se conservan los originales")
-    for new_id, g in enumerate(merged):
-        g["id"] = new_id
     return merged, plan
 
 
 def _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset) -> str:
-    """Sufijo determinista para SRT: `_srt` + capas activas (no colisiona con historicos)."""
-    fx_tag = f"_fx-{fx_preset}" if fx_preset else ""
-    return (
-        f"{stem}{variante}_srt"
-        + ("_emojis" if use_emojis else "")
-        + ("_popups" if use_popups else "")
-        + fx_tag
-    )
+    """Sufijo determinista para SRT (delegado a srt_render; fuente unica con el worker)."""
+    import srt_render  # noqa: PLC0415
+
+    return srt_render.nombre_base_srt(stem, variante, use_emojis, use_popups, fx_preset)
 
 
 def _process_srt(

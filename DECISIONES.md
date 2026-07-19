@@ -1333,3 +1333,52 @@ visual/render/Auto:
   `build_manifest` es puro y `min([])` reventaría). **No se relajó `sanitize_manifest`**: sigue
   rechazando rangos degenerados; el fix corrige el productor, no el validador. +2 tests (unit de
   `build_manifest` no monótono + E2E POST→GET→re-upload con bytes/SHA idénticos). CERRADA.
+
+## D38 — Studio renderiza una seleccion SRT explicita mediante `caption_source=srt` (S36-C2A1)
+
+Conecta la asociacion privada video<->SRT de S36-C1 con el **render normal** de Studio, sin UI
+nueva, sin Auto v2 y sin tocar el clipper. Es la primera mitad de S36-C2A (la segunda, C2A2, cubre
+Auto v2 + clipper + SRT derivado por clip + checkpoints, y NO se inicia aqui).
+
+**Contrato (opt-in explicito):** `POST /api/videos/{name}/render` gana `caption_source` con
+allowlist `transcript` (default) | `srt`. La peticion historica sin el parametro sigue EXACTA la
+ruta transcript (byte-identica): mismos groups.json, args, kwargs, naming, ASS/MP4, Caption QA,
+agrupamiento, enfasis, emojis y presets. La ruta transcript **no lee el manifiesto SRT, no importa
+el runtime y no consulta la seleccion** (fijado por import-spy).
+
+**Ruta SRT (`caption_source=srt`):**
+- El **texto del SRT es la fuente oficial** (S36-B); las words de Whisper **solo aportan timings**;
+  no se inventan timings. Cues `word_aligned` se animan word-by-word; `cue_fallback` quedan
+  **estaticos** (`timing_mode="cue_fallback"`, D36B-3).
+- **Asociacion explicita** obligatoria (sin autodiscovery, sin buscar `.srt` en input/, sin primer
+  `.srt`, sin usar el archivo privado). Sin seleccion -> 400; nunca cae al transcript en silencio.
+- **Rechaza con 400** las combinaciones incompatibles: `caption_qa` (el QA no puede alterar el texto
+  oficial), `words_per_group` (los cues definen el agrupamiento) y `use_emphasis` (el brain del
+  transcript no se aplica por indice a cues SRT sin contrato). Permitidos: `style`, `pop`, `preset`,
+  `intensidad`, `use_emojis`. El **preset CVE anima SOLO los cues alineados**.
+- Output con sufijo `_srt` (no pisa historicos) + **sidecar de alineacion privado**
+  (`transcripts/{name}_srt_alignment.json`). El resultado del job lleva un **resumen publico
+  saneado** (source/sha/sidecar/conteos/ratios): sin cues, sin texto, sin rutas.
+
+**Runtime privado (`studio_srt_runtime.py`, capa PURA):** `resolve_selected_srt` lee el manifiesto
+saneado, exige `managed_file == {sha}.srt`, **confina** el archivo (resolve+relative_to) y verifica
+su **hash real** (no confia solo en el manifiesto); no repara durante el render (la reparacion es del
+contrato C1). `verify_runtime_integrity` revalida al iniciar el worker (borrado/manipulacion entre
+endpoint y worker -> job en error saneado, SIN fallback). `prepare_selected_srt_groups` carga las
+words (solo timings), delega en `srt_caption.preparar_desde_srt` (no duplica parser/alineador/
+validador), escribe el sidecar y valida `word_aligned + cue_fallback == n_cues`. Errores tipados:
+`StudioSrtRuntimeError`/`StudioSrtSelectionMissing`/`StudioSrtTimingMissing`/`StudioSrtIntegrityError`
+(heredan de `StudioSrtError`/`StudioSrtStorageError`); app traduce seleccion/timings/contrato -> 400,
+integridad/storage -> 500 generico.
+
+**Helpers reutilizables (`srt_render.py`):** `apply_preset_to_srt_groups` (preset solo en alineados,
+IDs deterministas, fail-open) + naming `_srt`. `caption.py` **delega** sus helpers historicos aqui
+(fuente unica CLI<->Studio); la salida de la CLI `--srt` no cambia. `jobs_render.run_render` conserva
+su firma publica (+ `*, srt_selection=None`) y hace split interno `_run_render_transcript` (verbatim)
+/ `_run_render_srt`.
+
+**Pendientes:** Auto v2 y clipper (C2A2), UI de seleccion (C2B), forced aligner si la cobertura real
+no alcanza (no se activa automaticamente; solo se registra el numero). **El merge requiere veredicto
+visual de K** (este PR modifica salida de video cuando `caption_source=srt`). Evidencia sintetica
+(FFmpeg real, offline) en `revision/s36-c2a1-studio-srt-render/`; checkpoint privado real PENDIENTE
+(no existe asociacion explicita del usuario).

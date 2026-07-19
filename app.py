@@ -368,15 +368,20 @@ def start_render(
     intensidad: str | None = None,
     caption_qa: str | None = None,
     guion: str | None = None,
+    caption_source: str = "transcript",
 ):
+    if caption_source not in ("transcript", "srt"):
+        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
     if caption_qa and caption_qa not in ("alertas", "auto_seguro"):
         raise HTTPException(400, "caption_qa invalido. Opciones: alertas, auto_seguro")
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
-    if not mp4.exists():
-        raise HTTPException(404, f"Video {name}.mp4 no encontrado")
-    if not grp_path.exists():
-        raise HTTPException(400, "Transcribe el video antes de renderizar")
+    if caption_source == "transcript":
+        # La ruta transcript exige el mismo groups.json de siempre (contrato historico).
+        if not mp4.exists():
+            raise HTTPException(404, f"Video {name}.mp4 no encontrado")
+        if not grp_path.exists():
+            raise HTTPException(400, "Transcribe el video antes de renderizar")
     if style not in STYLES:
         raise HTTPException(400, f"Estilo invalido. Opciones: {', '.join(STYLES)}")
     if preset:
@@ -391,6 +396,18 @@ def start_render(
             raise
         except Exception:
             raise HTTPException(500, "Engine CVE no disponible; renderiza sin preset") from None
+    if caption_source == "srt":
+        return _start_render_srt(
+            name,
+            style,
+            pop,
+            preset,
+            intensidad,
+            use_emojis,
+            use_emphasis,
+            words_per_group,
+            caption_qa,
+        )
     # pop/intensidad invalidos son fail-safe (usan el default del estilo/preset).
     etiqueta = preset or style
     jid = jobs.new_job(f"Renderizando {name} en {etiqueta}...")
@@ -402,6 +419,62 @@ def start_render(
             "intensidad": intensidad,
             "qa_mode": caption_qa,
             "qa_guion": guion,
+        },
+        daemon=True,
+    ).start()
+    return {"job_id": jid}
+
+
+def _start_render_srt(
+    name: str,
+    style: str,
+    pop: str | None,
+    preset: str | None,
+    intensidad: str | None,
+    use_emojis: bool,
+    use_emphasis: bool,
+    words_per_group: int | None,
+    caption_qa: str | None,
+):
+    """Render de Studio con el SRT seleccionado como texto oficial (S36-C2A1, D38).
+
+    Opt-in explicito: exige una asociacion SRT activa (sin autodiscovery) y un transcript de
+    palabras (solo timings). Rechaza combinaciones incompatibles con 400. Resuelve la seleccion
+    de forma segura y confinada; nunca expone rutas ni cae al transcript. El worker recibe el
+    objeto interno de seleccion, no una ruta enviada por el cliente.
+    """
+    if caption_qa is not None:
+        raise HTTPException(400, "Caption QA no esta disponible cuando el SRT es el texto oficial.")
+    if words_per_group is not None:
+        raise HTTPException(400, "words_per_group no aplica cuando el SRT define los cues.")
+    if use_emphasis:
+        raise HTTPException(400, "use_emphasis no esta disponible para SRT en S36-C2A1.")
+    video = _resolver_video_input(name)
+    if video is None:
+        raise HTTPException(404, f"Video {name} no encontrado en input/")
+    import studio_srt_runtime  # noqa: PLC0415
+
+    try:
+        selection = studio_srt_runtime.resolve_selected_srt(
+            name, storage_root=TRANSCRIPTS / "studio_srt", manifest_dir=TRANSCRIPTS
+        )
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    if selection is None:
+        raise HTTPException(400, "No hay un SRT seleccionado para este video.")
+    if not (TRANSCRIPTS / f"{name}_words.json").exists():
+        raise HTTPException(400, "Transcribe el video antes de renderizar el SRT.")
+    etiqueta = preset or style
+    jid = jobs.new_job(f"Renderizando {name} (SRT) en {etiqueta}...")
+    threading.Thread(
+        target=jobs.run_render,
+        args=(jid, video, None, name, style, None),
+        kwargs={
+            "use_emojis": use_emojis,
+            "pop": pop,
+            "preset": preset,
+            "intensidad": intensidad,
+            "srt_selection": selection,
         },
         daemon=True,
     ).start()

@@ -1,0 +1,232 @@
+"""test_studio_srt_render_api.py — Endpoint de render con caption_source (S36-C2A1, D38).
+
+Sin ejecutar renders (FakeThread espia el worker). Verifica que transcript sigue siendo el
+default historico y NO consulta la seleccion SRT; que SRT es opt-in con asociacion explicita;
+que las combinaciones incompatibles dan 400; y que el worker recibe el objeto interno de
+seleccion (no una ruta del cliente). Nada de Auto, clipper ni UI.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+import app as studio_app
+import studio_srt
+import studio_srt_runtime
+
+
+class FakeThread:
+    created = []
+
+    def __init__(self, *, target, args, kwargs=None, daemon=False):
+        self.target, self.args, self.kwargs, self.daemon = target, args, kwargs or {}, daemon
+        self.started = False
+        self.__class__.created.append(self)
+
+    def start(self):
+        self.started = True
+
+
+def _ts(ms: int) -> str:
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1_000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _srt(*cues: tuple[int, int, int, str]) -> bytes:
+    return "\n".join(f"{i}\n{_ts(s)} --> {_ts(e)}\n{t}\n" for i, s, e, t in cues).encode("utf-8")
+
+
+_SRT_MIX = _srt((1, 0, 2000, "Hola mundo"), (2, 3000, 5000, "Texto sin audio"))
+_WORDS = {"words": [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 1.0}], "language": "es"}
+_GROUPS = [
+    {
+        "id": 0,
+        "start": 0,
+        "end": 1,
+        "text": "hola",
+        "words": [{"text": "hola", "start": 0, "end": 1, "line_idx": 0}],
+    }
+]
+
+
+@pytest.fixture
+def api(tmp_path, monkeypatch):
+    FakeThread.created.clear()
+    inp = tmp_path / "input"
+    trans = tmp_path / "transcripts"
+    inp.mkdir()
+    trans.mkdir()
+    monkeypatch.setattr(studio_app, "INPUT_DIR", inp)
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    monkeypatch.setattr(studio_app.threading, "Thread", FakeThread)
+    monkeypatch.setattr(studio_app.jobs, "new_job", lambda _msg: "job-c2a1")
+    (inp / "demo.mp4").write_bytes(b"mp4")
+    (trans / "demo_groups.json").write_text(json.dumps(_GROUPS), encoding="utf-8")
+    return TestClient(studio_app.app), trans
+
+
+def _associate(trans, stem="demo", data=_SRT_MIX, dur=6000):
+    doc, diags = studio_srt.parse_and_validate(data, source_name="subs.srt", video_duration_ms=dur)
+    studio_srt.store_and_associate(
+        doc,
+        diags,
+        video_stem=stem,
+        video_filename=f"{stem}.mp4",
+        video_duration_ms=dur,
+        data=data,
+        storage_root=trans / "studio_srt",
+        manifest_dir=trans,
+    )
+
+
+def _write_words(trans, stem="demo"):
+    (trans / f"{stem}_words.json").write_text(json.dumps(_WORDS), encoding="utf-8")
+
+
+def _thread():
+    assert len(FakeThread.created) == 1
+    t = FakeThread.created[0]
+    assert t.target is studio_app.jobs.run_render and t.started and t.daemon
+    return t
+
+
+# ─── Ruta transcript (default historico) ───────────────────────────────────────
+def test_default_es_transcript(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/render")
+    assert r.status_code == 200 and r.json() == {"job_id": "job-c2a1"}
+    t = _thread()
+    # firma historica: args posicionales + kwargs sin srt_selection
+    assert t.args == (
+        "job-c2a1",
+        studio_app.INPUT_DIR / "demo.mp4",
+        studio_app.TRANSCRIPTS / "demo_groups.json",
+        "demo",
+        "hormozi",
+        None,
+        False,
+        False,
+        None,
+    )
+    assert "srt_selection" not in t.kwargs
+    assert set(t.kwargs) == {"preset", "intensidad", "qa_mode", "qa_guion"}
+
+
+def test_transcript_no_consulta_seleccion_srt(api, monkeypatch):
+    client, _ = api
+    monkeypatch.setattr(
+        studio_srt_runtime,
+        "resolve_selected_srt",
+        lambda *_a, **_k: pytest.fail("transcript NO debe resolver SRT"),
+    )
+    assert client.post("/api/videos/demo/render?caption_source=transcript").status_code == 200
+
+
+def test_transcript_explicito_igual_al_default(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/render?caption_source=transcript&style=karaoke")
+    assert r.status_code == 200
+    assert _thread().args[4] == "karaoke"
+
+
+# ─── Validaciones de contrato ──────────────────────────────────────────────────
+def test_caption_source_invalido_400(api):
+    client, _ = api
+    assert client.post("/api/videos/demo/render?caption_source=otro").status_code == 400
+    assert FakeThread.created == []
+
+
+def test_srt_sin_asociacion_400(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 400
+    assert "seleccionado" in r.json()["detail"]
+    assert FakeThread.created == []
+
+
+def test_srt_sin_words_400(api):
+    client, trans = api
+    _associate(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    assert r.status_code == 400
+    assert "Transcribe" in r.json()["detail"]
+    assert FakeThread.created == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "caption_source=srt&caption_qa=alertas",
+        "caption_source=srt&words_per_group=3",
+        "caption_source=srt&use_emphasis=true",
+    ],
+)
+def test_srt_combinaciones_incompatibles_400(api, query):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    r = client.post(f"/api/videos/demo/render?{query}")
+    assert r.status_code == 400
+    assert FakeThread.created == []
+
+
+# ─── Ruta SRT feliz ────────────────────────────────────────────────────────────
+def test_srt_style_valido_arranca_job(api):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt&style=hormozi")
+    assert r.status_code == 200 and r.json() == {"job_id": "job-c2a1"}
+    t = _thread()
+    assert t.kwargs["srt_selection"] is not None
+    assert isinstance(t.kwargs["srt_selection"], studio_srt_runtime.SelectedSrtRuntime)
+
+
+def test_srt_preset_valido_arranca_job(api):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt&preset=viral_bounce")
+    assert r.status_code == 200
+    assert _thread().kwargs["preset"] == "viral_bounce"
+
+
+def test_srt_emojis_arranca_job(api):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt&use_emojis=true")
+    assert r.status_code == 200
+    assert _thread().kwargs["use_emojis"] is True
+
+
+def test_worker_recibe_objeto_interno_no_ruta(api):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    client.post("/api/videos/demo/render?caption_source=srt")
+    sel = _thread().kwargs["srt_selection"]
+    assert not isinstance(sel, (str, bytes))  # nunca una ruta enviada por el cliente
+    assert sel.source_sha256  # objeto de dominio verificado
+
+
+def test_respuesta_srt_no_expone_ruta_ni_texto(api):
+    client, trans = api
+    _associate(trans)
+    _write_words(trans)
+    r = client.post("/api/videos/demo/render?caption_source=srt")
+    body = r.text
+    assert r.json() == {"job_id": "job-c2a1"}
+    assert "studio_srt" not in body and "Hola" not in body and str(trans) not in body
+
+
+def test_srt_no_arranca_job_si_validacion_falla(api):
+    client, trans = api
+    # sin asociacion -> 400 y ningun thread/worker
+    client.post("/api/videos/demo/render?caption_source=srt")
+    assert FakeThread.created == []
