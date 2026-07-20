@@ -52,6 +52,17 @@ ALLOWED_REAL_WRITE = EVID_DIR / "smoke_report.json"
 TOKEN = "_SMOKE_PRE_HF_SENTINEL"
 SYNTH_ASS_TEXT = "texto-sintetico-de-prueba-no-privado"
 
+# Directorios de media reales que `app.py` crea (mkdir) en su init de import (`app.py:40-47`).
+# En un checkout limpio no existen: importar `app` los crearia FUERA del sandbox. Se capturan
+# antes del import y se limpian (si el arnes los creo y quedaron vacios) para no mutar el repo.
+# `output/` (host de la evidencia) y `static/` (UI real) se excluyen a proposito.
+_MEDIA_DIRS = [
+    REAL_ROOT / "input",
+    REAL_ROOT / "transcripts",
+    REAL_ROOT / "thumbs",
+    REAL_ROOT / "output" / "clips",
+]
+
 results: list[dict] = []
 
 
@@ -134,6 +145,10 @@ def sandboxed_app():
     from fastapi.testclient import TestClient
     from starlette.routing import Mount
 
+    # `import app` ejecuta su init, que hace mkdir de los dirs de media reales. Se registra cuales
+    # existian ANTES para poder revertir (borrar los vacios) los que cree el propio import.
+    preexisting_media = {d for d in _MEDIA_DIRS if d.exists()}
+
     import app as app_mod
 
     with (
@@ -204,6 +219,12 @@ def sandboxed_app():
                 route.app = old
             for k, v in saved_globals.items():
                 setattr(app_mod, k, v)
+            # Revertir dirs de media que el import de `app` creo en el repo real (solo si quedaron
+            # vacios). `output/clips` primero por si `output` estuviera involucrado.
+            for d in reversed(_MEDIA_DIRS):
+                if d not in preexisting_media and d.exists():
+                    with contextlib.suppress(OSError):
+                        d.rmdir()  # falla si no esta vacio -> no se borra nada con contenido
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -277,13 +298,20 @@ def _find_and_clean(sandbox: Path, escape_catch: Path, allowed_dir: Path) -> lis
 
 
 def _do_request(fn) -> tuple[str, int | None, object]:
-    """Ejecuta una request y normaliza a (kind, status, resp). Distingue transporte vs server."""
+    """Ejecuta una request y normaliza a (kind, status, resp). Distingue transporte vs server.
+
+    IMPORTANTE: `transport` SOLO abarca excepciones CONCRETAS del cliente httpx (la request no
+    llega al server). NO se captura `ValueError`/`UnicodeError` genericos aqui: el server puede
+    propagar un `ValueError` (p.ej. NUL byte -> `embedded null character` en `Path`, o
+    `JSONDecodeError`) via TestClient, y clasificarlo como `transport`=PASS seria un FALSO PASS
+    que enmascara un crash del endpoint. Esas caen a `exception` -> FAIL.
+    """
     try:
         import httpx  # noqa: PLC0415
 
-        transport_errs = (httpx.InvalidURL, httpx.LocalProtocolError, UnicodeError, ValueError)
-    except Exception:  # noqa: BLE001
-        transport_errs = (UnicodeError, ValueError)
+        transport_errs: tuple = (httpx.InvalidURL, httpx.LocalProtocolError)
+    except Exception:  # noqa: BLE001 - sin httpx no hay transporte que distinguir
+        transport_errs = ()
     try:
         resp = fn()
         return "response", resp.status_code, resp
@@ -450,6 +478,12 @@ def _snapshot_real() -> dict[str, tuple[int, int]]:
                     snap[str(p)] = (st.st_size, st.st_mtime_ns)
                 except OSError:
                     continue
+    # Registrar tambien la EXISTENCIA de los dirs de media (no solo archivos): asi, si el import
+    # de `app` crea un dir real y la limpieza no lo revierte, el diff lo marca como CREADO ->
+    # BLOCKER. `os.walk` sobre archivos no detectaria un directorio vacio recien creado.
+    for d in _MEDIA_DIRS:
+        if d.exists():
+            snap[f"DIR::{d}"] = (-1, -1)
     return snap
 
 
@@ -601,6 +635,20 @@ def self_test() -> int:
     ck("06b_2xx_con_escape_es_blocker", classify_traversal("response", 200, True) == "BLOCKER")
     ck("06c_transporte_no_es_fail", classify_traversal("transport", None, False) == "PASS")
     ck("worst_prioriza_blocker", worst(["PASS", "FAIL", "BLOCKER"]) == "BLOCKER")
+
+    # Review 8efd294 · fix B: un ValueError propagado por el server (p.ej. NUL byte -> "embedded
+    # null character") NO es transporte; debe caer a exception -> FAIL, nunca PASS.
+    def _raise_value_error():
+        raise ValueError("embedded null character")
+
+    ck("B_server_valueerror_es_exception", _do_request(_raise_value_error)[0] == "exception")
+    # Review 8efd294 · fix A: el snapshot registra la EXISTENCIA de los dirs de media, de modo que
+    # crear un dir real (via import de app) se detectaria como cambio (no solo archivos).
+    _snap = _snapshot_real()
+    ck(
+        "A_snapshot_cubre_media_dirs",
+        all((f"DIR::{d}" in _snap) == d.exists() for d in _MEDIA_DIRS),
+    )
 
     with sandboxed_app() as (app_mod, client, sandbox, escape_catch):
         # item 1: TestClient apunta al sandbox.

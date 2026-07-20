@@ -47,6 +47,13 @@ def test_contrato_excepciones() -> bool:
     # Severidad.
     ok &= _assert("worst_blocker", sm.worst(["PASS", "FAIL", "BLOCKER"]) == "BLOCKER")
     ok &= _assert("worst_fail", sm.worst(["PASS", "FAIL"]) == "FAIL")
+
+    # Review 8efd294 · un ValueError del server NO se clasifica como transporte (evita falso PASS
+    # en el payload NUL byte, que lanza "embedded null character" desde Path).
+    def _raise_ve():
+        raise ValueError("embedded null character")
+
+    ok &= _assert("server_valueerror_es_exception", sm._do_request(_raise_ve)[0] == "exception")
     return ok
 
 
