@@ -199,6 +199,22 @@ def test_sin_marcas_sin_glow_una_capa(tmp_path):
     assert len(subs.events) == 3 and all(ev.layer == 0 for ev in subs.events)
 
 
+def test_alineacion_por_tipo_de_animacion():
+    # Ancla la tabla de escalas duplicada (bounce/scale/karaoke/highlight): el glow debe
+    # igualar la escala de la palabra activa de la capa de texto en TODOS los modos, para
+    # que un cambio futuro en un solo lado (drift) se ponga rojo aqui.
+    from dataclasses import replace
+
+    gw = _grupo(["esto", "cambio", "todo"])["words"]
+    _todas_kw(gw)
+    for anim in ("highlight", "bounce", "scale", "karaoke"):
+        cfg = replace(get_style("hormozi"), kw_glow=True, animation_type=anim)
+        for idx in range(len(gw)):
+            glow = core_ass._glow_event_text(gw, idx, cfg)
+            texto = core_ass._word_event_text(gw, idx, cfg)
+            assert _scale_seq(glow) == _scale_seq(texto), f"drift en anim={anim} idx={idx}"
+
+
 def test_word_event_text_byte_identico_historico():
     # El refactor de la escala compartida NO cambia la capa de texto (contrato historico)
     cfg = get_style("hormozi", "off")  # sin pop: escala persistente pura
