@@ -144,6 +144,31 @@ def _sidecar_path(final_path: Path) -> Path:
     return final_path.with_name(final_path.stem + ".info.json")
 
 
+def _cargar_checkpoint(sidecar: Path) -> dict | None:
+    """Lee el checkpoint del clip o None si falta/está corrupto (se re-renderiza)."""
+    if not sidecar.exists():
+        return None
+    try:
+        return json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None  # checkpoint corrupto -> se trata como inexistente
+
+
+def _emitir_manifiesto_srt(paquete_dir: Path, srt_ctx, clips_info: list[dict]) -> None:
+    """Escribe el manifiesto FINAL saneado del run SRT (cierre S36-C2C). Solo runs con contexto."""
+    if srt_ctx is None:
+        return
+    import auto_srt_manifest  # noqa: PLC0415
+
+    manifest = auto_srt_manifest.build_run_manifest(
+        run_id=paquete_dir.name,
+        source_filename=srt_ctx.source_filename,
+        srt_selected=True,
+        clips=clips_info,
+    )
+    auto_srt_manifest.write_run_manifest(paquete_dir, manifest)
+
+
 def _info_orfano(clip: dict, final_path: Path) -> dict:
     """Reconstruye el info de un clip final ya renderizado que no tiene sidecar
     (paquete de una corrida previa a la reanudacion). Reusa el MP4 tal cual: los
@@ -298,6 +323,8 @@ def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
         arts.srt_path, clip_words, video_duration_ms=dur_ms, words_file=arts.words_path.name
     )
     auto_srt_artifacts.persist_alignment(arts, alignment_payload)
+    # fracción de cues caídos a cue_fallback (sin karaoke real); 0.0 si no hay cues.
+    fallback_ratio = round(_result.cue_fallback / _result.n_cues, 4) if _result.n_cues else 0.0
 
     import assets_comfy as ac  # noqa: PLC0415
 
@@ -318,6 +345,7 @@ def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
         "clip_id": arts.clip_id,
         "caption_coverage": art_summary["caption_coverage"],
         "n_cues": art_summary["n_cues"],
+        "fallback_ratio": fallback_ratio,
         "emojis_msg": (
             f"{len(overlays)} overlay(s)"
             if overlays
@@ -440,8 +468,8 @@ def ejecutar_auto(
         pct = 30 + int(60 * (i - 1) / max(len(clips), 1))
         _stem, final_path = _final_path(clip, paquete_dir)
         sidecar = _sidecar_path(final_path)
-        if sidecar.exists():
-            info_prev = json.loads(sidecar.read_text(encoding="utf-8"))
+        info_prev = _cargar_checkpoint(sidecar)
+        if info_prev is not None:
             if es_srt:
                 valido = final_path.exists()  # done invalido (output faltante) -> re-render
             else:
@@ -492,6 +520,8 @@ def ejecutar_auto(
         json.dumps({"clips": clips_info, "meta": meta}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    if es_srt:  # manifiesto FINAL saneado del run SRT (cierre S36-C2C)
+        _emitir_manifiesto_srt(paquete_dir, srt_ctx, clips_info)
     resumen = resumen_paquete(clips_info)
     progress(100, resumen)
     return {

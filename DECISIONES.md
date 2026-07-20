@@ -1472,3 +1472,48 @@ transcripcion SRT (Whisper no corre si el video cambio).
 Ruta transcript historica intacta (byte-identica). E2E: transcript MP4 historico intacto tras transcribe
 SRT del MOV; render SRT del MOV usa su namespace; TOCTOU (reemplazo) aborta. Ambos comentarios P2
 resueltos.
+
+
+## D39 — S36-C2C: cierre E2E del flujo SRT, manifiesto final saneado y decision retry-vs-resume
+
+Cierra S36-C2 (y con ella S36): el flujo SRT completo queda verificado end-to-end sin nuevas
+superficies de motor. NO agrega features; consolida el pipeline ya construido en C2A1/C2A2/C2B con
+un manifiesto publico estable, robustez de checkpoint y documentacion de cierre.
+
+**Manifiesto FINAL saneado del run SRT.** Nuevo modulo PURO `auto_srt_manifest.py`: reconstruye por
+whitelist el resumen publico de un run `caption_source=srt` a partir de la lista de clips que
+devuelve `ejecutar_auto`. Forma v1:
+`{version, run_id, caption_source:"srt", source:{video_filename, srt_selected}, clips:[{clip_id,
+status(done|error), output, duration_ms, caption_coverage, fallback_ratio}], summary:{total, done,
+error}}`. Se escribe (atomico) en `{paquete}/srt_run_manifest.json` solo para runs SRT. Invariantes:
+NUNCA rutas absolutas, texto de cues ni hashes; `clip_id`/`output`/`video_filename` son basenames
+seguros (rechaza dot-segments y traversal con `AutoSrtManifestError`); ratios clampados a [0,1];
+un clip en `error` NUNCA expone `output` (no hay MP4 publicable). `fallback_ratio` = fraccion de cues
+caidos a `cue_fallback` (sin karaoke real). 34 tests unitarios.
+
+**Robustez de checkpoint.** El lector de checkpoint (`_cargar_checkpoint`) ahora tolera un sidecar
+`{clip}.info.json` corrupto/ilegible: se trata como inexistente y se re-renderiza, en vez de reventar
+el run. Un artefacto de salida faltante (MP4 borrado) tambien fuerza re-render en el resume.
+
+**Decision retry dedicado vs resume (formal).** NO se implementa un endpoint dedicado
+`POST /api/auto/{run_id}/clips/{clip_id}/retry` en v1. El resume EXISTENTE cubre el caso: un run
+interrumpido (paquete sin `paquete.json`) se REANUDA en el siguiente `ejecutar_auto` con el mismo
+video/config (mismo `config_fingerprint`); cada clip con checkpoint valido (sidecar + MP4 presente)
+se conserva y SOLO los faltantes/fallidos se re-renderizan. Un clip fallido escribe sidecar
+`status="error"` sin MP4 -> en el resume su `output` no existe -> se re-renderiza. La UI de C2B expone
+"Reanudar clips fallidos" sobre este mismo mecanismo. Un endpoint dedicado exigiria un registro
+persistente run->video/config (estado nuevo, superficie de API nueva) sin beneficio funcional para v1;
+se DIFIERE explicitamente a post-v1 y deja de ser ambiguo.
+
+**E2E real (FFmpeg).** `revision/s36-c2c/smoke_srt_e2e_batch.py`: batch de 3 clips reales 1080x1920
+audio+video con captions oficiales del SRT; MP4 y MOV con el mismo stem NO se cruzan (el run usa el
+`.mov` asociado, nunca el decoy `.mp4`); manifiesto saneado validado; fallo parcial (clip 2) ->
+done=2/error=1 sin `output`; resume -> reanuda el MISMO paquete y recupera solo el fallido -> done=3.
+Evidencia audiovisual en `output/revision-s36-c2c/` (gitignored). Escenarios restantes (cue sin words,
+sustitucion/fallback, timings stale, video reemplazado TOCTOU, dos runs sin colision) cubiertos por
+tests unitarios/integracion existentes (`test_srt_align`, `test_studio_srt_runtime`,
+`test_auto_srt_artifacts`, `test_auto_srt_e2e`, `test_auto_srt_manifest`).
+
+**S36 CERRADA:** C2A1 (PR #18), C2A2 (PR #20), C2B (PR #21) mergeadas con veredicto visual de K;
+C2C consolida el cierre. Cero P1/P2 abiertos. Forced aligner sigue diferido (la cobertura real solo
+se registra, no se activa automaticamente).

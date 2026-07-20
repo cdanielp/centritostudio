@@ -1045,10 +1045,20 @@ Resuelto en D38:
   parser/alineador). Output `_srt` (no pisa históricos) + sidecar privado + resumen público saneado
   (sin cues/texto/rutas).
 
-**Siguen ABIERTAS (NO se resuelven aquí):**
-- **S36-C2A2:** Auto v2 con SRT, clipper con SRT seleccionado, SRT derivado por clip, checkpoints y
-  fingerprint, paquete final.
-- **S36-C2B:** UI de selección/edición de SRT en Studio.
+**RESUELTAS (S36-C cerrada, D39, 2026-07-20):**
+- **S36-C2A2 (PR #20 mergeado `30c274f`):** Auto con `caption_source=srt`, SRT derivado por clip en
+  namespace confinado, checkpoints por clip, fallo aislado, paquete final. CERRADA.
+- **S36-C2B (PR #21 mergeado `ec3476c`):** UI de selección de SRT en Studio (selector fuente +
+  `srtPanel` + view model saneado único). CERRADA.
+- **S36-C2C (PR abierto, gate visual final):** manifiesto final saneado + robustez de checkpoint +
+  E2E real. Cierra S36 tras el gate.
+- **Retry dedicado vs resume (decisión formal, D39):** NO se implementa `POST /api/auto/{run_id}/
+  clips/{clip_id}/retry` en v1. El resume EXISTENTE cubre el caso (un run interrumpido se reanuda con
+  el mismo video/config; solo los clips fallidos/faltantes se re-renderizan; la UI de C2B expone
+  "Reanudar clips fallidos" sobre este mecanismo). Un endpoint dedicado exigiría un registro
+  persistente run→config sin beneficio funcional para v1: DIFERIDO a post-v1. Deja de ser ambiguo.
+
+**Sigue ABIERTA (diferida, no bloquea v1):**
 - **Forced aligner** (WhisperX/stable-ts/MFA) si la cobertura real no alcanza: NO se activa
   automáticamente; la cobertura real solo se registra.
 
