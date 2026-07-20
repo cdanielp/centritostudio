@@ -107,6 +107,19 @@ if (fixture.fn === "clip") {
       intensidad_disabled: !!g('render-intensidad').disabled,
       emojis_disabled: !!g('use-emojis').disabled,
     });`;
+} else if (fixture.fn === "preset_defaults") {
+  // Inyecta cvePresets (metadatos con position_default/avoid_faces_default), selecciona un
+  // preset y corre onPresetChange(); reporta cómo quedan los controles CVE F6 inicializados.
+  const pre = fixture.pre || {};
+  body = `
+    const g = (id) => document.getElementById(id);
+    cvePresets = ${JSON.stringify(pre.cvePresets || [])};
+    g('render-preset').value = ${JSON.stringify(pre.preset || "")};
+    onPresetChange();
+    __out__ = JSON.stringify({
+      position: g('render-position').value,
+      avoid_faces: !!g('use-avoid-faces').checked,
+    });`;
 } else if (fixture.fn === "render_params") {
   const pre = fixture.pre || {};
   body = `

@@ -74,9 +74,50 @@ def test_zona_sin_cara_es_none(tmp_path):
     assert cve.zona_cara_en_rango(csv, 0.0, 1.0) is None
 
 
-def test_zona_presencia_sin_columna_vertical_es_center(tmp_path):
+def test_zona_presencia_sin_columna_vertical_es_none(tmp_path):
+    # BLOQUEO 3: CSV legacy (conf pero sin columna face_y) -> None (fail-open, no mueve)
     csv = _csv(tmp_path, [(0.0, 0.9, None)], face_y=False)
-    assert cve.zona_cara_en_rango(csv, 0.0, 1.0) == "center"
+    assert cve.zona_cara_en_rango(csv, 0.0, 1.0) is None
+
+
+def test_zona_sin_columna_conf_es_none(tmp_path):
+    # CSV sin conf_asignada -> None (aunque tuviera face_y)
+    p = tmp_path / "trayectoria_test.csv"
+    p.write_text(
+        "t,cam_center_x,face_x_asignada,distancia,face_y_asignada\n0.0,500,500,0,0.85\n",
+        encoding="utf-8",
+    )
+    assert cve.zona_cara_en_rango(p, 0.0, 1.0) is None
+
+
+def test_zona_ambas_columnas_sin_vertical_valido_es_none(tmp_path):
+    # Ambas columnas, presencia viva, pero SIN valor vertical valido en rango -> None
+    csv = _csv(tmp_path, [(0.0, 0.9, None), (0.5, 0.9, None)])
+    assert cve.zona_cara_en_rango(csv, 0.0, 1.0) is None
+
+
+def test_zona_fila_corrupta_no_rompe_y_usa_validas(tmp_path):
+    # Una fila con face_y corrupto se salta; las validas siguientes aportan la zona
+    p = tmp_path / "trayectoria_test.csv"
+    p.write_text(
+        "t,cam_center_x,face_x_asignada,distancia,conf_asignada,face_y_asignada\n"
+        "0.0,500,500,0,0.9,NaNoNo\n"
+        "0.5,500,500,0,0.9,0.85\n",
+        encoding="utf-8",
+    )
+    assert cve.zona_cara_en_rango(p, 0.0, 1.0) == "bottom"
+
+
+def test_zona_csv_legacy_nunca_mueve_posicion_base(tmp_path):
+    # Contrato BLOQUEO 3: un CSV legacy (sin face_y) conserva center/top/bottom
+    from dataclasses import replace
+
+    csv = _csv(tmp_path, [(0.0, 0.9, None), (0.5, 0.9, None)], face_y=False)
+    for base in ("center", "top", "bottom"):
+        plan = replace(cve.resolve_preset("clean_podcast"), position=base)
+        out = cve.resolver_posicion_captions([_grupo(["hola", "mundo"])], plan, csv)
+        pos = out[0].get("caption_pos", "bottom")
+        assert pos == base  # legacy no mueve la base
 
 
 def test_zona_csv_ausente_es_none(tmp_path):

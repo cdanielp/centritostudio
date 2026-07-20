@@ -1059,11 +1059,21 @@ async function loadPresets() {
 
 // Con preset, el engine manda: estilo/pop/énfasis se ignoran (mismo contrato que la CLI)
 function onPresetChange() {
-  const conPreset = !!document.getElementById('render-preset').value;
+  const sel = document.getElementById('render-preset');
+  const conPreset = !!sel.value;
   document.getElementById('field-intensidad').style.display = conPreset ? '' : 'none';
   document.getElementById('render-style').disabled = conPreset;
   document.getElementById('render-pop').disabled = conPreset;
   document.getElementById('use-emphasis').disabled = conPreset;
+  // Inicializa posición y avoid_faces con los defaults REALES del preset (no inventar):
+  // un preset personalizado puede tener default top o avoid_faces=false, y así la casilla
+  // no sobrescribe en silencio su default (F6 BLOQUEO 4). Sin metadatos, no se toca nada.
+  const meta = cvePresets.find(p => p.id === sel.value);
+  if (meta) {
+    if (meta.position_default) document.getElementById('render-position').value = meta.position_default;
+    if (typeof meta.avoid_faces_default === 'boolean')
+      document.getElementById('use-avoid-faces').checked = meta.avoid_faces_default;
+  }
   updateCveF6();
 }
 

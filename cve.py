@@ -150,6 +150,10 @@ def info_presets() -> list[dict]:
                 "intensidad_default": p.get("intensidad", "clean"),
                 "usa_keywords": kw != "off",
                 "usa_brain": kw in ("brain", "auto+brain"),
+                # F6 (BLOQUEO 4): defaults reales del preset para que la UI inicialice los
+                # controles y no sobrescriba en silencio un preset personalizado.
+                "position_default": str(p.get("position", "bottom")),
+                "avoid_faces_default": bool(p.get("avoid_faces", True)),
             }
         )
     return result
@@ -300,19 +304,24 @@ def tag_variante(
 
     Toda dimension que cambia la salida audiovisual entra al tag para que variantes
     distintas no se pisen (MP4/ASS/sidecar). Allowlist + tokens compactos (nunca valores
-    libres). Los DEFAULTS no agregan token → el naming historico se conserva: intensidad
-    solo si es valida; densidad solo si se pidio; position solo si no es bottom (default);
-    avoid_faces solo cuando se DESACTIVA (True/None = default).
+    libres). El token se agrega cuando el valor efectivo DIFIERE del default DEL PRESET
+    (no de un default universal, BLOQUEO 4): asi un preset personalizado con default `top`
+    o `avoid_faces=False` no colisiona con su override. Para los built-ins (default bottom
+    + avoid_faces True) el naming historico se conserva intacto: position bottom/None y
+    avoid_faces True/None nunca agregan token; center/top y False si.
     """
+    p = _PRESETS.get((preset or "").lower().strip(), {})
+    default_position = p.get("position", "bottom")
+    default_avoid_faces = p.get("avoid_faces", True)
     tag = f"_{preset}"
     if intensidad in INTENSIDADES:
         tag += f"_{intensidad}"
     if densidad in ck.DENSIDADES:
         tag += f"_{densidad}"
-    if position in ("center", "top"):
+    if position in ("bottom", "center", "top") and position != default_position:
         tag += f"_{position}"
-    if avoid_faces is False:
-        tag += "_nofaces"
+    if isinstance(avoid_faces, bool) and avoid_faces != default_avoid_faces:
+        tag += "_faces" if avoid_faces else "_nofaces"
     return tag
 
 
@@ -378,38 +387,43 @@ _ZONA_BOTTOM_MIN = 0.60
 def zona_cara_en_rango(csv_path: Path, t0: float, t1: float) -> str | None:
     """Zona vertical dominante de la cara viva en [t0,t1]: 'top'|'center'|'bottom'|None.
 
-    Reutiliza el CSV del reframe (no duplica deteccion). Usa la columna opcional
-    `face_y_asignada` (fraccion 0..1) si existe; si solo hay presencia (`conf_asignada`
-    sin vertical) devuelve 'center' (caso talking-head). Sin senal/archivo/columna o
-    fallo de lectura -> None (fail-open: el llamador conserva la posicion base).
+    Reutiliza el CSV del reframe (no duplica deteccion). REQUIERE ambas columnas
+    `conf_asignada` (presencia viva) y `face_y_asignada` (fraccion 0..1 del alto). Un CSV
+    legacy sin la columna vertical, sin `conf_asignada`, sin muestra vertical valida en el
+    rango, o con fallo de lectura -> None (fail-open: BLOQUEO 3, el CSV legacy JAMAS mueve
+    la posicion base). Solo devuelve una zona con al menos una muestra vertical valida.
     """
     if not csv_path or not Path(csv_path).exists():
         return None
     try:
         with open(csv_path, encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
-            if "conf_asignada" not in (reader.fieldnames or []):
+            cols = reader.fieldnames or []
+            if "conf_asignada" not in cols or "face_y_asignada" not in cols:
                 return None
             ys: list[float] = []
-            viva = False
             for row in reader:
-                t = float(row["t"])
-                if not (t0 <= t <= t1) or not row.get("conf_asignada", "").strip():
+                # Politica: una fila corrupta se SALTA (no aborta) — las filas validas
+                # siguientes aun pueden aportar una zona. Sin ninguna valida -> None.
+                try:
+                    t = float(row["t"])
+                    if not (t0 <= t <= t1) or not row.get("conf_asignada", "").strip():
+                        continue
+                    fy = (row.get("face_y_asignada") or "").strip()
+                    if fy:
+                        ys.append(float(fy))
+                except (ValueError, KeyError):
                     continue
-                viva = True
-                fy = (row.get("face_y_asignada") or "").strip()
-                if fy:
-                    ys.append(float(fy))
-    except (OSError, ValueError, KeyError):
+    except OSError:
         return None
-    if ys:
-        avg = sum(ys) / len(ys)
-        if avg < _ZONA_TOP_MAX:
-            return "top"
-        if avg > _ZONA_BOTTOM_MIN:
-            return "bottom"
-        return "center"
-    return "center" if viva else None
+    if not ys:
+        return None
+    avg = sum(ys) / len(ys)
+    if avg < _ZONA_TOP_MAX:
+        return "top"
+    if avg > _ZONA_BOTTOM_MIN:
+        return "bottom"
+    return "center"
 
 
 def _posicion_evitando_cara(base: str, zona: str | None) -> str:

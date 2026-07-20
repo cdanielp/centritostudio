@@ -45,6 +45,16 @@ def _render(source: str, pre: dict) -> dict:
     return _run({"fn": "render_params", "source": source, "pre": pre})
 
 
+def _preset_defaults(pre: dict) -> dict:
+    return _run({"fn": "preset_defaults", "pre": pre})
+
+
+_CVE_PRESETS_META = [
+    {"id": "clean_podcast", "position_default": "bottom", "avoid_faces_default": True},
+    {"id": "custom_top", "position_default": "top", "avoid_faces_default": False},
+]
+
+
 # ─── Contrato estatico (existe UI + textos, sin rutas/JSON) ─────────────────────
 
 
@@ -95,6 +105,33 @@ def test_sin_preset_no_envia_controles_cve():
     assert "densidad=" not in url
     assert "position=" not in url
     assert "avoid_faces=" not in url
+
+
+# ─── BLOQUEO 4: onPresetChange inicializa los controles con defaults del preset ──
+
+
+@requires_node
+def test_preset_custom_inicializa_position_y_avoid_faces():
+    # preset con default top + avoid_faces false: los controles se inicializan a eso
+    out = _preset_defaults({"cvePresets": _CVE_PRESETS_META, "preset": "custom_top"})
+    assert out["position"] == "top"
+    assert out["avoid_faces"] is False
+
+
+@requires_node
+def test_preset_builtin_inicializa_bottom_y_avoid_true():
+    out = _preset_defaults({"cvePresets": _CVE_PRESETS_META, "preset": "clean_podcast"})
+    assert out["position"] == "bottom"
+    assert out["avoid_faces"] is True
+
+
+@requires_node
+def test_cambiar_de_preset_actualiza_los_controles():
+    # cambiar de custom_top a clean_podcast reinicia los controles al default del nuevo
+    a = _preset_defaults({"cvePresets": _CVE_PRESETS_META, "preset": "custom_top"})
+    b = _preset_defaults({"cvePresets": _CVE_PRESETS_META, "preset": "clean_podcast"})
+    assert (a["position"], a["avoid_faces"]) == ("top", False)
+    assert (b["position"], b["avoid_faces"]) == ("bottom", True)
 
 
 @requires_node
