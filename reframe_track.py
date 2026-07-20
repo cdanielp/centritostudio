@@ -331,6 +331,31 @@ def aplanar_conf_por_turnos(
     return result
 
 
+def aplanar_cy_por_turnos(
+    cy_multi: dict[int, dict[int, float]],
+    turnos_list: list[dict],
+    fps: float,
+    total_frames: int,
+) -> dict[int, float]:
+    """Aplana cy_multi (center_y px) al cara activo por turno. Puro math, sin I/O.
+
+    MISMA segmentacion temporal que aplanar_conf_por_turnos (F6 avoid_faces v2): devuelve
+    {frame_idx: center_y px} de la MISMA deteccion que aporto center_x/score en ese turno.
+    Un cambio de turno cambia el track vertical seleccionado. La normalizacion 0..1 y el
+    clamp los hace el serializador (_exportar_trayectoria_csv), no este helper.
+    """
+    result: dict[int, float] = {}
+    for i, turno in enumerate(turnos_list):
+        f_ini = int(turno["t_ini"] * fps)
+        next_t = turnos_list[i + 1]["t_ini"] if i + 1 < len(turnos_list) else total_frames / fps
+        f_fin = min(int(next_t * fps) - 1, total_frames - 1)
+        cara_id = int(turno["cara_id"])
+        for fi, cy in cy_multi.get(cara_id, {}).items():
+            if f_ini <= fi <= f_fin:
+                result[fi] = cy
+    return result
+
+
 def reconstruir_filled_por_turnos(
     sparsa_multi: dict[int, dict[int, float]],
     turnos_list: list[dict],

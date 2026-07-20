@@ -377,12 +377,12 @@ def _calcular_crops(
     """Ruta single-face o multi-cara; devuelve (crops, filled, sparsa_conf, sparsa_cy).
 
     sparsa_cy = center_y (px) de la cara asignada por frame detectado (F6 avoid_faces).
-    En la ruta multi-cara por turnos v1 queda None (columna vacia; fail-open aguas abajo).
+    En la ruta multi-cara por turnos v2 lleva el center_y de la cara activa del turno.
     """
     if len(caras) >= 2 and turnos_list:
         n_t = len(turnos_list)
         print(f"[reframe] {len(caras)} caras con turnos -- conmutacion activada ({n_t} turnos)")
-        sparsa_multi, conf_multi = _detectar_trayectorias_multi(
+        sparsa_multi, conf_multi, cy_multi = _detectar_trayectorias_multi(
             input_path, total_frames, caras, src_w, detector_type
         )
         crops = rt.calcular_crops_por_turnos(
@@ -391,9 +391,11 @@ def _calcular_crops(
         filled = rt.reconstruir_filled_por_turnos(
             sparsa_multi, turnos_list, fps, total_frames, src_w
         )
-        # Flatten conf: frame_idx -> score del cara activo en ese turno
+        # Flatten conf/cy: frame_idx -> score/center_y de la cara activa en ese turno.
+        # MISMA segmentacion temporal (aplanar_*_por_turnos) -> conf y cy quedan alineados.
         flat_conf = rt.aplanar_conf_por_turnos(conf_multi, turnos_list, fps, total_frames)
-        return crops, filled, flat_conf, None
+        flat_cy = rt.aplanar_cy_por_turnos(cy_multi, turnos_list, fps, total_frames)
+        return crops, filled, flat_conf, flat_cy
     if len(caras) >= 2:
         print(f"[reframe] {len(caras)} caras -- cara principal; asigna turnos para conmutar")
     ancla_x = caras[0]["center_x"] if caras else src_w / 2
