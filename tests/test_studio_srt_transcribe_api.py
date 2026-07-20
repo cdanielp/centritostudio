@@ -191,6 +191,97 @@ def test_run_transcribe_graba_procedencia(worker):
     assert str(worker) not in json.dumps(saved)  # (8) sin rutas
 
 
+def _rt_stub(filename, stem="demo"):
+    from pathlib import Path
+
+    import studio_srt_runtime as rt2
+
+    return rt2.SelectedSrtRuntime(
+        video_stem=stem,
+        video_filename=filename,
+        source_name=None,
+        source_sha256="0" * 64,
+        managed_file="0" * 64 + ".srt",
+        managed_path=Path("x"),
+        storage_root=Path("x"),
+        manifest={},
+    )
+
+
+def _transcribe_srt(worker, filename, name="demo", data=b"movdata"):
+    import studio_srt_runtime as rt2
+    import transcript_provenance as tp
+
+    inp = worker / "in_srt"
+    inp.mkdir(exist_ok=True)
+    video = inp / filename
+    video.write_bytes(data)
+    binding = rt2.bind_selected_video(_rt_stub(filename, name), input_dir=inp)
+    key = tp.srt_artifact_key(filename)
+    jid = jobs_registry.new_job("t")
+    jobs.run_transcribe(
+        jid, binding.path, "es", "auto", name, srt_artifact_key=key, selected_video_binding=binding
+    )
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=worker, video_stem=name, video_filename=filename
+    )
+    return arts, jobs_registry.get_job(jid)
+
+
+def test_srt_transcribe_no_envenena_historico(worker):
+    import hashlib
+
+    _v, _saved, _j = _transcribe(worker)  # historico MP4: demo_words.json + demo_groups.json
+    sha_w = hashlib.sha256((worker / "demo_words.json").read_bytes()).hexdigest()
+    sha_g = hashlib.sha256((worker / "demo_groups.json").read_bytes()).hexdigest()
+    arts, job = _transcribe_srt(worker, "demo.mov")  # transcribe SRT del MOV (namespace privado)
+    assert job["status"] == "done"
+    assert arts.words_path.is_file() and arts.groups_path.is_file()
+    assert json.loads(arts.words_path.read_text())["source_video"]["filename"] == "demo.mov"
+    # el transcript historico del MP4 queda BYTE-IDENTICO (no envenenado).
+    assert hashlib.sha256((worker / "demo_words.json").read_bytes()).hexdigest() == sha_w
+    assert hashlib.sha256((worker / "demo_groups.json").read_bytes()).hexdigest() == sha_g
+
+
+def test_srt_transcribe_namespaces_mov_mp4_distintos(worker):
+    a_mov, jmov = _transcribe_srt(worker, "demo.mov")
+    a_mp4, jmp4 = _transcribe_srt(worker, "demo.mp4")
+    assert jmov["status"] == "done" and jmp4["status"] == "done"
+    assert a_mov.directory != a_mp4.directory  # key del filename
+    assert json.loads(a_mov.words_path.read_text())["source_video"]["filename"] == "demo.mov"
+    assert json.loads(a_mp4.words_path.read_text())["source_video"]["filename"] == "demo.mp4"
+    # el SRT transcribe NO escribe artefactos stem-root.
+    assert not (worker / "demo_words.json").exists()
+
+
+def test_srt_transcribe_toctou_reemplazo_aborta(worker):
+    import studio_srt_runtime as rt2
+    import transcript_provenance as tp
+
+    inp = worker / "in_toctou"
+    inp.mkdir()
+    video = inp / "demo.mov"
+    video.write_bytes(b"aaaa")
+    binding = rt2.bind_selected_video(_rt_stub("demo.mov"), input_dir=inp)
+    video.write_bytes(b"contenido reemplazado mas largo")  # cambia size tras el binding
+    key = tp.srt_artifact_key("demo.mov")
+    jid = jobs_registry.new_job("t")
+    jobs.run_transcribe(
+        jid,
+        binding.path,
+        "es",
+        "auto",
+        "demo",
+        srt_artifact_key=key,
+        selected_video_binding=binding,
+    )
+    assert jobs_registry.get_job(jid)["status"] == "error"
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=worker, video_stem="demo", video_filename="demo.mov"
+    )
+    assert not arts.words_path.exists()  # no transcribio ni escribio words
+
+
 def test_run_transcribe_mov_y_mp4_distinguibles(worker):
     _v1, mov, _j = _transcribe(worker, filename="demo.mov", data=b"aaaa")
     # (10) un segundo transcript de otra extension reemplaza el artefacto stem-only,

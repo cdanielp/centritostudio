@@ -95,10 +95,16 @@ def _selection(
     if words is not None:
         import transcript_provenance as tp
 
+        vf = video_filename or f"{stem}.mp4"
         # procedencia del video que recibira el worker (por defecto OUTPUT_DIR/demo.mp4 del fixture)
         vid = words_video if words_video is not None else jobs_render.OUTPUT_DIR / f"{stem}.mp4"
+        arts = tp.resolve_srt_timing_artifacts(
+            transcripts_dir=trans, video_stem=stem, video_filename=vf
+        )
+        arts.directory.mkdir(parents=True, exist_ok=True)
         w = tp.attach_video_provenance(dict(words), vid)
-        (trans / f"{stem}_words.json").write_text(json.dumps(w), encoding="utf-8")
+        arts.words_path.write_text(json.dumps(w), encoding="utf-8")
+        arts.groups_path.write_text(json.dumps([]), encoding="utf-8")
     return rt.resolve_selected_srt(stem, storage_root=trans / "studio_srt", manifest_dir=trans)
 
 
@@ -216,8 +222,12 @@ def test_worker_revalida_procedencia_toctou(env):
     import transcript_provenance as tp
 
     (out / "demo.mov").write_bytes(b"otro-video")
+    # TOCTOU: se reescribe el words PRIVADO (namespace de demo.mp4) con procedencia de otro archivo.
     bad = tp.attach_video_provenance(dict(_WORDS), out / "demo.mov")  # ahora dicen demo.mov
-    (trans / "demo_words.json").write_text(json.dumps(bad), encoding="utf-8")
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=trans, video_stem="demo", video_filename="demo.mp4"
+    )
+    arts.words_path.write_text(json.dumps(bad), encoding="utf-8")
     job = _run_srt(sel)  # worker recibe out/demo.mp4; las words no le pertenecen
     assert job["status"] == "error"
     assert "groups" not in cap and "out" not in cap

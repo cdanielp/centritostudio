@@ -56,7 +56,7 @@ def _setup(work: Path) -> rt.SelectedSrtRuntime:
     inp.mkdir(parents=True)
     trans.mkdir(parents=True)
     generar_video(inp / "demo.mp4", dur=DUR_MS / 1000)
-    _write_words_prov(trans / "demo_words.json", inp / "demo.mp4")  # timings ligados a demo.mp4
+    _write_words_prov(trans, "demo.mp4", inp / "demo.mp4")  # namespace privado de demo.mp4
     # brain sintetico: marca keywords (MUNDO@0.5, FUNCIONA@1.5) para que viral_bounce
     # (keywords="brain", D20) tenga enfasis semantico y NO coincida con hormozi limpio.
     (trans / "demo.brain.json").write_text(
@@ -92,12 +92,20 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def _write_words_prov(dst: Path, video: Path) -> None:
-    """Simula run_transcribe: words del fixture + procedencia (`source_video`) del video EXACTO."""
+def _write_words_prov(trans: Path, video_filename: str, video_file: Path) -> None:
+    """Simula run_transcribe SRT: words+groups en el namespace PRIVADO por filename EXACTO,
+    con procedencia (`source_video`) del `video_file` real (aislado de los stem-root historicos)."""
     import transcript_provenance as tp
 
     words = json.loads((FIXTURES / "demo_words.json").read_text(encoding="utf-8"))
-    Path(dst).write_text(json.dumps(tp.attach_video_provenance(words, video)), encoding="utf-8")
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=trans, video_stem="demo", video_filename=video_filename
+    )
+    arts.directory.mkdir(parents=True, exist_ok=True)
+    arts.words_path.write_text(
+        json.dumps(tp.attach_video_provenance(words, video_file)), encoding="utf-8"
+    )
+    arts.groups_path.write_text(json.dumps([]), encoding="utf-8")
 
 
 def smoke_p2_provenance() -> None:
@@ -124,36 +132,51 @@ def smoke_p2_provenance() -> None:
         doc, diags, video_stem="demo", video_filename="demo.mov", video_duration_ms=DUR_MS,
         data=data, storage_root=trans / "studio_srt", manifest_dir=trans,
     )
+    # Transcript historico stem-root del MP4 (para probar que el SRT transcribe NO lo envenena).
+    _hist = trans / "demo_words.json"
+    _hist.write_text(json.dumps({"words": [], "language": "es"}), encoding="utf-8")
+    hist_sha = _sha(_hist)
     jobs_render.TRANSCRIPTS = trans
     jobs_render.OUTPUT_DIR = out_p2
     sel = rt.resolve_selected_srt("demo", storage_root=trans / "studio_srt", manifest_dir=trans)
-    video = rt.resolve_selected_video(sel, input_dir=inp)
-    assert sel.video_filename == "demo.mov" and video.name == "demo.mov"
+    binding = rt.bind_selected_video(sel, input_dir=inp)
+    assert sel.video_filename == "demo.mov" and binding.path.name == "demo.mov"
 
-    # C+D: words con procedencia demo.mp4 (video equivocado) -> render RECHAZADO, sin output.
-    _write_words_prov(trans / "demo_words.json", inp / "demo.mp4")
+    # C+D: en el namespace del MOV, words con procedencia demo.mp4 -> render RECHAZADO, sin output.
+    _write_words_prov(trans, "demo.mov", inp / "demo.mp4")  # procedencia equivocada (mp4)
     jid = jobs_registry.new_job("P2-reject")
-    jobs_render.run_render(jid, video, None, "demo", "hormozi", None, srt_selection=sel)
+    jobs_render.run_render(
+        jid, binding.path, None, "demo", "hormozi", None, srt_selection=sel, srt_binding=binding
+    )
     rej = jobs_registry.get_job(jid)
     assert rej["status"] == "error", "el render con timings ajenos debio rechazarse"
     assert not list(out_p2.glob("*_srt*.mp4")), "no debe producir output con timings ajenos"
     assert not (trans / "demo_srt_alignment.json").exists(), "no debe escribir sidecar"
 
-    # E: 'transcribir' el MOV exacto -> words con procedencia demo.mov. G: render OK, 4s.
-    _write_words_prov(trans / "demo_words.json", inp / "demo.mov")
-    saved = json.loads((trans / "demo_words.json").read_text(encoding="utf-8"))
-    assert saved["source_video"]["filename"] == "demo.mov"
-    job = _render(sel, video, "P2-ok")
+    # E: 'transcribir' el MOV exacto -> namespace MOV con procedencia demo.mov. G: render OK, 4s.
+    _write_words_prov(trans, "demo.mov", inp / "demo.mov")
+    job = _render(sel, binding.path, "P2-ok", srt_binding=binding)
     out = out_p2 / job["result"]["output"]
     dur_out = _dur(out)
     assert abs(dur_out - 4.0) < 0.35, f"el output NO corresponde al MOV (dur={dur_out}, decoy=2s)"
+    assert _sha(_hist) == hist_sha, "el SRT transcribe NO debe envenenar el transcript historico"
+
+    # H: TOCTOU -> el video se reemplaza tras el binding; el worker aborta ANTES de FFmpeg.
+    generar_video(inp / "demo.mov", dur=3.0)  # reemplazo (cambia size/mtime)
+    jid2 = jobs_registry.new_job("P2-toctou")
+    jobs_render.run_render(
+        jid2, binding.path, None, "demo", "hormozi", None, srt_selection=sel, srt_binding=binding
+    )
+    toc = jobs_registry.get_job(jid2)
+    assert toc["status"] == "error", "un reemplazo del video tras el binding debio abortar"
 
     print("-" * 60)
-    print("P2 — IDENTIDAD VIDEO<->SRT + PROCEDENCIA DE TIMINGS (OK)")
+    print("P2 — IDENTIDAD VIDEO<->SRT + PROCEDENCIA + AISLAMIENTO + TOCTOU (OK)")
     print("asociado          : demo.mov (4s)  |  decoy: demo.mp4 (2s)")
-    print(f"video_filename    : {sel.video_filename}  |  resolve_video: {video.name}")
+    print(f"video_filename    : {sel.video_filename}  |  binding: {binding.path.name}")
     print(f"words de demo.mp4 : render RECHAZADO ({rej['message']})")
     print(f"words de demo.mov : render OK -> {out.name} dur={dur_out}s (~4s del MOV)")
+    print(f"historico intacto : {_sha(_hist) == hist_sha}  |  TOCTOU reemplazo: {toc['status']}")
     print("-" * 60)
     shutil.rmtree(work)  # limpia los videos/fixtures generados (no se versionan)
 

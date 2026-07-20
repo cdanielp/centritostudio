@@ -146,6 +146,38 @@ def test_words_no_lista_rechazado(tmp_path):
     _bad(t, v)
 
 
+def test_srt_artifacts_namespace_por_filename(tmp_path):
+    a_mp4 = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=tmp_path, video_stem="demo", video_filename="demo.mp4"
+    )
+    a_mov = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=tmp_path, video_stem="demo", video_filename="demo.mov"
+    )
+    assert a_mp4.key != a_mov.key  # key del filename, no del stem
+    assert a_mp4.directory != a_mov.directory
+    assert a_mp4.words_path.name == "words.json" and a_mp4.groups_path.name == "groups.json"
+    assert "studio_srt_timings" in str(a_mp4.directory)
+    assert a_mp4.key == __import__("hashlib").sha256(b"demo.mp4").hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("stem", "fn"),
+    [
+        ("demo", "../x.mp4"),
+        ("demo", "sub/d.mp4"),
+        ("demo", "demo.txt"),
+        ("demo", "otro.mp4"),
+        ("../d", "d.mp4"),
+        ("demo", "d\x00.mp4"),
+    ],
+)
+def test_srt_artifacts_rechaza_inseguro(tmp_path, stem, fn):
+    with pytest.raises(tp.TimingProvenanceError):
+        tp.resolve_srt_timing_artifacts(
+            transcripts_dir=tmp_path, video_stem=stem, video_filename=fn
+        )
+
+
 def test_error_no_expone_ruta_ni_valor(tmp_path):
     v = _video(tmp_path, "demo.mp4")
     t = tp.attach_video_provenance(_BASE, v)

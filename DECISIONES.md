@@ -1440,3 +1440,35 @@ ni se adivina la procedencia. No rompe una feature mergeada porque S36-C2A1 sigu
 (procedencia + transcribe API + run_transcribe + render endpoint + worker TOCTOU) + E2E: words de
 `demo.mp4` → render rechazado; tras transcribir el MOV → render usa el MOV (4s). Comentario P2 de
 Codex resuelto (la respuesta anterior de "follow-up" queda superada).
+
+### D38 addendum — Aislamiento de artefactos SRT + reconfinamiento TOCTOU (P2-A/P2-B, PR #18)
+
+Cierra dos P2 de Codex sobre HEAD 77a0662.
+
+**P2-A — aislamiento de artefactos SRT.** Un `transcribe?caption_source=srt` del video seleccionado
+`demo.mov` NO puede sobrescribir los artefactos historicos stem-only (`transcripts/demo_words.json`
+/`demo_groups.json`), que el render transcript default del `demo.mp4` sigue consumiendo. Los timings
+SRT viven ahora en un **namespace privado por filename EXACTO**:
+`transcripts/studio_srt_timings/{stem}/{sha256(filename)}/words.json` (+`groups.json`). Un `.mp4` y un
+`.mov` con el mismo stem dan directorios DISTINTOS. `transcript_provenance.resolve_srt_timing_artifacts`
+valida stem/filename (basename seguro, ext, `stem==video_stem`) y confina el namespace. `run_transcribe`
+gana `srt_artifact_key`/`selected_video_binding` keyword-only: sin key = ruta historica EXACTA; con key
+= namespace privado (escritura de ambos JSON via temporal+replace, nunca uno nuevo con otro viejo). El
+render SRT (endpoint + worker) usa SOLO el words/groups privado (emojis incluidos); NUNCA los stem-root
+historicos. Words legacy stem-root: transcript las acepta; render SRT las ignora (falta el exacto -> 409
+si hay historico, 400 si no hay ningun timing).
+
+**P2-B — reconfinamiento del video en el worker.** El endpoint confinaba el video pero el worker solo
+revalidaba nombre/stem/ext/is_file (seguia symlinks sin repetir `resolve()+relative_to`). Nuevo
+`SelectedVideoBinding` (frozen, interno): captura `path`, `input_root_resolved`, `resolved_target`
+(resolve strict), `size_bytes`, `mtime_ns` en el endpoint. `bind_selected_video` lo crea; el worker de
+render y de transcribe revalidan con `verify_selected_video_binding` ANTES de FFmpeg/Whisper:
+re-resuelve strict, exige `relative_to(input_root)`, `target==resolved_target`, size y mtime del enlace.
+Bloquea retarget de symlink (dentro o fuera de input/), reemplazo del archivo, cambio de ruta/extension
+y borrado -> job error saneado, sin output/sidecar/fallback. Mismo binding valida el TOCTOU de la
+transcripcion SRT (Whisper no corre si el video cambio).
+
++~70 tests (namespace, no-envenenamiento, binding, symlink/retarget/reemplazo, TOCTOU render y transcribe).
+Ruta transcript historica intacta (byte-identica). E2E: transcript MP4 historico intacto tras transcribe
+SRT del MOV; render SRT del MOV usa su namespace; TOCTOU (reemplazo) aborta. Ambos comentarios P2
+resueltos.

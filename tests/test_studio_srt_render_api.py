@@ -85,11 +85,16 @@ def _associate(trans, stem="demo", data=_SRT_MIX, dur=6000, video_filename=None)
 
 
 def _write_words(trans, stem="demo", video="demo.mp4"):
-    # Adjunta procedencia del video EXACTO (ligada a filename+size+mtime), como run_transcribe.
+    # Escribe en el namespace PRIVADO por filename (como run_transcribe SRT), con procedencia.
     import transcript_provenance as tp
 
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=trans, video_stem=stem, video_filename=video
+    )
+    arts.directory.mkdir(parents=True, exist_ok=True)
     words = tp.attach_video_provenance(dict(_WORDS), studio_app.INPUT_DIR / video)
-    (trans / f"{stem}_words.json").write_text(json.dumps(words), encoding="utf-8")
+    arts.words_path.write_text(json.dumps(words), encoding="utf-8")
+    arts.groups_path.write_text(json.dumps([]), encoding="utf-8")
 
 
 def _thread():
@@ -321,12 +326,28 @@ def test_srt_words_legacy_sin_procedencia_409(api):
     assert FakeThread.created == []
 
 
-def test_srt_words_de_mov_para_seleccion_mp4_409(api):
-    # selección demo.mp4 pero words con procedencia demo.mov -> 409 por identidad.
+def _private_arts(trans, stem="demo", video="demo.mp4"):
+    import transcript_provenance as tp
+
+    arts = tp.resolve_srt_timing_artifacts(
+        transcripts_dir=trans, video_stem=stem, video_filename=video
+    )
+    arts.directory.mkdir(parents=True, exist_ok=True)
+    return arts
+
+
+def test_srt_words_de_mov_en_namespace_mp4_409(api):
+    # words con procedencia demo.mov colocadas en el namespace de demo.mp4 -> 409 por identidad.
     client, trans = api
     (studio_app.INPUT_DIR / "demo.mov").write_bytes(b"mov")
     _associate(trans, video_filename="demo.mp4")
-    _write_words(trans, video="demo.mov")
+    import transcript_provenance as tp
+
+    arts = _private_arts(trans, video="demo.mp4")
+    w = tp.attach_video_provenance(
+        dict(_WORDS), studio_app.INPUT_DIR / "demo.mov"
+    )  # procedencia MOV
+    arts.words_path.write_text(json.dumps(w), encoding="utf-8")
     assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
     assert FakeThread.created == []
 
@@ -345,9 +366,10 @@ def test_srt_procedencia_manipulada_409(api, mut):
     _associate(trans)  # selección demo.mp4 (video del fixture)
     import transcript_provenance as tp
 
+    arts = _private_arts(trans, video="demo.mp4")
     w = tp.attach_video_provenance(dict(_WORDS), studio_app.INPUT_DIR / "demo.mp4")
     mut(w["source_video"])
-    (trans / "demo_words.json").write_text(json.dumps(w), encoding="utf-8")
+    arts.words_path.write_text(json.dumps(w), encoding="utf-8")
     assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
     assert FakeThread.created == []
 
@@ -355,7 +377,7 @@ def test_srt_procedencia_manipulada_409(api, mut):
 def test_srt_words_corruptas_409(api):
     client, trans = api
     _associate(trans)
-    (trans / "demo_words.json").write_text("{no es json", encoding="utf-8")
+    _private_arts(trans, video="demo.mp4").words_path.write_text("{no es json", encoding="utf-8")
     assert client.post("/api/videos/demo/render?caption_source=srt").status_code == 409
     assert FakeThread.created == []
 

@@ -20,9 +20,56 @@ OUTPUT_DIR = ROOT / "output"
 # ---Worker: transcripcion ---──────────────────────────────────────────────────
 
 
-def run_transcribe(jid: str, mp4: Path, lang: str, model_arg: str, name: str) -> None:
-    """Worker: transcribe el video y guarda words.json y groups.json."""
+def _write_json_pair(p1: Path, blob1: str, p2: Path, blob2: str) -> None:
+    """Escribe dos JSON ya serializados via temporal+replace (no deja uno nuevo con otro viejo)."""
+    import os  # noqa: PLC0415
+
+    for p in (p1, p2):
+        Path(p).parent.mkdir(parents=True, exist_ok=True)
+    t1 = Path(p1).with_name(Path(p1).name + ".tmp")
+    t2 = Path(p2).with_name(Path(p2).name + ".tmp")
+    t1.write_text(blob1, encoding="utf-8")
+    t2.write_text(blob2, encoding="utf-8")
+    os.replace(t1, p1)
+    os.replace(t2, p2)
+
+
+def run_transcribe(
+    jid: str,
+    mp4: Path,
+    lang: str,
+    model_arg: str,
+    name: str,
+    *,
+    srt_artifact_key: str | None = None,
+    selected_video_binding=None,
+) -> None:
+    """Worker: transcribe el video y guarda words/groups.
+
+    Sin `srt_artifact_key` = ruta transcript HISTORICA EXACTA (`transcripts/{name}_words.json`
+    + `_groups.json`). Con `srt_artifact_key` (S36-C2A1) = namespace privado por filename
+    (`transcripts/studio_srt_timings/{name}/{key}/words.json` + `groups.json`), que NUNCA pisa
+    los artefactos historicos. La ruta SRT revalida el binding del video (TOCTOU) antes de Whisper.
+    """
     try:
+        import transcript_provenance as tp  # noqa: PLC0415
+
+        if srt_artifact_key is not None:  # ruta SRT: namespace privado + binding TOCTOU
+            import studio_srt_runtime as rt  # noqa: PLC0415
+
+            if selected_video_binding is None:
+                raise ValueError("falta el binding del video seleccionado")
+            rt.verify_selected_video_binding(selected_video_binding, mp4)  # antes de Whisper
+            arts = tp.resolve_srt_timing_artifacts(
+                transcripts_dir=TRANSCRIPTS, video_stem=name, video_filename=Path(mp4).name
+            )
+            if arts.key != srt_artifact_key:
+                raise ValueError("clave de artefacto SRT inconsistente")
+            words_dst, groups_dst = arts.words_path, arts.groups_path
+        else:  # ruta transcript historica (stem-root)
+            words_dst = TRANSCRIPTS / f"{name}_words.json"
+            groups_dst = TRANSCRIPTS / f"{name}_groups.json"
+
         update_job(jid, status="running", progress=5, message="Cargando modelo Whisper...")
         device, compute = core.detect_device()
         model_path, label = core.resolve_model(model_arg)
@@ -31,18 +78,15 @@ def run_transcribe(jid: str, mp4: Path, lang: str, model_arg: str, name: str) ->
         result = core.transcribe_video(mp4, lang, device, compute, model_path)
         # Liga los timings al video EXACTO recibido (procedencia): filename + size + mtime.
         # No modifica words/language/timings; solo agrega metadata segura `source_video`.
-        import transcript_provenance  # noqa: PLC0415
-
-        result = transcript_provenance.attach_video_provenance(result, mp4)
+        result = tp.attach_video_provenance(result, mp4)
         update_job(jid, progress=60, message="Agrupando palabras...")
 
         groups = core.group_words(result["words"])
         update_job(jid, progress=85, message="Guardando transcript...")
 
-        raw_path = TRANSCRIPTS / f"{name}_words.json"
-        grp_path = TRANSCRIPTS / f"{name}_groups.json"
-        raw_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        grp_path.write_text(json.dumps(groups, ensure_ascii=False, indent=2), encoding="utf-8")
+        words_blob = json.dumps(result, ensure_ascii=False, indent=2)
+        groups_blob = json.dumps(groups, ensure_ascii=False, indent=2)
+        _write_json_pair(words_dst, words_blob, groups_dst, groups_blob)
 
         update_job(
             jid,

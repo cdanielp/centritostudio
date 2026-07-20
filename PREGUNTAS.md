@@ -1072,3 +1072,13 @@ El render SRT valida la procedencia en el endpoint (words legacy/de otro archivo
 corruptas → 409 `StudioSrtTimingSourceMismatch`) y el worker la revalida (TOCTOU) antes de FFmpeg;
 mismatch → job error sin fallback. La ruta transcript histórica sigue aceptando words legacy; el
 render SRT no. Ambos comentarios P2 de la revisión resueltos.
+
+**Corrección P2-A/P2-B (mismo PR #18, D38 addendum):** (P2-A) los timings SRT viven en un namespace
+privado por filename EXACTO (`transcripts/studio_srt_timings/{stem}/{sha256(filename)}/words+groups.json`)
+vía `transcript_provenance.resolve_srt_timing_artifacts`; `run_transcribe` con `srt_artifact_key` escribe
+ahí (sin key = ruta histórica stem-root intacta), así `transcribe?caption_source=srt` NO envenena los
+`{stem}_words/groups` históricos que consume el render transcript default; el render SRT usa solo el
+namespace privado (emojis incluidos). (P2-B) `SelectedVideoBinding` captura root/target(resolve strict)/
+size/mtime en el endpoint y los workers de render y transcribe revalidan con `verify_selected_video_binding`
+antes de FFmpeg/Whisper → retarget de symlink (dentro/fuera), reemplazo, borrado o cambio de ruta abortan
+sin fallback. Los 4 comentarios P2 de la revisión resueltos.

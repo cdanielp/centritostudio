@@ -194,6 +194,70 @@ def resolve_selected_video(runtime: SelectedSrtRuntime, *, input_dir: Path) -> P
     return candidate
 
 
+@dataclass(frozen=True)
+class SelectedVideoBinding:
+    """Enlace fuerte al video EXACTO en el instante del endpoint: ruta + root/target resueltos +
+    stat. El worker lo revalida (TOCTOU) para bloquear retarget de symlink o reemplazo. INTERNO."""
+
+    path: Path
+    input_root_resolved: Path
+    resolved_target: Path
+    size_bytes: int
+    mtime_ns: int
+
+
+def bind_selected_video(runtime: SelectedSrtRuntime, *, input_dir: Path) -> SelectedVideoBinding:
+    """Captura el video EXACTO confinado + su target resuelto y stat. Base para revalidar TOCTOU.
+
+    Construye SOLO `input_dir/filename`, resuelve con strict, exige confinamiento en el input root
+    y archivo regular. Filename inconsistente -> StudioSrtIntegrityError; ausente/no confinado ->
+    StudioSrtSelectedVideoMissing. Nunca expone rutas en el error.
+    """
+    fn = _validar_filename_video(runtime)
+    input_dir = Path(input_dir)
+    input_root_resolved = input_dir.resolve()
+    candidate = input_dir / fn
+    try:
+        target = candidate.resolve(strict=True)
+        target.relative_to(input_root_resolved)
+    except (OSError, ValueError):
+        raise StudioSrtSelectedVideoMissing("el video asociado no esta disponible") from None
+    if not candidate.is_file():
+        raise StudioSrtSelectedVideoMissing("el video asociado ya no esta disponible")
+    st = candidate.stat()
+    return SelectedVideoBinding(
+        path=candidate,
+        input_root_resolved=input_root_resolved,
+        resolved_target=target,
+        size_bytes=int(st.st_size),
+        mtime_ns=int(st.st_mtime_ns),
+    )
+
+
+def verify_selected_video_binding(binding: SelectedVideoBinding, video_path: Path) -> None:
+    """Revalida en el worker que `video_path` sigue siendo EXACTAMENTE el video enlazado.
+
+    Re-ejecuta el confinamiento (resolve strict + relative_to el input root) y exige que el
+    target resuelto, size y mtime coincidan con el binding. Bloquea retarget de symlink (dentro
+    o fuera de input/), reemplazo del archivo y cambio de ruta/extensión. Es autosuficiente:
+    `binding.path` (input_dir/filename validado al enlazar) fija la identidad exacta. Mismatch ->
+    aborta con StudioSrtSelectedVideoMissing (sin ruta).
+    """
+    video_path = Path(video_path)
+    if video_path != binding.path or video_path.suffix.lower() not in _ALLOWED_VIDEO_EXT:
+        raise StudioSrtSelectedVideoMissing("el video no coincide con la seleccion")
+    try:
+        target = video_path.resolve(strict=True)
+        target.relative_to(binding.input_root_resolved)
+    except (OSError, ValueError):
+        raise StudioSrtSelectedVideoMissing("el video asociado ya no esta disponible") from None
+    if target != binding.resolved_target or not video_path.is_file():
+        raise StudioSrtSelectedVideoMissing("el video asociado cambio")
+    st = video_path.stat()
+    if int(st.st_size) != binding.size_bytes or int(st.st_mtime_ns) != binding.mtime_ns:
+        raise StudioSrtSelectedVideoMissing("el video asociado fue reemplazado")
+
+
 def verify_selected_video_match(runtime: SelectedSrtRuntime, video_path: Path) -> None:
     """Exige que `video_path` sea EXACTAMENTE el video de la selección (nombre+stem+extensión+
     regular). Protege contra que el worker reciba otro archivo o un cambio de extensión entre
@@ -312,8 +376,11 @@ __all__ = [
     "StudioSrtIntegrityError",
     "StudioSrtSelectedVideoMissing",
     "StudioSrtTimingSourceMismatch",
+    "SelectedVideoBinding",
     "resolve_selected_srt",
     "resolve_selected_video",
+    "bind_selected_video",
+    "verify_selected_video_binding",
     "verify_selected_video_match",
     "verify_timing_provenance",
     "verify_runtime_integrity",

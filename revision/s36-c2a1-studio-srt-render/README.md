@@ -73,3 +73,8 @@ stem-only. Ahora los timings declaran `source_video` (filename+size+mtime del vi
 asociado; el render SRT rechaza con **409** words legacy o de otro archivo/versión (endpoint +
 worker TOCTOU), sin fallback. El smoke lo cubre: words de `demo.mp4` → render rechazado; tras
 transcribir el MOV → render usa el MOV (4s).
+
+## Corrección P2 — aislamiento de artefactos + reconfinamiento TOCTOU
+- **Aislamiento (P2-A):** los timings SRT viven en `transcripts/studio_srt_timings/{stem}/{sha256(filename)}/words+groups.json`. `transcribe?caption_source=srt` NO sobrescribe los `{stem}_words/groups` históricos (que usa el render transcript del MP4). El render SRT usa solo el namespace privado (emojis incluidos).
+- **Reconfinamiento (P2-B):** `SelectedVideoBinding` captura root/target(resolve strict)/size/mtime en el endpoint; los workers de render y transcribe revalidan antes de FFmpeg/Whisper → bloquean retarget de symlink, reemplazo o borrado del video, sin fallback.
+- El smoke cubre: transcript MP4 histórico intacto tras transcribe SRT del MOV; render SRT del MOV usa su namespace; timings ajenos → rechazo; reemplazo del video (TOCTOU) → aborta.

@@ -12,12 +12,16 @@ del video esperado. Nunca incluye rutas absolutas ni contenido del video en erro
 
 from __future__ import annotations
 
+import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
 from studio_srt_manifest import is_safe_basename
 
 PROVENANCE_VERSION = 1
 _ALLOWED_VIDEO_EXT = frozenset({".mp4", ".mov"})
+# Namespace privado de artefactos de transcripcion SRT (aislado del stem-root historico).
+SRT_TIMINGS_DIR = "studio_srt_timings"
 
 
 class TimingProvenanceError(Exception):
@@ -95,10 +99,60 @@ def validate_video_provenance(
         raise TimingProvenanceError("los timings no corresponden al video actual")
 
 
+# ─── Namespace privado de artefactos SRT (aislado por filename EXACTO) ──────────
+@dataclass(frozen=True)
+class SrtTimingArtifacts:
+    """Rutas confinadas de los timings SRT de un video EXACTO. `key` = sha256(filename)."""
+
+    key: str
+    directory: Path
+    words_path: Path
+    groups_path: Path
+
+
+def srt_artifact_key(video_filename: str) -> str:
+    """Clave determinista del namespace = SHA256 completo del filename exacto (no del stem)."""
+    return hashlib.sha256(video_filename.encode("utf-8")).hexdigest()
+
+
+def resolve_srt_timing_artifacts(
+    *, transcripts_dir: Path, video_stem: str, video_filename: str
+) -> SrtTimingArtifacts:
+    """Namespace privado `transcripts/studio_srt_timings/{stem}/{sha256(filename)}/` confinado.
+
+    Un `.mp4` y un `.mov` con el mismo stem dan directorios DISTINTOS (la key es del filename).
+    Valida stem/filename como basename seguro, extensión .mp4/.mov y `stem == video_stem`. No
+    acepta paths de HTTP, no usa glob ni busca por stem. Nunca expone rutas en errores.
+    """
+    if not is_safe_basename(video_stem) or not is_safe_basename(video_filename):
+        raise TimingProvenanceError("nombre de video inseguro")
+    name_path = Path(video_filename)
+    if name_path.suffix.lower() not in _ALLOWED_VIDEO_EXT:
+        raise TimingProvenanceError("extension de video no permitida")
+    if name_path.stem != video_stem:
+        raise TimingProvenanceError("el filename no corresponde al video")
+    key = srt_artifact_key(video_filename)
+    base = Path(transcripts_dir) / SRT_TIMINGS_DIR / video_stem / key
+    try:
+        base.resolve().relative_to((Path(transcripts_dir) / SRT_TIMINGS_DIR).resolve())
+    except ValueError:
+        raise TimingProvenanceError("namespace de timings fuera del root") from None
+    return SrtTimingArtifacts(
+        key=key,
+        directory=base,
+        words_path=base / "words.json",
+        groups_path=base / "groups.json",
+    )
+
+
 __all__ = [
     "PROVENANCE_VERSION",
+    "SRT_TIMINGS_DIR",
+    "SrtTimingArtifacts",
     "TimingProvenanceError",
     "build_video_provenance",
     "attach_video_provenance",
     "validate_video_provenance",
+    "srt_artifact_key",
+    "resolve_srt_timing_artifacts",
 ]

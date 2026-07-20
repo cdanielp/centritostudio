@@ -406,6 +406,108 @@ def test_verify_timing_provenance_legacy_rechazado(tmp_path):
         rt.verify_timing_provenance(inp / "demo.mp4", words_path=wp, expected_filename="demo.mp4")
 
 
+# ─── Binding del video seleccionado (P2-B): reconfinamiento TOCTOU en el worker ─
+def _binding_manual(path, root, target, size, mtime):
+    return rt.SelectedVideoBinding(
+        path=path, input_root_resolved=root, resolved_target=target, size_bytes=size, mtime_ns=mtime
+    )
+
+
+def test_bind_selected_video_captura_root_target_stat(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    v = inp / "demo.mp4"
+    assert b.path == v
+    assert b.input_root_resolved == inp.resolve()
+    assert b.resolved_target == v.resolve()
+    assert b.size_bytes == v.stat().st_size and b.mtime_ns == v.stat().st_mtime_ns
+
+
+def test_bind_video_ausente_o_filename_invalido(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.bind_selected_video(_rt("demo.mov"), input_dir=inp)  # ausente
+    with pytest.raises(rt.StudioSrtIntegrityError):
+        rt.bind_selected_video(_rt("demo.txt"), input_dir=inp)  # extension invalida
+
+
+def test_verify_binding_ok(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    rt.verify_selected_video_binding(b, inp / "demo.mp4")  # no lanza
+
+
+def test_verify_binding_path_o_extension_distinta(tmp_path):
+    inp = _input(tmp_path, "demo.mp4", "demo.mov")
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, inp / "demo.mov")  # otro archivo/extension
+
+
+def test_verify_binding_target_fuera_del_root(tmp_path):
+    # target resuelto NO bajo el input root del binding -> rechazado (reconfinamiento).
+    inp = _input(tmp_path, "demo.mp4")
+    other = tmp_path / "other"
+    other.mkdir()
+    v = inp / "demo.mp4"
+    b = _binding_manual(v, other.resolve(), v.resolve(), v.stat().st_size, v.stat().st_mtime_ns)
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, v)
+
+
+def test_verify_binding_target_cambiado(tmp_path):
+    # el target resuelto actual difiere del enlazado (retarget de symlink dentro de input).
+    inp = _input(tmp_path, "demo.mp4")
+    v = inp / "demo.mp4"
+    b = _binding_manual(
+        v, inp.resolve(), inp.resolve() / "OTRO.mp4", v.stat().st_size, v.stat().st_mtime_ns
+    )
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, v)
+
+
+def test_verify_binding_reemplazo_size_o_mtime(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    v = inp / "demo.mp4"
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    v.write_bytes(b"contenido mucho mas largo que el original para cambiar el size")
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, v)
+
+
+def test_verify_binding_archivo_eliminado(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    v = inp / "demo.mp4"
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    v.unlink()
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, v)
+
+
+def test_verify_binding_symlink_retarget_fuera(tmp_path):
+    inp = _input(tmp_path, "demo.mp4")
+    v = inp / "demo.mp4"
+    b = rt.bind_selected_video(_rt("demo.mp4"), input_dir=inp)
+    outside = tmp_path / "evil.mp4"
+    outside.write_bytes(b"x")
+    v.unlink()
+    try:
+        v.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        return  # sin symlink: los tests deterministas de reconfinamiento de arriba cubren el caso
+    with pytest.raises(rt.StudioSrtSelectedVideoMissing):
+        rt.verify_selected_video_binding(b, v)
+
+
+def test_bind_error_no_expone_ruta(tmp_path):
+    inp = tmp_path / "input"
+    inp.mkdir()
+    try:
+        rt.bind_selected_video(_rt("demo.mov"), input_dir=inp)
+    except rt.StudioSrtSelectedVideoMissing as exc:
+        assert str(inp) not in str(exc) and "demo.mov" not in str(exc)
+
+
 def test_no_muta_words_ni_srt(tmp_path):
     words = _words(("hola", 0.0, 0.5), ("mundo", 0.6, 1.0))
     snapshot = json.dumps(words)

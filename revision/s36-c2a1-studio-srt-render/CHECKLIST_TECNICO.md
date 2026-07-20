@@ -59,6 +59,18 @@
 - [x] Words legacy: transcript las acepta; render SRT las rechaza (retranscribir). No se migran.
 - [x] E2E: words de demo.mp4 → render rechazado; tras transcribir el MOV → render usa el MOV.
 
+## Aislamiento de artefactos + reconfinamiento (P2-A/P2-B)
+- [x] Namespace privado `transcripts/studio_srt_timings/{stem}/{sha256(filename)}/words+groups.json`
+      (`resolve_srt_timing_artifacts`, confinado; key del filename, no del stem).
+- [x] `run_transcribe` con `srt_artifact_key` escribe al namespace; sin key = stem-root histórico.
+- [x] `transcribe?caption_source=srt` NO envenena `{stem}_words/groups` históricos (byte-idénticos).
+- [x] Render SRT (words + emojis-groups) usa SOLO el namespace privado; ignora stem-root.
+- [x] Escritura de ambos JSON via temporal+replace (no deja uno nuevo con otro viejo).
+- [x] `SelectedVideoBinding` (root+target resolve strict+size+mtime) capturado en el endpoint.
+- [x] Workers de render y transcribe revalidan binding antes de FFmpeg/Whisper.
+- [x] Bloquea: retarget de symlink (dentro/fuera), reemplazo, borrado, cambio de ruta/ext.
+- [x] Tests P2-B deterministas (sin symlink) + symlink con fallback sin skip nuevo.
+
 ## Privacidad y seguridad
 - [x] SRT original nunca modificado; bytes/SHA administrados intactos.
 - [x] Sidecar sin rutas absolutas; resumen público sin cues/texto/rutas.
