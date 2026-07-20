@@ -10,6 +10,7 @@ Detalle y evidencia `archivo:línea` en `AUDITORIA.md`. Plan de corrección en `
 | P0-1 | **P0** | `app.py` endpoints `{name}` sin `is_safe_basename` | Studio web (transcript/brain/upload/render) | **DEMOSTRADO** (write fuera del repo, un nivel arriba de la raíz) | no | sí | H1 |
 | P0-2 | **P0** | `app.py:151` `upload_video` filename crudo + sin límite | Upload | DEMOSTRADO (código) + DoS | no | sí | H1 |
 | P0-3 | **P0** | `/output` mount + `.ass`/`.keyword_selection.json` | Descarga | **DEMOSTRADO** | no | sí | H1 |
+| P0-4 | **P0** | mounts `/input`,`/output`,`/clips`,`/thumbs` + `host 0.0.0.0` sin auth (`app.py:70-73,841`, `arranque.bat:9`) | Red local (fuente/thumbs/clips/render) | **DEMOSTRADO** (probe: `GET /input/<src>` → 200) | no | sí | H1 |
 | P1-POLL-1 | P1 | `static/index.html:1268` `onFailure` nunca pasado | 8 flujos (render/auto/transcribe/clips…) | DEMOSTRADO | UI | sí | H2 |
 | P1-POLL-2 | P1 | `static/index.html:1885` `_pollReframe` sin try/catch | Reframe | DEMOSTRADO | UI | sí | H2 |
 | P1-POLL-3 | P1 | `pollJob`/`pollJobP` sin timeout/límite errores | Todos los jobs | DEMOSTRADO | UI | sí | H2 |
@@ -30,7 +31,7 @@ Detalle y evidencia `archivo:línea` en `AUDITORIA.md`. Plan de corrección en `
 
 | Criterio | Estado |
 |----------|--------|
-| 0 P0 abiertos | ❌ 3 abiertos (P0-1/2/3) |
+| 0 P0 abiertos | ❌ 4 abiertos (P0-1/2/3/4) |
 | 0 P1 abiertos | ❌ ~9 abiertos |
 | P2/P3 documentados con trigger y fase | ✅ (este doc + PLAN_DE_PR) |
 | Documentación actual sin contradicciones | ❌ (P2-DOCS, → H4) |
@@ -39,14 +40,14 @@ Detalle y evidencia `archivo:línea` en `AUDITORIA.md`. Plan de corrección en `
 | No hay spinner infinito | ❌ (P1-POLL-1..4) |
 | Outputs parciales no se publican | ❌ (P1-OUT-1..3) |
 | Resume no reutiliza datos incorrectos | ⚠️ SRT/v2 OK; classic P2; 0-byte ❌ |
-| Privacidad verificada | ❌ (P0-1/2/3) |
+| Privacidad verificada | ❌ (P0-1/2/3/4 — incl. exposición LAN) |
 | Suite completa verde | ✅ 1894/3-skip |
 | Quality gate local reproducible | ✅ `check.bat` |
 | CI remoto verde o ausencia justificada | ⚠️ ausente (→ H5) |
-| Smoke E2E sintético completo verde | ⚠️ harness entregado; reporta blockers |
+| Smoke E2E sintético completo verde | ⚠️ harness `sandboxed-v2` entregado (aislado + self-test verde); reporta 4 blockers P0 |
 | Guía de testers actualizada | ❌ (ALPHA-*, → H4) |
 | Review fresco sin P0/P1 | ❌ |
 | PR abierto y no mergeado | ✅ (esta rama) |
 | HyperFrames no iniciada | ✅ |
 
-**Veredicto:** NO LISTO. Bloqueos exactos: **P0-1, P0-2, P0-3, P1-POLL-1..4, P1-OUT-1..3, P1-BOOT-1..2.**
+**Veredicto:** NO LISTO. Bloqueos exactos: **P0-1, P0-2, P0-3, P0-4, P1-POLL-1..4, P1-OUT-1..3, P1-BOOT-1..2.**

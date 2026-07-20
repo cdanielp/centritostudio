@@ -1,6 +1,6 @@
 # Plan de PRs — Hardening Pre-HyperFrames
 
-**Alcance CASO B (hallazgos dispersos):** 3 P0 + ~9 P1 en seguridad, jobs/UI, arranque e integridad del render. No caben en un solo PR cohesivo → se propone la secuencia H1..H5. **Ninguno se abre en esta fase**; se abrirán uno por uno tras aprobación.
+**Alcance CASO B (hallazgos dispersos):** 4 P0 + ~9 P1 en seguridad, jobs/UI, arranque e integridad del render. No caben en un solo PR cohesivo → se propone la secuencia H1..H5. **Ninguno se abre en esta fase**; se abrirán uno por uno tras aprobación.
 
 > Regla: una tarea coherente = una rama = un PR. Cada PR con cambio de UI genera capturas escritorio+móvil + demo de error/timeout/recuperación (sin reclamar gate de K). Ningún PR de esta serie cambia salida audiovisual, así que no requieren gate visual de K — **excepto** que P0-3 se resuelva moviendo/renombrando archivos (no cambia el render → tampoco requiere gate).
 
@@ -8,14 +8,15 @@
 
 ## PR-H1 — Seguridad e integridad de outputs `[BLOQUEANTE]`
 **Rama:** `fix/h1-seguridad-integridad`
-**Cierra:** P0-1, P0-2, P0-3, P1-OUT-1, P1-OUT-2.
+**Cierra:** P0-1, P0-2, P0-3, P0-4, P1-OUT-1, P1-OUT-2.
 **Cambios mínimos:**
 - Guard `is_safe_basename(name)` compartido (dependency/middleware) en todos los endpoints `{name}` de `app.py`.
 - `upload_video`: validar basename + extensión (`.mp4/.mov`), escritura por chunks con tope de bytes (reusar `_read_upload_limited`), `.tmp`+`os.replace`.
 - Sacar `.ass`/`.keyword_selection.json` del árbol servido **o** restringir `/output` a `.mp4`.
+- **P0-4 (exposición LAN):** default de host a `127.0.0.1` en `arranque.bat` y `app.py.__main__`; LAN sólo por opt-in explícito y documentado (p.ej. `CENTRITO_HOST`); con LAN activo, warning visible + token/auth; **quitar** el mount público `/input` (o endpoint validado); revisar `/thumbs` y `/clips`; `/output` sólo tipos permitidos.
 - `burn_video*`: quemar a `*.mp4.part` → validar returncode+`st_size>0`+ffprobe(`duration>0`, stream de video) → `os.replace`; si falla, borrar parcial y `raise`.
-**Tests:** traversal (`..\`, `../`, absoluto, NUL) → 404 en cada endpoint; upload traversal/oversize → 400/413; `GET /output/x.ass` → 404; `burn_video` con salida 0-byte → `raise`, job `error` no `done`.
-**Criterio de cierre:** suite verde; probe de traversal (sintético) no escribe fuera del sandbox; `.ass` no accesible por HTTP; ningún MP4 0-byte publicable.
+**Tests:** traversal (`..\`, `../`, absoluto, NUL) → 404 en cada endpoint; upload traversal/oversize → 400/413; `GET /output/x.ass` → 404; host default = loopback y con opt-in emite warning; `GET /input/*` no accesible sin endpoint validado; `burn_video` con salida 0-byte → `raise`, job `error` no `done`.
+**Criterio de cierre:** suite verde; probe de traversal (sintético) no escribe fuera del sandbox; `.ass` no accesible por HTTP; server no bindea `0.0.0.0` por default; ningún MP4 0-byte publicable.
 **Dependencia:** ninguna. **Primero** (mayor riesgo).
 
 ## PR-H2 — Jobs y recuperación `[BLOQUEANTE]`

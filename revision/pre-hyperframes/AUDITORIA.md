@@ -5,9 +5,18 @@
 **Suite baseline:** `1894 passed, 3 skipped` (1897 colectados). ruff / format / check.bat verdes.
 **Alcance:** revisión de todo el producto v1 para detectar bloqueos reales antes de HyperFrames. **No** se implementan features nuevas ni HyperFrames/F7.
 
-> Nota de privacidad: ninguna parte de esta auditoría abrió, imprimió ni versionó `input/0717_corregido.srt`
-> ni contenido bajo `input/`, `transcripts/`, `output/`. Las pruebas de path traversal se hicieron con un
-> centinela **sintético** (`_TRAVERSAL_SENTINEL`), verificado y borrado.
+> Nota de privacidad (corregida en review): el **primer** arnés de smoke tenía un defecto de
+> aislamiento detectado en la revisión del PR (creaba el `TestClient` con la app apuntando a los
+> directorios **reales** del repo, de modo que `GET /api/videos` podía leer metadata local). No se
+> observó ni imprimió deliberadamente contenido privado, pero la afirmación absoluta original —"la
+> auditoría nunca tocó rutas reales"— **no** era demostrable y se retira. El arnés corregido
+> (`smoke_pre_hyperframes.py`, `harness: sandboxed-v2`) monta la app sobre un **sandbox temporal
+> completo** (globals + mounts redirigidos a un `TemporaryDirectory`), usa centinelas **sintéticos**
+> (`_SMOKE_PRE_HF_SENTINEL`, `texto-sintetico-de-prueba-no-privado`) y añade una **defensa por
+> snapshot** (metadata-only, sin leer contenido) que **falla** si el arnés crea/borra/modifica algún
+> archivo fuera del sandbox salvo el reporte de evidencia. La corrida confirmada reporta
+> `aislamiento_datos_reales = PASS` (cero cambios en `input/`, `transcripts/`, `output/`, `thumbs/`,
+> `static/`). En ningún momento se abre, imprime ni versiona `input/0717_corregido.srt`.
 
 ---
 
@@ -19,7 +28,7 @@ Cinco auditorías de dominio en paralelo (docs, jobs/polling, arranque/deps, pri
 
 ## Veredicto de alcance: **CASO B (hallazgos dispersos)**
 
-Se encontraron **3 P0** (uno reproducido como escritura arbitraria fuera del sandbox) y **~9 P1** repartidos entre seguridad, jobs/UI, arranque e integridad del render. No es un bloque cohesivo → **no** se implementan fixes en esta rama; se entrega el plan ordenado `PLAN_DE_PR.md` (PR-H1..H5). Verdict de readiness: **NO LISTO**.
+Se encontraron **4 P0** (uno reproducido como escritura arbitraria fuera del sandbox; el cuarto es exposición de recursos privados en LAN sin autenticación, elevado a P0 en review) y **~9 P1** repartidos entre seguridad, jobs/UI, arranque e integridad del render. No es un bloque cohesivo → **no** se implementan fixes en esta rama; se entrega el plan ordenado `PLAN_DE_PR.md` (PR-H1..H5). Verdict de readiness: **NO LISTO**.
 
 ---
 
@@ -58,6 +67,24 @@ Se encontraron **3 P0** (uno reproducido como escritura arbitraria fuera del san
 - **Tests:** `GET /output/x.ass` → 404; el binario `.mp4` sigue accesible.
 - **UI/AV:** no (mueve/oculta archivos, no cambia el render). **PR:** H1.
 - **OK relacionado (no hallazgo):** el sidecar `_srt_alignment.json` (incluye texto de cues) se escribe en `TRANSCRIPTS` (`jobs_render.py:344`), que **no** está montado. Correcto.
+
+### P0-4 · Exposición de recursos privados y derivados en LAN sin autenticación — **DEMOSTRADO (código + probe)**
+- **Clasificación:** hallazgo **independiente** (no es sólo el texto de captions de P0-3: cubre el binario **fuente**, miniaturas y clips además de los derivados). Elevado a **P0** por afectar privacidad real. P0-3 sigue acotado al texto de captions/SRT servido por `/output`; P0-4 es el vector de red que lo hace alcanzable + los otros mounts.
+- **Archivos/símbolos:**
+  - Mounts públicos **sin auth**: `/input` (`app.py:70`, binario fuente crudo), `/output` (`app.py:71`, renders + `.ass`/`.json` de P0-3), `/clips` (`app.py:72`), `/thumbs` (`app.py:73`).
+  - Bind a **todas** las interfaces: `arranque.bat:9` (`uvicorn app:app --host 0.0.0.0 --port 8787 --reload`) y `app.py:841` (`uvicorn.run(..., host="0.0.0.0", ...)`).
+  - **Sin** `CORSMiddleware`, `Depends`, token ni `Authorization` en toda `app.py` (grep = 0 coincidencias).
+- **Reproducción (probe sintético, sandboxed):** `GET /input/<src>.mp4` → 200 sirviendo el binario fuente byte-a-byte (`input_no_expuesto_lan = BLOCKER`). El mismo mecanismo aplica a `/thumbs`, `/clips` y `/output`.
+- **Riesgo:** cualquier dispositivo en la red local (Wi-Fi compartida, coworking, café) puede enumerar y descargar **videos fuente, miniaturas, clips, renders y el texto/JSON derivado** apuntando al `:8787` del equipo. No hay barrera de aplicación.
+- **Fix mínimo (H1, NO implementado aquí):**
+  1. **Default obligatorio a `127.0.0.1`** en `arranque.bat` y `app.py.__main__`.
+  2. Acceso LAN sólo por **opt-in explícito** (variable/flag documentada, p.ej. `CENTRITO_HOST=0.0.0.0`).
+  3. Si en el futuro se permite LAN: **warning visible** + autenticación/token + **no** montar rutas privadas + endpoints de binarios con **allowlist**.
+  4. **Quitar** el mount público `/input` (o reemplazarlo por un endpoint validado si la UI necesita reproducir la fuente).
+  5. Revisar `/thumbs` y `/clips` con el mismo criterio.
+  6. `/output` debe servir **únicamente** tipos explícitamente permitidos (cierra P0-3 de raíz).
+- **Tests requeridos:** default de host = loopback; con opt-in, warning emitido; `GET /input/*` no accesible sin el endpoint validado; `/output` sólo `.mp4`.
+- **UI/AV:** no. **Bloquea HyperFrames:** sí (alpha con red = fuga de material privado). **PR:** H1.
 
 ---
 

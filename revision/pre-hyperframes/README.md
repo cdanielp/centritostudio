@@ -7,11 +7,14 @@ Base auditada: `4a378d82814b46e680cda894377b82b8eeba327d` (merge PR #23, cierre 
 - **`AUDITORIA.md`** — hallazgos completos con evidencia `archivo:línea`, P0/P1/P2/P3.
 - **`MATRIZ_READINESS.md`** — tabla de hallazgos + checklist del criterio "LISTO".
 - **`PLAN_DE_PR.md`** — secuencia ordenada de PRs (H1..H5) con criterio de cierre y dependencias.
-- **`smoke_pre_hyperframes.py`** — arnés de readiness sintético, ejecutable.
+- **`smoke_pre_hyperframes.py`** — arnés de readiness sintético, aislado (sandbox) y ejecutable.
+- **`test_smoke_harness.py`** — tests autocontenidos del propio arnés (contrato de excepciones +
+  delega la matriz al `--self-test`). Vive fuera de `testpaths`: la suite principal no lo colecta.
 
 ## Veredicto
-**NO LISTO.** Alcance CASO B: **3 P0** (uno reproducido como escritura arbitraria fuera del
-sandbox) + **~9 P1** dispersos entre seguridad, jobs/UI, arranque e integridad del render.
+**NO LISTO.** Alcance CASO B: **4 P0** (uno reproducido como escritura arbitraria fuera del
+sandbox; el cuarto es exposición de recursos privados en LAN sin auth) + **~9 P1** dispersos
+entre seguridad, jobs/UI, arranque e integridad del render.
 Por regla, esta rama **solo** entrega la auditoría, el plan de PRs y el arnés; **no** implementa
 fixes (irían en H1..H5). Bloqueos exactos en `MATRIZ_READINESS.md`.
 
@@ -19,17 +22,34 @@ fixes (irían en H1..H5). Bloqueos exactos en `MATRIZ_READINESS.md`.
 ```powershell
 $env:PYTHONIOENCODING="utf-8"
 .\venv\Scripts\python revision\pre-hyperframes\smoke_pre_hyperframes.py
+.\venv\Scripts\python revision\pre-hyperframes\smoke_pre_hyperframes.py --self-test
 ```
 - Usa `TestClient` (no abre puerto), no requiere GPU ni red.
-- Prueba salud, contrato de jobs, y **probes P0** con centinelas **sintéticos** (creados y
-  borrados en la misma corrida). Hoy reporta 2 BLOCKERs (P0-1, P0-3) → exit code 1.
+- **Aislamiento:** monta la app sobre un **sandbox temporal completo** (globals + mounts
+  `StaticFiles` redirigidos a un `TemporaryDirectory`) y añade una **defensa por snapshot**
+  (metadata-only) que falla si el arnés toca cualquier archivo real fuera del sandbox.
+- Prueba salud, contrato de jobs/videos (sólo fixtures sintéticos), y **probes P0** con centinelas
+  **sintéticos** (creados y borrados en la misma corrida, con verificación de "sin residuos").
+- **Traversal multiplataforma:** payloads Windows (backslash), POSIX (`/`), absolutos, dot-segments
+  y NUL, por endpoint `{name}` y por upload multipart. Contrato: 2xx-con-escape → BLOCKER;
+  4xx-sin-efecto → PASS; 5xx/excepción interna → FAIL (una excepción **nunca** es PASS).
+- Corrida confirmada: **4 BLOCKERs** (P0-1 traversal, P0-2 upload, P0-3 `/output` `.ass`, P0-4
+  exposición `/input` en LAN) → exit code 1; `aislamiento_datos_reales = PASS`.
+- `--self-test` valida el propio arnés (sandbox, clasificación, limpieza) y sale **verde** aunque
+  el smoke principal declare NO LISTO.
 - El E2E de render (classic/CVE/reframe/Auto/SRT/resume/editor) está **diferido** hasta cerrar
   H1-H3: con los P1-OUT abiertos, un E2E "verde" sería engañoso.
 
 ## Privacidad
+- **Nota honesta (corregida en review):** el primer arnés tenía un defecto de aislamiento
+  (creaba el `TestClient` con la app apuntando a las rutas reales). No se observó ni imprimió
+  deliberadamente contenido privado, pero esa afirmación absoluta no era demostrable y se retiró.
+  El arnés corregido (`sandboxed-v2`) usa un **sandbox completo** y la nueva corrida confirma
+  **cero acceso** a directorios reales (`aislamiento_datos_reales = PASS`).
 - **Nunca** se abre, imprime ni versiona `input/0717_corregido.srt` ni nada bajo
   `input/`, `transcripts/`, `output/`, `studio_srt/`, `thumbs/`.
-- Las probes usan datos sintéticos (`_SMOKE_TRAVERSAL_SENTINEL`, `texto-sintetico-de-prueba`).
+- Las probes usan datos sintéticos (`_SMOKE_PRE_HF_SENTINEL`, `texto-sintetico-de-prueba-no-privado`).
+  El snapshot de defensa lee **sólo metadata** (ruta/tamaño/mtime), nunca contenido.
 - La evidencia de corrida se escribe en `output/revision-pre-hyperframes/` (**NO versionada**,
   cubierta por `.gitignore: output/`).
 
