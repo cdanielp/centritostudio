@@ -212,11 +212,13 @@ def _run_render_transcript(
         if plan:
             # cve ya quedo importado al resolver el plan (plan no-None lo implica)
             update_job(jid, progress=25, message=f"Aplicando preset {plan.preset}...")
+            import tray_resolve  # noqa: PLC0415
+
             brain = TRANSCRIPTS / f"{name}.brain.json"
             manual_kw = TRANSCRIPTS / f"{name}_keywords.json"  # spans/center manuales (fail-open)
-            tray_csv = (
-                TRANSCRIPTS / f"trayectoria_{name}.csv"
-            )  # avoid_faces (fail-open si no existe)
+            # avoid_faces: trayectoria del reframe (helper unico, mismo que la CLI). Prioriza
+            # el CSV junto al MP4 reframado; cae al legacy en transcripts/. Fail-open si falta.
+            tray_csv = tray_resolve.resolver_tray_csv(mp4, TRANSCRIPTS, name)
             groups, plan, aviso_brain = cve.aplicar_preset(
                 groups, plan, brain, w, h, manual_kw, tray_csv
             )

@@ -348,7 +348,12 @@ def process_video(
     if plan:
         import cve  # noqa: PLC0415
 
-        variante = cve.tag_variante(plan.preset, intensidad, densidad)
+        # Mismo helper que Studio con las MISMAS dimensiones (plan efectivo): position y
+        # avoid_faces del preset. Como la CLI no las overridea, igualan el default -> sin
+        # token -> naming historico byte-identico; y si algun dia se exponen, no colisionan.
+        variante = cve.tag_variante(
+            plan.preset, intensidad, densidad, plan.position, plan.avoid_faces
+        )
     else:
         pop_tag = f"_{pop}" if pop else ""
         reb_tag = "" if rebote is None else ("_reb" if rebote else "_plano")
@@ -374,21 +379,12 @@ def process_video(
 
     if plan:
         import cve  # noqa: PLC0415
+        import tray_resolve  # noqa: PLC0415
 
         brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
         manual_kw_path = _TRANSCRIPTS_DIR / f"{stem}_keywords.json"
-        # avoid_faces: trayectoria del reframe si existe (junto al video o en transcripts)
-        tray_csv = next(
-            (
-                c
-                for c in (
-                    video_path.parent / f"trayectoria_{stem}.csv",
-                    _TRANSCRIPTS_DIR / f"trayectoria_{stem}.csv",
-                )
-                if c.exists()
-            ),
-            None,
-        )
+        # avoid_faces: trayectoria del reframe si existe (helper unico, mismo que Studio)
+        tray_csv = tray_resolve.resolver_tray_csv(video_path, _TRANSCRIPTS_DIR)
         groups, plan, aviso = cve.aplicar_preset(
             groups, plan, brain_path, width, height, manual_kw_path, tray_csv
         )

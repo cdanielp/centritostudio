@@ -261,6 +261,9 @@ def run_reframe(
                 output_path,
                 turnos=turnos,
                 punch_in=punch_in,
+                # F6 avoid_faces (BLOQUEO 1): el CSV de trayectoria queda JUNTO al MP4
+                # reframado (trayectoria_<stem>.csv) para que el render lo resuelva solo.
+                tray_dir=output_path.parent,
                 detector_type=detector_type,
                 tracker=tracker,
             )
