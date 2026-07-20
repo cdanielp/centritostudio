@@ -133,13 +133,104 @@ _MOUNT_DIR = {
     "static": ("STATIC_DIR", "static"),
 }
 
+# Los routers montados (`app.include_router`) definen SUS PROPIOS globals de rutas reales, que el
+# parcheo de `app` no cubre. Si el TestClient tocara esas rutas, leerian/escribirian el repo real
+# -> fuga de privacidad. Se redirigen tambien (attr -> subruta relativa al sandbox; "" = raiz).
+_ROUTER_MODULES = {
+    "studio_srt_routes": {
+        "ROOT": "",
+        "INPUT_DIR": "input",
+        "TRANSCRIPTS": "transcripts",
+        "STUDIO_SRT_DIR": "transcripts/studio_srt",
+    },
+    "studio_packages": {
+        "ROOT": "",
+        "PAQUETES_DIR": "output/paquetes",
+        "TRANSCRIPTS": "transcripts",
+    },
+}
+
+
+def _make_sandbox_tree(sandbox: Path) -> None:
+    """Crea la estructura de subdirs del sandbox + un index.html sintetico para GET /."""
+    for sub in (
+        "input",
+        "transcripts",
+        "output",
+        "output/clips",
+        "thumbs",
+        "static",
+        "transcripts/studio_srt",
+        "output/paquetes",
+    ):
+        (sandbox / sub).mkdir(parents=True, exist_ok=True)
+    (sandbox / "static" / "index.html").write_text(
+        "<!doctype html><title>smoke</title>ok", encoding="utf-8"
+    )
+
+
+def _patch_app_globals(app_mod, sandbox: Path) -> dict:
+    """Redirige los globals de directorios de `app` al sandbox. Devuelve los valores previos."""
+    saved = {
+        k: getattr(app_mod, k)
+        for k in (
+            "ROOT",
+            "INPUT_DIR",
+            "TRANSCRIPTS",
+            "OUTPUT_DIR",
+            "CLIPS_DIR",
+            "THUMBS_DIR",
+            "STATIC_DIR",
+        )
+    }
+    app_mod.ROOT = sandbox
+    for attr, sub in _MOUNT_DIR.values():
+        setattr(app_mod, attr, sandbox / sub)
+    app_mod.TRANSCRIPTS = sandbox / "transcripts"
+    return saved
+
+
+def _rebuild_mounts(app_mod, sandbox: Path, static_cls, mount_cls) -> list[tuple]:
+    """Reconstruye los mounts StaticFiles apuntando al sandbox. Devuelve (route, app_previa)."""
+    saved: list[tuple] = []
+    for route in app_mod.app.router.routes:
+        if isinstance(route, mount_cls) and route.name in _MOUNT_DIR:
+            target = str(sandbox / _MOUNT_DIR[route.name][1])
+            if route.name == "output":
+                new_app = app_mod._OutputSinPaquetes(directory=target)  # noqa: SLF001
+            elif isinstance(route.app, static_cls):
+                new_app = static_cls(directory=target)
+            else:  # pragma: no cover - mounts inesperados
+                continue
+            saved.append((route, route.app))
+            route.app = new_app
+    return saved
+
+
+def _patch_router_globals(sandbox: Path) -> list[tuple]:
+    """Redirige los globals PROPIOS de los routers montados. Devuelve (modulo, attr, previo)."""
+    import importlib  # noqa: PLC0415
+
+    saved: list[tuple] = []
+    for modname, attrs in _ROUTER_MODULES.items():
+        try:
+            mod = importlib.import_module(modname)
+        except Exception:  # noqa: BLE001 - router opcional/ausente: nada que parchear
+            continue
+        for attr, rel in attrs.items():
+            if hasattr(mod, attr):
+                saved.append((mod, attr, getattr(mod, attr)))
+                setattr(mod, attr, sandbox if rel == "" else sandbox / rel)
+    return saved
+
 
 @contextlib.contextmanager
 def sandboxed_app():
     """Devuelve (app_mod, client, sandbox_root, escape_catch) con TODO redirigido al sandbox.
 
-    Restaura globals y mounts al salir. Usa raise_server_exceptions=True para poder distinguir
-    una respuesta HTTP controlada de una excepcion interna propagada por TestClient.
+    Redirige globals de `app` Y de los routers montados, reconstruye los mounts StaticFiles y los
+    restaura al salir. Usa raise_server_exceptions=True para distinguir una respuesta HTTP
+    controlada de una excepcion interna propagada por TestClient.
     """
     from fastapi.staticfiles import StaticFiles
     from fastapi.testclient import TestClient
@@ -157,58 +248,10 @@ def sandboxed_app():
     ):
         sandbox = Path(sb).resolve()
         escape_catch = Path(ec).resolve()
-        subdirs = {
-            "input": sandbox / "input",
-            "transcripts": sandbox / "transcripts",
-            "output": sandbox / "output",
-            "clips": sandbox / "output" / "clips",
-            "thumbs": sandbox / "thumbs",
-            "static": sandbox / "static",
-        }
-        for d in subdirs.values():
-            d.mkdir(parents=True, exist_ok=True)
-        # index.html sintetico para que GET / responda sin tocar el static real.
-        (subdirs["static"] / "index.html").write_text(
-            "<!doctype html><title>smoke</title>ok", encoding="utf-8"
-        )
-
-        # 1) Redirigir globals del modulo (los endpoints los resuelven en cada llamada).
-        saved_globals = {
-            k: getattr(app_mod, k)
-            for k in (
-                "ROOT",
-                "INPUT_DIR",
-                "TRANSCRIPTS",
-                "OUTPUT_DIR",
-                "CLIPS_DIR",
-                "THUMBS_DIR",
-                "STATIC_DIR",
-            )
-        }
-        app_mod.ROOT = sandbox
-        app_mod.INPUT_DIR = subdirs["input"]
-        app_mod.TRANSCRIPTS = subdirs["transcripts"]
-        app_mod.OUTPUT_DIR = subdirs["output"]
-        app_mod.CLIPS_DIR = subdirs["clips"]
-        app_mod.THUMBS_DIR = subdirs["thumbs"]
-        app_mod.STATIC_DIR = subdirs["static"]
-
-        # 2) Reconstruir los mounts StaticFiles (creados al importar app, apuntaban a lo real).
-        saved_mounts: list[tuple] = []
-        for route in app_mod.app.router.routes:
-            if isinstance(route, Mount) and route.name in _MOUNT_DIR:
-                _, sub = _MOUNT_DIR[route.name]
-                target = str(sandbox / sub)
-                # /output conserva el bloqueo de paquetes/ (misma clase de produccion).
-                cls = type(route.app)
-                if route.name == "output":
-                    new_app = app_mod._OutputSinPaquetes(directory=target)  # noqa: SLF001
-                elif cls is StaticFiles or issubclass(cls, StaticFiles):
-                    new_app = StaticFiles(directory=target)
-                else:  # pragma: no cover - mounts inesperados
-                    continue
-                saved_mounts.append((route, route.app))
-                route.app = new_app
+        _make_sandbox_tree(sandbox)
+        saved_globals = _patch_app_globals(app_mod, sandbox)
+        saved_mounts = _rebuild_mounts(app_mod, sandbox, StaticFiles, Mount)
+        saved_router_globals = _patch_router_globals(sandbox)
 
         client = TestClient(app_mod.app, raise_server_exceptions=True)
         try:
@@ -219,6 +262,8 @@ def sandboxed_app():
                 route.app = old
             for k, v in saved_globals.items():
                 setattr(app_mod, k, v)
+            for mod, attr, old in saved_router_globals:
+                setattr(mod, attr, old)
             # Revertir dirs de media que el import de `app` creo en el repo real (solo si quedaron
             # vacios). `output/clips` primero por si `output` estuviera involucrado.
             for d in reversed(_MEDIA_DIRS):
@@ -406,50 +451,73 @@ def probe_traversal_upload(client, sandbox: Path, escape_catch: Path) -> dict:
     return {"verdict": verdict, "per": per}
 
 
-def probe_output_ass(client, sandbox: Path) -> dict:
-    """P0-3: el mount /output NO debe servir texto de captions (.ass sintetico)."""
-    probe = sandbox / "output" / f"{TOKEN}_caption.ass"
-    probe.write_text(f"[Events]\nDialogue: {SYNTH_ASS_TEXT}\n", encoding="utf-8")
-    verdict = "FAIL"  # default defensivo si _do_request cambiara y propagara
+def _served_probe(client, rel_file: Path, url: str, content: bytes) -> str:
+    """Escribe `content` en `rel_file`, hace GET `url` y clasifica exposicion. Limpia siempre."""
+    rel_file.parent.mkdir(parents=True, exist_ok=True)
+    rel_file.write_bytes(content)
     try:
-        kind, status, resp = _do_request(lambda: client.get(f"/output/{probe.name}"))
-        served = kind == "response" and status == 200 and SYNTH_ASS_TEXT in resp.text
-        verdict = classify_exposure(kind, status, served)
-        if verdict == "BLOCKER":
-            record(
-                "output_no_sirve_ass",
-                "BLOCKER",
-                "P0-3: /output sirvio el .ass con texto de captions",
-            )
-        else:
-            record("output_no_sirve_ass", verdict, f"/output/*.ass -> {status} (no expone texto)")
+        kind, status, resp = _do_request(lambda: client.get(url))
+        served = kind == "response" and status == 200 and resp.content == content
+        return classify_exposure(kind, status, served)
     finally:
         with contextlib.suppress(OSError):
-            probe.unlink()
-    return {"verdict": verdict}
+            rel_file.unlink()
 
 
-def probe_input_exposure(client, sandbox: Path) -> dict:
-    """P0-4 (LAN): el mount /input sirve el binario fuente crudo a cualquiera en la red."""
-    probe = sandbox / "input" / f"{TOKEN}_source.mp4"
-    probe.write_bytes(b"SYNTHSRC0123456789")
-    verdict = "FAIL"  # default defensivo si _do_request cambiara y propagara
-    try:
-        kind, status, resp = _do_request(lambda: client.get(f"/input/{probe.name}"))
-        served = kind == "response" and status == 200 and resp.content == b"SYNTHSRC0123456789"
-        verdict = classify_exposure(kind, status, served)
-        if verdict == "BLOCKER":
-            record(
-                "input_no_expuesto_lan",
-                "BLOCKER",
-                "P0-4: /input sirve el binario fuente sin auth (exposicion LAN)",
-            )
-        else:
-            record("input_no_expuesto_lan", verdict, f"/input/<src> -> {status}")
-    finally:
-        with contextlib.suppress(OSError):
-            probe.unlink()
-    return {"verdict": verdict}
+def probe_output_exposure(client, sandbox: Path) -> dict:
+    """P0-3: el mount /output NO debe servir texto privado de captions. Cubre DOS tipos
+    documentados: `.ass` (cues) y `.keyword_selection.json` (palabras/frases)."""
+    out = sandbox / "output"
+    txt = SYNTH_ASS_TEXT.encode()
+    per = {
+        "ass": _served_probe(
+            client,
+            out / f"{TOKEN}_caption.ass",
+            f"/output/{TOKEN}_caption.ass",
+            b"[Events]\nDialogue: " + txt + b"\n",
+        ),
+        "keyword_selection_json": _served_probe(
+            client,
+            out / f"{TOKEN}.keyword_selection.json",
+            f"/output/{TOKEN}.keyword_selection.json",
+            b'{"palabra":"' + txt + b'"}',
+        ),
+    }
+    verdict = worst(list(per.values()))
+    detail = "; ".join(f"{k}={v}" for k, v in per.items())
+    key = "output_no_expone_texto"
+    if verdict == "BLOCKER":
+        record(key, "BLOCKER", f"P0-3: /output sirvio texto privado de captions ({detail})")
+    else:
+        record(key, verdict, f"/output tipos privados -> ({detail})")
+    return {"verdict": verdict, "per": per}
+
+
+def probe_lan_exposure(client, sandbox: Path) -> dict:
+    """P0-4 (LAN): los mounts privados NO deben servir binarios sin auth. Cubre TRES mounts
+    documentados: /input (fuente), /thumbs (miniatura), /clips (clip)."""
+    per = {
+        "input": _served_probe(
+            client, sandbox / "input" / f"{TOKEN}_src.mp4", f"/input/{TOKEN}_src.mp4", b"SYNTHSRC01"
+        ),
+        "thumbs": _served_probe(
+            client, sandbox / "thumbs" / f"{TOKEN}_t.jpg", f"/thumbs/{TOKEN}_t.jpg", b"SYNTHTHUMB"
+        ),
+        "clips": _served_probe(
+            client,
+            sandbox / "output" / "clips" / f"{TOKEN}_c.mp4",
+            f"/clips/{TOKEN}_c.mp4",
+            b"SYNTHCLIP0",
+        ),
+    }
+    verdict = worst(list(per.values()))
+    detail = "; ".join(f"{k}={v}" for k, v in per.items())
+    key = "mounts_no_expuestos_lan"
+    if verdict == "BLOCKER":
+        record(key, "BLOCKER", f"P0-4: mounts privados servidos sin auth en LAN ({detail})")
+    else:
+        record(key, verdict, f"/input //thumbs //clips -> ({detail})")
+    return {"verdict": verdict, "per": per}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -544,11 +612,23 @@ def run_smoke() -> int:
                 f"GET /api/videos -> {status}, nombres={names} (solo fixtures del sandbox)",
             )
 
-            # 4. Probes de seguridad P0.
+            # 4. Probes de seguridad P0 (MUESTRA representativa por P0, no exhaustiva).
             probe_traversal_write(client, sandbox, escape_catch)
             probe_traversal_upload(client, sandbox, escape_catch)
-            probe_output_ass(client, sandbox)
-            probe_input_exposure(client, sandbox)
+            probe_output_exposure(client, sandbox)
+            probe_lan_exposure(client, sandbox)
+
+            # 4b. Honestidad de cobertura: el smoke NO es un gate EXHAUSTIVO de cierre H1. Las
+            # probes muestrean UNA superficie por P0 (traversal solo en PUT transcript; el resto
+            # de endpoints {name} no se prueba aqui). Un fix parcial que endurezca solo lo
+            # muestreado podria dar verde dejando P0s documentados abiertos: ver AUDITORIA.md.
+            record(
+                "cobertura_p0_no_exhaustiva",
+                "SKIP",
+                "muestra: traversal solo en PUT /transcript; NO probados aqui otros endpoints "
+                "{name} (brain/analyze/depurar/clips/reframe/turnos). Verde != todos los P0 "
+                "cerrados; el mapa P0 completo y su cierre estan en AUDITORIA.md/PLAN_DE_PR.md",
+            )
 
             # 5. E2E diferido.
             import shutil  # noqa: PLC0415
@@ -656,6 +736,18 @@ def self_test() -> int:
             "01_globals_en_sandbox",
             app_mod.INPUT_DIR == sandbox / "input" and str(sandbox) in str(app_mod.OUTPUT_DIR),
         )
+        # Review e618ba2 · fix D: los globals PROPIOS de los routers montados tambien se redirigen
+        # al sandbox (si no, una ruta SRT/paquete tocaria el repo real -> fuga de privacidad).
+        import importlib as _il  # noqa: PLC0415
+
+        _srt = _il.import_module("studio_srt_routes")
+        _pkg = _il.import_module("studio_packages")
+        ck(
+            "01b_router_globals_en_sandbox",
+            _srt.INPUT_DIR == sandbox / "input"
+            and _srt.STUDIO_SRT_DIR == sandbox / "transcripts" / "studio_srt"
+            and _pkg.PAQUETES_DIR == sandbox / "output" / "paquetes",
+        )
         # item 2: /api/videos lista solo fixtures sinteticos.
         (sandbox / "input" / "solo.mp4").write_bytes(b"S")
         (sandbox / "transcripts" / "solo_info.json").write_text(
@@ -689,16 +781,22 @@ def self_test() -> int:
         ck(f"08_traversal_write_valido[{wr['verdict']}]", wr["verdict"] in valid)
         up = probe_traversal_upload(client, sandbox, escape_catch)
         ck(f"09_upload_traversal_valido[{up['verdict']}]", up["verdict"] in valid)
-        oa = probe_output_ass(client, sandbox)
-        ck(f"10_output_ass_valido[{oa['verdict']}]", oa["verdict"] in valid)
-        ie = probe_input_exposure(client, sandbox)
-        ck(f"11_input_expuesto_valido[{ie['verdict']}]", ie["verdict"] in valid)
+        oa = probe_output_exposure(client, sandbox)
+        ck(f"10_output_expuesto_valido[{oa['verdict']}]", oa["verdict"] in valid)
+        ie = probe_lan_exposure(client, sandbox)
+        ck(f"11_lan_expuesto_valido[{ie['verdict']}]", ie["verdict"] in valid)
         # item 12: no queda ningun centinela tras las probes.
         leftovers = []
         for d in _escape_scan_dirs(sandbox, escape_catch):
             with contextlib.suppress(OSError):
                 leftovers += [str(c) for c in d.iterdir() if TOKEN in c.name]
         ck("12_sin_centinelas_residuales", not leftovers)
+
+    # Review e618ba2 · los globals de los routers se RESTAURAN al salir del context manager.
+    import importlib as _il2  # noqa: PLC0415
+
+    _srt2 = _il2.import_module("studio_srt_routes")
+    ck("13_router_globals_restaurados", _srt2.INPUT_DIR == REAL_ROOT / "input")
 
     ok = all(c for _, c in checks)
     passed = sum(c for _, c in checks)

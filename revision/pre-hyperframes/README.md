@@ -25,16 +25,24 @@ $env:PYTHONIOENCODING="utf-8"
 .\venv\Scripts\python revision\pre-hyperframes\smoke_pre_hyperframes.py --self-test
 ```
 - Usa `TestClient` (no abre puerto), no requiere GPU ni red.
-- **Aislamiento:** monta la app sobre un **sandbox temporal completo** (globals + mounts
-  `StaticFiles` redirigidos a un `TemporaryDirectory`) y añade una **defensa por snapshot**
-  (metadata-only) que falla si el arnés toca cualquier archivo real fuera del sandbox.
+- **Aislamiento:** monta la app sobre un **sandbox temporal completo** — redirige los globals de
+  `app` **y de los routers montados** (`studio_srt_routes`, `studio_packages`, que definen sus
+  propios `INPUT_DIR`/`TRANSCRIPTS`/…), reconstruye los mounts `StaticFiles` sobre un
+  `TemporaryDirectory`, y añade una **defensa por snapshot** (metadata-only) que falla si el arnés
+  toca cualquier archivo o directorio real fuera del sandbox.
 - Prueba salud, contrato de jobs/videos (sólo fixtures sintéticos), y **probes P0** con centinelas
   **sintéticos** (creados y borrados en la misma corrida, con verificación de "sin residuos").
 - **Traversal multiplataforma:** payloads Windows (backslash), POSIX (`/`), absolutos, dot-segments
   y NUL, por endpoint `{name}` y por upload multipart. Contrato: 2xx-con-escape → BLOCKER;
   4xx-sin-efecto → PASS; 5xx/excepción interna → FAIL (una excepción **nunca** es PASS).
-- Corrida confirmada: **4 BLOCKERs** (P0-1 traversal, P0-2 upload, P0-3 `/output` `.ass`, P0-4
-  exposición `/input` en LAN) → exit code 1; `aislamiento_datos_reales = PASS`.
+- **Exposición cubierta:** P0-3 prueba `/output` con `.ass` **y** `.keyword_selection.json`; P0-4
+  prueba los mounts `/input`, `/thumbs` **y** `/clips`.
+- **Muestra representativa, NO exhaustiva:** el traversal sólo se prueba en `PUT …/transcript`; los
+  demás endpoints `{name}` (brain/analyze/depurar/clips/reframe/turnos) **no** se prueban aquí
+  (check `cobertura_p0_no_exhaustiva = SKIP`). Verde ≠ todos los P0 cerrados: el smoke **no** es un
+  gate de cierre exhaustivo de H1; el mapa P0 completo vive en `AUDITORIA.md`/`PLAN_DE_PR.md`.
+- Corrida confirmada: **4 BLOCKERs** (P0-1 traversal, P0-2 upload, P0-3 `/output` texto privado,
+  P0-4 exposición de mounts en LAN) → exit code 1; `aislamiento_datos_reales = PASS`.
 - `--self-test` valida las **mecánicas del arnés** (sandbox, contrato de clasificación, detección y
   limpieza de escape sobre un caso controlado) — **no** el estado vulnerable de hoy: las probes
   contra la app viva aceptan una clasificación **válida** (BLOCKER si vulnerable, PASS si endurecido),
