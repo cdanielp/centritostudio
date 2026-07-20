@@ -226,6 +226,20 @@ def _make_ass_style(
     subs.styles["Default"] = base
 
 
+def _pos_tag(group: dict) -> str:
+    """Override de alineacion inline por grupo (F6 avoid_faces/[center]).
+
+    'top' -> \\an8 (arriba-centro), 'center' -> \\an5 (centro). 'bottom'/ausente ->
+    sin override: la ruta historica (BOTTOM_CENTER del estilo) queda byte-identica.
+    """
+    p = group.get("caption_pos")
+    if p == "top":
+        return "{\\an8}"
+    if p == "center":
+        return "{\\an5}"
+    return ""
+
+
 def build_ass(
     groups: list[dict],
     video_width: int,
@@ -237,11 +251,13 @@ def build_ass(
 
     Con kw_glow (F6/CVE) los grupos con keyword emiten su texto en capa 1 y un evento
     gemelo de glow en capa 0. Default off: eventos sin capa, ruta identica a la actual.
+    Con caption_pos (F6) el grupo lleva un override \\an; bottom/ausente = byte-identico.
     """
     glow_on = getattr(style_cfg, "kw_glow", False)
     subs = pysubs2.SSAFile()
     _make_ass_style(subs, video_width, video_height, style_cfg)
     for group in groups:
+        pos = _pos_tag(group)
         # S36-B: cue de fallback SRT -> UN evento estatico con el texto exacto del cue
         # (sin animacion word-by-word). Aditivo: los groups historicos no traen la clave.
         if group.get("timing_mode") == "cue_fallback":
@@ -249,7 +265,7 @@ def build_ass(
                 pysubs2.SSAEvent(
                     start=pysubs2.make_time(s=group["start"]),
                     end=pysubs2.make_time(s=max(group["end"], group["start"] + 0.05)),
-                    text=_static_cue_text(group["words"], style_cfg),
+                    text=pos + _static_cue_text(group["words"], style_cfg),
                     layer=0,
                 )
             )
@@ -263,12 +279,14 @@ def build_ass(
             start = pysubs2.make_time(s=word["start"])
             end = pysubs2.make_time(s=ev_end)
             if con_glow:
-                subs.events.append(pysubs2.SSAEvent(start=start, end=end, text=glow_text, layer=0))
+                subs.events.append(
+                    pysubs2.SSAEvent(start=start, end=end, text=pos + glow_text, layer=0)
+                )
             subs.events.append(
                 pysubs2.SSAEvent(
                     start=start,
                     end=end,
-                    text=_word_event_text(gw, idx, style_cfg),
+                    text=pos + _word_event_text(gw, idx, style_cfg),
                     layer=1 if con_glow else 0,
                 )
             )

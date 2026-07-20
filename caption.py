@@ -377,8 +377,20 @@ def process_video(
 
         brain_path = _TRANSCRIPTS_DIR / f"{stem}.brain.json"
         manual_kw_path = _TRANSCRIPTS_DIR / f"{stem}_keywords.json"
+        # avoid_faces: trayectoria del reframe si existe (junto al video o en transcripts)
+        tray_csv = next(
+            (
+                c
+                for c in (
+                    video_path.parent / f"trayectoria_{stem}.csv",
+                    _TRANSCRIPTS_DIR / f"trayectoria_{stem}.csv",
+                )
+                if c.exists()
+            ),
+            None,
+        )
         groups, plan, aviso = cve.aplicar_preset(
-            groups, plan, brain_path, width, height, manual_kw_path
+            groups, plan, brain_path, width, height, manual_kw_path, tray_csv
         )
         if aviso:
             print(f"[cve] {aviso}")

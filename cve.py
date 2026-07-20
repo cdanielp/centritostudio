@@ -217,12 +217,15 @@ def aplicar_preset(
     video_w: int,
     video_h: int,
     manual_kw_path: Path | None = None,
+    tray_csv_path: Path | None = None,
 ) -> tuple[list[dict], RenderPlan, str | None]:
-    """Ruta completa del preset: brain fail-open + engine + ajuste de plan a los grupos.
+    """Ruta completa del preset: brain fail-open + engine + posicion + ajuste de plan.
 
     Fuente unica para CLI y Studio. Devuelve (groups, plan, aviso); el aviso (regla #16)
     dice cuando el preset usa brain y no hay brain.json — el consumidor ofrece el fix.
     `manual_kw_path` = sidecar {stem}_keywords.json opcional (BLOQUE 3, fail-open).
+    `tray_csv_path` = trayectoria_{stem}.csv del reframe para avoid_faces (fail-open):
+    ausente/sin senal -> posicion del preset intacta (bottom = ruta historica).
     """
     brain_data = None
     aviso = None
@@ -236,6 +239,7 @@ def aplicar_preset(
         aviso = "Sin brain.json: el preset rinde sin keywords semanticas (Analizar IA lo habilita)"
     manual_entries = cargar_manual_keywords(manual_kw_path)
     groups = aplicar_engine(groups, plan, video_w, video_h, brain_data, manual_entries)
+    groups = resolver_posicion_captions(groups, plan, tray_csv_path)
     plan = ajustar_plan_a_groups(plan, groups)
     return groups, plan, aviso
 
@@ -299,6 +303,84 @@ def hay_cara_en_rango(csv_path: Path, t0: float, t1: float) -> bool | None:
         return False
     except (OSError, ValueError, KeyError):
         return None
+
+
+# Buckets verticales de la cara (fraccion 0..1 del alto): arriba / centro / abajo.
+_ZONA_TOP_MAX = 0.40
+_ZONA_BOTTOM_MIN = 0.60
+
+
+def zona_cara_en_rango(csv_path: Path, t0: float, t1: float) -> str | None:
+    """Zona vertical dominante de la cara viva en [t0,t1]: 'top'|'center'|'bottom'|None.
+
+    Reutiliza el CSV del reframe (no duplica deteccion). Usa la columna opcional
+    `face_y_asignada` (fraccion 0..1) si existe; si solo hay presencia (`conf_asignada`
+    sin vertical) devuelve 'center' (caso talking-head). Sin senal/archivo/columna o
+    fallo de lectura -> None (fail-open: el llamador conserva la posicion base).
+    """
+    if not csv_path or not Path(csv_path).exists():
+        return None
+    try:
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if "conf_asignada" not in (reader.fieldnames or []):
+                return None
+            ys: list[float] = []
+            viva = False
+            for row in reader:
+                t = float(row["t"])
+                if not (t0 <= t <= t1) or not row.get("conf_asignada", "").strip():
+                    continue
+                viva = True
+                fy = (row.get("face_y_asignada") or "").strip()
+                if fy:
+                    ys.append(float(fy))
+    except (OSError, ValueError, KeyError):
+        return None
+    if ys:
+        avg = sum(ys) / len(ys)
+        if avg < _ZONA_TOP_MAX:
+            return "top"
+        if avg > _ZONA_BOTTOM_MIN:
+            return "bottom"
+        return "center"
+    return "center" if viva else None
+
+
+def _posicion_evitando_cara(base: str, zona: str | None) -> str:
+    """Posicion del caption que no cae sobre la zona de la cara (determinista).
+
+    Solo mueve cuando la posicion base coincidiria con la cara; si no, conserva base
+    (sin saltos innecesarios). Prioriza bottom (safe area) salvo que la cara este abajo.
+    """
+    if zona is None or base != zona:
+        return base
+    return "top" if zona == "bottom" else "bottom"
+
+
+def resolver_posicion_captions(
+    groups: list[dict], plan: RenderPlan, tray_csv_path: Path | None
+) -> list[dict]:
+    """Fija caption_pos por grupo evitando la cara (avoid_faces). Puro y fail-open.
+
+    Con avoid_faces off, sin CSV o sin senal, la posicion base (del preset) se conserva:
+    si es 'bottom' NO se escribe caption_pos -> render byte-identico a la ruta historica.
+    Una sola posicion por grupo (sin saltos violentos); respeta las safe areas del estilo.
+    """
+    base = plan.position or "bottom"
+    result: list[dict] = []
+    for g in groups:
+        pos = base
+        if plan.avoid_faces:
+            zona = zona_cara_en_rango(tray_csv_path, g.get("start", 0.0), g.get("end", 0.0))
+            pos = _posicion_evitando_cara(base, zona)
+        # Ruta historica intacta: base bottom que sigue en bottom -> no se anota nada
+        # (build_ass sin caption_pos = byte-identico). Toda decision no-default se anota.
+        if pos != "bottom" or base != "bottom":
+            result.append({**g, "caption_pos": pos})
+        else:
+            result.append(g)
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
