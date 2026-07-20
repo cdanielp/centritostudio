@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cve_keywords as ck
+import cve_presets
+import styles
 from core_ass import _scaled_fontsize  # fuente unica de la formula de fontsize (D14)
 
 # Safe zones 9:16 (§5.1) — fuente unica en core_overlays (S31); re-export para
@@ -60,7 +62,7 @@ class RenderPlan:
 
 
 # Presets built-in v1 (§1). style = nombre de estilo existente; el resto son modos.
-_PRESETS: dict[str, dict] = {
+_PRESETS_BUILTIN: dict[str, dict] = {
     "clean_podcast": {
         "style": "clean",
         "intensidad": "clean",
@@ -105,6 +107,17 @@ _PRESETS: dict[str, dict] = {
     },
 }
 
+# Registro efectivo = built-ins + cve_presets.json (opcional, raiz). Fail-safe total:
+# ausente/roto/campo invalido -> built-ins intactos (DISENO_CVE §6). Se resuelve una vez.
+_CVE_PRESETS_JSON = Path(__file__).resolve().parent / "cve_presets.json"
+try:
+    _PRESETS: dict[str, dict] = cve_presets.construir_presets(
+        _PRESETS_BUILTIN, cve_presets.cargar(_CVE_PRESETS_JSON), set(styles.STYLES)
+    )
+except Exception as _e:  # jamas romper el import por un preset de usuario
+    print(f"[cve] cve_presets.json no aplicado ({_e}) - built-ins intactos")
+    _PRESETS = dict(_PRESETS_BUILTIN)
+
 
 def list_presets() -> list[str]:
     return sorted(_PRESETS)
@@ -134,6 +147,10 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str, densidad: str | None
     """Construye el RenderPlan aplicando la matriz de intensidades (§6.1)."""
     glow = bool(p.get("glow", False)) and intensidad == "viral"
     style_cfg = get_style(p.get("style", "hormozi"))
+    # cve_presets.json (§6): overrides de StyleConfig ya validados campo por campo.
+    overrides = p.get("style_overrides")
+    if isinstance(overrides, dict) and overrides:
+        style_cfg = replace(style_cfg, **styles.filtrar_overrides_validos(overrides))
     if intensidad == "minimal":
         style_cfg = replace(style_cfg, pop_scale=1.0, overshoot=False)
     if glow != getattr(style_cfg, "kw_glow", False):
