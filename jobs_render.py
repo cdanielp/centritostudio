@@ -47,14 +47,21 @@ def _rutas_render(
     intensidad: str | None,
     use_emphasis: bool,
     use_emojis: bool,
+    *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> tuple[Path, Path]:
-    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes)."""
+    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes).
+
+    Toda dimension CVE que cambia la salida (densidad/position/avoid_faces) entra al tag
+    via cve.tag_variante (fuente unica, misma que la CLI) para que variantes distintas no
+    se sobreescriban entre si (MP4/ASS/sidecar). Defaults -> naming historico.
+    """
     if plan:
         import cve  # noqa: PLC0415
 
-        # Sin densidad: el Studio aun no la expone; al exponerla, pasarla aqui
-        # (cve.tag_variante ya la acepta) para que variantes no se pisen.
-        base_tag = cve.tag_variante(plan.preset, intensidad)
+        base_tag = cve.tag_variante(plan.preset, intensidad, densidad, position, avoid_faces)
     else:
         base_tag = f"_{style}" + (f"_{pop}" if pop else "")
     suffix = base_tag
@@ -217,7 +224,16 @@ def _run_render_transcript(
 
         style_cfg = plan.style_cfg if plan else get_style(style, pop)
         ass_path, out_path = _rutas_render(
-            name, plan, style, pop, intensidad, use_emphasis, use_emojis
+            name,
+            plan,
+            style,
+            pop,
+            intensidad,
+            use_emphasis,
+            use_emojis,
+            densidad=densidad,
+            position=position,
+            avoid_faces=avoid_faces,
         )
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")

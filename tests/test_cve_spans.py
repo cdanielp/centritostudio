@@ -220,3 +220,81 @@ def test_sidecar_seleccion_span_saneado():
         assert not any(k in kw for k in ("path", "ruta", "file", "archivo"))
     # timestamps = starts reales de las words (no inventados)
     assert [kw["timestamp"] for kw in kws] == [w["start"] for w in g["words"]]
+
+
+# ── Puntuacion en spans (P2 revision PR #23) ──────────────────────────────────
+# La puntuacion pegada a una palabra marcada debe conservarse EN esa palabra y NO
+# contar como palabra extra (si no, _consumir_marcas descarta la marca por conteo).
+
+
+def test_span_big_con_coma_final():
+    assert ck.parsear_marcas("[big]gratis[/big],") == ("gratis,", {0: "big"}, False)
+
+
+def test_span_strong_con_punto_final():
+    limpio, marcas, _c = ck.parsear_marcas("[strong]sin costo[/strong].")
+    assert limpio == "sin costo." and marcas == {0: "strong", 1: "strong"}
+
+
+def test_span_con_interrogacion():
+    limpio, marcas, _c = ck.parsear_marcas("[strong]esto funciona[/strong]?")
+    assert limpio == "esto funciona?" and marcas == {0: "strong", 1: "strong"}
+
+
+def test_span_con_signos_de_apertura_y_cierre():
+    limpio, marcas, _c = ck.parsear_marcas("¡[big]ahora mismo[/big]!")
+    assert limpio == "¡ahora mismo!" and marcas == {0: "big", 1: "big"}
+
+
+def test_span_entre_comillas():
+    limpio, marcas, _c = ck.parsear_marcas('"[strong]texto marcado[/strong]"')
+    assert limpio == '"texto marcado"' and marcas == {0: "strong", 1: "strong"}
+
+
+def test_span_seguido_de_dos_signos():
+    limpio, marcas, _c = ck.parsear_marcas("[big]ya[/big]?!")
+    assert limpio == "ya?!" and marcas == {0: "big"}
+
+
+def test_span_dentro_de_frase_normal():
+    limpio, marcas, _c = ck.parsear_marcas("mira [strong]esto clave[/strong] ahora")
+    assert limpio == "mira esto clave ahora" and marcas == {1: "strong", 2: "strong"}
+
+
+def test_marca_una_palabra_historica_con_coma():
+    # Apertura sin cierre + coma: marca esa palabra, conserva la coma
+    assert ck.parsear_marcas("[strong]gratis,") == ("gratis,", {0: "strong"}, False)
+
+
+def test_span_unicode_y_acentos():
+    limpio, marcas, _c = ck.parsear_marcas("[big]café años[/big].")
+    assert limpio == "café años." and marcas == {0: "big", 1: "big"}
+
+
+def test_center_con_span_y_puntuacion():
+    limpio, marcas, center = ck.parsear_marcas("[center][strong]la clave[/strong].")
+    assert limpio == "la clave." and marcas == {0: "strong", 1: "strong"} and center is True
+
+
+def test_texto_sin_marcas_con_puntuacion_intacto():
+    # Sin marcas: la puntuacion no se toca y no hay marcas espurias
+    assert ck.parsear_marcas("hola, mundo.") == ("hola, mundo.", {}, False)
+
+
+# ── El bug real: la marca NO se pierde por conteo (aplicar_engine) ─────────────
+
+
+def test_engine_span_con_puntuacion_no_se_descarta():
+    # words con puntuacion pegada (como las entrega whisper): la marca sobrevive
+    g = _grupo(["sin", "costo."], texto="[strong]sin costo[/strong].")
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine([g], plan, 1080, 1920)
+    assert [w.get("is_keyword") for w in out[0]["words"]] == [True, True]
+
+
+def test_engine_marca_una_palabra_con_coma_no_se_descarta():
+    g = _grupo(["gana", "gratis,"], texto="gana [big]gratis[/big],")
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine([g], plan, 1080, 1920)
+    assert out[0]["words"][1].get("is_keyword") is True
+    assert out[0]["words"][1]["kw_regla"] == "manual_big"

@@ -289,11 +289,31 @@ def aplicar_preset(
     return groups, plan, aviso
 
 
-def tag_variante(preset: str, intensidad: str | None, densidad: str | None = None) -> str:
-    """Sufijo de salida de una variante de preset — identico en CLI y Studio."""
-    inten_tag = f"_{intensidad}" if intensidad else ""
-    dens_tag = f"_{densidad}" if densidad else ""
-    return f"_{preset}{inten_tag}{dens_tag}"
+def tag_variante(
+    preset: str,
+    intensidad: str | None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
+) -> str:
+    """Sufijo de salida de una variante de preset — helper unico, CLI y Studio identicos.
+
+    Toda dimension que cambia la salida audiovisual entra al tag para que variantes
+    distintas no se pisen (MP4/ASS/sidecar). Allowlist + tokens compactos (nunca valores
+    libres). Los DEFAULTS no agregan token → el naming historico se conserva: intensidad
+    solo si es valida; densidad solo si se pidio; position solo si no es bottom (default);
+    avoid_faces solo cuando se DESACTIVA (True/None = default).
+    """
+    tag = f"_{preset}"
+    if intensidad in INTENSIDADES:
+        tag += f"_{intensidad}"
+    if densidad in ck.DENSIDADES:
+        tag += f"_{densidad}"
+    if position in ("center", "top"):
+        tag += f"_{position}"
+    if avoid_faces is False:
+        tag += "_nofaces"
+    return tag
 
 
 def _timing_por_palabra_completo(groups: list[dict]) -> bool:

@@ -421,13 +421,46 @@ def _marcas_por_palabra(spans: list[tuple[str, int, int]], n: int) -> dict[int, 
     return marcas
 
 
+def _procesar_token(
+    eventos: list[tuple[str, str]],
+    palabras: list[str],
+    abiertos: list[tuple[str, int]],
+    spans: list[tuple[str, int, int]],
+) -> bool:
+    """Procesa un token (= una palabra visible como maximo) y aplica sus marcas.
+
+    Los segmentos de texto del token se CONCATENAN en una sola palabra: la puntuacion
+    pegada a un cierre (`costo[/strong].`) queda DENTRO de la palabra (`costo.`), no como
+    token extra — asi el indice y el conteo de palabras cuadran con las words del grupo.
+    Devuelve True si vio una apertura [center]. Muta palabras/abiertos/spans in-place.
+    """
+    palabra = "".join(v for t, v in eventos if t == "word")
+    idx = len(palabras)
+    if palabra:
+        palabras.append(palabra)
+    # Palabra presente: apertura desde esta palabra, cierre inclusivo de esta palabra.
+    # Token solo-marcas: apertura a la palabra SIGUIENTE, cierre hasta la ultima (compat v1).
+    ini = idx
+    fin = idx + 1 if palabra else idx
+    center = False
+    for tipo, val in eventos:
+        if tipo == "open" and val == "center":
+            center = True
+        elif tipo == "open" and val in _SPAN_MARKS:
+            abiertos.append((val, ini))
+        elif tipo == "close" and val in _SPAN_MARKS:
+            _cerrar_span(abiertos, val, fin, spans)
+    return center
+
+
 def parsear_marcas(texto: str) -> tuple[str, dict[int, str], bool]:
     """Extrae marcas v1/spans del texto de un grupo. Marca invalida = se elimina, jamas rompe.
 
     Devuelve (texto_limpio, {indice_palabra: marca}, center). Un span cerrado
     `[strong]a b c[/strong]` marca CADA palabra (#34); una apertura sin cierre marca solo
-    la palabra siguiente (compat v1). Solapamientos: gana el span mas corto/interno
-    (empate -> big). `[center]` es flag de grupo (posicional); su cierre se ignora.
+    la palabra siguiente (compat v1). La puntuacion pegada se conserva en la palabra y NO
+    cuenta como palabra extra. Solapamientos: gana el span mas corto/interno (empate ->
+    big). `[center]` es flag de grupo (posicional); su cierre se ignora.
     """
     if "[" not in texto:
         return texto, {}, False
@@ -438,15 +471,8 @@ def parsear_marcas(texto: str) -> tuple[str, dict[int, str], bool]:
     spans: list[tuple[str, int, int]] = []  # (nombre, inicio, fin exclusivo)
 
     for token in texto.split():
-        for tipo, val in _tokenizar_marcas(token):
-            if tipo == "word" and val:
-                palabras.append(val)
-            elif tipo == "open" and val == "center":
-                center = True
-            elif tipo == "open" and val in _SPAN_MARKS:
-                abiertos.append((val, len(palabras)))
-            elif tipo == "close" and val in _SPAN_MARKS:
-                _cerrar_span(abiertos, val, len(palabras), spans)
+        if _procesar_token(_tokenizar_marcas(token), palabras, abiertos, spans):
+            center = True
 
     n = len(palabras)
     for nombre, ini in abiertos:  # apertura sin cierre -> next-word (compat v1)
