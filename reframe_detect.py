@@ -203,10 +203,11 @@ def _detectar_trayectoria(
     src_w: int,
     ancla_x: float,
     detector_type: str = "yunet",
-) -> tuple[dict[int, float], dict[int, float]]:
+) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
     """Detecta center_x de la cara principal usando ancla estatica.
 
-    Devuelve (sparsa, sparsa_conf) donde sparsa_conf[frame_idx] = score.
+    Devuelve (sparsa, sparsa_conf, sparsa_cy) donde sparsa_conf[frame_idx] = score y
+    sparsa_cy[frame_idx] = center_y (px) de la MISMA cara asignada (F6 avoid_faces).
     Solo acepta detecciones dentro de GATE_ANCLA_PCT x src_w del ancla.
     """
     gate_ancla_w = rt.GATE_ANCLA_PCT * src_w
@@ -214,6 +215,7 @@ def _detectar_trayectoria(
     detector = _crear_detector(detector_type)
     sparsa: dict[int, float] = {}
     sparsa_conf: dict[int, float] = {}
+    sparsa_cy: dict[int, float] = {}
     n_det = n_sin = n_gated = 0
     try:
         for fi in range(total_frames):
@@ -233,6 +235,7 @@ def _detectar_trayectoria(
                 continue
             sparsa[fi] = new_x
             sparsa_conf[fi] = best["score"]
+            sparsa_cy[fi] = best["center_y"]
             n_det += 1
     finally:
         cap.release()
@@ -241,7 +244,7 @@ def _detectar_trayectoria(
         print(f"[reframe] {n_gated} detecciones fuera del ancla (>{gate_ancla_w:.0f}px)")
     if n_sin > n_det:
         print(f"[reframe] cara perdida en {n_sin}/{n_det + n_sin} detecciones, manteniendo ultima")
-    return sparsa, sparsa_conf
+    return sparsa, sparsa_conf, sparsa_cy
 
 
 def _asignar_detecciones_a_caras(

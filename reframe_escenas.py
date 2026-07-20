@@ -81,14 +81,19 @@ def _muestrear_escenas(
 
 def _seg_single(
     si: dict, dets: dict[int, list[dict]], fps: float, src_w: int, src_h: int
-) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float], int]:
-    """Segmento single: waypoints + paneo interpolado. Devuelve (crops, filled, conf, n_paneos)."""
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float], dict[int, float], int]:
+    """Segmento single: waypoints + paneo interpolado.
+
+    Devuelve (crops, filled, conf, cy, n_paneos). `cy[fi]` = center_y (px) de la MISMA
+    cara asignada que conf[fi] (F6 avoid_faces): reutiliza la detección, sin segunda pasada.
+    """
     crop_w = src_h * 9 // 16
     dz_w = rt.DEADZONE_PCT_ESCENAS * crop_w
     ancla = si["caras"][0]["center_x"]
     gate = rt.GATE_ANCLA_PCT * src_w
     samples: list[tuple[float, float | None]] = []
     conf: dict[int, float] = {}
+    cy: dict[int, float] = {}
     filled_sparsa: dict[int, float] = {}
     for fi in sorted(dets):
         if not (si["f_ini"] <= fi < si["f_fin"]):
@@ -98,6 +103,7 @@ def _seg_single(
             best = max(cands, key=lambda d: d["score"])
             samples.append((fi / fps, best["center_x"]))
             conf[fi] = best["score"]
+            cy[fi] = best["center_y"]
             filled_sparsa[fi] = best["center_x"]
         else:
             samples.append((fi / fps, None))
@@ -110,17 +116,18 @@ def _seg_single(
         {fi - si["f_ini"]: cx for fi, cx in filled_sparsa.items()}, n_seg
     )
     filled = rt.manejar_cara_perdida(raw, ancla)
-    return crops, filled, conf, n_paneos
+    return crops, filled, conf, cy, n_paneos
 
 
 def _seg_multi(
     si: dict, dets: dict[int, list[dict]], fps: float, src_w: int, src_h: int
-) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float]]:
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float], dict[int, float]]:
     """Segmento multi: ancla re-escaneada en este segmento, EMA scoped.
 
     v1: sigue UNICAMENTE la cara principal (mayor score) del frame representativo
     del segmento; caras que entran a mitad del segmento no generan track propio.
     EMA adaptativo + deadzone existentes con estado local al segmento.
+    Devuelve (crops, filled, conf, cy); cy[fi] = center_y de la cara asignada (F6).
     """
     crop_w = src_h * 9 // 16
     deadzone_w = rt.DEADZONE_PCT * crop_w
@@ -128,6 +135,7 @@ def _seg_multi(
     gate = rt.GATE_ANCLA_PCT * src_w
     sparsa_local: dict[int, float] = {}
     conf: dict[int, float] = {}
+    cy: dict[int, float] = {}
     for fi in sorted(dets):
         if not (si["f_ini"] <= fi < si["f_fin"]):
             continue
@@ -136,16 +144,17 @@ def _seg_multi(
             best = max(cands, key=lambda d: d["score"])
             sparsa_local[fi - si["f_ini"]] = best["center_x"]
             conf[fi] = best["score"]
+            cy[fi] = best["center_y"]
     n_seg = si["f_fin"] - si["f_ini"]
     if not sparsa_local:
         crops_fijos = [rt.calcular_ventana_crop(ancla, src_w, src_h)] * n_seg
-        return crops_fijos, [ancla] * n_seg, conf
+        return crops_fijos, [ancla] * n_seg, conf, cy
     raw = rt.interpolar_detecciones(sparsa_local, n_seg)
     filled = rt.manejar_cara_perdida(raw, ancla)
     targets = rt.aplicar_deadzone_secuencia(filled, deadzone_w)
     smooth = rt.ema_smooth_adaptativo(targets, fps, deadzone_w)
     crops = [rt.calcular_ventana_crop(x, src_w, src_h) for x in smooth]
-    return crops, filled, conf
+    return crops, filled, conf, cy
 
 
 def _c1v2_segmento(
@@ -201,10 +210,13 @@ def calcular_crops_escenas(
     src_h: int,
     cortes_ts: list[float],
     detector_type: str = "yunet",
-) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float], list[dict]]:
+) -> tuple[
+    list[tuple[int, int, int, int]], list[float], dict[int, float], dict[int, float], list[dict]
+]:
     """Pipeline cortes-primero: segmentos -> clasificar -> trackear POR segmento.
 
-    Devuelve (crops, filled, conf_global, reporte_segmentos).
+    Devuelve (crops, filled, conf_global, cy_global, reporte_segmentos). `cy_global`
+    lleva el center_y (px) de la cara asignada por frame detectado (F6 avoid_faces).
     """
     segs = rt.segmentos_desde_cortes(cortes_ts, fps, total_frames)
     print(f"[reframe] modo escenas: {len(cortes_ts)} corte(s) -> {len(segs)} segmento(s)")
@@ -220,15 +232,17 @@ def calcular_crops_escenas(
     crops: list[tuple[int, int, int, int]] = []
     filled: list[float] = []
     conf_global: dict[int, float] = {}
+    cy_global: dict[int, float] = {}
     reporte: list[dict] = []
 
     for idx, si in enumerate(seg_infos):
         n_seg = si["f_fin"] - si["f_ini"]
         n_paneos = 0
+        cyf: dict[int, float] = {}
         if si["tipo"] == "single":
-            c, f, cf, n_paneos = _seg_single(si, dets, fps, src_w, src_h)
+            c, f, cf, cyf, n_paneos = _seg_single(si, dets, fps, src_w, src_h)
         elif si["tipo"] == "multi":
-            c, f, cf = _seg_multi(si, dets, fps, src_w, src_h)
+            c, f, cf, cyf = _seg_multi(si, dets, fps, src_w, src_h)
         else:  # none: crop estatico centrado, sin tracking
             cx = (src_w - crop_w) // 2
             c = [(cx, 0, crop_w, src_h)] * n_seg
@@ -237,6 +251,7 @@ def calcular_crops_escenas(
         crops.extend(c)
         filled.extend(f)
         conf_global.update(cf)
+        cy_global.update(cyf)
         c1v2, n_live = _c1v2_segmento(c, f, cf, si["f_ini"])
         reporte.append(_reporte_segmento(si, idx, fps, n_paneos, c1v2, n_live))
 
@@ -245,4 +260,4 @@ def calcular_crops_escenas(
         crops.append(crops[-1] if crops else ((src_w - crop_w) // 2, 0, crop_w, src_h))
         filled.append(filled[-1] if filled else src_w / 2)
 
-    return crops, filled, conf_global, reporte
+    return crops, filled, conf_global, cy_global, reporte

@@ -171,8 +171,13 @@ def _calcular_crop_secuencia(
     src_h: int,
     fps: float,
     sparsa_conf: dict[int, float] | None = None,
-) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None]:
-    """Convierte detecciones sparsa en crops por frame; devuelve (crops, filled, sparsa_conf)."""
+    sparsa_cy: dict[int, float] | None = None,
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None, dict | None]:
+    """Convierte detecciones sparsa en crops por frame.
+
+    Devuelve (crops, filled, sparsa_conf, sparsa_cy). sparsa_cy pasa intacto (center_y de
+    la cara asignada, F6): solo se serializa; no afecta el crop horizontal.
+    """
     src_center = src_w / 2
     crop_w = src_h * 9 // 16
     deadzone_w = rt.DEADZONE_PCT * crop_w  # sobre crop_w, no source_w
@@ -180,13 +185,13 @@ def _calcular_crop_secuencia(
         print("[reframe] no se detectaron caras -- center-crop aplicado")
         cx = (src_w - crop_w) // 2
         crops = [(cx, 0, crop_w, src_h)] * total_frames
-        return crops, [src_center] * total_frames, sparsa_conf
+        return crops, [src_center] * total_frames, sparsa_conf, sparsa_cy
     raw = rt.interpolar_detecciones(sparsa, total_frames)
     filled = rt.manejar_cara_perdida(raw, src_center)
     targets = rt.aplicar_deadzone_secuencia(filled, deadzone_w)
     smooth = rt.ema_smooth_adaptativo(targets, fps, deadzone_w)
     crops = [rt.calcular_ventana_crop(x, src_w, src_h) for x in smooth]
-    return crops, filled, sparsa_conf
+    return crops, filled, sparsa_conf, sparsa_cy
 
 
 # ── Punch-ins en keywords ─────────────────────────────────────────────────────
@@ -318,11 +323,17 @@ def _exportar_trayectoria_csv(
     fps: float,
     out_dir: Path,
     sparsa_conf: dict[int, float] | None = None,
+    sparsa_cy: dict[int, float] | None = None,
+    src_h: int | None = None,
 ) -> Path:
     """Exporta trayectoria frame-a-frame a CSV para diagnostico de tracking.
 
     sparsa_conf: {frame_idx: score} para los frames donde corrio el detector;
     None o ausente => columna conf_asignada omitida (backward-compat).
+    sparsa_cy: {frame_idx: center_y px} de la MISMA cara asignada (F6 avoid_faces).
+    None o ausente => columna face_y_asignada omitida (CSV legacy sigue soportado). Se
+    normaliza a 0..1 con src_h (o el alto del crop) y se clampa; corresponde exactamente a
+    los frames de conf_asignada (misma deteccion), vacio cuando no hay cara viva.
     """
     import csv
 
@@ -333,8 +344,10 @@ def _exportar_trayectoria_csv(
         header = ["t", "cam_center_x", "face_x_asignada", "distancia"]
         if sparsa_conf is not None:
             header.append("conf_asignada")
+        if sparsa_cy is not None:
+            header.append("face_y_asignada")
         w.writerow(header)
-        for fi, (x, _y, cw, _ch) in enumerate(crops):
+        for fi, (x, _y, cw, ch) in enumerate(crops):
             t = fi / fps
             cam_cx = x + cw / 2
             face_x = filled[fi] if fi < len(filled) else cam_cx
@@ -342,6 +355,10 @@ def _exportar_trayectoria_csv(
             row = [f"{t:.4f}", f"{cam_cx:.1f}", f"{face_x:.1f}", f"{dist:.1f}"]
             if sparsa_conf is not None:
                 row.append(f"{sparsa_conf[fi]:.4f}" if fi in sparsa_conf else "")
+            if sparsa_cy is not None:
+                alto = float(src_h or ch or 1)
+                fy = min(1.0, max(0.0, sparsa_cy[fi] / alto)) if fi in sparsa_cy else None
+                row.append(f"{fy:.3f}" if fy is not None else "")
             w.writerow(row)
     print(f"[reframe] trayectoria -> {csv_path.name}")
     return csv_path
@@ -356,8 +373,12 @@ def _calcular_crops(
     src_w: int,
     src_h: int,
     detector_type: str = "yunet",
-) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None]:
-    """Elige ruta single-face o multi-cara; devuelve (crops, filled_por_frame, sparsa_conf)."""
+) -> tuple[list[tuple[int, int, int, int]], list[float], dict[int, float] | None, dict | None]:
+    """Ruta single-face o multi-cara; devuelve (crops, filled, sparsa_conf, sparsa_cy).
+
+    sparsa_cy = center_y (px) de la cara asignada por frame detectado (F6 avoid_faces).
+    En la ruta multi-cara por turnos v1 queda None (columna vacia; fail-open aguas abajo).
+    """
     if len(caras) >= 2 and turnos_list:
         n_t = len(turnos_list)
         print(f"[reframe] {len(caras)} caras con turnos -- conmutacion activada ({n_t} turnos)")
@@ -372,14 +393,14 @@ def _calcular_crops(
         )
         # Flatten conf: frame_idx -> score del cara activo en ese turno
         flat_conf = rt.aplanar_conf_por_turnos(conf_multi, turnos_list, fps, total_frames)
-        return crops, filled, flat_conf
+        return crops, filled, flat_conf, None
     if len(caras) >= 2:
         print(f"[reframe] {len(caras)} caras -- cara principal; asigna turnos para conmutar")
     ancla_x = caras[0]["center_x"] if caras else src_w / 2
-    sparsa, sparsa_conf = _detectar_trayectoria(
+    sparsa, sparsa_conf, sparsa_cy = _detectar_trayectoria(
         input_path, total_frames, src_w, ancla_x, detector_type
     )
-    return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h, fps, sparsa_conf)
+    return _calcular_crop_secuencia(sparsa, total_frames, src_w, src_h, fps, sparsa_conf, sparsa_cy)
 
 
 def reframe_clip(
@@ -419,7 +440,7 @@ def reframe_clip(
         import reframe_escenas  # noqa: PLC0415
 
         cortes = _detectar_cortes_ts(input_path)
-        crops, filled, sparsa_conf, seg_reporte = reframe_escenas.calcular_crops_escenas(
+        crops, filled, sparsa_conf, sparsa_cy, seg_reporte = reframe_escenas.calcular_crops_escenas(
             input_path, fps, total_frames, src_w, src_h, cortes, detector_type
         )
         n_caras = max((s["n_caras"] for s in seg_reporte), default=0)
@@ -428,7 +449,7 @@ def reframe_clip(
             print("[reframe] turnos presentes -- usando tracker ema (escenas v1 no soporta turnos)")
         _avisar_cortes(_contar_cortes_escena(input_path))
         caras = detectar_caras_video(input_path, detector_type=detector_type)
-        crops, filled, sparsa_conf = _calcular_crops(
+        crops, filled, sparsa_conf, sparsa_cy = _calcular_crops(
             input_path, caras, turnos_list, fps, total_frames, src_w, src_h, detector_type
         )
         n_caras = len(caras)
@@ -436,7 +457,9 @@ def reframe_clip(
     if punch_in and brain_data:
         crops = _aplicar_punch_ins(crops, brain_data, fps, src_w, src_h)
     if tray_dir is not None:
-        _exportar_trayectoria_csv(output_path.stem, crops, filled, fps, tray_dir, sparsa_conf)
+        _exportar_trayectoria_csv(
+            output_path.stem, crops, filled, fps, tray_dir, sparsa_conf, sparsa_cy, src_h
+        )
         print(f"[reframe] detector: {detector_type} | tracker: {tracker}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
