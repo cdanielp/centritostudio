@@ -1571,17 +1571,26 @@ DISENO_CVE §6 (cve_presets.json). Sin duplicar motores ni detectores.
    Ninguna marca visible en el ASS (voto #34); nunca crash.
 2. **avoid_faces ON por diseño (explícito).** Los 4 built-ins declaran `avoid_faces: True`
    explícito (antes era el default implícito). La UI de Studio también lo expone encendido.
-   **Alcance actual:** reutiliza `trayectoria_{stem}.csv` del reframe; con la columna de presencia
-   `conf_asignada` (que el reframe SÍ emite) sólo DEMOTA una posición CENTER sobre cara presente a
-   bottom; los presets con base bottom no se mueven (correcto: un caption abajo no tapa una cara
-   centrada en un talking-head 9:16). La ruta histórica bottom queda byte-idéntica.
-3. **DEUDA post-esencial (documentada): export vertical del reframe.** La placa vertical completa
-   (mover a top cuando la cara está abajo, y viceversa) requiere la columna `face_y_asignada`
-   (fracción 0..1) en `trayectoria_{stem}.csv`. Hoy el tracker detecta `center_y` pero NO lo
-   persiste; emitirlo cambia la aridad de retorno de `_detectar_trayectoria`/`_calcular_crops`
-   (con ~118 tests del reframe) → desproporcionado para "esencial". `zona_cara_en_rango` ya lee la
-   columna cuando existe (probado con CSV sintético); queda pendiente que el reframe la produzca.
-   Hasta entonces avoid_faces vertical top/bottom está inerte en producción (sólo demota center).
+   Reutiliza `trayectoria_{stem}.csv` del reframe (presencia `conf_asignada` + vertical
+   `face_y_asignada`, ver punto 3). Prioridad: **marca manual [center] → posición explícita/preset
+   → avoid_faces → default**. La ruta histórica bottom sin colisión queda byte-idéntica.
+3. **`face_y_asignada` es parte del CSV v2 (avoid_faces vertical CONECTADO, ya NO inerte).**
+   El reframe REAL exporta `face_y_asignada` (fracción 0..1) del centro vertical de la cara YA
+   asignada por frame — **reutiliza la misma detección** que `conf_asignada` (mismo `best` del
+   detector), **sin agregar detector ni una segunda pasada**. Plumbing: `_seg_single`/`_seg_multi`
+   (escenas, ruta default) y `_detectar_trayectoria` (ema single) capturan `best["center_y"]` →
+   `sparsa_cy` → `calcular_crops_escenas`/`_calcular_crops`/`_calcular_crop_secuencia` →
+   `reframe_clip` → `_exportar_trayectoria_csv` (normaliza con `src_h`, clampa 0..1, escribe en los
+   MISMOS frames que `conf_asignada`, vacío sin cara viva). **CSV legacy sin la columna sigue
+   soportado** (la columna se omite si no hay `sparsa_cy`; `zona_cara_en_rango` es fail-open). La
+   ruta multi-cara por turnos v1 aún emite la columna vacía (fail-open; mejora futura no bloqueante).
+   Flujo real de extremo a extremo: reframe → `trayectoria_{stem}.csv` (`face_y_asignada`) →
+   `zona_cara_en_rango` → `resolver_posicion_captions` → `caption_pos` → `build_ass` (`\an8`/`\an5`/
+   `\an2`). Criterios verificados: cara abajo+base bottom → arriba; cara arriba+base top → abajo;
+   cara centro+base center → alterna; sin cara → base intacta; detector fallido/CSV legacy →
+   fail-open; sin saltos dentro del grupo; safe areas respetadas. Tests de PRODUCCIÓN REAL en
+   `tests/test_reframe_face_y.py` (productor `_seg_single` + serializador `_exportar_trayectoria_csv`
+   + consumo `cve`), no sólo un CSV fabricado.
 4. **Marca [center].** `[center]` fija `caption_pos="center"` en el render real con prioridad
    **marca manual → preset → avoid_faces → default**. `[center]`/`[/center]` nunca visibles;
    sólo centra su grupo; compatible con phrase spans.
@@ -1595,7 +1604,17 @@ DISENO_CVE §6 (cve_presets.json). Sin duplicar motores ni detectores.
    y ruta transcript; ocultos y NO enviados con SRT (respeta las incompatibilidades ya definidas).
    Sin exponer rutas/JSON/tracebacks; escritorio + móvil.
 
-**Verificación.** +~100 tests nuevos (spans/avoid_faces/center/presets/controles backend+UI);
-suite 1803 passed, 3 skipped (preexistentes); ruff+format+check.bat verdes; E2E FFmpeg real
-(6 demos 1080x1920 30fps) + capturas de controles verificadas visualmente. PR abierto, NO mergeado:
-pendiente veredicto visual de K. Sin dependencias nuevas (sólo stdlib).
+**Verificación.** +~135 tests nuevos (spans/puntuación/naming/avoid_faces/center/presets/
+controles backend+UI/face_y producción real); suite 1838 passed, 3 skipped (preexistentes);
+ruff+format+check.bat verdes; E2E FFmpeg real (6 demos 1080x1920 30fps con trayectoria del
+serializador real) + capturas de controles verificadas visualmente. Sin dependencias nuevas
+(sólo stdlib). PR abierto, NO mergeado: pendiente veredicto visual de K.
+
+**Addendum (correcciones PR #23).** Dos P2 de revisión resueltos: (a) **puntuación en spans** —
+un cierre pegado a puntuación (`costo[/strong].`) ya NO descarta la marca: `_procesar_token`
+concatena los segmentos de un token en UNA palabra (la puntuación queda dentro), índices reales;
+(b) **naming sin colisiones** — `tag_variante` gana `position`/`avoid_faces` (allowlist, tokens
+compactos, defaults = naming histórico) y `_rutas_render`/`run_render` los threadean: densidad/
+position/avoid_faces distintos ya no sobreescriben MP4/ASS/sidecar; helper único con la CLI.
+Y la **deuda del punto 3 quedó CERRADA**: `face_y_asignada` es parte del CSV v2 producido por el
+reframe real (ver arriba); avoid_faces vertical top/bottom está conectado de extremo a extremo.
