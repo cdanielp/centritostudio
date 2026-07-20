@@ -36,6 +36,7 @@ import cve_presets  # noqa: E402
 import reframe  # noqa: E402
 import reframe_escenas  # noqa: E402
 import styles  # noqa: E402
+import tray_resolve  # noqa: E402
 
 OUT = ROOT / "output" / "revision-f6-v1-essential"
 DUR_S = 5
@@ -47,7 +48,7 @@ def _run(args: list) -> None:
     subprocess.run(args, check=True, capture_output=True)
 
 
-def _gen_base(dst: Path) -> None:
+def _gen_base(dst: Path, w: int = W, h: int = H) -> None:
     _run(
         [
             "ffmpeg",
@@ -55,7 +56,7 @@ def _gen_base(dst: Path) -> None:
             "-f",
             "lavfi",
             "-i",
-            f"color=c=0x14141e:s={W}x{H}:r=30:d={DUR_S}",
+            f"color=c=0x14141e:s={w}x{h}:r=30:d={DUR_S}",
             "-f",
             "lavfi",
             "-i",
@@ -148,9 +149,137 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def _sha_full(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+class _FakeCara:
+    """Detector inyectado: 1 cara fija (center_y ~0.8*H -> abajo). Evita GPU/red.
+
+    Interfaz detect_all(frame) -> list[dict] (misma forma que YuNetDetector), + close().
+    NO es una segunda pasada ni otro detector: sustituye al único detector del reframe.
+    """
+
+    def __init__(self, w: int, h: int) -> None:
+        self._cx = w / 2
+        self._cy = h * 0.8
+
+    def detect_all(self, _frame):
+        return [
+            {
+                "center_x": self._cx,
+                "center_y": self._cy,
+                "bbox": [int(self._cx - 60), int(self._cy - 90), 120, 180],
+                "score": 0.95,
+            }
+        ]
+
+    def close(self):
+        pass
+
+
+def _integracion_reframe_real() -> dict:
+    """reframe_clip REAL (detector inyectado) -> MP4 reframado + CSV -> resolver -> CVE -> ASS -> MP4.
+
+    Recorre el wiring productivo completo del BLOQUEO 1/2: reframe_clip exporta la
+    trayectoria JUNTO al MP4 con el MISMO stem, el helper único la resuelve, y el render
+    la consume para avoid_faces. Falla si tray_dir se quita del worker o cambia el stem.
+    """
+    import csv as _csv
+
+    src = OUT / "_src_16x9.mp4"
+    _gen_base(src, w=1280, h=720)  # fuente 16:9 -> reframe a 9:16
+    reframed = OUT / "clip_9x16.mp4"
+
+    _orig = reframe_escenas._crear_detector
+    reframe_escenas._crear_detector = lambda *a, **k: _FakeCara(1280, 720)
+    try:
+        reframe.reframe_clip(src, reframed, tray_dir=reframed.parent)
+    finally:
+        reframe_escenas._crear_detector = _orig
+
+    # CSV automatico junto al MP4, con el MISMO stem (contrato del worker real)
+    csv_esperado = reframed.parent / f"trayectoria_{reframed.stem}.csv"
+    assert csv_esperado.exists(), f"reframe_clip no exporto {csv_esperado.name} (tray_dir?)"
+    # resolucion automatica por el helper unico (mismo que CLI y Studio)
+    csv_res = tray_resolve.resolver_tray_csv(reframed, ROOT / "transcripts")
+    assert csv_res == csv_esperado, "el helper no resolvio el CSV junto al MP4 reframado"
+
+    with open(csv_res, encoding="utf-8") as f:
+        rows = list(_csv.DictReader(f))
+    cols = list(rows[0].keys())
+    assert "conf_asignada" in cols and "face_y_asignada" in cols
+
+    # Consumo real: CVE -> ASS -> MP4 final con la trayectoria resuelta automaticamente
+    final = OUT / "demo_reframe_wiring.mp4"
+    g = [_grupo(["wiring", "real", "reframe"])]
+    plan = cve.resolve_preset("clean_podcast")  # base bottom
+    zona = cve.zona_cara_en_rango(csv_res, 0.0, DUR_S)
+    pos = _pos_final(g, plan, csv_res)
+    _render(reframed, g, plan, final, tray=csv_res)
+
+    filas_saneadas = [
+        {k: r.get(k, "") for k in ("t", "conf_asignada", "face_y_asignada")}
+        for r in rows
+        if r.get("conf_asignada", "").strip()
+    ][:3]
+    return {
+        "reframed_mp4": reframed.name,
+        "csv_name": csv_res.name,
+        "csv_rel": f"output/revision-f6-v1-essential/{csv_res.name}",
+        "mp4_sha256": _sha_full(reframed),
+        "csv_sha256": _sha_full(csv_res),
+        "columns": cols,
+        "rows": filas_saneadas,
+        "zona": zona,
+        "base_pos": plan.position,
+        "final_pos": pos,
+        "final_mp4": final,
+        "probe_reframed": _probe(reframed),
+        "probe_final": _probe(final),
+        "_cleanup": [src, reframed, csv_res],
+    }
+
+
 def _pos_final(groups, plan, tray):
     g2 = cve.resolver_posicion_captions(groups, plan, tray)
     return g2[0].get("caption_pos", "bottom")
+
+
+def _evidencia_multi_turnos() -> dict:
+    """Ruta multi-cara con turnos (BLOQUEO 2): center_y de la cara activa por turno.
+
+    Usa las funciones puras reales del chain (aplanar_cy_por_turnos + serializador). Cara 0
+    arriba en el turno 0, cara 1 abajo en el turno 1: el track vertical CAMBIA con el turno.
+    """
+    import csv as _csv
+
+    import reframe_track as rt
+
+    turnos = [
+        {"t_ini": 0.0, "t_fin": 1.0, "cara_id": 0},
+        {"t_ini": 1.0, "t_fin": 2.0, "cara_id": 1},
+    ]
+    cy_multi = {0: {0: H * 0.2, 3: H * 0.22}, 1: {30: H * 0.85, 33: H * 0.86}}
+    conf_multi = {0: {0: 0.9, 3: 0.9}, 1: {30: 0.9, 33: 0.9}}
+    flat_conf = rt.aplanar_conf_por_turnos(conf_multi, turnos, FPS, 60)
+    flat_cy = rt.aplanar_cy_por_turnos(cy_multi, turnos, FPS, 60)
+    crops = [(0, 0, W, H)] * 60
+    filled = [W / 2] * 60
+    reframe._exportar_trayectoria_csv(
+        "multi_turnos", crops, filled, FPS, OUT, sparsa_conf=flat_conf, sparsa_cy=flat_cy, src_h=H
+    )
+    csv_path = OUT / "trayectoria_multi_turnos.csv"
+    zona_t0 = cve.zona_cara_en_rango(csv_path, 0.0, 0.9)  # turno 0: cara arriba
+    zona_t1 = cve.zona_cara_en_rango(csv_path, 1.0, 1.9)  # turno 1: cara abajo
+    with open(csv_path, encoding="utf-8") as f:
+        rows = [r for r in _csv.DictReader(f) if r.get("conf_asignada", "").strip()]
+    return {
+        "zona_t0": zona_t0,
+        "zona_t1": zona_t1,
+        "n_filas_vivas": len(rows),
+        "_cleanup": [csv_path],
+    }
 
 
 def main() -> int:  # noqa: C901
@@ -228,6 +357,17 @@ def main() -> int:  # noqa: C901
     demos.append(("preset de usuario (cve_presets.json): font 110 + center", d, ""))
     cve._PRESETS = dict(cve._PRESETS_BUILTIN)
 
+    # 7. wiring REAL: reframe_clip -> CSV automatico -> resolver -> CVE -> ASS -> MP4
+    wiring = _integracion_reframe_real()
+    multi = _evidencia_multi_turnos()
+    demos.append(
+        ("wiring real: reframe_clip -> CSV -> resolver -> avoid_faces", wiring["final_mp4"], "")
+    )
+    notas.append(
+        f"reframe_wiring: {wiring['reframed_mp4']} -> {wiring['csv_name']} "
+        f"zona={wiring['zona']} base={wiring['base_pos']} final={wiring['final_pos']}"
+    )
+
     # contact sheet
     frames = []
     for i, (_desc, d, _h) in enumerate(demos):
@@ -256,6 +396,29 @@ def main() -> int:  # noqa: C901
     out.append("\n## avoid_faces: productor real -> face_y observada -> zona -> posicion\n")
     for nb in notas:
         out.append(f"- {nb} (marca manual center SIEMPRE gana por contrato)")
+    out.append(
+        "\n## Wiring real reframe -> CSV -> CVE -> ASS -> MP4 (BLOQUEO 1/2)\n"
+        "reframe_clip(tray_dir=output_path.parent) exporta la trayectoria JUNTO al MP4 con "
+        "el mismo stem; el helper único la resuelve; el render la consume.\n"
+    )
+    out.append(f"- MP4 reframado: `{wiring['reframed_mp4']}` · {wiring['probe_reframed']}")
+    out.append(f"- CSV automatico: `{wiring['csv_name']}` en `{wiring['csv_rel']}`")
+    out.append(f"- SHA-256 MP4: `{wiring['mp4_sha256']}`")
+    out.append(f"- SHA-256 CSV: `{wiring['csv_sha256']}`")
+    out.append(f"- Columnas CSV: `{', '.join(wiring['columns'])}`")
+    out.append("- Filas saneadas (t, conf_asignada, face_y_asignada):")
+    for fr in wiring["rows"]:
+        out.append(f"  - t={fr['t']} conf={fr['conf_asignada']} face_y={fr['face_y_asignada']}")
+    out.append(
+        f"- Ruta single (1 cara detectada) · zona={wiring['zona']} · base={wiring['base_pos']} "
+        f"-> final={wiring['final_pos']} · MP4 final `{wiring['final_mp4'].name}` "
+        f"{wiring['probe_final']}"
+    )
+    out.append(
+        f"- Ruta multi-cara con turnos: cara activa por turno (BLOQUEO 2) · "
+        f"turno 0 (cara arriba) zona={multi['zona_t0']} · turno 1 (cara abajo) "
+        f"zona={multi['zona_t1']} · {multi['n_filas_vivas']} filas vivas"
+    )
     out.append("\n## Controles (Edge headless): desktop_controls.png / mobile_controls.png")
     out.append("\n## Pendiente\n- [ ] VEREDICTO VISUAL DE K.")
     (OUT / "CHECKLIST_VISUAL.md").write_text("\n".join(out) + "\n", encoding="utf-8")
@@ -263,6 +426,8 @@ def main() -> int:  # noqa: C901
     for tmp in [
         base,
         *frames,
+        *wiring.get("_cleanup", []),
+        *multi.get("_cleanup", []),
         OUT / "trayectoria_avoid_top.csv",
         OUT / "trayectoria_avoid_bottom.csv",
     ]:
