@@ -36,7 +36,7 @@ def test_dos_runs_no_colisionan(tmp_path):
     assert _run(tmp_path, run="run-1") != _run(tmp_path, run="run-2")
 
 
-@pytest.mark.parametrize("run", ["../evil", "a/b", "", "run\x00x"])
+@pytest.mark.parametrize("run", ["../evil", "a/b", "", "run\x00x", ".", ".."])
 def test_run_id_inseguro_rechazado(tmp_path, run):
     with pytest.raises(a.AutoSrtArtifactError):
         _run(tmp_path, run=run)
@@ -48,7 +48,15 @@ def test_filename_invalido_rechazado(tmp_path, fn):
         _run(tmp_path, fn=fn)
 
 
-@pytest.mark.parametrize("cid", ["../x", "a/b", "", "c\x00"])
+@pytest.mark.parametrize("stem", [".", ".."])
+def test_source_stem_dot_segment_rechazado(tmp_path, stem):
+    # ".."/"." como stem escaparía el namespace del video; ambos deben rechazarse aunque
+    # is_safe_basename("..") sea True (Path("..").name == "..").
+    with pytest.raises(a.AutoSrtArtifactError):
+        _run(tmp_path, stem=stem, fn=f"{stem}.mov")
+
+
+@pytest.mark.parametrize("cid", ["../x", "a/b", "", "c\x00", ".", ".."])
 def test_clip_id_inseguro_rechazado(tmp_path, cid):
     with pytest.raises(a.AutoSrtArtifactError):
         a.resolve_clip_artifacts(_run(tmp_path), cid)

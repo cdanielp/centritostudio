@@ -44,8 +44,13 @@ class ClipArtifacts:
     alignment_path: Path
 
 
+# Dot segments: rutas relativas que escapan del namespace. `is_safe_basename("..")` es True
+# (Path("..").name == ".."), así que hay que rechazarlos explícitamente además del basename.
+_DOT_SEGMENTS = frozenset({".", ".."})
+
+
 def _safe_id(value: str, etiqueta: str) -> str:
-    if not is_safe_basename(value):
+    if not isinstance(value, str) or not is_safe_basename(value) or value in _DOT_SEGMENTS:
         raise AutoSrtArtifactError(f"{etiqueta} inseguro")
     return value
 
