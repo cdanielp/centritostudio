@@ -356,6 +356,20 @@ def _marcar_grupo(g: dict, w_idx: int, regla: str, escala: int | None) -> dict:
     return {**g, "words": words}
 
 
+def _marcas_finales(
+    manual_map: dict[int, list[tuple[int, str]]],
+    elegidos: dict[int, tuple[int, int, str]],
+) -> list[tuple[int, int, str]]:
+    """Une manuales (todas las palabras del span) + 1 auto por grupo SIN manual (manual gana)."""
+    marcas: list[tuple[int, int, str]] = []
+    for g_idx, palabras in manual_map.items():
+        marcas.extend((g_idx, w_idx, regla) for w_idx, regla in palabras)
+    for g_idx, (w_idx, _score, regla) in elegidos.items():
+        if g_idx not in manual_map:
+            marcas.append((g_idx, w_idx, regla))
+    return marcas
+
+
 def aplicar_engine(
     groups: list[dict],
     plan: RenderPlan,
@@ -387,23 +401,26 @@ def aplicar_engine(
             candidatos += ck.candidatos_brain(limpios, brain_data, plan.kw_descartadas)
         if plan.keywords_mode == "auto+brain":
             candidatos += ck.detectar_candidatos(limpios)
+        # Manuales: TODAS las palabras del span (exentas de 1-por-grupo y densidad, #34).
+        # Autos: 1 por grupo + freno de densidad, solo en grupos SIN manual (manual gana).
+        manual_map = ck.elegir_manuales(candidatos)
         elegidos = ck.elegir_keywords(candidatos, len(limpios), plan.kw_densidad)
-        if not elegidos:
+        marcas = _marcas_finales(manual_map, elegidos)
+        if not marcas:
             return limpios
 
         fontsize = _scaled_fontsize(video_w, video_h, plan.style_cfg)
         ancho_util = int(video_w * (1.0 - SAFE_LEFT_PCT - SAFE_RIGHT_PCT))
         result = list(limpios)
-        for g_idx, (w_idx, _score, regla) in elegidos.items():
+        for g_idx, w_idx, regla in marcas:
             escala = None
             if plan.kw_punch_scale > ck.KW_SCALE_BASE or regla == "manual_big":
                 palabra = limpios[g_idx]["words"][w_idx]["text"]
                 escala = ck.ajustar_escala_punch(palabra, fontsize, ancho_util, plan.kw_punch_scale)
                 if escala is None:
                     print(f"[cve] '{palabra}' no cabe ni reducida: punch desactivado (kw normal)")
-            result[g_idx] = _marcar_grupo(limpios[g_idx], w_idx, regla, escala)
-        n = len(elegidos)
-        print(f"[cve] preset {plan.preset}: {n} keyword(s) marcadas en {len(limpios)} grupos")
+            result[g_idx] = _marcar_grupo(result[g_idx], w_idx, regla, escala)
+        print(f"[cve] preset {plan.preset}: {len(marcas)} keyword(s) en {len(limpios)} grupos")
         return result
     except Exception as e:  # fallback total: captions con el estilo del preset, sin marcas
         print(f"[cve] engine fallo ({e}) - render sigue con captions simples del estilo")

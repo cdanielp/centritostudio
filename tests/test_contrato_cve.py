@@ -509,9 +509,13 @@ def test_candidatos_manuales_palabra_exacta():
 
 
 def test_candidatos_manuales_frase_corta():
+    # Span #34 (F6): la frase marca CADA palabra, no solo el ancla (ver test_cve_spans.py)
     grupos = [_grupo(["esto", "sin", "costo", "extra"], 0)]
     cands = ck.candidatos_manuales(grupos, [{"frase": "sin costo"}])
-    assert cands == [(0, 1, ck.SCORE_MANUAL, "manual")]  # 1er token del match
+    assert cands == [
+        (0, 1, ck.SCORE_MANUAL, "manual"),
+        (0, 2, ck.SCORE_MANUAL, "manual"),
+    ]
 
 
 def test_candidatos_manuales_intensidad_big():
