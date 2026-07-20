@@ -307,7 +307,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <h2>Renderizar captions</h2>
     <div class="field">
       <label>Video</label>
-      <select id="render-video-select" onchange="srtPanel.onVideo('render')">
+      <select id="render-video-select" onchange="srtPanel.onVideo('render'); loadRenderKeywords()">
         <option value="">— Elegir video —</option>
       </select>
     </div>
@@ -338,6 +338,36 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <select id="render-intensidad">
         <option value="">Default del preset</option>
       </select>
+    </div>
+    <div class="field" id="field-cve-f6" style="display:none">
+      <label>Densidad de keywords</label>
+      <select id="render-densidad">
+        <option value="">Default del preset</option>
+        <option value="baja">Baja — pocas keywords</option>
+        <option value="media">Media</option>
+        <option value="alta">Alta — más keywords</option>
+      </select>
+      <label style="margin-top:10px">Posición de los captions</label>
+      <select id="render-position">
+        <option value="">Default del preset (abajo)</option>
+        <option value="bottom">Abajo</option>
+        <option value="center">Centro</option>
+        <option value="top">Arriba</option>
+      </select>
+      <div class="emphasis-row" style="margin-top:10px">
+        <input type="checkbox" id="use-avoid-faces" checked>
+        <label for="use-avoid-faces">Evitar tapar caras — mueve el caption si detecta una cara</label>
+      </div>
+      <label style="margin-top:10px">Palabras o frases a destacar (una por línea)</label>
+      <textarea id="render-keywords" rows="3"
+        placeholder="Una palabra o frase por línea. Ej: sin costo"
+        style="width:100%;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <button class="btn" style="font-size:12px;padding:4px 10px" onclick="saveRenderKeywords()">Guardar destacadas</button>
+        <span class="msg" id="keywords-hint" style="margin:0;color:var(--muted);font-size:11px">
+          Se guardan por video y se destacan al renderizar con preset.
+        </span>
+      </div>
     </div>
     <div class="field">
       <label>Intensidad del pop (palabra activa)</label>
@@ -859,7 +889,7 @@ const srtPanel = {
     const sel = document.getElementById(mode + '-caption-source');
     this.source[mode] = sel && sel.value === 'srt' ? 'srt' : 'transcript';
     const isSrt = this.source[mode] === 'srt';
-    if (mode === 'render') this._setRenderIncompatible(isSrt);
+    if (mode === 'render') { this._setRenderIncompatible(isSrt); updateCveF6(); }
     const card = this._card(mode);
     if (!isSrt) { card.hidden = true; card.innerHTML = ''; return; }
     card.hidden = false;
@@ -1034,6 +1064,43 @@ function onPresetChange() {
   document.getElementById('render-style').disabled = conPreset;
   document.getElementById('render-pop').disabled = conPreset;
   document.getElementById('use-emphasis').disabled = conPreset;
+  updateCveF6();
+}
+
+// Los controles CVE de F6 (densidad/posición/avoid_faces/destacadas) solo aplican con
+// preset y en la ruta transcript (el backend los ignora sin preset y con SRT).
+function updateCveF6() {
+  const conPreset = !!document.getElementById('render-preset').value;
+  const esSrt = srtPanel.captionSource('render') === 'srt';
+  document.getElementById('field-cve-f6').style.display = (conPreset && !esSrt) ? '' : 'none';
+}
+
+async function loadRenderKeywords() {
+  const name = document.getElementById('render-video-select').value;
+  const ta = document.getElementById('render-keywords');
+  if (!name) { ta.value = ''; return; }
+  try {
+    const res = await fetch(`/api/videos/${name}/keywords`);
+    const data = res.ok ? await res.json() : {keywords: []};
+    ta.value = (data.keywords || []).map(k => k.frase || k.palabra || '').filter(Boolean).join('\n');
+  } catch (e) { ta.value = ''; }
+}
+
+async function saveRenderKeywords() {
+  const name = document.getElementById('render-video-select').value;
+  const hint = document.getElementById('keywords-hint');
+  if (!name) { hint.textContent = 'Elige un video primero.'; return; }
+  const lineas = document.getElementById('render-keywords').value.split('\n')
+    .map(s => s.trim()).filter(Boolean);
+  const keywords = lineas.map(t => ({frase: t}));
+  try {
+    const res = await fetch(`/api/videos/${name}/keywords`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({keywords})
+    });
+    const data = res.ok ? await res.json() : null;
+    hint.textContent = data ? `${data.guardadas} destacada(s) guardada(s).` : 'No se pudo guardar.';
+  } catch (e) { hint.textContent = 'No se pudo guardar.'; }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1519,6 +1586,14 @@ async function startRender() {
     params.append('preset', preset);
     const inten = document.getElementById('render-intensidad').value;
     if (inten) params.append('intensidad', inten);
+    // Controles CVE F6: solo aplican con preset y en transcript (el backend los ignora si no).
+    if (captionSource !== 'srt') {
+      const dens = document.getElementById('render-densidad').value;
+      if (dens) params.append('densidad', dens);
+      const posc = document.getElementById('render-position').value;
+      if (posc) params.append('position', posc);
+      params.append('avoid_faces', document.getElementById('use-avoid-faces').checked ? 'true' : 'false');
+    }
   }
   const pop = document.getElementById('render-pop').value;
   if (pop) params.append('pop', pop);

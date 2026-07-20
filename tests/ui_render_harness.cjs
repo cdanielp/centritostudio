@@ -115,6 +115,11 @@ if (fixture.fn === "clip") {
     srtPanel.onSource('render');
     videos = [{name: 'v1', stages: {transcrito: true}}];
     g('render-video-select').value = 'v1';
+    g('render-preset').value = ${JSON.stringify(pre.preset || "")};
+    onPresetChange();
+    g('render-densidad').value = ${JSON.stringify(pre.densidad || "")};
+    g('render-position').value = ${JSON.stringify(pre.position || "")};
+    g('use-avoid-faces').checked = ${pre.avoidFaces === undefined ? true : !!pre.avoidFaces};
     g('use-emphasis').checked = ${!!pre.emphasis};
     g('use-caption-qa').checked = ${!!pre.qa};
     g('caption-qa-mode').value = 'alertas';
@@ -122,7 +127,7 @@ if (fixture.fn === "clip") {
     let __captured = '';
     fetch = (url) => { __captured = String(url); return Promise.resolve({ok: true, json: () => Promise.resolve({job_id: 'j'})}); };
     startRender();
-    __out__ = JSON.stringify({url: __captured});`;
+    __out__ = JSON.stringify({url: __captured, f6_hidden: !!g('field-cve-f6').style.display && g('field-cve-f6').style.display === 'none'});`;
 }
 
 const wrapped = `${code}\n;try {\n${body}\n} catch (e) { __err__ = String((e && e.stack) || e); }`;
