@@ -35,8 +35,11 @@ $env:PYTHONIOENCODING="utf-8"
   4xx-sin-efecto → PASS; 5xx/excepción interna → FAIL (una excepción **nunca** es PASS).
 - Corrida confirmada: **4 BLOCKERs** (P0-1 traversal, P0-2 upload, P0-3 `/output` `.ass`, P0-4
   exposición `/input` en LAN) → exit code 1; `aislamiento_datos_reales = PASS`.
-- `--self-test` valida el propio arnés (sandbox, clasificación, limpieza) y sale **verde** aunque
-  el smoke principal declare NO LISTO.
+- `--self-test` valida las **mecánicas del arnés** (sandbox, contrato de clasificación, detección y
+  limpieza de escape sobre un caso controlado) — **no** el estado vulnerable de hoy: las probes
+  contra la app viva aceptan una clasificación **válida** (BLOCKER si vulnerable, PASS si endurecido),
+  así que **seguirá verde tras H1** cuando los P0 se corrijan. Sale verde aunque el smoke principal
+  (que sí reporta el estado actual) declare NO LISTO.
 - El E2E de render (classic/CVE/reframe/Auto/SRT/resume/editor) está **diferido** hasta cerrar
   H1-H3: con los P1-OUT abiertos, un E2E "verde" sería engañoso.
 

@@ -670,18 +670,29 @@ def self_test() -> int:
         (escape_catch / "fantasma.mp4").write_bytes(b"G")
         r2 = client.get("/api/videos")
         ck("03_archivo_externo_no_aparece", "fantasma" not in [v["name"] for v in r2.json()])
-        # item 7/8: payloads Win/POSIX reproducidos y limpiados (main vulnerable -> BLOCKER).
+        # Review 372cfa8 · el self-test valida el ARNES, no el estado vulnerable de hoy. Antes
+        # aseveraba `== BLOCKER`, lo que romperia el self-test cuando H1 corrija los P0. Ahora:
+        #   (a) un caso CONTROLADO prueba la deteccion+limpieza de escape (independiente de H1);
+        #   (b) las probes contra la app viva aceptan una clasificacion VALIDA: BLOCKER (vulnerable
+        #       hoy) o PASS (endurecido tras H1). Cualquier FAIL/None seria un bug del arnes.
+        # Caso controlado: un centinela plantado FUERA del dir permitido debe detectarse y borrarse.
+        planted = escape_catch / f"{TOKEN}_controlado.json"
+        planted.write_text("x", encoding="utf-8")
+        detected = _find_and_clean(sandbox, escape_catch, sandbox / "transcripts")
+        ck(
+            "07_deteccion_escape_controlada",
+            any(f"{TOKEN}_controlado" in e for e in detected) and not planted.exists(),
+        )
+        valid = {"BLOCKER", "PASS"}
+        # items 8-11: la app viva se clasifica de forma valida (hoy BLOCKER; PASS tras H1).
         wr = probe_traversal_write(client, sandbox, escape_catch)
-        ck("07_08_traversal_write_detecta_blocker", wr["verdict"] == "BLOCKER")
-        # item 9: upload traversal cubierto (main vulnerable -> BLOCKER).
+        ck(f"08_traversal_write_valido[{wr['verdict']}]", wr["verdict"] in valid)
         up = probe_traversal_upload(client, sandbox, escape_catch)
-        ck("09_upload_traversal_detecta_blocker", up["verdict"] == "BLOCKER")
-        # item 10: /output/*.ass sintetico -> BLOCKER en el codigo actual.
+        ck(f"09_upload_traversal_valido[{up['verdict']}]", up["verdict"] in valid)
         oa = probe_output_ass(client, sandbox)
-        ck("10_output_ass_blocker", oa["verdict"] == "BLOCKER")
-        # item 11: /input/<video sintetico> accesible -> BLOCKER (mount presente).
+        ck(f"10_output_ass_valido[{oa['verdict']}]", oa["verdict"] in valid)
         ie = probe_input_exposure(client, sandbox)
-        ck("11_input_expuesto_blocker", ie["verdict"] == "BLOCKER")
+        ck(f"11_input_expuesto_valido[{ie['verdict']}]", ie["verdict"] in valid)
         # item 12: no queda ningun centinela tras las probes.
         leftovers = []
         for d in _escape_scan_dirs(sandbox, escape_catch):
