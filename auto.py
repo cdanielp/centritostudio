@@ -240,6 +240,121 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
     }
 
 
+def _clip_id(clip: dict) -> str:
+    """clip_id estable y seguro derivado del basename del MP4 del clip (validado aguas abajo)."""
+    return clip["archivo"].replace(".mp4", "")
+
+
+def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
+    """Un clip con caption_source=srt: deriva SRT/words/groups del PADRE por rango y renderiza.
+
+    El texto oficial viene del clip.srt (rebasado a t=0); las words del clip solo aportan timings
+    (semántica S36-C2A1: word_aligned/substitution/cue_fallback). Emojis desde los groups del clip.
+    NO usa los `{stem}_words/groups` históricos. Reutiliza auto_srt_artifacts + srt_caption + core.
+    """
+    import auto_srt_artifacts  # noqa: PLC0415
+    import core  # noqa: PLC0415
+    import reframe  # noqa: PLC0415
+    import srt_caption  # noqa: PLC0415
+    from styles import get_style  # noqa: PLC0415
+
+    stem_9x16, final_path = _final_path(clip, paquete_dir)
+    clip_path = CLIPS_DIR / clip["archivo"]
+    start_ms = int(round(float(clip["start"]) * 1000))
+    end_ms = int(round(float(clip["end"]) * 1000))
+
+    # Artefactos privados del clip en el namespace del run (SRT/words/groups/manifest).
+    arts = auto_srt_artifacts.resolve_clip_artifacts(ctx.run_dir, _clip_id(clip))
+    art_summary = auto_srt_artifacts.derive_clip_artifacts(
+        arts,
+        srt_document=ctx.srt_document,
+        parent_words=ctx.parent_words,
+        parent_video=ctx.binding.path,
+        output_clip=clip_path,
+        source_start_ms=start_ms,
+        source_end_ms=end_ms,
+    )
+
+    rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_9x16}.mp4", tracker="escenas")
+    clip_9x16 = CLIPS_DIR / f"{stem_9x16}.mp4"
+    info = core.get_video_info(clip_9x16)
+    dur_ms = int(round(float(info["duration"]) * 1000)) if info.get("duration") else None
+
+    # Groups SRT-alineados del clip (texto oficial del clip.srt + timings de las words del clip).
+    clip_words = json.loads(arts.words_path.read_text(encoding="utf-8"))["words"]
+    groups, _result, _payload = srt_caption.preparar_desde_srt(
+        arts.srt_path, clip_words, video_duration_ms=dur_ms, words_file=arts.words_path.name
+    )
+
+    import assets_comfy as ac  # noqa: PLC0415
+
+    overlays = ac.resolver_overlays(arts.groups_path, TRANSCRIPTS / f"{stem_9x16}.brain.json")
+    style_cfg = get_style(STYLE_AUTO)
+    ass_path = ROOT / "output" / f"{stem_9x16}_{STYLE_AUTO}.ass"
+    core.build_ass(groups, info["width"], info["height"], style_cfg, ass_path)
+    core.burn_video_with_emojis(clip_9x16, ass_path, final_path, overlays, style_cfg)
+
+    return {
+        "archivo": final_path.name,
+        "titulo": clip.get("titulo", ""),
+        "razon": clip.get("razon", ""),
+        "score": clip.get("score"),
+        "dur_s": clip.get("dur_s", 0),
+        "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
+        "caption_source": "srt",
+        "clip_id": arts.clip_id,
+        "caption_coverage": art_summary["caption_coverage"],
+        "n_cues": art_summary["n_cues"],
+        "emojis_msg": (
+            f"{len(overlays)} overlay(s)"
+            if overlays
+            else "sin overlays (ComfyUI apagado o sin keywords)"
+        ),
+    }
+
+
+def _renderizar_clip(
+    clip: dict,
+    paquete_dir: Path,
+    final_path: Path,
+    *,
+    es_srt: bool,
+    es_v2: bool,
+    srt_ctx,
+    config,
+    etiqueta: str,
+    pct: int,
+    progress,
+) -> dict:
+    """Renderiza (o reutiliza) un clip según la ruta. SRT aísla el fallo por clip (saneado)."""
+    if es_srt:
+        progress(pct, f"Etapa 3-4/4: reencuadre + captions SRT (clip {etiqueta})...")
+        try:  # fallo aislado por clip: un clip que revienta no detiene los demas
+            return _procesar_clip_srt(clip, paquete_dir, srt_ctx)
+        except Exception as exc:  # noqa: BLE001 (se sanea; el run continua en 'partial')
+            progress(pct, f"Clip {etiqueta}: error, continua con los demas")
+            return {
+                "archivo": final_path.name,
+                "titulo": clip.get("titulo", ""),
+                "clip_id": _clip_id(clip),
+                "caption_source": "srt",
+                "status": "error",
+                "error_code": type(exc).__name__,
+            }
+    if es_v2:
+        import auto_v2  # noqa: PLC0415
+
+        progress(pct, f"Etapa 3-4/4: reencuadre + captions + b-roll (clip {etiqueta})...")
+        return auto_v2.procesar_clip_v2(
+            clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
+        )
+    if final_path.exists():
+        progress(pct, f"Clip {etiqueta}: reutilizando render previo")
+        return _info_orfano(clip, final_path)
+    progress(pct, f"Etapa 3-4/4: reencuadre + captions (clip {etiqueta})...")
+    return _procesar_clip(clip, paquete_dir)
+
+
 def ejecutar_auto(
     video_path: Path,
     name: str,
@@ -268,7 +383,10 @@ def ejecutar_auto(
     if objetivo not in OBJETIVOS:
         raise ValueError(f"Objetivo '{objetivo}' no soportado. Opciones: {OBJETIVOS}")
     es_v2 = config is not None and config.mode == "v2"
-    fingerprint = config.fingerprint() if es_v2 else None
+    es_srt = config is not None and config.caption_source == "srt"
+    # Un run SRT es un pipeline distinto: paquete fingerprinteado (aislado del transcript/classic).
+    usa_fp = es_v2 or es_srt
+    fingerprint = config.fingerprint() if usa_fp else None
     progress = progress or _progress_nulo
     t0 = time.time()
 
@@ -287,12 +405,19 @@ def ejecutar_auto(
 
     if es_v2:
         import auto_v2  # noqa: PLC0415 (lazy: la ruta clasica jamas importa la capa v2)
-
+    if usa_fp:
         paquete_dir, reanudado = _paquete_dir_v2(name, fingerprint)
         fecha = paquete_dir.name[len(name) + 4 :]  # {name}_v2_{fecha}
     else:
         paquete_dir, reanudado = _paquete_dir(name)
         fecha = paquete_dir.name[len(name) + 1 :]
+    srt_ctx = None
+    if es_srt:  # resuelve y verifica la fuente SRT del run (selección/video/timings) una vez
+        import auto_srt_run  # noqa: PLC0415
+
+        srt_ctx = auto_srt_run.resolve_auto_srt_context(
+            name, paquete_dir.name, input_dir=video_path.parent, transcripts_dir=TRANSCRIPTS
+        )
     if reanudado:
         progress(28, f"Reanudando paquete {paquete_dir.name} (clips ya listos se conservan)...")
 
@@ -304,29 +429,29 @@ def ejecutar_auto(
         sidecar = _sidecar_path(final_path)
         if sidecar.exists():
             info_prev = json.loads(sidecar.read_text(encoding="utf-8"))
-            if not es_v2 or auto_v2.checkpoint_v2_valido(
-                info_prev, fingerprint, final_path, TRANSCRIPTS
-            ):
+            if es_srt:
+                valido = final_path.exists()  # done invalido (output faltante) -> re-render
+            else:
+                valido = not es_v2 or auto_v2.checkpoint_v2_valido(
+                    info_prev, fingerprint, final_path, TRANSCRIPTS
+                )
+            if valido:
                 progress(pct, f"Clip {i}/{len(clips)}: ya listo (reanudacion, sin re-render)")
                 clips_info.append(info_prev)
                 continue
             progress(pct, f"Clip {i}/{len(clips)}: checkpoint incompatible, se re-renderiza")
-        if es_v2:
-            progress(pct, f"Etapa 3-4/4: reencuadre + captions + b-roll (clip {i}/{len(clips)})...")
-            info = auto_v2.procesar_clip_v2(
-                clip,
-                paquete_dir,
-                config,
-                transcripts=TRANSCRIPTS,
-                clips_dir=CLIPS_DIR,
-                root=ROOT,
-            )
-        elif final_path.exists():
-            progress(pct, f"Clip {i}/{len(clips)}: reutilizando render previo")
-            info = _info_orfano(clip, final_path)
-        else:
-            progress(pct, f"Etapa 3-4/4: reencuadre + captions (clip {i}/{len(clips)})...")
-            info = _procesar_clip(clip, paquete_dir)
+        info = _renderizar_clip(
+            clip,
+            paquete_dir,
+            final_path,
+            es_srt=es_srt,
+            es_v2=es_v2,
+            srt_ctx=srt_ctx,
+            config=config,
+            etiqueta=f"{i}/{len(clips)}",
+            pct=pct,
+            progress=progress,
+        )
         sidecar.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
         clips_info.append(info)
     t_render = time.time() - t1
