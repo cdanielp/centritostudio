@@ -421,6 +421,11 @@ def _marcas_por_palabra(spans: list[tuple[str, int, int]], n: int) -> dict[int, 
     return marcas
 
 
+def _es_solo_puntuacion(s: str) -> bool:
+    """True si s no tiene ningun caracter alfanumerico (coma, punto, comillas, ¿¡?!…)."""
+    return bool(s) and not any(c.isalnum() for c in s)
+
+
 def _procesar_token(
     eventos: list[tuple[str, str]],
     palabras: list[str],
@@ -432,9 +437,15 @@ def _procesar_token(
     Los segmentos de texto del token se CONCATENAN en una sola palabra: la puntuacion
     pegada a un cierre (`costo[/strong].`) queda DENTRO de la palabra (`costo.`), no como
     token extra — asi el indice y el conteo de palabras cuadran con las words del grupo.
-    Devuelve True si vio una apertura [center]. Muta palabras/abiertos/spans in-place.
+    Si la marca viene separada por espacio (`[/strong] .` o `[/big] ,`) el token queda como
+    SOLO puntuacion: se adjunta a la palabra previa (no crea palabra extra ni desalinea el
+    conteo con group["words"]). Devuelve True si vio una apertura [center]. Muta in-place.
     """
     palabra = "".join(v for t, v in eventos if t == "word")
+    # Puntuacion suelta tras un cierre/apertura separado por espacio -> a la palabra previa.
+    if palabra and _es_solo_puntuacion(palabra) and palabras:
+        palabras[-1] += palabra
+        palabra = ""  # se trata como token de solo-marcas para el indexado
     idx = len(palabras)
     if palabra:
         palabras.append(palabra)

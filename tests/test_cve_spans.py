@@ -281,6 +281,52 @@ def test_texto_sin_marcas_con_puntuacion_intacto():
     assert ck.parsear_marcas("hola, mundo.") == ("hola, mundo.", {}, False)
 
 
+# ── Cierre SEPARADO por espacio + puntuacion suelta (BLOQUEO puntuacion PR #23) ─
+# La puntuacion sola tras un cierre no debe convertirse en palabra extra.
+
+
+def test_cierre_separado_por_espacio_con_punto():
+    limpio, marcas, _c = ck.parsear_marcas("[strong] sin costo [/strong].")
+    assert limpio == "sin costo." and marcas == {0: "strong", 1: "strong"}
+
+
+def test_cierre_separado_por_espacio_con_coma():
+    limpio, marcas, _c = ck.parsear_marcas("[big] gratis [/big],")
+    assert limpio == "gratis," and marcas == {0: "big"}
+
+
+def test_cierre_separado_solo_puntuacion_despues():
+    # el cierre y la puntuacion en tokens propios: la marca cubre las palabras del span
+    limpio, marcas, _c = ck.parsear_marcas("[strong]la clave[/strong] .")
+    assert limpio == "la clave." and marcas == {0: "strong", 1: "strong"}
+
+
+def test_cierre_separado_comillas_y_signos_combinados():
+    limpio, marcas, _c = ck.parsear_marcas('[strong] esto va [/strong] ".')
+    assert limpio == 'esto va".' and marcas == {0: "strong", 1: "strong"}
+
+
+def test_center_con_span_cerrado_y_puntuacion_suelta():
+    limpio, marcas, center = ck.parsear_marcas("[center] [strong]texto[/strong]. [/center]")
+    assert limpio == "texto." and marcas == {0: "strong"} and center is True
+
+
+def test_puntuacion_suelta_sin_palabra_previa_no_rompe():
+    # sin palabra previa la puntuacion sola no puede adjuntarse: no revienta
+    limpio, _m, _c = ck.parsear_marcas("[strong][/strong] .")
+    assert "[" not in limpio and "]" not in limpio
+
+
+# ── El bug real por conteo: cierre separado + puntuacion no descarta la marca ──
+
+
+def test_engine_cierre_separado_con_puntuacion_no_se_descarta():
+    g = _grupo(["sin", "costo."], texto="[strong] sin costo [/strong].")
+    plan = cve.resolve_preset("keyword_punch")
+    out = cve.aplicar_engine([g], plan, 1080, 1920)
+    assert [w.get("is_keyword") for w in out[0]["words"]] == [True, True]
+
+
 # ── El bug real: la marca NO se pierde por conteo (aplicar_engine) ─────────────
 
 
