@@ -138,6 +138,26 @@ def get_video_srt(name: str) -> dict:
         raise _http_from(exc) from None
 
 
+@router.get("/api/videos/{name}/srt/view")
+def get_video_srt_view(name: str, caption_source: str = "transcript") -> dict:
+    """View model saneado unico para la UI: estado de seleccion + timings + readiness + accion.
+
+    Compone en una sola respuesta lo que la UI necesita para operar el SRT (sin que el navegador
+    reconstruya estado privado leyendo varios archivos). Nunca lanza por estado del SRT.
+    """
+    import studio_srt_view  # noqa: PLC0415
+
+    _resolver_video(name)
+    return studio_srt_view.build_srt_view(
+        name,
+        input_dir=INPUT_DIR,
+        storage_root=STUDIO_SRT_DIR,
+        manifest_dir=TRANSCRIPTS,
+        transcripts_dir=TRANSCRIPTS,
+        caption_source=caption_source,
+    )
+
+
 @router.post("/api/videos/{name}/srt")
 async def post_video_srt(name: str, file: UploadFile = File(...)):
     """Asocia un SRT validado al video. 200 si es idempotente/reparado, 201 si es nuevo."""

@@ -47,6 +47,28 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .msg.err{color:var(--red)}
 .msg.ok{color:var(--green)}
 
+/* ── Card de estado SRT (S36-C2B) ── */
+.srt-card{background:var(--surface);border:var(--border);border-radius:8px;padding:12px 14px;margin:4px 0 10px;display:flex;flex-direction:column;gap:8px}
+.srt-card .srt-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.srt-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;padding:3px 9px;border-radius:20px;border:var(--border)}
+.srt-badge .dot{width:7px;height:7px;border-radius:50%}
+.srt-badge.ready{color:var(--green)}.srt-badge.ready .dot{background:var(--green)}
+.srt-badge.pending{color:var(--yellow)}.srt-badge.pending .dot{background:var(--yellow)}
+.srt-badge.problem{color:var(--red)}.srt-badge.problem .dot{background:var(--red)}
+.srt-badge.none{color:var(--muted)}.srt-badge.none .dot{background:var(--muted)}
+.srt-card .srt-name{font-size:12px;color:var(--text);font-weight:500}
+.srt-card .srt-hint{font-size:11px;color:var(--muted);line-height:1.5}
+.srt-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.srt-actions .btn{font-size:12px;padding:5px 12px}
+.srt-file-label{font-size:12px;color:var(--text);border:0.5px dashed var(--purple-dim);border-radius:6px;padding:5px 12px;cursor:pointer;transition:border-color .15s}
+.srt-file-label:hover,.srt-file-label:focus-within{border-color:var(--purple)}
+.srt-file-label input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+/* Controles incompatibles con SRT: estado deshabilitado claro (además del atributo disabled) */
+.control-disabled{opacity:.45}
+.control-disabled label{color:var(--muted)}
+.control-disabled select:disabled,.control-disabled input:disabled{cursor:not-allowed}
+.srt-incompat{font-size:11px;color:var(--muted);line-height:1.5;border-left:0.5px solid var(--purple-dim);padding:6px 10px;margin:2px 0 10px;background:var(--surface)}
+
 /* ══════════════════════════════════════════
    TAB 1: VIDEOS
 ══════════════════════════════════════════ */
@@ -285,10 +307,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <h2>Renderizar captions</h2>
     <div class="field">
       <label>Video</label>
-      <select id="render-video-select">
+      <select id="render-video-select" onchange="srtPanel.onVideo('render')">
         <option value="">— Elegir video —</option>
       </select>
     </div>
+    <div class="field">
+      <label for="render-caption-source">Fuente de captions</label>
+      <select id="render-caption-source" onchange="srtPanel.onSource('render')">
+        <option value="transcript">Transcript (transcripción del video)</option>
+        <option value="srt">SRT (subtítulos oficiales)</option>
+      </select>
+    </div>
+    <div id="render-srt-card" class="srt-card" hidden></div>
     <div class="field">
       <label>Estilo</label>
       <select id="render-style">
@@ -319,7 +349,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <option value="fuerte">Fuerte 1.45 (con rebote)</option>
       </select>
     </div>
-    <div class="field">
+    <div class="field" id="field-wpg">
       <label>Palabras por grupo</label>
       <select id="render-wpg">
         <option value="">Auto (agrupación inteligente)</option>
@@ -327,7 +357,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <option value="3">3 palabras</option>
       </select>
     </div>
-    <div class="emphasis-row">
+    <div class="emphasis-row" id="row-emphasis">
       <input type="checkbox" id="use-emphasis" onchange="onEmphasisToggle()">
       <label for="use-emphasis">Énfasis IA — keywords destacadas</label>
       <span class="msg" id="emphasis-hint" style="margin:0"></span>
@@ -337,7 +367,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <label for="use-emojis">Emojis IA — assets ComfyUI sobre keywords</label>
       <span class="msg" style="margin:0;color:var(--muted);font-size:11px">(requiere ComfyUI corriendo)</span>
     </div>
-    <div class="emphasis-row">
+    <div class="emphasis-row" id="row-caption-qa">
       <input type="checkbox" id="use-caption-qa" onchange="onCaptionQaToggle()">
       <label for="use-caption-qa">Revisar subtítulos con Caption QA</label>
       <select id="caption-qa-mode" style="display:none">
@@ -351,6 +381,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <span class="msg" style="margin:0;color:var(--muted);font-size:11px">
         Puede ser el guion completo, un resumen o una lista de términos esperados.
       </span>
+    </div>
+    <div id="render-srt-incompat" class="srt-incompat" hidden>
+      Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
     <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
     <div id="render-status"></div>
@@ -427,13 +460,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
     <div class="step">
       <div class="step-head"><span class="step-num">1</span> Video</div>
-      <select id="auto-video-select" style="width:100%">
+      <select id="auto-video-select" style="width:100%" onchange="srtPanel.onVideo('auto')">
         <option value="">— Elegir video —</option>
       </select>
       <select id="auto-objetivo" aria-label="Objetivo" hidden>
         <option value="clips">Clips virales</option>
       </select>
       <div class="msg" style="margin-top:6px">¿No aparece? Súbelo desde Creador → Biblioteca de videos.</div>
+      <label for="auto-caption-source" style="display:block;margin-top:12px;font-size:13px;font-weight:500">Fuente de captions</label>
+      <select id="auto-caption-source" style="width:100%" onchange="srtPanel.onSource('auto')">
+        <option value="transcript">Transcript (transcripción del video)</option>
+        <option value="srt">SRT (subtítulos oficiales)</option>
+      </select>
+      <div id="auto-srt-card" class="srt-card" hidden></div>
     </div>
 
     <div class="step">
@@ -486,6 +525,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <div class="step-head"><span class="step-num">6</span> Resultado y revisión</div>
         <div id="auto-resumen" style="font-size:14px;font-weight:500;margin-bottom:12px"></div>
         <div id="auto-clips" style="display:flex;flex-direction:column;gap:10px"></div>
+        <div id="auto-resume" style="margin-top:12px"></div>
         <div id="auto-reporte-link" style="margin-top:12px;font-size:12px"></div>
       </div>
     </div>
@@ -800,6 +840,158 @@ function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ════════════════ SRT PANEL (S36-C2B) ════════════════
+// Controla el selector "Fuente de captions" (Transcript default | SRT) y la card de estado
+// para las pestañas Render y Auto. Consume el view model saneado GET /api/videos/{name}/srt/view
+// (el navegador NUNCA reconstruye estado privado leyendo varios archivos). Default: transcript.
+const srtPanel = {
+  // caption_source elegido por pestaña (default transcript; no autodiscovery, no cambio automático)
+  source: {render: 'transcript', auto: 'transcript'},
+
+  _videoSel(mode) { return document.getElementById(mode === 'auto' ? 'auto-video-select' : 'render-video-select'); },
+  _card(mode) { return document.getElementById(mode + '-srt-card'); },
+  _video(mode) { const s = this._videoSel(mode); return s ? s.value : ''; },
+
+  captionSource(mode) { return this.source[mode] === 'srt' ? 'srt' : 'transcript'; },
+
+  onSource(mode) {
+    const sel = document.getElementById(mode + '-caption-source');
+    this.source[mode] = sel && sel.value === 'srt' ? 'srt' : 'transcript';
+    const isSrt = this.source[mode] === 'srt';
+    if (mode === 'render') this._setRenderIncompatible(isSrt);
+    const card = this._card(mode);
+    if (!isSrt) { card.hidden = true; card.innerHTML = ''; return; }
+    card.hidden = false;
+    this.refresh(mode);
+  },
+
+  // Con SRT los cues definen agrupación y texto oficial: Palabras por grupo, Énfasis IA y
+  // Caption QA no aplican. Se deshabilitan de verdad (atributo disabled) y se restauran a su
+  // default seguro (no se envían esos params). Volver a Transcript reactiva los controles sin
+  // reponer valores previos inválidos. Estilo/Preset/Intensidad/Emojis siguen disponibles.
+  _setRenderIncompatible(disabled) {
+    const wpg = document.getElementById('render-wpg');
+    const emph = document.getElementById('use-emphasis');
+    const qa = document.getElementById('use-caption-qa');
+    if (disabled) {
+      if (wpg) { wpg.value = ''; wpg.disabled = true; }
+      if (emph) { emph.checked = false; emph.disabled = true; onEmphasisToggle(); }
+      if (qa) { qa.checked = false; qa.disabled = true; onCaptionQaToggle(); }
+    } else {
+      if (wpg) wpg.disabled = false;
+      if (emph) emph.disabled = false;
+      if (qa) qa.disabled = false;
+    }
+    for (const id of ['field-wpg', 'row-emphasis', 'row-caption-qa']) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('control-disabled', disabled);
+    }
+    const note = document.getElementById('render-srt-incompat');
+    if (note) note.hidden = !disabled;
+  },
+
+  onVideo(mode) { if (this.source[mode] === 'srt') this.refresh(mode); },
+
+  async refresh(mode) {
+    const name = this._video(mode);
+    const card = this._card(mode);
+    if (!name) { card.innerHTML = '<div class="srt-hint">Elige un video para gestionar su SRT.</div>'; return; }
+    card.innerHTML = '<div class="srt-hint">Consultando estado del SRT…</div>';
+    try {
+      const res = await fetch(`/api/videos/${encodeURIComponent(name)}/srt/view?caption_source=srt`);
+      if (!res.ok) throw new Error('estado no disponible');
+      this._render(mode, name, (await res.json()).srt || {});
+    } catch (e) {
+      card.innerHTML = `<div class="srt-hint" style="color:var(--red)">No se pudo leer el estado del SRT.</div>`;
+    }
+  },
+
+  // Mapea el view model a badge + copy + acciones (todo enum cerrado; nada de rutas ni hashes).
+  _view(srt) {
+    if (!srt.selected) return {cls:'none', label:'Sin SRT', hint:'Selecciona un archivo .srt para este video.'};
+    if (!srt.video_available) return {cls:'problem', label:'Falta el video', hint:'El video asociado al SRT ya no está disponible. Restáuralo o retira la asociación.'};
+    switch (srt.timings) {
+      case 'valid': return {cls:'ready', label:'Listo para render / Auto', hint:'El SRT y los timings están listos. Puedes renderizar o generar Auto con SRT.'};
+      case 'missing': return {cls:'pending', label:'Faltan timings', hint:'El SRT está asociado pero falta transcribir el video para obtener los tiempos por palabra.'};
+      case 'mismatch': return {cls:'problem', label:'Timings desactualizados', hint:'Los timings no corresponden a este video. Transcribe nuevamente el video asociado.'};
+      case 'corrupt': return {cls:'problem', label:'SRT dañado', hint:'El archivo SRT asociado está dañado. Reemplázalo por uno válido.'};
+      default: return {cls:'none', label:'Sin SRT', hint:'Selecciona un archivo .srt para este video.'};
+    }
+  },
+
+  _render(mode, name, srt) {
+    const v = this._view(srt);
+    const fileLabel = srt.selected ? 'Reemplazar SRT' : 'Seleccionar SRT';
+    const nameRow = srt.selected && srt.source_name
+      ? `<span class="srt-name">${escHtml(srt.source_name)}</span>` : '';
+    const transcribe = (srt.action === 'transcribe' || srt.action === 'retranscribe')
+      ? `<button class="btn secondary" onclick="srtPanel.transcribe('${esc(mode)}')">Transcribir video</button>` : '';
+    const remove = srt.selected
+      ? `<button class="btn secondary" onclick="srtPanel.remove('${esc(mode)}')">Retirar</button>` : '';
+    this._card(mode).innerHTML = `
+      <div class="srt-head">
+        <span class="srt-badge ${v.cls}"><span class="dot"></span>${escHtml(v.label)}</span>
+        ${nameRow}
+      </div>
+      <div class="srt-hint">${escHtml(v.hint)}</div>
+      <div class="srt-actions">
+        <label class="srt-file-label" tabindex="0">${fileLabel}
+          <input type="file" accept=".srt" onchange="srtPanel.associate('${esc(mode)}', this)">
+        </label>
+        ${transcribe}${remove}
+      </div>
+      <div class="srt-hint" id="${mode}-srt-msg" aria-live="polite"></div>`;
+  },
+
+  _msg(mode, text, cls) {
+    const el = document.getElementById(mode + '-srt-msg');
+    if (el) { el.textContent = text; el.style.color = cls === 'err' ? 'var(--red)' : cls === 'ok' ? 'var(--green)' : 'var(--muted)'; }
+  },
+
+  async associate(mode, input) {
+    const name = this._video(mode);
+    const file = input && input.files && input.files[0];
+    if (!name || !file) return;
+    this._msg(mode, 'Subiendo SRT…');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/videos/${encodeURIComponent(name)}/srt`, {method:'POST', body:fd});
+      if (!res.ok) { const e = await res.json().catch(() => ({})); this._msg(mode, e.detail || 'No se pudo asociar el SRT.', 'err'); return; }
+      this._msg(mode, 'SRT asociado.', 'ok');
+      this.refresh(mode);
+    } catch (e) { this._msg(mode, 'No se pudo asociar el SRT.', 'err'); }
+    finally { if (input) input.value = ''; }
+  },
+
+  async remove(mode) {
+    const name = this._video(mode);
+    if (!name) return;
+    this._msg(mode, 'Retirando asociación…');
+    try {
+      const res = await fetch(`/api/videos/${encodeURIComponent(name)}/srt`, {method:'DELETE'});
+      if (!res.ok) { this._msg(mode, 'No se pudo retirar.', 'err'); return; }
+      this.refresh(mode);
+    } catch (e) { this._msg(mode, 'No se pudo retirar.', 'err'); }
+  },
+
+  async transcribe(mode) {
+    const name = this._video(mode);
+    if (!name) return;
+    this._msg(mode, 'Iniciando transcripción del video asociado…');
+    try {
+      const res = await fetch(`/api/videos/${encodeURIComponent(name)}/transcribe?caption_source=srt`, {method:'POST'});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { this._msg(mode, data.detail || 'No se pudo transcribir.', 'err'); return; }
+      pollJob(data.job_id, (j) => {
+        if (j.status === 'done') { this._msg(mode, 'Transcripción lista.', 'ok'); this.refresh(mode); }
+        else if (j.status === 'error') { this._msg(mode, 'Error al transcribir.', 'err'); }
+        else { this._msg(mode, `${j.message || 'Transcribiendo'}… ${j.progress || 0}%`); }
+      });
+    } catch (e) { this._msg(mode, 'No se pudo transcribir.', 'err'); }
+  },
+};
 
 // loadStyles(): puebla el dropdown de estilos desde /api/styles (estilos nuevos
 // aparecen solos, sin editar el HTML). Fail-safe: si falla, conserva el fallback estatico.
@@ -1282,10 +1474,11 @@ async function startRender() {
     return;
   }
 
-  // Check transcript client-side
+  // Check transcript client-side (solo en modo transcript: la ruta SRT usa timings del
+  // namespace privado y su readiness la valida el view model + el backend).
   const v = videos.find(x => x.name === name);
   const transcrito = v && v.stages && v.stages.transcrito;
-  if (!transcrito) {
+  if (srtPanel.captionSource('render') !== 'srt' && !transcrito) {
     document.getElementById('render-status').innerHTML = `
       <div class="msg err" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         Este video no tiene transcripcion.
@@ -1319,7 +1512,9 @@ async function startRender() {
   const btn = document.getElementById('render-btn');
   btn.disabled = true;
 
+  const captionSource = srtPanel.captionSource('render');
   const params = new URLSearchParams({style});
+  if (captionSource === 'srt') params.append('caption_source', 'srt');
   if (preset) {
     params.append('preset', preset);
     const inten = document.getElementById('render-intensidad').value;
@@ -1327,14 +1522,18 @@ async function startRender() {
   }
   const pop = document.getElementById('render-pop').value;
   if (pop) params.append('pop', pop);
-  if (wpg) params.append('words_per_group', wpg);
-  if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
-  if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
-  if (document.getElementById('use-caption-qa').checked) {
-    params.append('caption_qa', document.getElementById('caption-qa-mode').value);
-    const guion = document.getElementById('caption-qa-guion').value.trim();
-    if (guion) params.append('guion', guion);
+  // Con SRT el texto y los cues los define el SRT: no se envían agrupación/énfasis/QA (el backend
+  // los rechaza con 400 cuando el SRT es la fuente oficial).
+  if (captionSource !== 'srt') {
+    if (wpg) params.append('words_per_group', wpg);
+    if (document.getElementById('use-emphasis').checked) params.append('use_emphasis', 'true');
+    if (document.getElementById('use-caption-qa').checked) {
+      params.append('caption_qa', document.getElementById('caption-qa-mode').value);
+      const guion = document.getElementById('caption-qa-guion').value.trim();
+      if (guion) params.append('guion', guion);
+    }
   }
+  if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
 
   const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
   if (!res.ok) {
@@ -1677,6 +1876,7 @@ async function startAuto() {
   const t0 = Date.now();
   try {
     const params = new URLSearchParams({objetivo, mode});
+    if (srtPanel.captionSource('auto') === 'srt') params.set('caption_source', 'srt');
     if (mode === 'v2') {
       params.set('broll_enabled', document.getElementById('auto-broll-enabled').checked ? 'true' : 'false');
       params.set('fx_enabled', document.getElementById('auto-fx-enabled').checked ? 'true' : 'false');
@@ -1730,6 +1930,14 @@ function _autoDownload(pkgId, c) {
   return `<a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
     class="btn secondary" style="font-size:12px;padding:5px 12px;display:inline-block">Descargar</a>`;
 }
+// Política ÚNICA de tarjeta por clip: un clip con status "error" NUNCA es publicable, sea
+// classic o v2 (con o sin SRT). Se decide ANTES de elegir pipeline y se muestra como tarjeta
+// de fallo (roja, sin descarga ni Editor). El backend lo marca ESTADO_ERROR y no entrega su
+// output; renderizarlo como clip normal expondría una descarga/Editor a un MP4 inexistente.
+function renderAutoClip(c, i, pkgId, v2) {
+  if (c && c.status === 'error') return renderAutoFailedClip(c, i);
+  return v2 ? renderAutoV2Clip(c, i, pkgId) : renderAutoClassicClip(c, i, pkgId);
+}
 function renderAutoClassicClip(c, i, pkgId) {
   const avisos = (c.avisos || []).map(a =>
     `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
@@ -1741,6 +1949,15 @@ function renderAutoClassicClip(c, i, pkgId) {
     ${avisos || '<div style="font-size:11px;color:var(--muted);margin-top:2px">Calidad OK en todo el clip</div>'}
     <a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
       class="btn secondary" style="font-size:12px;padding:4px 12px;margin-top:8px;display:inline-block">Descargar</a></div>`;
+}
+// Clip fallido: NUNCA es publicable (el backend lo marca ESTADO_ERROR y no lo entrega). Se
+// muestra distinto y sin botón de descarga; la reanudación es a nivel de paquete (Reanudar).
+function renderAutoFailedClip(c, i) {
+  return `<div style="border:0.5px solid var(--red);border-radius:8px;padding:12px;background:#1a1114">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:13px;font-weight:500">${i+1}. ${escHtml(c.titulo || c.archivo || 'Clip')}</span>
+      <span class="srt-badge problem"><span class="dot"></span>Falló el render</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">No se generó captions para este clip. Reanuda el paquete para reintentarlo.</div></div>`;
 }
 function renderAutoV2Clip(c, i, pkgId) {
   const b = c.broll || {}, fx = c.fx || {}, av = c.av || {};
@@ -1772,7 +1989,16 @@ function renderAutoResult(result) {
   const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//, '') : '';
   const clips = result.clips || [];
   const v2 = result.meta?.pipeline_mode === 'v2' || clips.some(c => c.pipeline_mode === 'v2');
-  clipsEl.innerHTML = clips.map((c,i) => v2 ? renderAutoV2Clip(c,i,pkgId) : renderAutoClassicClip(c,i,pkgId)).join('');
+  clipsEl.innerHTML = clips.map((c,i) => renderAutoClip(c,i,pkgId,v2)).join('');
+  // Reanudar clips fallidos: reusa el mecanismo de reanudación existente (re-ejecutar Auto
+  // sobre el mismo video retoma el paquete incompleto y solo re-renderiza lo que falta).
+  const hayFallidos = clips.some(c => c.status === 'error');
+  const resumeBox = document.getElementById('auto-resume');
+  if (resumeBox) {
+    resumeBox.innerHTML = hayFallidos
+      ? `<div class="msg" style="color:var(--red);margin-bottom:6px">Algunos clips fallaron y no se publicaron.</div>
+         <button class="btn" onclick="startAuto()">Reanudar clips fallidos</button>` : '';
+  }
   document.getElementById('auto-reporte-link').innerHTML = pkgId
     ? `<button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}')">Abrir en el Editor de Paquete →</button>
        <div class="msg" style="margin-top:8px">Paquete ${escHtml(pkgId)} · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" rel="noopener" style="color:var(--purple)">Ver REPORTE.md</a></div>`
