@@ -22,6 +22,7 @@ PIPELINE_VERSION = 2
 
 MODES = frozenset({"classic", "v2"})
 FX_PRESETS = frozenset({"express", "pro", "premium"})
+CAPTION_SOURCES = frozenset({"transcript", "srt"})
 
 
 class AutoConfigError(ValueError):
@@ -46,6 +47,9 @@ class AutoConfig:
     fx_preset: Literal["express", "pro", "premium"] = "express"
     verify_av: bool = True
     manual_sidecars: bool = True
+    # Fuente de captions (S36-C2A2). "transcript" (default) = ruta histórica exacta;
+    # "srt" = usa la selección SRT explícita del video y deriva SRT/words/groups por clip.
+    caption_source: Literal["transcript", "srt"] = "transcript"
 
     target_coverage_pct: float = 0.27
     max_coverage_pct: float = 0.35
@@ -60,6 +64,8 @@ class AutoConfig:
                 raise AutoConfigError(f"{campo} debe ser bool")
         if self.fx_preset not in FX_PRESETS:
             raise AutoConfigError(f"fx_preset invalido: {self.fx_preset!r}")
+        if self.caption_source not in CAPTION_SOURCES:
+            raise AutoConfigError(f"caption_source invalido: {self.caption_source!r}")
         if not _es_pct(self.target_coverage_pct) or not _es_pct(self.max_coverage_pct):
             raise AutoConfigError("target/max_coverage_pct deben ser numeros en [0, 1]")
         if self.target_coverage_pct > self.max_coverage_pct:
@@ -85,4 +91,4 @@ class AutoConfig:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-__all__ = ["PIPELINE_VERSION", "AutoConfig", "AutoConfigError"]
+__all__ = ["PIPELINE_VERSION", "CAPTION_SOURCES", "AutoConfig", "AutoConfigError"]

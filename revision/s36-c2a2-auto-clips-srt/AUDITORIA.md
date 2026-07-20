@@ -56,3 +56,26 @@ Este PR entrega **1A + 1B + 1C**: la auditoría + los dos módulos puros de deri
 visual → mergeable con suite/ruff/check.bat verdes (no requiere gate de K). La integración Auto v2/clipper/
 checkpoints (1D–1J) y el gate visual (1K) quedan como continuación de C2A2 (misma fase, PR posterior),
 por su tamaño y por requerir veredicto visual de K.
+
+## Integración elegida (sesión de integración)
+
+Pipeline real confirmado en código:
+- **Entrada Auto:** `auto.ejecutar_auto(video, name, progress, objetivo, *, config: AutoConfig)`.
+  `config=None`/`mode=classic` = ruta histórica EXACTA. `mode=v2` agrega b-roll/FX/AV.
+- **Config:** `auto_config.AutoConfig` (frozen, fingerprint SHA256 gobierna la reanudación v2).
+- **Clips:** `_asegurar_clips` → `clipper.generar_clips(video, words, "ambos")` → `clips=[{tipo,start,end(s),score,dur_s,archivo,...}]`.
+- **Render por clip:** `_procesar_clip(clip, paquete_dir)` → `reframe.reframe_clip` → copia `{stem}_words/groups.json` a stems `_9x16` → `core.apply_brain/build_ass/burn_video_with_emojis`.
+- **Checkpoints/resume YA existen:** paquete `{name}[_v2_fecha]`; cada MP4+sidecar renderizado = checkpoint; `_paquete_dir`/`_paquete_dir_v2` reanudan sin re-render; v2 valida por fingerprint (`auto_v2.checkpoint_v2_valido`).
+
+Decisiones:
+- **Extender** `AutoConfig` con `caption_source: transcript|srt` (default transcript). Entra al fingerprint → un run SRT es un pipeline distinto → paquetes/checkpoints SEPARADOS (no envenena el classic). **HECHO** (validado, tests).
+- **Nuevo módulo puro** `auto_srt_artifacts.py`: namespace por run/clip `transcripts/studio_srt_clips/{stem}/{sha256(filename)}/{run_id}/clips/{clip_id}/` + derivación por clip (SRT/words/groups/manifest) orquestando la foundation (`clip_srt`, `clip_transcript`, `srt_serialize`). Confinado, atómico, sin rutas. **HECHO** (validado, tests).
+- **Reutilizar** (no duplicar): `srt_slice`, `clip_srt`, `clip_transcript`, `clipper.generar_clips`, el sistema de checkpoints por paquete, `reframe`/`core` para el render.
+
+Restante para completar la integración funcional (en esta misma fase C2A2):
+- Wiring de la **ruta SRT en `ejecutar_auto`/`_procesar_clip`**: resolver la selección SRT + timings privados del padre + SrtDocument oficial, generar `run_id`, derivar artefactos por clip (auto_srt_artifacts) y renderizar cada clip con sus groups SRT (semántica S36-C2A1: texto oficial, fallback estático).
+- **API** `caption_source=srt` + estado por clip + retry.
+- **E2E real** (reframe+burn, ≥3 clips) + **evidencia audiovisual** → **gate visual de K (1K)**.
+
+Esta rama entrega la **capa de derivación/namespace/config** verificada (base funcional del wiring),
+mergeable como progreso; el wiring de render + E2E + evidencia es el cierre de C2A2 con gate visual.
