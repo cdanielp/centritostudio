@@ -13,27 +13,40 @@ from auto_config import AutoConfig
 
 AUTO_MODES = ("classic", "v2")
 AUTO_FX_PRESETS = ("express", "pro", "premium")
+AUTO_CAPTION_SOURCES = ("transcript", "srt")
 
 
 def construir_auto_config(
-    *, mode: str, broll_enabled: bool, fx_enabled: bool, fx_preset: str
+    *,
+    mode: str,
+    broll_enabled: bool,
+    fx_enabled: bool,
+    fx_preset: str,
+    caption_source: str = "transcript",
 ) -> AutoConfig | None:
-    """Parametros publicos de Studio -> contrato inmutable del pipeline."""
+    """Parametros publicos de Studio -> contrato inmutable del pipeline.
+
+    classic + transcript = None (ruta historica EXACTA). caption_source="srt" SIEMPRE devuelve
+    un AutoConfig (aunque mode=classic): la ruta SRT no es la historica.
+    """
     if mode not in AUTO_MODES:
         raise ValueError(f"mode invalido: {mode!r}")
     if fx_preset not in AUTO_FX_PRESETS:
         raise ValueError(f"fx_preset invalido: {fx_preset!r}")
+    if caption_source not in AUTO_CAPTION_SOURCES:
+        raise ValueError(f"caption_source invalido: {caption_source!r}")
     if not isinstance(broll_enabled, bool) or not isinstance(fx_enabled, bool):
         raise TypeError("broll_enabled y fx_enabled deben ser bool")
-    if mode == "classic":
-        return None
+    if mode == "classic" and caption_source == "transcript":
+        return None  # ruta historica exacta
     return AutoConfig(
-        mode="v2",
+        mode="v2" if mode == "v2" else "classic",
         broll_enabled=broll_enabled,
         fx_enabled=fx_enabled,
         fx_preset=fx_preset,
         verify_av=True,
         manual_sidecars=True,
+        caption_source=caption_source,
     )
 
 
@@ -87,4 +100,10 @@ def capacidades_auto() -> dict:
     }
 
 
-__all__ = ["AUTO_MODES", "AUTO_FX_PRESETS", "capacidades_auto", "construir_auto_config"]
+__all__ = [
+    "AUTO_MODES",
+    "AUTO_FX_PRESETS",
+    "AUTO_CAPTION_SOURCES",
+    "capacidades_auto",
+    "construir_auto_config",
+]
