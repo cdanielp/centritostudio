@@ -182,6 +182,136 @@ def test_auto_srt_fallo_de_un_clip_no_detiene_los_demas(env, monkeypatch):
     assert any(c.get("error_code") == "RuntimeError" for c in r["clips"])
 
 
+# ─── S36-C2C: manifiesto final saneado, resume, colisiones, robustez ───────────
+def _paquete_dir(env, r):
+    # r["paquete"] es relativo a ROOT (== tmp_path == env["trans"].parent).
+    return env["trans"].parent / r["paquete"]
+
+
+def _leer_manifiesto(env, r):
+    import auto_srt_manifest
+
+    path = _paquete_dir(env, r) / auto_srt_manifest.manifest_filename()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _interrumpir(paquete):
+    # Simula un proceso caído mid-run: sin paquete.json el run queda "incompleto" y el
+    # siguiente ejecutar_auto (mismo fingerprint) lo REANUDA en vez de crear uno nuevo.
+    import auto_srt_manifest
+
+    (paquete / "paquete.json").unlink(missing_ok=True)
+    (paquete / auto_srt_manifest.manifest_filename()).unlink(missing_ok=True)
+
+
+def test_manifiesto_final_saneado_del_run(env):
+    r = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    man = _leer_manifiesto(env, r)
+    assert man["version"] == 1 and man["caption_source"] == "srt"
+    assert man["run_id"] == r["paquete"].split("/")[-1]
+    assert man["source"] == {"video_filename": "demo.mov", "srt_selected": True}
+    assert man["summary"] == {"total": 3, "done": 3, "error": 0}
+    for c in man["clips"]:
+        assert set(c) == {
+            "clip_id",
+            "status",
+            "output",
+            "duration_ms",
+            "caption_coverage",
+            "fallback_ratio",
+        }
+        assert c["status"] == "done" and c["output"].endswith(".mp4")
+        assert 0.0 <= c["caption_coverage"] <= 1.0 and 0.0 <= c["fallback_ratio"] <= 1.0
+
+
+def test_manifiesto_marca_fallido_sin_output(env, monkeypatch):
+    def burn_falla(inp_mp4, ass, out, overlays, style_cfg):
+        if "clip2" in str(out):
+            raise RuntimeError("fallo-clip2")
+        from pathlib import Path as _P
+
+        _P(out).write_bytes(b"final")
+        return 1.0
+
+    monkeypatch.setattr(env["core"], "burn_video_with_emojis", burn_falla)
+    r = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    man = _leer_manifiesto(env, r)
+    assert man["summary"] == {"total": 3, "done": 2, "error": 1}
+    err = [c for c in man["clips"] if c["status"] == "error"]
+    assert len(err) == 1 and err[0]["output"] is None  # fallido nunca publicable
+
+
+def test_resume_reintenta_solo_el_fallido(env, monkeypatch):
+    # 1er run: clip2 falla. 2º run (burn OK): resume -> clip2 done; 1 y 3 no se re-renderizan.
+    calls = {"burn": []}
+    orig = env["core"].burn_video_with_emojis
+
+    def burn1(inp_mp4, ass, out, overlays, style_cfg):
+        calls["burn"].append(str(out))
+        if "clip2" in str(out):
+            raise RuntimeError("fallo-clip2")
+        return orig(inp_mp4, ass, out, overlays, style_cfg)
+
+    monkeypatch.setattr(env["core"], "burn_video_with_emojis", burn1)
+    r1 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    assert sum(1 for c in r1["clips"] if c.get("status") == "error") == 1
+    _interrumpir(_paquete_dir(env, r1))  # el run quedó incompleto -> el 2º lo reanuda
+    calls["burn"].clear()
+
+    def burn2(inp_mp4, ass, out, overlays, style_cfg):
+        calls["burn"].append(str(out))
+        return orig(inp_mp4, ass, out, overlays, style_cfg)
+
+    monkeypatch.setattr(env["core"], "burn_video_with_emojis", burn2)
+    r2 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    assert _paquete_dir(env, r2) == _paquete_dir(env, r1)  # MISMO paquete (reanudado)
+    man = _leer_manifiesto(env, r2)
+    assert man["summary"] == {"total": 3, "done": 3, "error": 0}  # el fallido se recuperó
+    # solo el clip2 se re-renderizó (1 y 3 venían de checkpoint válido).
+    assert len(calls["burn"]) == 1 and "clip2" in calls["burn"][0]
+
+
+def test_dos_runs_distintos_no_colisionan(env):
+    r1 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    # fuerza un segundo run con distinto run_id renombrando el paquete previo (simula otra corrida).
+    import auto_srt_artifacts as asa
+
+    ns = env["trans"] / asa.SRT_CLIPS_DIR / "demo"
+    run_dirs = {p.parent.parent.parent.name for p in ns.rglob("clip.srt")}
+    assert run_dirs and r1["paquete"].split("/")[-1] in run_dirs
+    # cada clip.srt vive bajo un único run_id -> sin cruce entre runs.
+    for srt in ns.rglob("clip.srt"):
+        assert srt.parent.parent.name == "clips"
+
+
+def test_artefacto_faltante_se_regenera(env):
+    r1 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    paquete = _paquete_dir(env, r1)
+    finales = sorted(paquete.glob("*_hormozi.mp4"))
+    assert finales
+    finales[0].unlink()  # output faltante
+    _interrumpir(paquete)  # reanuda el mismo paquete
+    r2 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    assert _paquete_dir(env, r2) == paquete
+    assert finales[0].exists()  # el resume lo re-renderizó
+    man = _leer_manifiesto(env, r2)
+    assert man["summary"]["done"] == 3
+
+
+def test_checkpoint_corrupto_se_rerenderiza(env):
+    r1 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    paquete = _paquete_dir(env, r1)
+    sidecars = sorted(paquete.glob("*.info.json"))
+    assert sidecars
+    sidecars[0].write_text("{corrupto no json", encoding="utf-8")  # checkpoint ilegible
+    _interrumpir(paquete)  # reanuda el mismo paquete y lee el sidecar corrupto
+    # no debe crashear: el checkpoint corrupto se trata como inexistente y re-renderiza.
+    r2 = auto.ejecutar_auto(env["video"], "demo", config=AutoConfig(caption_source="srt"))
+    assert _paquete_dir(env, r2) == paquete
+    man = _leer_manifiesto(env, r2)
+    assert man["summary"] == {"total": 3, "done": 3, "error": 0}
+
+
 def test_transcript_default_no_toca_srt(env, monkeypatch):
     # caption_source por defecto (transcript) no debe resolver contexto SRT.
     import auto_srt_run
