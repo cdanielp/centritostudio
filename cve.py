@@ -70,6 +70,9 @@ _PRESETS_BUILTIN: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
     },
     "viral_bounce": {
@@ -79,6 +82,9 @@ _PRESETS_BUILTIN: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
     },
     "keyword_punch": {
@@ -91,6 +97,9 @@ _PRESETS_BUILTIN: dict[str, dict] = {
         "glow": True,  # glow aprox sobre el keyword (solo enciende en viral, §6.1)
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": True},  # recomendacion; deuda #20 la vota K
     },
     "karaoke_highlight": {
@@ -100,6 +109,9 @@ _PRESETS_BUILTIN: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
         # Karaoke moderno: dichas quedan marcadas (cian, = relleno). Parametrizable:
         # base = primary_color del estilo, activo = highlight_color, pasado = este campo.

@@ -1553,3 +1553,49 @@ atomico (tmp + `os.replace`) igual que el manifiesto. Se sigue difiriendo el end
 `tests/test_auto_srt_partial_resume.py` (rojos sin el fix) + contrato UI; smoke E2E FFmpeg real
 reescrito para el resume REAL (sin borrar `paquete.json`, con contador de burns y hashes/mtimes de
 los clips done). Suite completa verde.
+
+---
+
+## D40 — F6 esencial: phrase spans, avoid_faces, [center], cve_presets.json y controles CVE
+
+**Contexto.** Cierre de la deuda F6 imprescindible antes de hardening/HyperFrames
+(rama `feat/f6-v1-essential`). Contratos pre-firmados: #34 (spans), prioridad de posición,
+DISENO_CVE §6 (cve_presets.json). Sin duplicar motores ni detectores.
+
+**Decisiones.**
+1. **Phrase spans (#34).** Un span cerrado `[strong]a b c[/strong]` / `[big]...[/big]` marca
+   CADA palabra del span; los manuales quedan exentos de 1-por-grupo y de densidad (manual gana).
+   Compatibilidad con la marca de una palabra (apertura sin cierre = next-word). Solapamientos
+   deterministas (span más corto/interno gana; empate → big). El sidecar `frase` también marca
+   cada palabra (evolución consciente del contrato: el test viejo de "1er token" se actualizó).
+   Ninguna marca visible en el ASS (voto #34); nunca crash.
+2. **avoid_faces ON por diseño (explícito).** Los 4 built-ins declaran `avoid_faces: True`
+   explícito (antes era el default implícito). La UI de Studio también lo expone encendido.
+   **Alcance actual:** reutiliza `trayectoria_{stem}.csv` del reframe; con la columna de presencia
+   `conf_asignada` (que el reframe SÍ emite) sólo DEMOTA una posición CENTER sobre cara presente a
+   bottom; los presets con base bottom no se mueven (correcto: un caption abajo no tapa una cara
+   centrada en un talking-head 9:16). La ruta histórica bottom queda byte-idéntica.
+3. **DEUDA post-esencial (documentada): export vertical del reframe.** La placa vertical completa
+   (mover a top cuando la cara está abajo, y viceversa) requiere la columna `face_y_asignada`
+   (fracción 0..1) en `trayectoria_{stem}.csv`. Hoy el tracker detecta `center_y` pero NO lo
+   persiste; emitirlo cambia la aridad de retorno de `_detectar_trayectoria`/`_calcular_crops`
+   (con ~118 tests del reframe) → desproporcionado para "esencial". `zona_cara_en_rango` ya lee la
+   columna cuando existe (probado con CSV sintético); queda pendiente que el reframe la produzca.
+   Hasta entonces avoid_faces vertical top/bottom está inerte en producción (sólo demota center).
+4. **Marca [center].** `[center]` fija `caption_pos="center"` en el render real con prioridad
+   **marca manual → preset → avoid_faces → default**. `[center]`/`[/center]` nunca visibles;
+   sólo centra su grupo; compatible con phrase spans.
+5. **cve_presets.json (DISENO_CVE §6).** Loader opcional fail-safe por-campo: ausente/roto/no-dict
+   → built-ins intactos; allowlist explícito (intensidad/posicion/keywords/densidad/glow/
+   avoid_faces/overlays/style) con validadores de tipo/rango; campo desconocido se ignora (sin
+   ejecución arbitraria, sin rutas); preset nuevo sin `base` válido hereda de clean_podcast; `style`
+   como nombre existente o dict de overrides validado con `styles.filtrar_overrides_validos`.
+6. **Controles CVE mínimos en Studio.** tab-render gana densidad/posición/avoid_faces + textarea de
+   palabras/frases a destacar (sidecar `{stem}_keywords.json` saneado, IO atómico). Gated por preset
+   y ruta transcript; ocultos y NO enviados con SRT (respeta las incompatibilidades ya definidas).
+   Sin exponer rutas/JSON/tracebacks; escritorio + móvil.
+
+**Verificación.** +~100 tests nuevos (spans/avoid_faces/center/presets/controles backend+UI);
+suite 1803 passed, 3 skipped (preexistentes); ruff+format+check.bat verdes; E2E FFmpeg real
+(6 demos 1080x1920 30fps) + capturas de controles verificadas visualmente. PR abierto, NO mergeado:
+pendiente veredicto visual de K. Sin dependencias nuevas (sólo stdlib).
