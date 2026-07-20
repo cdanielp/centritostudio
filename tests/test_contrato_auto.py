@@ -163,6 +163,29 @@ def test_estado_clip_no_publicar_sin_metricas():
     assert auto.estado_clip({"avisos": [], "tramos_disponibles": False}) == "NO PUBLICAR AUN"
 
 
+def test_estado_clip_error_nunca_se_presenta_como_listo():
+    import auto
+
+    # un clip con status=error (fallo aislado del render) es la maxima severidad:
+    # aunque tuviera tramos "OK", jamas debe salir como LISTO/publicable.
+    c = {"status": "error", "avisos": [], "tramos_disponibles": True}
+    assert auto.estado_clip(c) == "FALLO EL RENDER"
+
+
+def test_resumen_no_cuenta_clips_fallidos_como_listos():
+    import auto
+
+    # 2 OK + 1 fallido: el resumen no puede decir "3 clip(s) listos".
+    info = [
+        {"titulo": "a", "avisos": []},
+        {"titulo": "b", "avisos": []},
+        {"titulo": "c", "status": "error"},
+    ]
+    resumen = auto.resumen_paquete(info)
+    assert resumen.startswith("2 clip(s) listos")
+    assert "1 fallaron" in resumen and "clip 3" in resumen
+
+
 def test_avisos_llevan_tipo_para_la_recomendacion():
     import auto
 

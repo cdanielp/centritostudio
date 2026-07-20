@@ -634,8 +634,13 @@ def start_auto(
     broll_enabled: bool = True,
     fx_enabled: bool = True,
     fx_preset: str = "express",
+    caption_source: str = "transcript",
 ):
     """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
+    if caption_source not in ("transcript", "srt"):
+        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
+    if caption_source == "srt":
+        return _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset)
     mp4 = _resolver_video_input(name)
     if mp4 is None:
         raise HTTPException(404, f"Video {name} no encontrado en input/")
@@ -655,6 +660,57 @@ def start_auto(
         threading.Thread(
             target=jobs.run_auto,
             args=(jid, mp4, name, objetivo),
+            kwargs={"config": config},
+            daemon=True,
+        ).start()
+    except Exception:
+        raise HTTPException(500, "No se pudo iniciar el Modo Automatico") from None
+    return {"job_id": jid}
+
+
+def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset):
+    """Auto con caption_source=srt: usa el video EXACTO asociado (no por stem) y la selección SRT.
+
+    La resolución de timings privados + procedencia por clip ocurre dentro de ejecutar_auto
+    (auto_srt_run); aquí solo se valida selección + video para fallar rápido. Nunca cae al
+    transcript. Sin selección -> 400; video exacto ausente -> 409; storage corrupto -> 500.
+    """
+    import studio_srt_manifest  # noqa: PLC0415
+    import studio_srt_runtime  # noqa: PLC0415
+
+    if objetivo != "clips":
+        raise HTTPException(400, "objetivo debe ser 'clips' (unico soportado en v1)")
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(404, "Video no encontrado en input/.")
+    try:
+        config = studio_auto.construir_auto_config(
+            mode=mode,
+            broll_enabled=broll_enabled,
+            fx_enabled=fx_enabled,
+            fx_preset=fx_preset,
+            caption_source="srt",
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from None
+    try:
+        selection = studio_srt_runtime.resolve_selected_srt(
+            name, storage_root=TRANSCRIPTS / "studio_srt", manifest_dir=TRANSCRIPTS
+        )
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    if selection is None:
+        raise HTTPException(400, "No hay un SRT seleccionado para este video.")
+    try:
+        binding = studio_srt_runtime.bind_selected_video(selection, input_dir=INPUT_DIR)
+    except studio_srt_runtime.StudioSrtSelectedVideoMissing:
+        raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    try:
+        jid = jobs.new_job(f"Modo Automatico SRT: {name}...")
+        threading.Thread(
+            target=jobs.run_auto,
+            args=(jid, binding.path, name, objetivo),
             kwargs={"config": config},
             daemon=True,
         ).start()

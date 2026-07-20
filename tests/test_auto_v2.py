@@ -36,6 +36,24 @@ def test_config_default_classic():
     c = AutoConfig()
     assert c.mode == "classic" and c.fx_preset == "express"
     assert c.broll_enabled is True and c.verify_av is True
+    assert c.caption_source == "transcript"  # default histórico
+
+
+def test_config_caption_source_srt_valido():
+    assert AutoConfig(caption_source="srt").caption_source == "srt"
+
+
+def test_config_caption_source_invalido():
+    with pytest.raises(AutoConfigError):
+        AutoConfig(caption_source="otro")
+
+
+def test_fingerprint_distingue_caption_source():
+    # un run SRT es OTRO pipeline que uno transcript -> fingerprints distintos (packages separados).
+    assert (
+        AutoConfig(mode="v2").fingerprint()
+        != AutoConfig(mode="v2", caption_source="srt").fingerprint()
+    )
 
 
 def test_config_v2_explicito():

@@ -117,3 +117,80 @@ def test_error_inesperado_se_sanea(api, monkeypatch):
     assert response.status_code == 500
     assert response.json()["detail"] == "No se pudo iniciar el Modo Automatico"
     assert "KEY-SECRETA" not in response.text
+
+
+# ── Auto caption_source=srt (S36-C2A2) ───────────────────────────────────────
+def _ts_ms(ms):
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1_000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+_SRT_AUTO = (
+    f"1\n{_ts_ms(0)} --> {_ts_ms(2000)}\nHola\n\n2\n{_ts_ms(3000)} --> {_ts_ms(5000)}\nMundo\n"
+).encode()
+
+
+def _asociar_srt(trans, video_filename="demo.mov"):
+    import studio_srt
+
+    doc, diags = studio_srt.parse_and_validate(
+        _SRT_AUTO, source_name="s.srt", video_duration_ms=6000
+    )
+    studio_srt.store_and_associate(
+        doc,
+        diags,
+        video_stem="demo",
+        video_filename=video_filename,
+        video_duration_ms=6000,
+        data=_SRT_AUTO,
+        storage_root=trans / "studio_srt",
+        manifest_dir=trans,
+    )
+
+
+def test_auto_caption_source_invalido_400(api):
+    client, _ = api
+    assert client.post("/api/videos/demo/auto?caption_source=otro").status_code == 400
+    assert FakeThread.created == []
+
+
+def test_auto_srt_sin_seleccion_400(api, monkeypatch):
+    client, root = api
+    trans = root / "transcripts"
+    trans.mkdir()
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    r = client.post("/api/videos/demo/auto?caption_source=srt")
+    assert r.status_code == 400 and FakeThread.created == []
+
+
+def test_auto_srt_con_seleccion_usa_video_exacto(api, monkeypatch):
+    client, root = api
+    trans = root / "transcripts"
+    trans.mkdir()
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    (root / "demo.mov").write_bytes(b"mov-real")  # el .mp4 lo crea el fixture (decoy)
+    _asociar_srt(trans, video_filename="demo.mov")
+    r = client.post("/api/videos/demo/auto?caption_source=srt")
+    assert r.status_code == 200 and r.json() == {"job_id": "job-s37c"}
+    thread = _thread()
+    assert thread.kwargs["config"].caption_source == "srt"
+    assert thread.args[1].name == "demo.mov"  # video EXACTO (no el decoy .mp4)
+
+
+def test_auto_srt_video_exacto_ausente_409(api, monkeypatch):
+    client, root = api
+    trans = root / "transcripts"
+    trans.mkdir()
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    _asociar_srt(trans, video_filename="demo.mov")  # demo.mov no existe (solo el decoy .mp4)
+    r = client.post("/api/videos/demo/auto?caption_source=srt")
+    assert r.status_code == 409 and FakeThread.created == []
+
+
+def test_auto_transcript_default_sigue_igual(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/auto")  # sin caption_source = transcript
+    assert r.status_code == 200
+    assert _thread().kwargs == {"config": None}  # classic historico
