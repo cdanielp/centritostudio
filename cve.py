@@ -370,10 +370,15 @@ def resolver_posicion_captions(
     base = plan.position or "bottom"
     result: list[dict] = []
     for g in groups:
-        pos = base
-        if plan.avoid_faces:
-            zona = zona_cara_en_rango(tray_csv_path, g.get("start", 0.0), g.get("end", 0.0))
-            pos = _posicion_evitando_cara(base, zona)
+        # Prioridad: marca manual [center] -> preset -> avoid_faces -> default.
+        # La marca manual es intencion explicita: gana a avoid_faces y al preset.
+        if g.get("center"):
+            pos = "center"
+        else:
+            pos = base
+            if plan.avoid_faces:
+                zona = zona_cara_en_rango(tray_csv_path, g.get("start", 0.0), g.get("end", 0.0))
+                pos = _posicion_evitando_cara(base, zona)
         # Ruta historica intacta: base bottom que sigue en bottom -> no se anota nada
         # (build_ass sin caption_pos = byte-identico). Toda decision no-default se anota.
         if pos != "bottom" or base != "bottom":
