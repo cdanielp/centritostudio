@@ -1050,13 +1050,18 @@ Resuelto en D38:
   namespace confinado, checkpoints por clip, fallo aislado, paquete final. CERRADA.
 - **S36-C2B (PR #21 mergeado `ec3476c`):** UI de selección de SRT en Studio (selector fuente +
   `srtPanel` + view model saneado único). CERRADA.
-- **S36-C2C (PR abierto, gate visual final):** manifiesto final saneado + robustez de checkpoint +
-  E2E real. Cierra S36 tras el gate.
-- **Retry dedicado vs resume (decisión formal, D39):** NO se implementa `POST /api/auto/{run_id}/
-  clips/{clip_id}/retry` en v1. El resume EXISTENTE cubre el caso (un run interrumpido se reanuda con
-  el mismo video/config; solo los clips fallidos/faltantes se re-renderizan; la UI de C2B expone
-  "Reanudar clips fallidos" sobre este mecanismo). Un endpoint dedicado exigiría un registro
-  persistente run→config sin beneficio funcional para v1: DIFERIDO a post-v1. Deja de ser ambiguo.
+- **S36-C2C (PR #22 ABIERTO, NO mergeado, gate visual final PENDIENTE):** manifiesto final saneado +
+  robustez de checkpoint + resume de paquetes SRT terminados parcialmente (P2) + E2E real. **NO cierra
+  S36 hasta el veredicto visual final de K + merge del PR #22.**
+- **Retry dedicado vs resume (decisión formal, D39 + addendum P2):** NO se implementa `POST /api/auto/
+  {run_id}/clips/{clip_id}/retry` en v1. El resume EXISTENTE cubre el caso; la UI de C2B expone
+  "Reanudar clips fallidos" (botón que re-invoca `startAuto()`, el MISMO flujo Auto). Reanudables:
+  (a) runs **interrumpidos** (sin `paquete.json`) **y** (b) runs **terminados parcialmente**
+  (`done<total`, con `paquete.json`). Un paquete **completamente exitoso** (`done=total`) NO se
+  reabre. El **`config_fingerprint` debe coincidir** (mismo video/config). Solo los clips **fallidos,
+  faltantes o con checkpoint corrupto** se reprocesan; los `done` válidos se conservan byte-idénticos,
+  en el mismo paquete y run_id. NO se depende de borrar `paquete.json`. Un endpoint dedicado exigiría
+  un registro persistente run→config sin beneficio funcional para v1: DIFERIDO a post-v1.
 
 **Sigue ABIERTA (diferida, no bloquea v1):**
 - **Forced aligner** (WhisperX/stable-ts/MFA) si la cobertura real no alcanza: NO se activa

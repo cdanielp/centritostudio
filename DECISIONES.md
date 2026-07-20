@@ -1514,6 +1514,42 @@ sustitucion/fallback, timings stale, video reemplazado TOCTOU, dos runs sin coli
 tests unitarios/integracion existentes (`test_srt_align`, `test_studio_srt_runtime`,
 `test_auto_srt_artifacts`, `test_auto_srt_e2e`, `test_auto_srt_manifest`).
 
-**S36 CERRADA:** C2A1 (PR #18), C2A2 (PR #20), C2B (PR #21) mergeadas con veredicto visual de K;
-C2C consolida el cierre. Cero P1/P2 abiertos. Forced aligner sigue diferido (la cobertura real solo
-se registra, no se activa automaticamente).
+**S36 (cierre a la espera del gate):** C2A1 (PR #18), C2A2 (PR #20), C2B (PR #21) mergeadas con
+veredicto visual de K; C2C (PR #22) consolida el cierre pero NO esta mergeado y falta el veredicto
+visual final de K. Forced aligner sigue diferido (la cobertura real solo se registra, no se activa
+automaticamente).
+
+### D39 addendum — Resume de paquetes SRT TERMINADOS PARCIALMENTE (P2, PR #22)
+
+**Sintoma (P2).** La decision "resume, no endpoint dedicado" era correcta pero incompleta: la UI
+"Reanudar clips fallidos" re-invoca `ejecutar_auto` con el mismo video/config, y `_paquete_dir_v2`
+solo reutilizaba paquetes INTERRUMPIDOS (sin `paquete.json`). Un run que termina con `done=2/error=1`
+SI escribe `paquete.json` (no es "interrumpido"); el resume creaba entonces un paquete NUEVO y
+volvia a renderizar los 3 clips. El smoke anterior lo enmascaraba borrando `paquete.json` a mano
+(convertia el caso en "interrumpido"), que no es el flujo real del usuario.
+
+**Correccion.** `_paquete_dir_v2(..., allow_completed_partial_resume: bool = False)` y el helper puro
+`_paquete_v2_reanudable`. Para `caption_source=srt` (`allow_completed_partial_resume=True`) un paquete
+v2 EXISTENTE se reutiliza cuando, y solo cuando: (1) es hijo directo confinado de `PAQUETES_DIR`;
+(2) `auto_v2.json` legible con `config_fingerprint` EXACTO; (3) mismo nombre/video logico; (4)
+`paquete.json` legible; (5) contiene ≥1 clip con `status="error"` o un output/checkpoint requerido
+ausente; (6) NO esta completamente exitoso; (7) es el compatible MAS RECIENTE. `transcript`/`classic`
+conservan su semantica historica EXACTA (solo reanudan interrumpidos; default `False`). **Fail
+closed:** marker corrupto, `paquete.json` corrupto/vacio o fingerprint distinto → NO se reutiliza;
+un paquete previo NUNCA se borra automaticamente; fingerprints jamas se mezclan.
+
+**Politica de resume (explicita y desambiguada):**
+- paquetes **interrumpidos** (sin `paquete.json`) **y** paquetes **terminados parcialmente**
+  (`done<total`, con `paquete.json`) son **reanudables**;
+- paquetes **completamente exitosos** (`done=total`) **no se reabren** (un run posterior crea un
+  paquete nuevo);
+- el **`config_fingerprint` debe coincidir** exactamente (mismo video/config);
+- **solo** los clips **fallidos, faltantes o con checkpoint corrupto** se reprocesan; los `done`
+  validos se conservan byte-identicos, en el **mismo paquete y run_id**.
+
+`ejecutar_auto` pasa `allow_completed_partial_resume=es_srt`; `paquete.json` ahora se escribe
+atomico (tmp + `os.replace`) igual que el manifiesto. Se sigue difiriendo el endpoint dedicado
+`retry` a post-v1: el resume via UI cubre el caso sin estado/API nuevos. Tests: +18 escenarios en
+`tests/test_auto_srt_partial_resume.py` (rojos sin el fix) + contrato UI; smoke E2E FFmpeg real
+reescrito para el resume REAL (sin borrar `paquete.json`, con contador de burns y hashes/mtimes de
+los clips done). Suite completa verde.

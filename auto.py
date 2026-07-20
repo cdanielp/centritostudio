@@ -12,6 +12,7 @@ El paquete SIEMPRE termina en revision humana antes de publicar (regla #19).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -100,23 +101,87 @@ def _paquete_dir(name: str) -> tuple[Path, bool]:
     return nuevo, False
 
 
-def _paquete_dir_v2(name: str, fingerprint: str) -> tuple[Path, bool]:
+def _clip_incompleto(info: object, paquete_dir: Path) -> bool:
+    """True si el clip descrito en `paquete.json` debe reprocesarse en un resume.
+
+    Reprocesa cuando: status="error", falta el MP4 final, o su checkpoint sidecar esta
+    ausente/corrupto. Un clip done con MP4 + checkpoint validos se conserva (no re-render).
+    Es la MISMA definicion de "clip valido" que aplica el bucle de resume en ejecutar_auto:
+    ambas rutas deben coincidir para no crear un paquete nuevo por un clip que igual se reusa.
+    """
+    if not isinstance(info, dict):
+        return True
+    if info.get("status") == "error":
+        return True
+    archivo = info.get("archivo")
+    if not isinstance(archivo, str) or not archivo:
+        return True
+    final_path = paquete_dir / archivo
+    if not final_path.exists():
+        return True
+    return _cargar_checkpoint(_sidecar_path(final_path)) is None
+
+
+def _paquete_v2_reanudable(d: Path, fingerprint: str, *, allow_completed_partial: bool) -> bool:
+    """True si el paquete v2 `d` puede reutilizarse para este `fingerprint` (fail-closed).
+
+    Reglas:
+      * confinado como hijo directo de PAQUETES_DIR (sin symlinks fuera);
+      * `auto_v2.json` legible con `config_fingerprint` EXACTO (marker corrupto -> no);
+      * sin `paquete.json` (corrida interrumpida) -> reanudable (comportamiento historico);
+      * con `paquete.json` -> solo reanudable si `allow_completed_partial` y el paquete NO esta
+        completamente exitoso (>=1 clip con status="error" u output/checkpoint requerido ausente).
+        `paquete.json` corrupto/vacio -> NO se reutiliza como parcial (fail-closed).
+    """
+    if not d.is_dir():
+        return False
+    try:
+        if d.resolve().parent != PAQUETES_DIR.resolve():
+            return False  # confinamiento: solo hijos directos de PAQUETES_DIR
+    except OSError:
+        return False
+    marker = d / "auto_v2.json"
+    try:
+        datos = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else {}
+    except (ValueError, OSError):
+        return False  # marker corrupto -> fail-closed (no reutilizar)
+    if not isinstance(datos, dict) or datos.get("config_fingerprint") != fingerprint:
+        return False
+    paquete_json = d / "paquete.json"
+    if not paquete_json.exists():
+        return True  # interrumpido: reanudacion historica
+    if not allow_completed_partial:
+        return False  # completado: no se reabre (transcript/classic-v2 conservan su semantica)
+    try:
+        datos_paq = json.loads(paquete_json.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return False  # paquete.json corrupto -> no reutilizar como parcial completado
+    clips = datos_paq.get("clips") if isinstance(datos_paq, dict) else None
+    if not isinstance(clips, list) or not clips:
+        return False  # sin clips legibles -> no es un parcial reanudable seguro
+    return any(_clip_incompleto(c, d) for c in clips)
+
+
+def _paquete_dir_v2(
+    name: str, fingerprint: str, *, allow_completed_partial_resume: bool = False
+) -> tuple[Path, bool]:
     """Paquete v2 distinguible ({name}_v2_{fecha}) con marker de fingerprint.
 
-    Solo se reanuda un paquete v2 incompleto cuyo `auto_v2.json` tenga el MISMO
-    config_fingerprint (mismo pipeline). Fingerprint distinto -> paquete nuevo (el
+    Reanuda el paquete v2 compatible MAS RECIENTE (mismo `config_fingerprint`) segun
+    `_paquete_v2_reanudable`. Por defecto solo reanuda corridas interrumpidas (sin
+    `paquete.json`) -> comportamiento historico exacto de transcript/classic-v2.
+
+    `allow_completed_partial_resume=True` (runs `caption_source=srt`) tambien reanuda un
+    paquete TERMINADO PARCIALMENTE (done<total): reusa los clips done validos y solo
+    re-renderiza los fallidos/faltantes/corruptos, en el MISMO paquete y run_id. Un paquete
+    completamente exitoso jamas se reabre; distinto fingerprint/video -> paquete nuevo (el
     anterior no se destruye). Un paquete clasico jamas se reutiliza como v2.
     """
     PAQUETES_DIR.mkdir(parents=True, exist_ok=True)
     for d in sorted(PAQUETES_DIR.glob(f"{name}_v2_*"), reverse=True):
-        if not d.is_dir() or (d / "paquete.json").exists():
-            continue
-        marker = d / "auto_v2.json"
-        try:
-            datos = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else {}
-        except (ValueError, OSError):
-            continue
-        if datos.get("config_fingerprint") == fingerprint:
+        if _paquete_v2_reanudable(
+            d, fingerprint, allow_completed_partial=allow_completed_partial_resume
+        ):
             return d, True
     fecha = time.strftime("%Y%m%d-%H%M")
     nuevo = PAQUETES_DIR / f"{name}_v2_{fecha}"
@@ -447,7 +512,11 @@ def ejecutar_auto(
     if es_v2:
         import auto_v2  # noqa: PLC0415 (lazy: la ruta clasica jamas importa la capa v2)
     if usa_fp:
-        paquete_dir, reanudado = _paquete_dir_v2(name, fingerprint)
+        # SRT reanuda paquetes TERMINADOS PARCIALMENTE (done<total) ademas de los interrumpidos:
+        # la UI "Reanudar clips fallidos" re-invoca este mismo flujo y no borra paquete.json.
+        paquete_dir, reanudado = _paquete_dir_v2(
+            name, fingerprint, allow_completed_partial_resume=es_srt
+        )
         fecha = paquete_dir.name[len(name) + 4 :]  # {name}_v2_{fecha}
     else:
         paquete_dir, reanudado = _paquete_dir(name)
@@ -471,7 +540,10 @@ def ejecutar_auto(
         info_prev = _cargar_checkpoint(sidecar)
         if info_prev is not None:
             if es_srt:
-                valido = final_path.exists()  # done invalido (output faltante) -> re-render
+                # Misma definicion de "clip valido" que _clip_incompleto (que SELECCIONA el paquete
+                # a reanudar): status=error u output faltante -> re-render. Mantener ambas en sync
+                # evita reabrir un paquete por un clip que el bucle luego trataria de reusar.
+                valido = final_path.exists() and info_prev.get("status") != "error"
             else:
                 valido = not es_v2 or auto_v2.checkpoint_v2_valido(
                     info_prev, fingerprint, final_path, TRANSCRIPTS
@@ -516,10 +588,14 @@ def ejecutar_auto(
     (paquete_dir / "REPORTE.md").write_text(
         generar_reporte_md(name, clips_info, meta), encoding="utf-8"
     )
-    (paquete_dir / "paquete.json").write_text(
+    # Atomico (tmp + os.replace): un resume nunca deja un paquete.json truncado si el proceso
+    # muere a mitad de escritura (el contenido final es identico al write directo).
+    _pkg_tmp = paquete_dir / "paquete.json.tmp"
+    _pkg_tmp.write_text(
         json.dumps({"clips": clips_info, "meta": meta}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    os.replace(_pkg_tmp, paquete_dir / "paquete.json")
     if es_srt:  # manifiesto FINAL saneado del run SRT (cierre S36-C2C)
         _emitir_manifiesto_srt(paquete_dir, srt_ctx, clips_info)
     resumen = resumen_paquete(clips_info)
