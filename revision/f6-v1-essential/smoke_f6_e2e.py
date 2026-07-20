@@ -393,6 +393,17 @@ def main() -> int:  # noqa: C901
     ]
     for desc, d, _h in demos:
         out.append(f"- [ ] **{d.name}** — {desc} · {_probe(d)} · sha={_sha(d)}")
+    out.append(
+        "\n## Fix de duplicacion en phrase spans (gate visual PR #23)\n"
+        "Causa: el gemelo de glow (capa 0) usaba escala ESTATICA mientras la palabra activa "
+        "de la capa de texto (capa 1) hacia pop -> distinto ancho -> distinto wrap/centrado "
+        "-> las dos capas se descuadraban y encimaban (ESTESTOBIO / SSIN). Fix: ambas capas "
+        "comparten la MISMA envolvente de escala por palabra (`_active_scale_anim`), incluida "
+        "la animacion de la palabra activa -> layout identico por frame, sin desalineacion.\n"
+        "- demo_phrase_span (0.0-2.0s) y demo_phrase_span_punctuation (2.3-2.8s) verificados "
+        "frame por frame: cada palabra legible, sin capas superpuestas ni letras duplicadas, "
+        "puntuacion unida a la palabra previa, ninguna etiqueta [strong]/[big]/[center] visible."
+    )
     out.append("\n## avoid_faces: productor real -> face_y observada -> zona -> posicion\n")
     for nb in notas:
         out.append(f"- {nb} (marca manual center SIEMPRE gana por contrato)")

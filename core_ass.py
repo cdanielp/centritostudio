@@ -17,6 +17,11 @@ from core_ass_fx import _KW_SCALE_DEFAULT as _KW_BASE
 # Primitivas de texto ASS + extensiones F6/CVE (punch_scale, glow) — re-export
 # para compatibilidad: tests y consumidores siguen usando core_ass._kw_scale etc.
 from core_ass_fx import (  # noqa: F401
+    _OVERSHOOT_FACTOR,
+    _OVERSHOOT_RISE_MS,
+    _OVERSHOOT_SETTLE_MS,
+    _POP_SIMPLE_RISE_MS,
+    _active_scale_anim,
     _escape_ass,
     _glow_event_text,
     _join_parts,
@@ -35,13 +40,6 @@ def _ass_to_pysubs2(ass_color: str) -> pysubs2.Color:
     return pysubs2.Color(r, g, b, a)
 
 
-# Timing del rebote (ms). Derivados del brief D19: sube en ~70ms, asienta hasta ~200ms.
-_OVERSHOOT_FACTOR = 1.12  # cuanto se pasa del reposo antes de asentar
-_OVERSHOOT_RISE_MS = 70
-_OVERSHOOT_SETTLE_MS = 200
-_POP_SIMPLE_RISE_MS = 90  # sin rebote: crece y se queda en el reposo
-
-
 def _active_highlight_tag(
     style_cfg: StyleConfig,
     is_kw: bool,
@@ -54,21 +52,13 @@ def _active_highlight_tag(
 
     pop_scale<=1.0: solo color (byte-identico al caption estatico). >1.0: scale-pop con
     reposo del enfasis en `rest` (mas grande que los vecinos). Con overshoot, rebota al pico.
+    La escala sale de `_active_scale_anim` (fuente unica compartida con el glow): mismo
+    ancho de avance -> el gemelo de glow queda perfectamente alineado.
     """
     pop = getattr(style_cfg, "pop_scale", 1.0)
     if pop <= 1.0:
         return f"{{\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
-
-    base = kw_base if is_kw else 100
-    rest = int(round(base * pop))  # tamaño de reposo del enfasis mientras la palabra activa
-    if getattr(style_cfg, "overshoot", False):
-        peak = int(round(rest * _OVERSHOOT_FACTOR))
-        anim = (
-            f"\\t(0,{_OVERSHOOT_RISE_MS},\\fscx{peak}\\fscy{peak})"
-            f"\\t({_OVERSHOOT_RISE_MS},{_OVERSHOOT_SETTLE_MS},\\fscx{rest}\\fscy{rest})"
-        )
-    else:
-        anim = f"\\t(0,{_POP_SIMPLE_RISE_MS},\\fscx{rest}\\fscy{rest})"
+    anim = _active_scale_anim(style_cfg, is_kw, kw_base)
     return f"{{{anim}\\c{active_color}}}{esc}{{\\r}}"
 
 
@@ -272,15 +262,21 @@ def build_ass(
             continue
         gw = group["words"]
         con_glow = glow_on and any(w.get("is_keyword", False) for w in gw)
-        glow_text = _glow_event_text(gw, style_cfg) if con_glow else None
         for idx, word in enumerate(gw):
             ev_end = gw[idx + 1]["start"] if idx < len(gw) - 1 else group["end"]
             ev_end = max(ev_end, word["start"] + 0.05)
             start = pysubs2.make_time(s=word["start"])
             end = pysubs2.make_time(s=ev_end)
             if con_glow:
+                # Glow gemelo POR palabra activa: misma escala/animacion que la capa de
+                # texto -> layout identico, sin la duplicacion del glow estatico anterior.
                 subs.events.append(
-                    pysubs2.SSAEvent(start=start, end=end, text=pos + glow_text, layer=0)
+                    pysubs2.SSAEvent(
+                        start=start,
+                        end=end,
+                        text=pos + _glow_event_text(gw, idx, style_cfg),
+                        layer=0,
+                    )
                 )
             subs.events.append(
                 pysubs2.SSAEvent(
