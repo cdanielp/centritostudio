@@ -1895,8 +1895,15 @@ function _autoDownload(pkgId, c) {
   return `<a href="/api/paquetes/${encodeURIComponent(pkgId)}/video/${encodeURIComponent(c.archivo)}" download
     class="btn secondary" style="font-size:12px;padding:5px 12px;display:inline-block">Descargar</a>`;
 }
+// Política ÚNICA de tarjeta por clip: un clip con status "error" NUNCA es publicable, sea
+// classic o v2 (con o sin SRT). Se decide ANTES de elegir pipeline y se muestra como tarjeta
+// de fallo (roja, sin descarga ni Editor). El backend lo marca ESTADO_ERROR y no entrega su
+// output; renderizarlo como clip normal expondría una descarga/Editor a un MP4 inexistente.
+function renderAutoClip(c, i, pkgId, v2) {
+  if (c && c.status === 'error') return renderAutoFailedClip(c, i);
+  return v2 ? renderAutoV2Clip(c, i, pkgId) : renderAutoClassicClip(c, i, pkgId);
+}
 function renderAutoClassicClip(c, i, pkgId) {
-  if (c.status === 'error') return renderAutoFailedClip(c, i);
   const avisos = (c.avisos || []).map(a =>
     `<div style="font-size:11px;color:#e5a94e;margin-top:2px">⚠ ${escHtml(a.texto)}</div>`).join('');
   return `<div style="border:var(--border);border-radius:8px;padding:12px">
@@ -1947,7 +1954,7 @@ function renderAutoResult(result) {
   const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//, '') : '';
   const clips = result.clips || [];
   const v2 = result.meta?.pipeline_mode === 'v2' || clips.some(c => c.pipeline_mode === 'v2');
-  clipsEl.innerHTML = clips.map((c,i) => v2 ? renderAutoV2Clip(c,i,pkgId) : renderAutoClassicClip(c,i,pkgId)).join('');
+  clipsEl.innerHTML = clips.map((c,i) => renderAutoClip(c,i,pkgId,v2)).join('');
   // Reanudar clips fallidos: reusa el mecanismo de reanudación existente (re-ejecutar Auto
   // sobre el mismo video retoma el paquete incompleto y solo re-renderiza lo que falta).
   const hayFallidos = clips.some(c => c.status === 'error');

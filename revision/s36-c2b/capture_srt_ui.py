@@ -30,14 +30,23 @@ _MISSING = {
     "selected": True, "source_name": "entrevista.srt", "timings": "missing",
     "video_available": True, "ready_render": False, "ready_auto": False, "action": "transcribe",
 }
+# Fallo parcial en Auto v2 + SRT: el clip 2 falló. La ruta v2 debe mostrarlo como tarjeta de
+# fallo segura (roja, sin descarga ni Editor) igual que classic (P2 S36-C2B corregido).
 _AUTO_PARTIAL = {
     "resumen": "3 clips generados; 1 falló (clip 2).",
-    "paquete": "output/paquetes/demo_20260720",
+    "paquete": "output/paquetes/demo_v2_20260720",
+    "meta": {"pipeline_mode": "v2"},
     "clips": [
         {"titulo": "Gancho inicial", "archivo": "clip1.mp4", "score": 88, "dur_s": 5.0,
-         "emojis_msg": "2 emojis"},
-        {"titulo": "Momento débil", "archivo": "clip2.mp4", "status": "error", "dur_s": 4.0},
-        {"titulo": "Cierre", "archivo": "clip3.mp4", "score": 81, "dur_s": 4.0, "emojis_msg": ""},
+         "pipeline_mode": "v2", "broll": {"resolved": 2, "planned": 2, "images": 1, "videos": 1},
+         "fx": {"preset": "express", "removed": []}, "av": {"integrity": {"status": "pass"},
+         "sync": {"status": "pass"}}, "brain_ok": True},
+        {"titulo": "Momento débil", "archivo": "clip2.mp4", "status": "error", "dur_s": 4.0,
+         "pipeline_mode": "v2"},
+        {"titulo": "Cierre", "archivo": "clip3.mp4", "score": 81, "dur_s": 4.0,
+         "pipeline_mode": "v2", "broll": {"resolved": 1, "planned": 1, "images": 1, "videos": 0},
+         "fx": {"preset": "express", "removed": []}, "av": {"integrity": {"status": "pass"},
+         "sync": {"status": "pass"}}, "brain_ok": True},
     ],
 }
 
@@ -85,16 +94,21 @@ def _bootstrap(tab: str, source: str, srt_view, auto_result) -> str:
     }} catch(e) {{ document.title = 'EVID_ERROR: ' + e.message; }}
   }}
   // Re-aserta la vista tras asentarse el arranque (evita que un hook async del home inicial
-  // deje el nav en otra pestaña) y encuadra el resultado parcial.
+  // deje el nav en otra pestaña) y fija explícitamente el botón activo del nav + encuadre.
   function finalize(){{
     try {{
       showTab(TAB);
+      const primary = {{render:'creador', auto:'auto'}}[MODE] || TAB;
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector('nav button[data-tab="' + primary + '"]');
+      if (btn) btn.classList.add('active');
       if (AUTO_RESULT) document.getElementById('auto-result').scrollIntoView(true);
     }} catch(e) {{}}
   }}
   if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(drive, 60);
   else document.addEventListener('DOMContentLoaded', () => setTimeout(drive, 60));
-  setTimeout(finalize, 1200);
+  setTimeout(finalize, 1500);
+  setTimeout(finalize, 3200);
 }})();
 </script>
 """
