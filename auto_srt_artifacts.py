@@ -149,6 +149,12 @@ def derive_clip_artifacts(
     }
 
 
+def persist_alignment(arts: ClipArtifacts, payload) -> None:
+    """Escribe el sidecar de alineación SRT->timings del clip (word_aligned/substitution/
+    cue_fallback). Atómico y confinado; INTERNO (no sale por API). No muta `payload`."""
+    _atomic_write_text(arts.alignment_path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 __all__ = [
     "SRT_CLIPS_DIR",
     "AutoSrtArtifactError",
@@ -156,4 +162,5 @@ __all__ = [
     "resolve_run_dir",
     "resolve_clip_artifacts",
     "derive_clip_artifacts",
+    "persist_alignment",
 ]

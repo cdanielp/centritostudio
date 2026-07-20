@@ -22,7 +22,15 @@ ESTADO_LISTO = "LISTO"
 ESTADO_AVISO = "LISTO CON AVISO"
 ESTADO_REVISION = "REQUIERE REVISION"
 ESTADO_NO_PUBLICAR = "NO PUBLICAR AUN"
-_SEVERIDAD = {ESTADO_LISTO: 0, ESTADO_AVISO: 1, ESTADO_REVISION: 2, ESTADO_NO_PUBLICAR: 3}
+# El clip no se pudo renderizar (fallo aislado): NO existe MP4 publicable.
+ESTADO_ERROR = "FALLO EL RENDER"
+_SEVERIDAD = {
+    ESTADO_LISTO: 0,
+    ESTADO_AVISO: 1,
+    ESTADO_REVISION: 2,
+    ESTADO_NO_PUBLICAR: 3,
+    ESTADO_ERROR: 4,
+}
 
 # Cuantas detecciones de Caption QA se listan inline antes de remitir al JSON.
 _MAX_ALERTAS_REPORTE = 6
@@ -96,7 +104,11 @@ def estado_clip(c: dict) -> str:
     - LISTO CON AVISO: el video esta bien encuadrado pero Caption QA detecto texto
       que quiza convenga corregir a mano.
     - LISTO: sin avisos de tramos ni detecciones de transcripcion pendientes.
+    - FALLO EL RENDER: el clip reventó durante el render (fallo aislado); no hay
+      MP4 publicable. Es la maxima severidad: nunca se presenta como listo.
     """
+    if c.get("status") == "error":
+        return ESTADO_ERROR
     if not c.get("tramos_disponibles", True):
         return ESTADO_NO_PUBLICAR
     if c.get("avisos"):
@@ -119,11 +131,16 @@ def resumen_paquete(clips_info: list[dict]) -> str:
     n = len(clips_info)
     if n == 0:
         return "0 clips generados"
-    con_aviso = [(i + 1, c) for i, c in enumerate(clips_info) if c.get("avisos")]
+    fallidos = [i + 1 for i, c in enumerate(clips_info) if c.get("status") == "error"]
+    ok = [(i + 1, c) for i, c in enumerate(clips_info) if c.get("status") != "error"]
+    cola_fallo = (
+        f"; {len(fallidos)} fallaron (clip {', '.join(map(str, fallidos))})" if fallidos else ""
+    )
+    con_aviso = [(i, c) for i, c in ok if c.get("avisos")]
     if not con_aviso:
-        return f"{n} clip(s) listos, sin avisos"
+        return f"{len(ok)} clip(s) listos, sin avisos{cola_fallo}"
     partes = [f"clip {i} en {_fmt_t(c['avisos'][0]['t_ini'])}" for i, c in con_aviso]
-    return f"{n} clip(s) listos, {len(con_aviso)} con aviso ({', '.join(partes)})"
+    return f"{len(ok)} clip(s) listos, {len(con_aviso)} con aviso ({', '.join(partes)}){cola_fallo}"
 
 
 def _clip_usa_emojis(c: dict) -> bool:

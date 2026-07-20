@@ -242,7 +242,19 @@ def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
 
 def _clip_id(clip: dict) -> str:
     """clip_id estable y seguro derivado del basename del MP4 del clip (validado aguas abajo)."""
-    return clip["archivo"].replace(".mp4", "")
+    return Path(clip["archivo"]).stem
+
+
+def _marcar_pipeline_en_meta(meta: dict, *, es_v2: bool, es_srt: bool, fingerprint, config) -> None:
+    """Sella la procedencia del pipeline en meta. classic-transcript queda byte-identico
+    (no toca meta); v2 y SRT-classic añaden su fingerprint para distinguir el paquete."""
+    if es_v2:
+        meta["pipeline_mode"] = "v2"
+        meta["config_fingerprint"] = fingerprint
+        meta["config"] = config.to_dict()
+    elif es_srt:  # SRT-classic: procedencia para no confundirlo con classic-transcript
+        meta["caption_source"] = "srt"
+        meta["config_fingerprint"] = fingerprint
 
 
 def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
@@ -282,9 +294,10 @@ def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
 
     # Groups SRT-alineados del clip (texto oficial del clip.srt + timings de las words del clip).
     clip_words = json.loads(arts.words_path.read_text(encoding="utf-8"))["words"]
-    groups, _result, _payload = srt_caption.preparar_desde_srt(
+    groups, _result, alignment_payload = srt_caption.preparar_desde_srt(
         arts.srt_path, clip_words, video_duration_ms=dur_ms, words_file=arts.words_path.name
     )
+    auto_srt_artifacts.persist_alignment(arts, alignment_payload)
 
     import assets_comfy as ac  # noqa: PLC0415
 
@@ -469,10 +482,9 @@ def ejecutar_auto(
         "t_total_s": round(time.time() - t0, 1),
         "costo_usd": resultado.get("telemetria_resumen", {}).get("costo_usd", 0),
     }
-    if es_v2:  # solo v2 agrega campos; el meta clasico queda byte-identico
-        meta["pipeline_mode"] = "v2"
-        meta["config_fingerprint"] = fingerprint
-        meta["config"] = config.to_dict()
+    _marcar_pipeline_en_meta(
+        meta, es_v2=es_v2, es_srt=es_srt, fingerprint=fingerprint, config=config
+    )
     (paquete_dir / "REPORTE.md").write_text(
         generar_reporte_md(name, clips_info, meta), encoding="utf-8"
     )
