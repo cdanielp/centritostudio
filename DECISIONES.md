@@ -1333,3 +1333,142 @@ visual/render/Auto:
   `build_manifest` es puro y `min([])` reventaría). **No se relajó `sanitize_manifest`**: sigue
   rechazando rangos degenerados; el fix corrige el productor, no el validador. +2 tests (unit de
   `build_manifest` no monótono + E2E POST→GET→re-upload con bytes/SHA idénticos). CERRADA.
+
+## D38 — Studio renderiza una seleccion SRT explicita mediante `caption_source=srt` (S36-C2A1)
+
+Conecta la asociacion privada video<->SRT de S36-C1 con el **render normal** de Studio, sin UI
+nueva, sin Auto v2 y sin tocar el clipper. Es la primera mitad de S36-C2A (la segunda, C2A2, cubre
+Auto v2 + clipper + SRT derivado por clip + checkpoints, y NO se inicia aqui).
+
+**Contrato (opt-in explicito):** `POST /api/videos/{name}/render` gana `caption_source` con
+allowlist `transcript` (default) | `srt`. La peticion historica sin el parametro sigue EXACTA la
+ruta transcript (byte-identica): mismos groups.json, args, kwargs, naming, ASS/MP4, Caption QA,
+agrupamiento, enfasis, emojis y presets. La ruta transcript **no lee el manifiesto SRT, no importa
+el runtime y no consulta la seleccion** (fijado por import-spy).
+
+**Ruta SRT (`caption_source=srt`):**
+- El **texto del SRT es la fuente oficial** (S36-B); las words de Whisper **solo aportan timings**;
+  no se inventan timings. Cues `word_aligned` se animan word-by-word; `cue_fallback` quedan
+  **estaticos** (`timing_mode="cue_fallback"`, D36B-3).
+- **Asociacion explicita** obligatoria (sin autodiscovery, sin buscar `.srt` en input/, sin primer
+  `.srt`, sin usar el archivo privado). Sin seleccion -> 400; nunca cae al transcript en silencio.
+- **Rechaza con 400** las combinaciones incompatibles: `caption_qa` (el QA no puede alterar el texto
+  oficial), `words_per_group` (los cues definen el agrupamiento) y `use_emphasis` (el brain del
+  transcript no se aplica por indice a cues SRT sin contrato). Permitidos: `style`, `pop`, `preset`,
+  `intensidad`, `use_emojis`. El **preset CVE anima SOLO los cues alineados**.
+- Output con sufijo `_srt` (no pisa historicos) + **sidecar de alineacion privado**
+  (`transcripts/{name}_srt_alignment.json`). El resultado del job lleva un **resumen publico
+  saneado** (source/sha/sidecar/conteos/ratios): sin cues, sin texto, sin rutas.
+
+**Runtime privado (`studio_srt_runtime.py`, capa PURA):** `resolve_selected_srt` lee el manifiesto
+saneado, exige `managed_file == {sha}.srt`, **confina** el archivo (resolve+relative_to) y verifica
+su **hash real** (no confia solo en el manifiesto); no repara durante el render (la reparacion es del
+contrato C1). `verify_runtime_integrity` revalida al iniciar el worker (borrado/manipulacion entre
+endpoint y worker -> job en error saneado, SIN fallback). `prepare_selected_srt_groups` carga las
+words (solo timings), delega en `srt_caption.preparar_desde_srt` (no duplica parser/alineador/
+validador), escribe el sidecar y valida `word_aligned + cue_fallback == n_cues`. Errores tipados:
+`StudioSrtRuntimeError`/`StudioSrtSelectionMissing`/`StudioSrtTimingMissing`/`StudioSrtIntegrityError`
+(heredan de `StudioSrtError`/`StudioSrtStorageError`); app traduce seleccion/timings/contrato -> 400,
+integridad/storage -> 500 generico.
+
+**Helpers reutilizables (`srt_render.py`):** `apply_preset_to_srt_groups` (preset solo en alineados,
+IDs deterministas, fail-open) + naming `_srt`. `caption.py` **delega** sus helpers historicos aqui
+(fuente unica CLI<->Studio); la salida de la CLI `--srt` no cambia. `jobs_render.run_render` conserva
+su firma publica (+ `*, srt_selection=None`) y hace split interno `_run_render_transcript` (verbatim)
+/ `_run_render_srt`.
+
+**Pendientes:** Auto v2 y clipper (C2A2), UI de seleccion (C2B), forced aligner si la cobertura real
+no alcanza (no se activa automaticamente; solo se registra el numero). **El merge requiere veredicto
+visual de K** (este PR modifica salida de video cuando `caption_source=srt`). Evidencia sintetica
+(FFmpeg real, offline) en `revision/s36-c2a1-studio-srt-render/`; checkpoint privado real PENDIENTE
+(no existe asociacion explicita del usuario).
+
+### D38 addendum — Identidad video↔SRT: `manifest.video.filename` es autoritativo (P2, PR #18)
+
+Corrige un P2 detectado en revisión: la ruta SRT resolvía el video con el resolver genérico
+`_resolver_video_input(name)`, que busca por stem y **prioriza `.mp4`**. Una selección asociada y
+validada contra `demo.mov` podía renderizarse sobre un `demo.mp4` aparecido después (mismo stem).
+
+**Invariante:** para `caption_source=srt`, el video se identifica por el **filename EXACTO** del
+manifiesto (`manifest.video.filename`), nunca por stem ni por prioridad de extensión. El stem por sí
+solo NO identifica el video. No hay búsqueda por extensiones, glob, autodiscovery ni primer
+coincidente; nunca se cruza `.mov`↔`.mp4`. Si el archivo exacto no está disponible, el render se
+**bloquea** (no cae a otra extensión ni al transcript).
+
+**Runtime:** `SelectedSrtRuntime` gana `video_filename` (del manifiesto saneado). `resolve_selected_video(runtime, *, input_dir)` construye sólo `input_dir/filename`, confina (resolve+relative_to) y
+exige archivo regular; filename inconsistente con el manifiesto → `StudioSrtIntegrityError` (500),
+archivo exacto ausente/no confinado → `StudioSrtSelectedVideoMissing` (409). El worker revalida con
+`verify_selected_video_match(runtime, video_path)` (nombre+stem+extensión+regular) **antes** de leer
+video info / alinear / generar ASS / escribir output; mismatch → job error saneado, sin ASS/MP4/
+sidecar, sin ruta, sin fallback. **La ruta transcript histórica no cambia** (sigue usando
+`_resolver_video_input` en Auto y demás endpoints, intactos).
+
+**HTTP:** sin selección → 400; **archivo exacto ausente → 409** ("El video asociado al SRT ya no está
+disponible."); manifiesto/storage corrupto → 500. Ningún mensaje refleja name/filename/extensión/ruta.
+Comentario P2 de PR #18 resuelto. +20 tests (runtime/endpoint/worker) + E2E: MOV asociado (4s) +
+decoy MP4 (2s) → el render usa el MOV (4s), nunca el decoy. Sigue requiriendo veredicto visual de K.
+
+### D38 addendum — Procedencia de timings: `{stem}_words.json` ligado al video EXACTO (P2, PR #18)
+
+Cierra un segundo P2 de identidad: el video exacto ya se resolvía por `manifest.video.filename`,
+pero `{stem}_words.json` era **stem-only**. Con `demo.mov` seleccionado y un `demo.mp4` del mismo
+stem transcrito, el render alineaba el texto oficial del MOV contra timings del MP4 (subtítulos
+mal-timed silenciosos). El `cue_fallback` NO es garantía suficiente (mismo contenido con timings
+desplazados sí alinea).
+
+**Invariante:** el video, el SRT y las words comparten la MISMA identidad. `{stem}_words.json`
+declara `source_video` = `{version:1, filename exacto, size_bytes, mtime_ns}` del video del que
+salieron los timings. Módulo puro nuevo `transcript_provenance.py` (`build_video_provenance` /
+`attach_video_provenance` / `validate_video_provenance`): int estricto (bool no cuenta), basename
+seguro, extensión .mp4/.mov, filename == esperado, size+mtime == `stat()` real; nunca refleja
+valores manipulados ni rutas.
+
+**Producción:** `jobs.run_transcribe` adjunta `source_video` del video EXACTO recibido (sin tocar
+words/language/timings/groups). `POST /transcribe?caption_source=srt` transcribe el video EXACTO
+asociado (por `manifest.video.filename`); sin selección→400, video ausente→409, storage corrupto→500;
+la ruta transcript histórica no cambia. El render SRT valida la procedencia en el ENDPOINT
+(`verify_timing_provenance`): words legacy (sin `source_video`), de otro archivo/versión, con
+size/mtime distintos o corruptas → **409** ("Los timings no corresponden al video asociado al SRT.
+Transcribe nuevamente el video asociado.") sin thread/job/ASS/MP4/sidecar/fallback. El WORKER
+revalida la procedencia (TOCTOU) antes de FFmpeg; mismatch → job error saneado, sin fallback.
+Error tipado `StudioSrtTimingSourceMismatch` (endpoint→409, worker→job error), NO hereda de
+StudioSrtStorageError (no dispara reparación ni retranscripción automática dentro del render).
+
+**Legacy:** los `{stem}_words.json` históricos sin `source_video` los sigue aceptando la ruta
+transcript, pero el render SRT los rechaza con 409 (retranscribir el video asociado). No se migran
+ni se adivina la procedencia. No rompe una feature mergeada porque S36-C2A1 sigue en PR. +50 tests
+(procedencia + transcribe API + run_transcribe + render endpoint + worker TOCTOU) + E2E: words de
+`demo.mp4` → render rechazado; tras transcribir el MOV → render usa el MOV (4s). Comentario P2 de
+Codex resuelto (la respuesta anterior de "follow-up" queda superada).
+
+### D38 addendum — Aislamiento de artefactos SRT + reconfinamiento TOCTOU (P2-A/P2-B, PR #18)
+
+Cierra dos P2 de Codex sobre HEAD 77a0662.
+
+**P2-A — aislamiento de artefactos SRT.** Un `transcribe?caption_source=srt` del video seleccionado
+`demo.mov` NO puede sobrescribir los artefactos historicos stem-only (`transcripts/demo_words.json`
+/`demo_groups.json`), que el render transcript default del `demo.mp4` sigue consumiendo. Los timings
+SRT viven ahora en un **namespace privado por filename EXACTO**:
+`transcripts/studio_srt_timings/{stem}/{sha256(filename)}/words.json` (+`groups.json`). Un `.mp4` y un
+`.mov` con el mismo stem dan directorios DISTINTOS. `transcript_provenance.resolve_srt_timing_artifacts`
+valida stem/filename (basename seguro, ext, `stem==video_stem`) y confina el namespace. `run_transcribe`
+gana `srt_artifact_key`/`selected_video_binding` keyword-only: sin key = ruta historica EXACTA; con key
+= namespace privado (escritura de ambos JSON via temporal+replace, nunca uno nuevo con otro viejo). El
+render SRT (endpoint + worker) usa SOLO el words/groups privado (emojis incluidos); NUNCA los stem-root
+historicos. Words legacy stem-root: transcript las acepta; render SRT las ignora (falta el exacto -> 409
+si hay historico, 400 si no hay ningun timing).
+
+**P2-B — reconfinamiento del video en el worker.** El endpoint confinaba el video pero el worker solo
+revalidaba nombre/stem/ext/is_file (seguia symlinks sin repetir `resolve()+relative_to`). Nuevo
+`SelectedVideoBinding` (frozen, interno): captura `path`, `input_root_resolved`, `resolved_target`
+(resolve strict), `size_bytes`, `mtime_ns` en el endpoint. `bind_selected_video` lo crea; el worker de
+render y de transcribe revalidan con `verify_selected_video_binding` ANTES de FFmpeg/Whisper:
+re-resuelve strict, exige `relative_to(input_root)`, `target==resolved_target`, size y mtime del enlace.
+Bloquea retarget de symlink (dentro o fuera de input/), reemplazo del archivo, cambio de ruta/extension
+y borrado -> job error saneado, sin output/sidecar/fallback. Mismo binding valida el TOCTOU de la
+transcripcion SRT (Whisper no corre si el video cambio).
+
++~70 tests (namespace, no-envenenamiento, binding, symlink/retarget/reemplazo, TOCTOU render y transcribe).
+Ruta transcript historica intacta (byte-identica). E2E: transcript MP4 historico intacto tras transcribe
+SRT del MOV; render SRT del MOV usa su namespace; TOCTOU (reemplazo) aborta. Ambos comentarios P2
+resueltos.

@@ -18,6 +18,8 @@ from styles import get_style
 ROOT = Path(__file__).parent
 TRANSCRIPTS = ROOT / "transcripts"
 OUTPUT_DIR = ROOT / "output"
+# Almacenamiento privado del contrato SRT (S36-C1); solo lo usa la ruta caption_source=srt.
+STUDIO_SRT_DIR = TRANSCRIPTS / "studio_srt"
 
 
 def _apply_emphasis(groups: list[dict], name: str) -> tuple[list[dict], str]:
@@ -93,6 +95,52 @@ def _aplicar_qa(
 
 
 def run_render(
+    jid: str,
+    mp4: Path,
+    grp_path: Path,
+    name: str,
+    style: str,
+    words_per_group: int | None,
+    use_emphasis: bool = False,
+    use_emojis: bool = False,
+    pop: str | None = None,
+    preset: str | None = None,
+    intensidad: str | None = None,
+    qa_mode: str | None = None,
+    qa_guion: str | None = None,
+    *,
+    srt_selection=None,
+    srt_binding=None,
+) -> None:
+    """Contrato publico del worker de render. Sin `srt_selection` = ruta transcript historica
+    EXACTA (byte-identica); con `srt_selection` (S36-C2A1) = ruta SRT como texto oficial.
+
+    La ruta transcript no importa ni consulta el runtime SRT. La ruta SRT nunca cae al
+    transcript: un fallo de seleccion/integridad publica un job en estado error saneado.
+    """
+    if srt_selection is not None:
+        _run_render_srt(
+            jid, mp4, name, style, use_emojis, pop, preset, intensidad, srt_selection, srt_binding
+        )
+        return
+    _run_render_transcript(
+        jid,
+        mp4,
+        grp_path,
+        name,
+        style,
+        words_per_group,
+        use_emphasis,
+        use_emojis,
+        pop,
+        preset,
+        intensidad,
+        qa_mode,
+        qa_guion,
+    )
+
+
+def _run_render_transcript(
     jid: str,
     mp4: Path,
     grp_path: Path,
@@ -198,3 +246,137 @@ def run_render(
         )
     except Exception as exc:
         update_job(jid, status="error", message=str(exc), error=str(exc))
+
+
+def _run_render_srt(
+    jid: str,
+    mp4: Path,
+    name: str,
+    style: str,
+    use_emojis: bool,
+    pop: str | None,
+    preset: str | None,
+    intensidad: str | None,
+    srt_selection,
+    srt_binding=None,
+) -> None:
+    """Worker de render con el SRT seleccionado como texto oficial (S36-C2A1).
+
+    El texto viene del SRT administrado; las words solo aportan timings desde el namespace
+    PRIVADO por filename exacto (nunca los `{stem}_words/groups` historicos). El preset CVE anima
+    SOLO los cues alineados; los `cue_fallback` quedan estaticos. La salida usa el naming `_srt`.
+    Revalida video (binding TOCTOU) y procedencia ANTES de FFmpeg; ante fallo, job error saneado,
+    sin ruta/traceback y SIN caer al transcript.
+    """
+    import srt_render  # noqa: PLC0415
+    import studio_srt_runtime as rt  # noqa: PLC0415  (lazy: la ruta transcript no lo importa)
+    import transcript_provenance as tp  # noqa: PLC0415
+    from srt_import import SrtError  # noqa: PLC0415
+
+    try:
+        update_job(jid, status="running", progress=8, message="Cargando seleccion SRT...")
+        rt.verify_runtime_integrity(srt_selection)  # revalida integridad al iniciar el worker
+        # El worker revalida el video EXACTO. Con binding: re-confina (resolve strict + relative_to
+        # el input root) y exige target/size/mtime del enlace -> bloquea retarget de symlink o
+        # reemplazo entre endpoint y worker. Sin binding (llamada directa): match nombre/stem/ext.
+        if srt_binding is not None:
+            rt.verify_selected_video_binding(srt_binding, mp4)
+        else:
+            rt.verify_selected_video_match(srt_selection, mp4)
+        # Namespace PRIVADO de timings por filename exacto (aislado de {stem}_words/groups).
+        arts = tp.resolve_srt_timing_artifacts(
+            transcripts_dir=TRANSCRIPTS,
+            video_stem=name,
+            video_filename=srt_selection.video_filename,
+        )
+        # TOCTOU: revalida que los timings pertenezcan a ESTE video (por si words cambio entre
+        # el endpoint y el worker). Mismatch/legacy -> error saneado, sin caer al transcript.
+        rt.verify_timing_provenance(
+            mp4, words_path=arts.words_path, expected_filename=srt_selection.video_filename
+        )
+
+        update_job(jid, progress=15, message="Leyendo video info...")
+        info = core.get_video_info(mp4)
+        w, h = info["width"], info["height"]
+        video_ms = int(round(info["duration"] * 1000)) or None
+
+        update_job(jid, progress=25, message="Preparando SRT (texto oficial)...")
+        prepared = rt.prepare_selected_srt_groups(
+            srt_selection,
+            words_path=arts.words_path,
+            video_duration_ms=video_ms,
+            alignment_sidecar_path=TRANSCRIPTS / f"{name}_srt_alignment.json",
+        )
+        groups = prepared.groups
+
+        plan, preset_msg = None, None
+        if preset:
+            import cve  # noqa: PLC0415
+
+            plan, preset_msg = cve.resolver_preset_seguro(preset, intensidad)
+        if plan:
+            update_job(
+                jid, progress=32, message=f"Aplicando preset {plan.preset} (solo cues alineados)..."
+            )
+            groups, plan, aviso = srt_render.apply_preset_to_srt_groups(
+                groups,
+                plan,
+                brain_path=TRANSCRIPTS / f"{name}.brain.json",
+                width=w,
+                height=h,
+                manual_keywords_path=TRANSCRIPTS / f"{name}_keywords.json",
+            )
+            preset_msg = preset_msg or aviso
+
+        style_cfg = plan.style_cfg if plan else get_style(style, pop)
+        variante = srt_render.variante_tag(plan, style, pop, None, intensidad, None)
+        ass_path = OUTPUT_DIR / f"{name}{variante}_srt.ass"
+        base = srt_render.nombre_base_srt(name, variante, use_emojis, False, None)
+        out_path = OUTPUT_DIR / f"{base}.mp4"
+
+        update_job(jid, progress=40, message="Generando subtitulos ASS...")
+        core.build_ass(groups, w, h, style_cfg, ass_path)
+
+        if use_emojis:
+            import assets_comfy as ac  # noqa: PLC0415
+
+            # Emojis SRT: groups del namespace PRIVADO (no el {stem}_groups.json historico, que
+            # podria pertenecer a otro archivo del mismo stem).
+            brain_path = TRANSCRIPTS / f"{name}.brain.json"
+            overlays = ac.resolver_overlays(arts.groups_path, brain_path)
+            update_job(
+                jid, progress=55, message=f"Quemando con FFmpeg + {len(overlays)} overlay(s)..."
+            )
+            elapsed = core.burn_video_with_emojis(mp4, ass_path, out_path, overlays, style_cfg)
+        else:
+            update_job(jid, progress=55, message="Quemando con FFmpeg...")
+            elapsed = core.burn_video(mp4, ass_path, out_path)
+
+        if plan:
+            import cve  # noqa: PLC0415
+
+            cve.escribir_sidecar_seleccion(groups, plan, out_path)
+
+        update_job(
+            jid,
+            status="done",
+            progress=100,
+            message=f"Listo en {elapsed:.1f}s",
+            result={
+                "output": out_path.name,
+                "elapsed": elapsed,
+                "preset_msg": preset_msg,
+                "srt": prepared.summary,
+            },
+        )
+    except rt.StudioSrtError as exc:
+        # Errores de seleccion/integridad/timings: mensaje ya saneado (sin ruta ni contenido).
+        update_job(jid, status="error", message=str(exc), error="srt")
+    except SrtError:
+        update_job(
+            jid, status="error", message="El SRT seleccionado no se pudo alinear.", error="srt"
+        )
+    except Exception:
+        update_job(
+            jid, status="error", message="No se pudo renderizar el SRT seleccionado.", error="srt"
+        )

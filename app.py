@@ -162,7 +162,13 @@ async def upload_video(file: UploadFile = File(...)):
 
 # ─── Transcripcion ────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/transcribe")
-def start_transcribe(name: str, lang: str = "es", model: str = "auto"):
+def start_transcribe(
+    name: str, lang: str = "es", model: str = "auto", caption_source: str = "transcript"
+):
+    if caption_source not in ("transcript", "srt"):
+        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
+    if caption_source == "srt":
+        return _start_transcribe_srt(name, lang, model)
     mp4 = INPUT_DIR / f"{name}.mp4"
     if not mp4.exists():
         raise HTTPException(404, f"Video {name}.mp4 no encontrado")
@@ -174,6 +180,43 @@ def start_transcribe(name: str, lang: str = "es", model: str = "auto"):
     jid = jobs.new_job(f"Transcribiendo {name}...")
     threading.Thread(
         target=jobs.run_transcribe, args=(jid, mp4, lang, model, name), daemon=True
+    ).start()
+    return {"job_id": jid}
+
+
+def _start_transcribe_srt(name: str, lang: str, model: str):
+    """Transcribe el video EXACTO asociado al SRT (por `manifest.video.filename`), de modo que
+    `{name}_words.json` quede ligado a ese video (procedencia). Sin selección -> 400; video
+    exacto ausente -> 409; storage corrupto -> 500. La ruta transcript histórica no cambia.
+    """
+    import studio_srt_manifest  # noqa: PLC0415
+    import studio_srt_runtime  # noqa: PLC0415
+    import transcript_provenance  # noqa: PLC0415
+
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(404, "Video no encontrado en input/.")
+    try:
+        selection = studio_srt_runtime.resolve_selected_srt(
+            name, storage_root=TRANSCRIPTS / "studio_srt", manifest_dir=TRANSCRIPTS
+        )
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    if selection is None:
+        raise HTTPException(400, "No hay un SRT seleccionado para este video.")
+    try:
+        binding = studio_srt_runtime.bind_selected_video(selection, input_dir=INPUT_DIR)
+    except studio_srt_runtime.StudioSrtSelectedVideoMissing:
+        raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    # Los timings SRT viven en un namespace privado por filename (NO pisan {stem}_words/groups).
+    key = transcript_provenance.srt_artifact_key(selection.video_filename)
+    jid = jobs.new_job(f"Transcribiendo {name} (SRT)...")
+    threading.Thread(
+        target=jobs.run_transcribe,
+        args=(jid, binding.path, lang, model, name),
+        kwargs={"srt_artifact_key": key, "selected_video_binding": binding},
+        daemon=True,
     ).start()
     return {"job_id": jid}
 
@@ -368,15 +411,20 @@ def start_render(
     intensidad: str | None = None,
     caption_qa: str | None = None,
     guion: str | None = None,
+    caption_source: str = "transcript",
 ):
+    if caption_source not in ("transcript", "srt"):
+        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
     if caption_qa and caption_qa not in ("alertas", "auto_seguro"):
         raise HTTPException(400, "caption_qa invalido. Opciones: alertas, auto_seguro")
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
-    if not mp4.exists():
-        raise HTTPException(404, f"Video {name}.mp4 no encontrado")
-    if not grp_path.exists():
-        raise HTTPException(400, "Transcribe el video antes de renderizar")
+    if caption_source == "transcript":
+        # La ruta transcript exige el mismo groups.json de siempre (contrato historico).
+        if not mp4.exists():
+            raise HTTPException(404, f"Video {name}.mp4 no encontrado")
+        if not grp_path.exists():
+            raise HTTPException(400, "Transcribe el video antes de renderizar")
     if style not in STYLES:
         raise HTTPException(400, f"Estilo invalido. Opciones: {', '.join(STYLES)}")
     if preset:
@@ -391,6 +439,18 @@ def start_render(
             raise
         except Exception:
             raise HTTPException(500, "Engine CVE no disponible; renderiza sin preset") from None
+    if caption_source == "srt":
+        return _start_render_srt(
+            name,
+            style,
+            pop,
+            preset,
+            intensidad,
+            use_emojis,
+            use_emphasis,
+            words_per_group,
+            caption_qa,
+        )
     # pop/intensidad invalidos son fail-safe (usan el default del estilo/preset).
     etiqueta = preset or style
     jid = jobs.new_job(f"Renderizando {name} en {etiqueta}...")
@@ -402,6 +462,102 @@ def start_render(
             "intensidad": intensidad,
             "qa_mode": caption_qa,
             "qa_guion": guion,
+        },
+        daemon=True,
+    ).start()
+    return {"job_id": jid}
+
+
+def _verificar_timings_srt(name: str, selection, binding) -> None:
+    """Valida que exista el words PRIVADO del video EXACTO y su procedencia. Traduce a HTTP.
+
+    Los timings SRT viven en un namespace por filename; NUNCA se usan los `{stem}_words/groups`
+    historicos. Falta el exacto -> 409 si ya hay transcript historico (retranscribir como SRT),
+    400 si no hay ningun timing. Procedencia de otro archivo/version/corrupta -> 409.
+    """
+    import studio_srt_runtime  # noqa: PLC0415
+    import transcript_provenance  # noqa: PLC0415
+
+    arts = transcript_provenance.resolve_srt_timing_artifacts(
+        transcripts_dir=TRANSCRIPTS, video_stem=name, video_filename=selection.video_filename
+    )
+    try:
+        studio_srt_runtime.verify_timing_provenance(
+            binding.path, words_path=arts.words_path, expected_filename=selection.video_filename
+        )
+    except studio_srt_runtime.StudioSrtTimingMissing:
+        if (TRANSCRIPTS / f"{name}_words.json").exists():
+            raise HTTPException(409, "Transcribe nuevamente el video asociado al SRT.") from None
+        raise HTTPException(400, "Transcribe el video antes de renderizar el SRT.") from None
+    except studio_srt_runtime.StudioSrtTimingSourceMismatch:
+        raise HTTPException(
+            409,
+            "Los timings no corresponden al video asociado al SRT. "
+            "Transcribe nuevamente el video asociado.",
+        ) from None
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+
+
+def _start_render_srt(
+    name: str,
+    style: str,
+    pop: str | None,
+    preset: str | None,
+    intensidad: str | None,
+    use_emojis: bool,
+    use_emphasis: bool,
+    words_per_group: int | None,
+    caption_qa: str | None,
+):
+    """Render de Studio con el SRT seleccionado como texto oficial (S36-C2A1, D38).
+
+    Opt-in explicito: exige una asociacion SRT activa (sin autodiscovery) y un transcript de
+    palabras (solo timings). Rechaza combinaciones incompatibles con 400. El video se resuelve
+    por el FILENAME EXACTO del manifiesto (`manifest.video.filename`), NUNCA por stem ni por
+    prioridad de extension: un `.mp4` y un `.mov` con el mismo stem no pueden cruzarse. Nunca
+    expone rutas ni cae al transcript. El worker recibe el objeto interno de seleccion.
+    """
+    import studio_srt_manifest  # noqa: PLC0415
+    import studio_srt_runtime  # noqa: PLC0415
+
+    if caption_qa is not None:
+        raise HTTPException(400, "Caption QA no esta disponible cuando el SRT es el texto oficial.")
+    if words_per_group is not None:
+        raise HTTPException(400, "words_per_group no aplica cuando el SRT define los cues.")
+    if use_emphasis:
+        raise HTTPException(400, "use_emphasis no esta disponible para SRT en S36-C2A1.")
+    # Confina el stem sin resolver por extension (la ruta SRT NO usa _resolver_video_input).
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(404, "Video no encontrado en input/.")
+    try:
+        selection = studio_srt_runtime.resolve_selected_srt(
+            name, storage_root=TRANSCRIPTS / "studio_srt", manifest_dir=TRANSCRIPTS
+        )
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    if selection is None:
+        raise HTTPException(400, "No hay un SRT seleccionado para este video.")
+    # Enlace fuerte al video EXACTO (root/target/stat) para revalidar TOCTOU en el worker.
+    try:
+        binding = studio_srt_runtime.bind_selected_video(selection, input_dir=INPUT_DIR)
+    except studio_srt_runtime.StudioSrtSelectedVideoMissing:
+        raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
+    except studio_srt.StudioSrtError:
+        raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    _verificar_timings_srt(name, selection, binding)
+    etiqueta = preset or style
+    jid = jobs.new_job(f"Renderizando {name} (SRT) en {etiqueta}...")
+    threading.Thread(
+        target=jobs.run_render,
+        args=(jid, binding.path, None, name, style, None),
+        kwargs={
+            "use_emojis": use_emojis,
+            "pop": pop,
+            "preset": preset,
+            "intensidad": intensidad,
+            "srt_selection": selection,
+            "srt_binding": binding,
         },
         daemon=True,
     ).start()
