@@ -175,11 +175,16 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str, densidad: str | None
 
 
 def resolve_preset(
-    nombre: str, intensidad: str | None = None, densidad: str | None = None
+    nombre: str,
+    intensidad: str | None = None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> RenderPlan:
     """Resuelve un preset built-in a RenderPlan. Nombre desconocido -> error accionable.
 
-    `intensidad`/`densidad` invalidas o None -> la default del preset (fail-safe por campo).
+    `intensidad`/`densidad`/`position`/`avoid_faces` invalidas o None -> el default del
+    preset (fail-safe por campo). position en {bottom,center,top}; avoid_faces bool.
     """
     key = (nombre or "").lower().strip()
     if key not in _PRESETS:
@@ -188,10 +193,21 @@ def resolve_preset(
     p = _PRESETS[key]
     inten = intensidad if intensidad in INTENSIDADES else p.get("intensidad", "clean")
     dens = densidad if densidad in ck.DENSIDADES else p.get("densidad")
-    return _plan_desde_dict(key, p, inten, dens)
+    plan = _plan_desde_dict(key, p, inten, dens)
+    if position in ("bottom", "center", "top"):
+        plan = replace(plan, position=position)
+    if isinstance(avoid_faces, bool):
+        plan = replace(plan, avoid_faces=avoid_faces)
+    return plan
 
 
-def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad: str | None = None):
+def resolver_preset_seguro(
+    preset: str | None,
+    intensidad: str | None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
+):
     """(plan, aviso) fail-safe: preset invalido o engine roto -> (None, aviso accionable).
 
     Fuente unica para CLI y Studio (regla #10): el llamador cae a captions clasicos.
@@ -199,7 +215,7 @@ def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad:
     if not preset:
         return None, None
     try:
-        return resolve_preset(preset, intensidad, densidad), None
+        return resolve_preset(preset, intensidad, densidad, position, avoid_faces), None
     except Exception as exc:
         aviso = f"Preset no resuelto ({exc}) - render con estilo clasico"
         print(f"[cve] {aviso}")

@@ -109,6 +109,9 @@ def run_render(
     qa_mode: str | None = None,
     qa_guion: str | None = None,
     *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
     srt_selection=None,
     srt_binding=None,
 ) -> None:
@@ -137,6 +140,9 @@ def run_render(
         intensidad,
         qa_mode,
         qa_guion,
+        densidad=densidad,
+        position=position,
+        avoid_faces=avoid_faces,
     )
 
 
@@ -154,6 +160,10 @@ def _run_render_transcript(
     intensidad: str | None = None,
     qa_mode: str | None = None,
     qa_guion: str | None = None,
+    *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> None:
     """Worker: genera ASS y quema el video. Con `preset` (CVE) manda el plan del
     engine: style/pop/use_emphasis se ignoran (mismo contrato que la CLI).
@@ -178,7 +188,9 @@ def _run_render_transcript(
             try:
                 import cve  # noqa: PLC0415
 
-                plan, preset_msg = cve.resolver_preset_seguro(preset, intensidad)
+                plan, preset_msg = cve.resolver_preset_seguro(
+                    preset, intensidad, densidad, position, avoid_faces
+                )
             except Exception as exc:  # import cve roto: captions clasicos
                 preset_msg = f"Preset no resuelto ({exc}) - render con estilo clasico"
 
@@ -194,7 +206,13 @@ def _run_render_transcript(
             # cve ya quedo importado al resolver el plan (plan no-None lo implica)
             update_job(jid, progress=25, message=f"Aplicando preset {plan.preset}...")
             brain = TRANSCRIPTS / f"{name}.brain.json"
-            groups, plan, aviso_brain = cve.aplicar_preset(groups, plan, brain, w, h)
+            manual_kw = TRANSCRIPTS / f"{name}_keywords.json"  # spans/center manuales (fail-open)
+            tray_csv = (
+                TRANSCRIPTS / f"trayectoria_{name}.csv"
+            )  # avoid_faces (fail-open si no existe)
+            groups, plan, aviso_brain = cve.aplicar_preset(
+                groups, plan, brain, w, h, manual_kw, tray_csv
+            )
             preset_msg = preset_msg or aviso_brain
 
         style_cfg = plan.style_cfg if plan else get_style(style, pop)
