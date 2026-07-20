@@ -203,10 +203,11 @@ def _detectar_trayectoria(
     src_w: int,
     ancla_x: float,
     detector_type: str = "yunet",
-) -> tuple[dict[int, float], dict[int, float]]:
+) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
     """Detecta center_x de la cara principal usando ancla estatica.
 
-    Devuelve (sparsa, sparsa_conf) donde sparsa_conf[frame_idx] = score.
+    Devuelve (sparsa, sparsa_conf, sparsa_cy) donde sparsa_conf[frame_idx] = score y
+    sparsa_cy[frame_idx] = center_y (px) de la MISMA cara asignada (F6 avoid_faces).
     Solo acepta detecciones dentro de GATE_ANCLA_PCT x src_w del ancla.
     """
     gate_ancla_w = rt.GATE_ANCLA_PCT * src_w
@@ -214,6 +215,7 @@ def _detectar_trayectoria(
     detector = _crear_detector(detector_type)
     sparsa: dict[int, float] = {}
     sparsa_conf: dict[int, float] = {}
+    sparsa_cy: dict[int, float] = {}
     n_det = n_sin = n_gated = 0
     try:
         for fi in range(total_frames):
@@ -233,6 +235,7 @@ def _detectar_trayectoria(
                 continue
             sparsa[fi] = new_x
             sparsa_conf[fi] = best["score"]
+            sparsa_cy[fi] = best["center_y"]
             n_det += 1
     finally:
         cap.release()
@@ -241,7 +244,7 @@ def _detectar_trayectoria(
         print(f"[reframe] {n_gated} detecciones fuera del ancla (>{gate_ancla_w:.0f}px)")
     if n_sin > n_det:
         print(f"[reframe] cara perdida en {n_sin}/{n_det + n_sin} detecciones, manteniendo ultima")
-    return sparsa, sparsa_conf
+    return sparsa, sparsa_conf, sparsa_cy
 
 
 def _asignar_detecciones_a_caras(
@@ -251,10 +254,13 @@ def _asignar_detecciones_a_caras(
     sparsa_conf: dict[int, dict[int, float]],
     fi: int,
     gate_ancla_w: float,
+    sparsa_cy: dict[int, dict[int, float]] | None = None,
 ) -> None:
     """Asigna detecciones a tracks por ancla estatica; exclusiva por frame (greedy).
 
-    Actualiza sparsa y sparsa_conf in-place.
+    Actualiza sparsa, sparsa_conf y (opcional) sparsa_cy in-place. Cuando se pasa
+    sparsa_cy, el center_y guardado proviene de la MISMA deteccion que aporto center_x
+    y score (F6 avoid_faces v2): dos caras no comparten deteccion en el mismo frame.
     """
     pares = []
     for di, det in enumerate(all_dets):
@@ -262,14 +268,16 @@ def _asignar_detecciones_a_caras(
         for cara in caras:
             dist = abs(cx - cara["center_x"])
             if dist <= gate_ancla_w:
-                pares.append((dist, cara["id"], di, cx, det["score"]))
+                pares.append((dist, cara["id"], di, cx, det["score"], det["center_y"]))
     asignados_cara: set[int] = set()
     asignados_det: set[int] = set()
-    for _dist, cara_id, di, cx, score in sorted(pares):
+    for _dist, cara_id, di, cx, score, cy in sorted(pares, key=lambda p: p[:5]):
         if cara_id in asignados_cara or di in asignados_det:
             continue
         sparsa[cara_id][fi] = cx
         sparsa_conf[cara_id][fi] = score
+        if sparsa_cy is not None:
+            sparsa_cy[cara_id][fi] = cy
         asignados_cara.add(cara_id)
         asignados_det.add(di)
 
@@ -280,18 +288,20 @@ def _detectar_trayectorias_multi(
     caras: list[dict],
     src_w: int,
     detector_type: str = "yunet",
-) -> tuple[dict[int, dict[int, float]], dict[int, dict[int, float]]]:
-    """Detecta center_x por cara cada DETECT_EVERY_N frames con ancla estatica.
+) -> tuple[dict[int, dict[int, float]], dict[int, dict[int, float]], dict[int, dict[int, float]]]:
+    """Detecta center_x/center_y por cara cada DETECT_EVERY_N frames con ancla estatica.
 
-    Devuelve (sparsa_multi, conf_multi) donde:
+    Devuelve (sparsa_multi, conf_multi, cy_multi) donde:
       sparsa_multi[cara_id][frame_idx] = center_x
       conf_multi[cara_id][frame_idx]   = score
+      cy_multi[cara_id][frame_idx]     = center_y (px) de la MISMA deteccion (F6 v2)
     """
     gate_ancla_w = rt.GATE_ANCLA_PCT * src_w
     cap = cv2.VideoCapture(str(video_path))
     detector = _crear_detector(detector_type)
     sparsa: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
     sparsa_conf: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
+    sparsa_cy: dict[int, dict[int, float]] = {c["id"]: {} for c in caras}
     try:
         for fi in range(total_frames):
             ret, frame = cap.read()
@@ -301,8 +311,10 @@ def _detectar_trayectorias_multi(
                 continue
             all_dets = rt.detectar_todas_caras_frame(frame, detector)
             if all_dets:
-                _asignar_detecciones_a_caras(all_dets, caras, sparsa, sparsa_conf, fi, gate_ancla_w)
+                _asignar_detecciones_a_caras(
+                    all_dets, caras, sparsa, sparsa_conf, fi, gate_ancla_w, sparsa_cy
+                )
     finally:
         cap.release()
         detector.close()
-    return sparsa, sparsa_conf
+    return sparsa, sparsa_conf, sparsa_cy

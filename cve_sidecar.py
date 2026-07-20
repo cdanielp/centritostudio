@@ -37,6 +37,13 @@ def construir_seleccion(groups: list[dict], plan) -> dict:
                     "fuente": _fuente_de_regla(regla),
                 }
             )
+    # Transparencia F6: posicion resuelta por grupo (avoid_faces / [center]); solo los
+    # grupos que difieren del default bottom. Saneado: sin rutas ni datos del detector.
+    posiciones = [
+        {"grupo": g_idx, "posicion": g["caption_pos"]}
+        for g_idx, g in enumerate(groups)
+        if g.get("caption_pos") and g["caption_pos"] != "bottom"
+    ]
     return {
         "preset": plan.preset,
         "densidad": plan.kw_densidad,
@@ -44,6 +51,7 @@ def construir_seleccion(groups: list[dict], plan) -> dict:
         "keywords": keywords,
         # Transparencia D22: palabras que el filtro anti-debil rechazo (brain stopwords/cortas).
         "descartadas": list(getattr(plan, "kw_descartadas", []) or []),
+        "posiciones": posiciones,
     }
 
 

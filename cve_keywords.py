@@ -72,6 +72,7 @@ CONTRASTES = frozenset({"pero", "aunque", "embargo"})  # "sin embargo" -> embarg
 
 # Marcas manuales v1 (§7). Extensible: agregar entrada = agregar marca.
 MARCAS_VALIDAS = frozenset({"strong", "big", "center"})
+_SPAN_MARKS = frozenset({"strong", "big"})  # spans de enfasis; center es posicional
 _MARCA_RE = re.compile(r"\[(/?[a-zA-Z_]+)\]")
 
 # Fit de escala (§5.3): estimacion de ancho de texto sin rasterizar
@@ -278,6 +279,26 @@ def elegir_keywords(
     return por_grupo
 
 
+def elegir_manuales(
+    candidatos: list[tuple[int, int, int, str]],
+) -> dict[int, list[tuple[int, str]]]:
+    """Todas las palabras manuales (SCORE_MANUAL) por grupo, deduplicadas y ordenadas.
+
+    Los spans/frases manuales estan EXENTOS de 1-por-grupo y de densidad (#34): cada
+    palabra marcada sobrevive. Dedup por (grupo, palabra); en conflicto de regla gana
+    'manual_big' (mas fuerte). Determinista: indices ascendentes. Devuelve
+    {g_idx: [(w_idx, regla), ...]}.
+    """
+    por_grupo: dict[int, dict[int, str]] = {}
+    for g_idx, w_idx, score, regla in candidatos:
+        if score < SCORE_MANUAL:
+            continue
+        reglas = por_grupo.setdefault(g_idx, {})
+        if w_idx not in reglas or regla == "manual_big":
+            reglas[w_idx] = regla
+    return {g: sorted(r.items()) for g, r in por_grupo.items()}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Marcado manual v1 por sidecar (§7, D22 BLOQUE 3): {stem}_keywords.json
 # ─────────────────────────────────────────────────────────────────────────────
@@ -338,7 +359,10 @@ def candidatos_manuales(groups: list[dict], entries: list[dict] | None) -> list:
                 norms = [_normalizar(w.get("text", "")) for w in words]
                 for i in range(len(norms) - len(secuencia) + 1):
                     if norms[i : i + len(secuencia)] == secuencia:
-                        result.append((g_idx, i, SCORE_MANUAL, regla))  # 1er token del match
+                        # Span #34: la frase marca CADA palabra (no solo el ancla);
+                        # una `palabra` (secuencia de 1) sigue marcando esa sola palabra.
+                        for off in range(len(secuencia)):
+                            result.append((g_idx, i + off, SCORE_MANUAL, regla))
         except (ValueError, TypeError, KeyError) as e:
             print(f"[cve] entrada manual ignorada ({e}) - render no afectado")
     return result
@@ -357,40 +381,115 @@ def limpiar_token(token: str) -> str:
     return _MARCA_RE.sub("", token)
 
 
-def parsear_marcas(texto: str) -> tuple[str, dict[int, str], bool]:
-    """Extrae marcas v1 del texto de un grupo. Marca invalida = se elimina, jamas rompe.
+def _tokenizar_marcas(token: str) -> list[tuple[str, str]]:
+    """Descompone un token en eventos ordenados: ('open'|'close', nombre) | ('word', texto).
 
-    Devuelve (texto_limpio, {indice_palabra: marca}, center). La marca aplica a la
-    PALABRA SIGUIENTE inmediata; una marca al final del texto (huerfana) se descarta.
+    Reconoce marcas al inicio, al final o incrustadas ('todo[/strong]', '[big]diez')
+    para que un span cierre aunque el tag venga pegado a la ultima palabra del cue.
+    """
+    eventos: list[tuple[str, str]] = []
+    pos = 0
+    for m in _MARCA_RE.finditer(token):
+        if m.start() > pos:
+            eventos.append(("word", token[pos : m.start()]))
+        crudo = m.group(1)
+        eventos.append(("close" if crudo.startswith("/") else "open", crudo.lstrip("/").lower()))
+        pos = m.end()
+    if pos < len(token):
+        eventos.append(("word", token[pos:]))
+    return eventos
+
+
+def _cerrar_span(
+    abiertos: list[tuple[str, int]], nombre: str, fin: int, spans: list[tuple[str, int, int]]
+) -> None:
+    """Empareja el span abierto mas reciente con ese nombre (LIFO). Sin apertura -> se ignora."""
+    for k in range(len(abiertos) - 1, -1, -1):
+        if abiertos[k][0] == nombre:
+            _n, ini = abiertos.pop(k)
+            spans.append((nombre, ini, fin))
+            return
+
+
+def _marcas_por_palabra(spans: list[tuple[str, int, int]], n: int) -> dict[int, str]:
+    """Resuelve la marca de cada palabra: gana el span mas corto/interno; empate -> big."""
+    marcas: dict[int, str] = {}
+    for idx in range(n):
+        cubren = [sp for sp in spans if sp[1] <= idx < sp[2]]
+        if cubren:
+            marcas[idx] = min(cubren, key=lambda sp: (sp[2] - sp[1], 0 if sp[0] == "big" else 1))[0]
+    return marcas
+
+
+def _es_solo_puntuacion(s: str) -> bool:
+    """True si s no tiene ningun caracter alfanumerico (coma, punto, comillas, ¿¡?!…)."""
+    return bool(s) and not any(c.isalnum() for c in s)
+
+
+def _procesar_token(
+    eventos: list[tuple[str, str]],
+    palabras: list[str],
+    abiertos: list[tuple[str, int]],
+    spans: list[tuple[str, int, int]],
+) -> bool:
+    """Procesa un token (= una palabra visible como maximo) y aplica sus marcas.
+
+    Los segmentos de texto del token se CONCATENAN en una sola palabra: la puntuacion
+    pegada a un cierre (`costo[/strong].`) queda DENTRO de la palabra (`costo.`), no como
+    token extra — asi el indice y el conteo de palabras cuadran con las words del grupo.
+    Si la marca viene separada por espacio (`[/strong] .` o `[/big] ,`) el token queda como
+    SOLO puntuacion: se adjunta a la palabra previa (no crea palabra extra ni desalinea el
+    conteo con group["words"]). Devuelve True si vio una apertura [center]. Muta in-place.
+    """
+    palabra = "".join(v for t, v in eventos if t == "word")
+    # Puntuacion suelta tras un cierre/apertura separado por espacio -> a la palabra previa.
+    if palabra and _es_solo_puntuacion(palabra) and palabras:
+        palabras[-1] += palabra
+        palabra = ""  # se trata como token de solo-marcas para el indexado
+    idx = len(palabras)
+    if palabra:
+        palabras.append(palabra)
+    # Palabra presente: apertura desde esta palabra, cierre inclusivo de esta palabra.
+    # Token solo-marcas: apertura a la palabra SIGUIENTE, cierre hasta la ultima (compat v1).
+    ini = idx
+    fin = idx + 1 if palabra else idx
+    center = False
+    for tipo, val in eventos:
+        if tipo == "open" and val == "center":
+            center = True
+        elif tipo == "open" and val in _SPAN_MARKS:
+            abiertos.append((val, ini))
+        elif tipo == "close" and val in _SPAN_MARKS:
+            _cerrar_span(abiertos, val, fin, spans)
+    return center
+
+
+def parsear_marcas(texto: str) -> tuple[str, dict[int, str], bool]:
+    """Extrae marcas v1/spans del texto de un grupo. Marca invalida = se elimina, jamas rompe.
+
+    Devuelve (texto_limpio, {indice_palabra: marca}, center). Un span cerrado
+    `[strong]a b c[/strong]` marca CADA palabra (#34); una apertura sin cierre marca solo
+    la palabra siguiente (compat v1). La puntuacion pegada se conserva en la palabra y NO
+    cuenta como palabra extra. Solapamientos: gana el span mas corto/interno (empate ->
+    big). `[center]` es flag de grupo (posicional); su cierre se ignora.
     """
     if "[" not in texto:
         return texto, {}, False
 
     center = False
-    marcas: dict[int, str] = {}
-    palabras_limpias: list[str] = []
-    pendiente: str | None = None
+    palabras: list[str] = []
+    abiertos: list[tuple[str, int]] = []  # (nombre, indice de la palabra inicial)
+    spans: list[tuple[str, int, int]] = []  # (nombre, inicio, fin exclusivo)
 
     for token in texto.split():
-        resto = token
-        while True:
-            m = _MARCA_RE.match(resto)
-            if not m:
-                break
-            nombre = m.group(1).lstrip("/").lower()
-            if nombre == "center":
-                center = True
-            elif nombre in MARCAS_VALIDAS and not m.group(1).startswith("/"):
-                pendiente = nombre
-            resto = resto[m.end() :]  # marca (valida o no) se consume del texto
-        resto = _MARCA_RE.sub("", resto)  # marcas incrustadas/de cierre: fuera
-        if resto:
-            if pendiente:
-                marcas[len(palabras_limpias)] = pendiente
-                pendiente = None
-            palabras_limpias.append(resto)
+        if _procesar_token(_tokenizar_marcas(token), palabras, abiertos, spans):
+            center = True
 
-    return " ".join(palabras_limpias), marcas, center
+    n = len(palabras)
+    for nombre, ini in abiertos:  # apertura sin cierre -> next-word (compat v1)
+        if ini < n:
+            spans.append((nombre, ini, ini + 1))
+    return " ".join(palabras), _marcas_por_palabra(spans, n), center
 
 
 # ─────────────────────────────────────────────────────────────────────────────

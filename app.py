@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 import core
 import jobs
 import studio_auto
+import studio_keywords
 import studio_packages
 import studio_srt
 import studio_srt_routes
@@ -279,6 +280,29 @@ def save_brain(name: str, body: list = Body(...)):
     return {"saved": len(body)}
 
 
+@app.get("/api/videos/{name}/keywords")
+def get_keywords(name: str):
+    """Marcado manual guardado (spans/keywords) para prellenar la UI. Saneado, sin rutas."""
+    import studio_srt_manifest  # noqa: PLC0415
+
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(400, "Nombre de video invalido")
+    entradas = studio_keywords.read_entries(TRANSCRIPTS / f"{name}_keywords.json")
+    return {"keywords": entradas}
+
+
+@app.post("/api/videos/{name}/keywords")
+def save_keywords(name: str, body: dict = Body(...)):
+    """Guarda el sidecar {stem}_keywords.json desde la UI (validado/saneado, IO atomico)."""
+    import studio_srt_manifest  # noqa: PLC0415
+
+    if not studio_srt_manifest.is_safe_basename(name):
+        raise HTTPException(400, "Nombre de video invalido")
+    entradas = studio_keywords.sanitize_entries(body)
+    studio_keywords.write_entries(TRANSCRIPTS / f"{name}_keywords.json", entradas)
+    return {"guardadas": len(entradas)}
+
+
 # ─── Depurador ────────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/depurar")
 def start_depurar(name: str, mode: str = "seguro"):
@@ -399,6 +423,20 @@ def start_reframe(
 
 
 # ─── Render ───────────────────────────────────────────────────────────────────
+def _validar_params_render(
+    caption_source: str, caption_qa: str | None, densidad: str | None, position: str | None
+) -> None:
+    """Valida los enums del render (allowlists). Invalido -> HTTPException 400."""
+    if caption_source not in ("transcript", "srt"):
+        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
+    if caption_qa and caption_qa not in ("alertas", "auto_seguro"):
+        raise HTTPException(400, "caption_qa invalido. Opciones: alertas, auto_seguro")
+    if densidad and densidad not in ("baja", "media", "alta"):
+        raise HTTPException(400, "densidad invalida. Opciones: baja, media, alta")
+    if position and position not in ("bottom", "center", "top"):
+        raise HTTPException(400, "position invalida. Opciones: bottom, center, top")
+
+
 @app.post("/api/videos/{name}/render")
 def start_render(
     name: str,
@@ -409,14 +447,14 @@ def start_render(
     pop: str | None = None,
     preset: str | None = None,
     intensidad: str | None = None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
     caption_qa: str | None = None,
     guion: str | None = None,
     caption_source: str = "transcript",
 ):
-    if caption_source not in ("transcript", "srt"):
-        raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
-    if caption_qa and caption_qa not in ("alertas", "auto_seguro"):
-        raise HTTPException(400, "caption_qa invalido. Opciones: alertas, auto_seguro")
+    _validar_params_render(caption_source, caption_qa, densidad, position)
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if caption_source == "transcript":
@@ -460,6 +498,9 @@ def start_render(
         kwargs={
             "preset": preset,
             "intensidad": intensidad,
+            "densidad": densidad,
+            "position": position,
+            "avoid_faces": avoid_faces,
             "qa_mode": caption_qa,
             "qa_guion": guion,
         },

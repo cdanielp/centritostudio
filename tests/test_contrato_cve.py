@@ -193,6 +193,31 @@ def test_info_presets_contrato():
     assert infos["clean_podcast"]["usa_brain"] is False
     assert infos["karaoke_highlight"]["usa_keywords"] is False
     assert infos["keyword_punch"]["intensidad_default"] == "clean"  # calibracion D21
+    # BLOQUEO 4: defaults reales del preset para inicializar los controles de la UI
+    for i in infos.values():
+        assert i["position_default"] in ("bottom", "center", "top")
+        assert isinstance(i["avoid_faces_default"], bool)
+    # los built-ins son bottom + avoid_faces True por diseno (D40)
+    assert infos["clean_podcast"]["position_default"] == "bottom"
+    assert infos["clean_podcast"]["avoid_faces_default"] is True
+
+
+def test_info_presets_expone_defaults_de_preset_custom(monkeypatch):
+    import cve_presets
+    import styles
+
+    monkeypatch.setattr(
+        cve,
+        "_PRESETS",
+        cve_presets.construir_presets(
+            cve._PRESETS_BUILTIN,
+            {"mi_top": {"base": "clean_podcast", "posicion": "top", "avoid_faces": False}},
+            set(styles.STYLES),
+        ),
+    )
+    infos = {i["id"]: i for i in cve.info_presets()}
+    assert infos["mi_top"]["position_default"] == "top"
+    assert infos["mi_top"]["avoid_faces_default"] is False
 
 
 def test_api_presets_shape():
@@ -509,9 +534,13 @@ def test_candidatos_manuales_palabra_exacta():
 
 
 def test_candidatos_manuales_frase_corta():
+    # Span #34 (F6): la frase marca CADA palabra, no solo el ancla (ver test_cve_spans.py)
     grupos = [_grupo(["esto", "sin", "costo", "extra"], 0)]
     cands = ck.candidatos_manuales(grupos, [{"frase": "sin costo"}])
-    assert cands == [(0, 1, ck.SCORE_MANUAL, "manual")]  # 1er token del match
+    assert cands == [
+        (0, 1, ck.SCORE_MANUAL, "manual"),
+        (0, 2, ck.SCORE_MANUAL, "manual"),
+    ]
 
 
 def test_candidatos_manuales_intensidad_big():

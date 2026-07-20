@@ -47,14 +47,21 @@ def _rutas_render(
     intensidad: str | None,
     use_emphasis: bool,
     use_emojis: bool,
+    *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> tuple[Path, Path]:
-    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes)."""
+    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes).
+
+    Toda dimension CVE que cambia la salida (densidad/position/avoid_faces) entra al tag
+    via cve.tag_variante (fuente unica, misma que la CLI) para que variantes distintas no
+    se sobreescriban entre si (MP4/ASS/sidecar). Defaults -> naming historico.
+    """
     if plan:
         import cve  # noqa: PLC0415
 
-        # Sin densidad: el Studio aun no la expone; al exponerla, pasarla aqui
-        # (cve.tag_variante ya la acepta) para que variantes no se pisen.
-        base_tag = cve.tag_variante(plan.preset, intensidad)
+        base_tag = cve.tag_variante(plan.preset, intensidad, densidad, position, avoid_faces)
     else:
         base_tag = f"_{style}" + (f"_{pop}" if pop else "")
     suffix = base_tag
@@ -109,6 +116,9 @@ def run_render(
     qa_mode: str | None = None,
     qa_guion: str | None = None,
     *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
     srt_selection=None,
     srt_binding=None,
 ) -> None:
@@ -137,6 +147,9 @@ def run_render(
         intensidad,
         qa_mode,
         qa_guion,
+        densidad=densidad,
+        position=position,
+        avoid_faces=avoid_faces,
     )
 
 
@@ -154,6 +167,10 @@ def _run_render_transcript(
     intensidad: str | None = None,
     qa_mode: str | None = None,
     qa_guion: str | None = None,
+    *,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> None:
     """Worker: genera ASS y quema el video. Con `preset` (CVE) manda el plan del
     engine: style/pop/use_emphasis se ignoran (mismo contrato que la CLI).
@@ -178,7 +195,9 @@ def _run_render_transcript(
             try:
                 import cve  # noqa: PLC0415
 
-                plan, preset_msg = cve.resolver_preset_seguro(preset, intensidad)
+                plan, preset_msg = cve.resolver_preset_seguro(
+                    preset, intensidad, densidad, position, avoid_faces
+                )
             except Exception as exc:  # import cve roto: captions clasicos
                 preset_msg = f"Preset no resuelto ({exc}) - render con estilo clasico"
 
@@ -193,13 +212,30 @@ def _run_render_transcript(
         if plan:
             # cve ya quedo importado al resolver el plan (plan no-None lo implica)
             update_job(jid, progress=25, message=f"Aplicando preset {plan.preset}...")
+            import tray_resolve  # noqa: PLC0415
+
             brain = TRANSCRIPTS / f"{name}.brain.json"
-            groups, plan, aviso_brain = cve.aplicar_preset(groups, plan, brain, w, h)
+            manual_kw = TRANSCRIPTS / f"{name}_keywords.json"  # spans/center manuales (fail-open)
+            # avoid_faces: trayectoria del reframe (helper unico, mismo que la CLI). Prioriza
+            # el CSV junto al MP4 reframado; cae al legacy en transcripts/. Fail-open si falta.
+            tray_csv = tray_resolve.resolver_tray_csv(mp4, TRANSCRIPTS, name)
+            groups, plan, aviso_brain = cve.aplicar_preset(
+                groups, plan, brain, w, h, manual_kw, tray_csv
+            )
             preset_msg = preset_msg or aviso_brain
 
         style_cfg = plan.style_cfg if plan else get_style(style, pop)
         ass_path, out_path = _rutas_render(
-            name, plan, style, pop, intensidad, use_emphasis, use_emojis
+            name,
+            plan,
+            style,
+            pop,
+            intensidad,
+            use_emphasis,
+            use_emojis,
+            densidad=densidad,
+            position=position,
+            avoid_faces=avoid_faces,
         )
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")

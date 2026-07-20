@@ -123,7 +123,16 @@ def test_default_es_transcript(api):
         None,
     )
     assert "srt_selection" not in t.kwargs
-    assert set(t.kwargs) == {"preset", "intensidad", "qa_mode", "qa_guion"}
+    # F6 (PASO F): controles CVE aditivos; siguen sin srt_selection.
+    assert set(t.kwargs) == {
+        "preset",
+        "intensidad",
+        "densidad",
+        "position",
+        "avoid_faces",
+        "qa_mode",
+        "qa_guion",
+    }
 
 
 def test_transcript_no_consulta_seleccion_srt(api, monkeypatch):

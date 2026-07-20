@@ -1553,3 +1553,68 @@ atomico (tmp + `os.replace`) igual que el manifiesto. Se sigue difiriendo el end
 `tests/test_auto_srt_partial_resume.py` (rojos sin el fix) + contrato UI; smoke E2E FFmpeg real
 reescrito para el resume REAL (sin borrar `paquete.json`, con contador de burns y hashes/mtimes de
 los clips done). Suite completa verde.
+
+---
+
+## D40 — F6 esencial: phrase spans, avoid_faces, [center], cve_presets.json y controles CVE
+
+**Contexto.** Cierre de la deuda F6 imprescindible antes de hardening/HyperFrames
+(rama `feat/f6-v1-essential`). Contratos pre-firmados: #34 (spans), prioridad de posición,
+DISENO_CVE §6 (cve_presets.json). Sin duplicar motores ni detectores.
+
+**Decisiones.**
+1. **Phrase spans (#34).** Un span cerrado `[strong]a b c[/strong]` / `[big]...[/big]` marca
+   CADA palabra del span; los manuales quedan exentos de 1-por-grupo y de densidad (manual gana).
+   Compatibilidad con la marca de una palabra (apertura sin cierre = next-word). Solapamientos
+   deterministas (span más corto/interno gana; empate → big). El sidecar `frase` también marca
+   cada palabra (evolución consciente del contrato: el test viejo de "1er token" se actualizó).
+   Ninguna marca visible en el ASS (voto #34); nunca crash.
+2. **avoid_faces ON por diseño (explícito).** Los 4 built-ins declaran `avoid_faces: True`
+   explícito (antes era el default implícito). La UI de Studio también lo expone encendido.
+   Reutiliza `trayectoria_{stem}.csv` del reframe (presencia `conf_asignada` + vertical
+   `face_y_asignada`, ver punto 3). Prioridad: **marca manual [center] → posición explícita/preset
+   → avoid_faces → default**. La ruta histórica bottom sin colisión queda byte-idéntica.
+3. **`face_y_asignada` es parte del CSV v2 (avoid_faces vertical CONECTADO, ya NO inerte).**
+   El reframe REAL exporta `face_y_asignada` (fracción 0..1) del centro vertical de la cara YA
+   asignada por frame — **reutiliza la misma detección** que `conf_asignada` (mismo `best` del
+   detector), **sin agregar detector ni una segunda pasada**. Plumbing: `_seg_single`/`_seg_multi`
+   (escenas, ruta default) y `_detectar_trayectoria` (ema single) capturan `best["center_y"]` →
+   `sparsa_cy` → `calcular_crops_escenas`/`_calcular_crops`/`_calcular_crop_secuencia` →
+   `reframe_clip` → `_exportar_trayectoria_csv` (normaliza con `src_h`, clampa 0..1, escribe en los
+   MISMOS frames que `conf_asignada`, vacío sin cara viva). **CSV legacy sin la columna sigue
+   soportado** (la columna se omite si no hay `sparsa_cy`; `zona_cara_en_rango` es fail-open). La
+   ruta multi-cara por turnos v1 aún emite la columna vacía (fail-open; mejora futura no bloqueante).
+   Flujo real de extremo a extremo: reframe → `trayectoria_{stem}.csv` (`face_y_asignada`) →
+   `zona_cara_en_rango` → `resolver_posicion_captions` → `caption_pos` → `build_ass` (`\an8`/`\an5`/
+   `\an2`). Criterios verificados: cara abajo+base bottom → arriba; cara arriba+base top → abajo;
+   cara centro+base center → alterna; sin cara → base intacta; detector fallido/CSV legacy →
+   fail-open; sin saltos dentro del grupo; safe areas respetadas. Tests de PRODUCCIÓN REAL en
+   `tests/test_reframe_face_y.py` (productor `_seg_single` + serializador `_exportar_trayectoria_csv`
+   + consumo `cve`), no sólo un CSV fabricado.
+4. **Marca [center].** `[center]` fija `caption_pos="center"` en el render real con prioridad
+   **marca manual → preset → avoid_faces → default**. `[center]`/`[/center]` nunca visibles;
+   sólo centra su grupo; compatible con phrase spans.
+5. **cve_presets.json (DISENO_CVE §6).** Loader opcional fail-safe por-campo: ausente/roto/no-dict
+   → built-ins intactos; allowlist explícito (intensidad/posicion/keywords/densidad/glow/
+   avoid_faces/overlays/style) con validadores de tipo/rango; campo desconocido se ignora (sin
+   ejecución arbitraria, sin rutas); preset nuevo sin `base` válido hereda de clean_podcast; `style`
+   como nombre existente o dict de overrides validado con `styles.filtrar_overrides_validos`.
+6. **Controles CVE mínimos en Studio.** tab-render gana densidad/posición/avoid_faces + textarea de
+   palabras/frases a destacar (sidecar `{stem}_keywords.json` saneado, IO atómico). Gated por preset
+   y ruta transcript; ocultos y NO enviados con SRT (respeta las incompatibilidades ya definidas).
+   Sin exponer rutas/JSON/tracebacks; escritorio + móvil.
+
+**Verificación.** +~135 tests nuevos (spans/puntuación/naming/avoid_faces/center/presets/
+controles backend+UI/face_y producción real); suite 1838 passed, 3 skipped (preexistentes);
+ruff+format+check.bat verdes; E2E FFmpeg real (6 demos 1080x1920 30fps con trayectoria del
+serializador real) + capturas de controles verificadas visualmente. Sin dependencias nuevas
+(sólo stdlib). PR abierto, NO mergeado: pendiente veredicto visual de K.
+
+**Addendum (correcciones PR #23).** Dos P2 de revisión resueltos: (a) **puntuación en spans** —
+un cierre pegado a puntuación (`costo[/strong].`) ya NO descarta la marca: `_procesar_token`
+concatena los segmentos de un token en UNA palabra (la puntuación queda dentro), índices reales;
+(b) **naming sin colisiones** — `tag_variante` gana `position`/`avoid_faces` (allowlist, tokens
+compactos, defaults = naming histórico) y `_rutas_render`/`run_render` los threadean: densidad/
+position/avoid_faces distintos ya no sobreescriben MP4/ASS/sidecar; helper único con la CLI.
+Y la **deuda del punto 3 quedó CERRADA**: `face_y_asignada` es parte del CSV v2 producido por el
+reframe real (ver arriba); avoid_faces vertical top/bottom está conectado de extremo a extremo.

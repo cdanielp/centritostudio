@@ -253,13 +253,24 @@ _FIELD_VALIDATORS = {
 }
 
 
-def _merge_style(base: StyleConfig, overrides: dict) -> StyleConfig:
-    """Aplica overrides válidos CAMPO POR CAMPO sobre base. Inválidos/ausentes -> base."""
-    kwargs = {
+def filtrar_overrides_validos(overrides: dict) -> dict:
+    """Solo los campos de StyleConfig presentes y validos (allowlist + validador de tipo/rango).
+
+    Fuente unica reutilizada por styles.json (marca/estilos) y cve_presets.json (§6): nada
+    fuera de _FIELD_VALIDATORS se copia -> sin ejecucion arbitraria ni claves inesperadas.
+    """
+    if not isinstance(overrides, dict):
+        return {}
+    return {
         field: overrides[field]
         for field, validator in _FIELD_VALIDATORS.items()
         if field in overrides and validator(overrides[field])
     }
+
+
+def _merge_style(base: StyleConfig, overrides: dict) -> StyleConfig:
+    """Aplica overrides válidos CAMPO POR CAMPO sobre base. Inválidos/ausentes -> base."""
+    kwargs = filtrar_overrides_validos(overrides)
     return replace(base, **kwargs) if kwargs else base
 
 

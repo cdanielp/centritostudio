@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cve_keywords as ck
+import cve_presets
+import styles
 from core_ass import _scaled_fontsize  # fuente unica de la formula de fontsize (D14)
 
 # Safe zones 9:16 (§5.1) — fuente unica en core_overlays (S31); re-export para
@@ -60,7 +62,7 @@ class RenderPlan:
 
 
 # Presets built-in v1 (§1). style = nombre de estilo existente; el resto son modos.
-_PRESETS: dict[str, dict] = {
+_PRESETS_BUILTIN: dict[str, dict] = {
     "clean_podcast": {
         "style": "clean",
         "intensidad": "clean",
@@ -68,6 +70,9 @@ _PRESETS: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
     },
     "viral_bounce": {
@@ -77,6 +82,9 @@ _PRESETS: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
     },
     "keyword_punch": {
@@ -89,6 +97,9 @@ _PRESETS: dict[str, dict] = {
         "glow": True,  # glow aprox sobre el keyword (solo enciende en viral, §6.1)
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": True},  # recomendacion; deuda #20 la vota K
     },
     "karaoke_highlight": {
@@ -98,12 +109,26 @@ _PRESETS: dict[str, dict] = {
         "glow": False,
         "overlays": "off",
         "position": "bottom",
+        # F6: avoid_faces ON por diseño (explicito, no implicito). Hoy solo demota una
+        # posicion CENTER sobre cara presente; los presets bottom no se mueven (ver D40).
+        "avoid_faces": True,
         "video_fx": {"punch_in": False},
         # Karaoke moderno: dichas quedan marcadas (cian, = relleno). Parametrizable:
         # base = primary_color del estilo, activo = highlight_color, pasado = este campo.
         "past_color": "&H00FFFF00",
     },
 }
+
+# Registro efectivo = built-ins + cve_presets.json (opcional, raiz). Fail-safe total:
+# ausente/roto/campo invalido -> built-ins intactos (DISENO_CVE §6). Se resuelve una vez.
+_CVE_PRESETS_JSON = Path(__file__).resolve().parent / "cve_presets.json"
+try:
+    _PRESETS: dict[str, dict] = cve_presets.construir_presets(
+        _PRESETS_BUILTIN, cve_presets.cargar(_CVE_PRESETS_JSON), set(styles.STYLES)
+    )
+except Exception as _e:  # jamas romper el import por un preset de usuario
+    print(f"[cve] cve_presets.json no aplicado ({_e}) - built-ins intactos")
+    _PRESETS = dict(_PRESETS_BUILTIN)
 
 
 def list_presets() -> list[str]:
@@ -125,6 +150,10 @@ def info_presets() -> list[dict]:
                 "intensidad_default": p.get("intensidad", "clean"),
                 "usa_keywords": kw != "off",
                 "usa_brain": kw in ("brain", "auto+brain"),
+                # F6 (BLOQUEO 4): defaults reales del preset para que la UI inicialice los
+                # controles y no sobrescriba en silencio un preset personalizado.
+                "position_default": str(p.get("position", "bottom")),
+                "avoid_faces_default": bool(p.get("avoid_faces", True)),
             }
         )
     return result
@@ -134,6 +163,10 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str, densidad: str | None
     """Construye el RenderPlan aplicando la matriz de intensidades (§6.1)."""
     glow = bool(p.get("glow", False)) and intensidad == "viral"
     style_cfg = get_style(p.get("style", "hormozi"))
+    # cve_presets.json (§6): overrides de StyleConfig ya validados campo por campo.
+    overrides = p.get("style_overrides")
+    if isinstance(overrides, dict) and overrides:
+        style_cfg = replace(style_cfg, **styles.filtrar_overrides_validos(overrides))
     if intensidad == "minimal":
         style_cfg = replace(style_cfg, pop_scale=1.0, overshoot=False)
     if glow != getattr(style_cfg, "kw_glow", False):
@@ -158,11 +191,16 @@ def _plan_desde_dict(nombre: str, p: dict, intensidad: str, densidad: str | None
 
 
 def resolve_preset(
-    nombre: str, intensidad: str | None = None, densidad: str | None = None
+    nombre: str,
+    intensidad: str | None = None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
 ) -> RenderPlan:
     """Resuelve un preset built-in a RenderPlan. Nombre desconocido -> error accionable.
 
-    `intensidad`/`densidad` invalidas o None -> la default del preset (fail-safe por campo).
+    `intensidad`/`densidad`/`position`/`avoid_faces` invalidas o None -> el default del
+    preset (fail-safe por campo). position en {bottom,center,top}; avoid_faces bool.
     """
     key = (nombre or "").lower().strip()
     if key not in _PRESETS:
@@ -171,10 +209,21 @@ def resolve_preset(
     p = _PRESETS[key]
     inten = intensidad if intensidad in INTENSIDADES else p.get("intensidad", "clean")
     dens = densidad if densidad in ck.DENSIDADES else p.get("densidad")
-    return _plan_desde_dict(key, p, inten, dens)
+    plan = _plan_desde_dict(key, p, inten, dens)
+    if position in ("bottom", "center", "top"):
+        plan = replace(plan, position=position)
+    if isinstance(avoid_faces, bool):
+        plan = replace(plan, avoid_faces=avoid_faces)
+    return plan
 
 
-def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad: str | None = None):
+def resolver_preset_seguro(
+    preset: str | None,
+    intensidad: str | None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
+):
     """(plan, aviso) fail-safe: preset invalido o engine roto -> (None, aviso accionable).
 
     Fuente unica para CLI y Studio (regla #10): el llamador cae a captions clasicos.
@@ -182,7 +231,7 @@ def resolver_preset_seguro(preset: str | None, intensidad: str | None, densidad:
     if not preset:
         return None, None
     try:
-        return resolve_preset(preset, intensidad, densidad), None
+        return resolve_preset(preset, intensidad, densidad, position, avoid_faces), None
     except Exception as exc:
         aviso = f"Preset no resuelto ({exc}) - render con estilo clasico"
         print(f"[cve] {aviso}")
@@ -217,12 +266,15 @@ def aplicar_preset(
     video_w: int,
     video_h: int,
     manual_kw_path: Path | None = None,
+    tray_csv_path: Path | None = None,
 ) -> tuple[list[dict], RenderPlan, str | None]:
-    """Ruta completa del preset: brain fail-open + engine + ajuste de plan a los grupos.
+    """Ruta completa del preset: brain fail-open + engine + posicion + ajuste de plan.
 
     Fuente unica para CLI y Studio. Devuelve (groups, plan, aviso); el aviso (regla #16)
     dice cuando el preset usa brain y no hay brain.json — el consumidor ofrece el fix.
     `manual_kw_path` = sidecar {stem}_keywords.json opcional (BLOQUE 3, fail-open).
+    `tray_csv_path` = trayectoria_{stem}.csv del reframe para avoid_faces (fail-open):
+    ausente/sin senal -> posicion del preset intacta (bottom = ruta historica).
     """
     brain_data = None
     aviso = None
@@ -236,15 +288,41 @@ def aplicar_preset(
         aviso = "Sin brain.json: el preset rinde sin keywords semanticas (Analizar IA lo habilita)"
     manual_entries = cargar_manual_keywords(manual_kw_path)
     groups = aplicar_engine(groups, plan, video_w, video_h, brain_data, manual_entries)
+    groups = resolver_posicion_captions(groups, plan, tray_csv_path)
     plan = ajustar_plan_a_groups(plan, groups)
     return groups, plan, aviso
 
 
-def tag_variante(preset: str, intensidad: str | None, densidad: str | None = None) -> str:
-    """Sufijo de salida de una variante de preset — identico en CLI y Studio."""
-    inten_tag = f"_{intensidad}" if intensidad else ""
-    dens_tag = f"_{densidad}" if densidad else ""
-    return f"_{preset}{inten_tag}{dens_tag}"
+def tag_variante(
+    preset: str,
+    intensidad: str | None,
+    densidad: str | None = None,
+    position: str | None = None,
+    avoid_faces: bool | None = None,
+) -> str:
+    """Sufijo de salida de una variante de preset — helper unico, CLI y Studio identicos.
+
+    Toda dimension que cambia la salida audiovisual entra al tag para que variantes
+    distintas no se pisen (MP4/ASS/sidecar). Allowlist + tokens compactos (nunca valores
+    libres). El token se agrega cuando el valor efectivo DIFIERE del default DEL PRESET
+    (no de un default universal, BLOQUEO 4): asi un preset personalizado con default `top`
+    o `avoid_faces=False` no colisiona con su override. Para los built-ins (default bottom
+    + avoid_faces True) el naming historico se conserva intacto: position bottom/None y
+    avoid_faces True/None nunca agregan token; center/top y False si.
+    """
+    p = _PRESETS.get((preset or "").lower().strip(), {})
+    default_position = p.get("position", "bottom")
+    default_avoid_faces = p.get("avoid_faces", True)
+    tag = f"_{preset}"
+    if intensidad in INTENSIDADES:
+        tag += f"_{intensidad}"
+    if densidad in ck.DENSIDADES:
+        tag += f"_{densidad}"
+    if position in ("bottom", "center", "top") and position != default_position:
+        tag += f"_{position}"
+    if isinstance(avoid_faces, bool) and avoid_faces != default_avoid_faces:
+        tag += "_faces" if avoid_faces else "_nofaces"
+    return tag
 
 
 def _timing_por_palabra_completo(groups: list[dict]) -> bool:
@@ -299,6 +377,94 @@ def hay_cara_en_rango(csv_path: Path, t0: float, t1: float) -> bool | None:
         return False
     except (OSError, ValueError, KeyError):
         return None
+
+
+# Buckets verticales de la cara (fraccion 0..1 del alto): arriba / centro / abajo.
+_ZONA_TOP_MAX = 0.40
+_ZONA_BOTTOM_MIN = 0.60
+
+
+def zona_cara_en_rango(csv_path: Path, t0: float, t1: float) -> str | None:
+    """Zona vertical dominante de la cara viva en [t0,t1]: 'top'|'center'|'bottom'|None.
+
+    Reutiliza el CSV del reframe (no duplica deteccion). REQUIERE ambas columnas
+    `conf_asignada` (presencia viva) y `face_y_asignada` (fraccion 0..1 del alto). Un CSV
+    legacy sin la columna vertical, sin `conf_asignada`, sin muestra vertical valida en el
+    rango, o con fallo de lectura -> None (fail-open: BLOQUEO 3, el CSV legacy JAMAS mueve
+    la posicion base). Solo devuelve una zona con al menos una muestra vertical valida.
+    """
+    if not csv_path or not Path(csv_path).exists():
+        return None
+    try:
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            cols = reader.fieldnames or []
+            if "conf_asignada" not in cols or "face_y_asignada" not in cols:
+                return None
+            ys: list[float] = []
+            for row in reader:
+                # Politica: una fila corrupta se SALTA (no aborta) — las filas validas
+                # siguientes aun pueden aportar una zona. Sin ninguna valida -> None.
+                try:
+                    t = float(row["t"])
+                    if not (t0 <= t <= t1) or not row.get("conf_asignada", "").strip():
+                        continue
+                    fy = (row.get("face_y_asignada") or "").strip()
+                    if fy:
+                        ys.append(float(fy))
+                except (ValueError, KeyError):
+                    continue
+    except OSError:
+        return None
+    if not ys:
+        return None
+    avg = sum(ys) / len(ys)
+    if avg < _ZONA_TOP_MAX:
+        return "top"
+    if avg > _ZONA_BOTTOM_MIN:
+        return "bottom"
+    return "center"
+
+
+def _posicion_evitando_cara(base: str, zona: str | None) -> str:
+    """Posicion del caption que no cae sobre la zona de la cara (determinista).
+
+    Solo mueve cuando la posicion base coincidiria con la cara; si no, conserva base
+    (sin saltos innecesarios). Prioriza bottom (safe area) salvo que la cara este abajo.
+    """
+    if zona is None or base != zona:
+        return base
+    return "top" if zona == "bottom" else "bottom"
+
+
+def resolver_posicion_captions(
+    groups: list[dict], plan: RenderPlan, tray_csv_path: Path | None
+) -> list[dict]:
+    """Fija caption_pos por grupo evitando la cara (avoid_faces). Puro y fail-open.
+
+    Con avoid_faces off, sin CSV o sin senal, la posicion base (del preset) se conserva:
+    si es 'bottom' NO se escribe caption_pos -> render byte-identico a la ruta historica.
+    Una sola posicion por grupo (sin saltos violentos); respeta las safe areas del estilo.
+    """
+    base = plan.position or "bottom"
+    result: list[dict] = []
+    for g in groups:
+        # Prioridad: marca manual [center] -> preset -> avoid_faces -> default.
+        # La marca manual es intencion explicita: gana a avoid_faces y al preset.
+        if g.get("center"):
+            pos = "center"
+        else:
+            pos = base
+            if plan.avoid_faces:
+                zona = zona_cara_en_rango(tray_csv_path, g.get("start", 0.0), g.get("end", 0.0))
+                pos = _posicion_evitando_cara(base, zona)
+        # Ruta historica intacta: base bottom que sigue en bottom -> no se anota nada
+        # (build_ass sin caption_pos = byte-identico). Toda decision no-default se anota.
+        if pos != "bottom" or base != "bottom":
+            result.append({**g, "caption_pos": pos})
+        else:
+            result.append(g)
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -356,6 +522,20 @@ def _marcar_grupo(g: dict, w_idx: int, regla: str, escala: int | None) -> dict:
     return {**g, "words": words}
 
 
+def _marcas_finales(
+    manual_map: dict[int, list[tuple[int, str]]],
+    elegidos: dict[int, tuple[int, int, str]],
+) -> list[tuple[int, int, str]]:
+    """Une manuales (todas las palabras del span) + 1 auto por grupo SIN manual (manual gana)."""
+    marcas: list[tuple[int, int, str]] = []
+    for g_idx, palabras in manual_map.items():
+        marcas.extend((g_idx, w_idx, regla) for w_idx, regla in palabras)
+    for g_idx, (w_idx, _score, regla) in elegidos.items():
+        if g_idx not in manual_map:
+            marcas.append((g_idx, w_idx, regla))
+    return marcas
+
+
 def aplicar_engine(
     groups: list[dict],
     plan: RenderPlan,
@@ -387,23 +567,26 @@ def aplicar_engine(
             candidatos += ck.candidatos_brain(limpios, brain_data, plan.kw_descartadas)
         if plan.keywords_mode == "auto+brain":
             candidatos += ck.detectar_candidatos(limpios)
+        # Manuales: TODAS las palabras del span (exentas de 1-por-grupo y densidad, #34).
+        # Autos: 1 por grupo + freno de densidad, solo en grupos SIN manual (manual gana).
+        manual_map = ck.elegir_manuales(candidatos)
         elegidos = ck.elegir_keywords(candidatos, len(limpios), plan.kw_densidad)
-        if not elegidos:
+        marcas = _marcas_finales(manual_map, elegidos)
+        if not marcas:
             return limpios
 
         fontsize = _scaled_fontsize(video_w, video_h, plan.style_cfg)
         ancho_util = int(video_w * (1.0 - SAFE_LEFT_PCT - SAFE_RIGHT_PCT))
         result = list(limpios)
-        for g_idx, (w_idx, _score, regla) in elegidos.items():
+        for g_idx, w_idx, regla in marcas:
             escala = None
             if plan.kw_punch_scale > ck.KW_SCALE_BASE or regla == "manual_big":
                 palabra = limpios[g_idx]["words"][w_idx]["text"]
                 escala = ck.ajustar_escala_punch(palabra, fontsize, ancho_util, plan.kw_punch_scale)
                 if escala is None:
                     print(f"[cve] '{palabra}' no cabe ni reducida: punch desactivado (kw normal)")
-            result[g_idx] = _marcar_grupo(limpios[g_idx], w_idx, regla, escala)
-        n = len(elegidos)
-        print(f"[cve] preset {plan.preset}: {n} keyword(s) marcadas en {len(limpios)} grupos")
+            result[g_idx] = _marcar_grupo(result[g_idx], w_idx, regla, escala)
+        print(f"[cve] preset {plan.preset}: {len(marcas)} keyword(s) en {len(limpios)} grupos")
         return result
     except Exception as e:  # fallback total: captions con el estilo del preset, sin marcas
         print(f"[cve] engine fallo ({e}) - render sigue con captions simples del estilo")
