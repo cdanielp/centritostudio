@@ -56,7 +56,7 @@ STATES = [
     ("desktop_srt_missing", "render", "srt", _MISSING, "null", (1400, 950)),
     ("desktop_srt_ready", "render", "srt", _READY, "null", (1400, 950)),
     ("desktop_auto_srt", "auto", "srt", _READY, "null", (1400, 950)),
-    ("desktop_partial", "auto", "srt", _READY, _AUTO_PARTIAL, (1400, 1750)),
+    ("desktop_partial", "auto", "srt", _READY, _AUTO_PARTIAL, (1400, 2050)),
     ("mobile_srt", "render", "srt", _READY, "null", (492, 950)),
 ]
 
@@ -71,6 +71,11 @@ def _bootstrap(tab: str, source: str, srt_view, auto_result) -> str:
 (function(){{
   const SRT_VIEW = {sv}, AUTO_RESULT = {ar}, TAB = {tab!r}, SOURCE = {source!r};
   const MODE = TAB === 'auto' ? 'auto' : 'render';
+  // Determinismo del nav: tras fijar la vista objetivo, ignorar cualquier showTab('home')
+  // tardío (hooks async del arranque) para que el botón activo del nav no vuelva a Inicio.
+  let LOCKED = false;
+  const _origShowTab = showTab;
+  showTab = function(id){{ if (LOCKED && id === 'home') return; return _origShowTab.apply(this, arguments); }};
   // Stub de red: el navegador NO reconstruye estado privado; recibe el view model saneado.
   const realFetch = window.fetch;
   window.fetch = function(url, opts){{
@@ -90,7 +95,11 @@ def _bootstrap(tab: str, source: str, srt_view, auto_result) -> str:
       showTab(TAB);
       const cs = document.getElementById(MODE + '-caption-source');
       if (cs) {{ cs.value = SOURCE; srtPanel.onSource(MODE); }}
+      // Coherencia: si el resultado es v2, seleccionar la card "Automático v2" (no "Clásico").
+      if (AUTO_RESULT && AUTO_RESULT.meta && AUTO_RESULT.meta.pipeline_mode === 'v2'
+          && typeof setAutoMode === 'function') {{ setAutoMode('v2'); }}
       if (AUTO_RESULT) {{ document.getElementById('auto-result').style.display='block'; renderAutoResult(AUTO_RESULT); }}
+      LOCKED = true;  // desde aquí, ningún showTab('home') tardío roba el nav
     }} catch(e) {{ document.title = 'EVID_ERROR: ' + e.message; }}
   }}
   // Re-aserta la vista tras asentarse el arranque (evita que un hook async del home inicial

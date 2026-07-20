@@ -63,6 +63,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .srt-file-label{font-size:12px;color:var(--text);border:0.5px dashed var(--purple-dim);border-radius:6px;padding:5px 12px;cursor:pointer;transition:border-color .15s}
 .srt-file-label:hover,.srt-file-label:focus-within{border-color:var(--purple)}
 .srt-file-label input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+/* Controles incompatibles con SRT: estado deshabilitado claro (además del atributo disabled) */
+.control-disabled{opacity:.45}
+.control-disabled label{color:var(--muted)}
+.control-disabled select:disabled,.control-disabled input:disabled{cursor:not-allowed}
+.srt-incompat{font-size:11px;color:var(--muted);line-height:1.5;border-left:0.5px solid var(--purple-dim);padding:6px 10px;margin:2px 0 10px;background:var(--surface)}
 
 /* ══════════════════════════════════════════
    TAB 1: VIDEOS
@@ -344,7 +349,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <option value="fuerte">Fuerte 1.45 (con rebote)</option>
       </select>
     </div>
-    <div class="field">
+    <div class="field" id="field-wpg">
       <label>Palabras por grupo</label>
       <select id="render-wpg">
         <option value="">Auto (agrupación inteligente)</option>
@@ -352,7 +357,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <option value="3">3 palabras</option>
       </select>
     </div>
-    <div class="emphasis-row">
+    <div class="emphasis-row" id="row-emphasis">
       <input type="checkbox" id="use-emphasis" onchange="onEmphasisToggle()">
       <label for="use-emphasis">Énfasis IA — keywords destacadas</label>
       <span class="msg" id="emphasis-hint" style="margin:0"></span>
@@ -362,7 +367,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <label for="use-emojis">Emojis IA — assets ComfyUI sobre keywords</label>
       <span class="msg" style="margin:0;color:var(--muted);font-size:11px">(requiere ComfyUI corriendo)</span>
     </div>
-    <div class="emphasis-row">
+    <div class="emphasis-row" id="row-caption-qa">
       <input type="checkbox" id="use-caption-qa" onchange="onCaptionQaToggle()">
       <label for="use-caption-qa">Revisar subtítulos con Caption QA</label>
       <select id="caption-qa-mode" style="display:none">
@@ -376,6 +381,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
       <span class="msg" style="margin:0;color:var(--muted);font-size:11px">
         Puede ser el guion completo, un resumen o una lista de términos esperados.
       </span>
+    </div>
+    <div id="render-srt-incompat" class="srt-incompat" hidden>
+      Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
     <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
     <div id="render-status"></div>
@@ -850,10 +858,37 @@ const srtPanel = {
   onSource(mode) {
     const sel = document.getElementById(mode + '-caption-source');
     this.source[mode] = sel && sel.value === 'srt' ? 'srt' : 'transcript';
+    const isSrt = this.source[mode] === 'srt';
+    if (mode === 'render') this._setRenderIncompatible(isSrt);
     const card = this._card(mode);
-    if (this.source[mode] !== 'srt') { card.hidden = true; card.innerHTML = ''; return; }
+    if (!isSrt) { card.hidden = true; card.innerHTML = ''; return; }
     card.hidden = false;
     this.refresh(mode);
+  },
+
+  // Con SRT los cues definen agrupación y texto oficial: Palabras por grupo, Énfasis IA y
+  // Caption QA no aplican. Se deshabilitan de verdad (atributo disabled) y se restauran a su
+  // default seguro (no se envían esos params). Volver a Transcript reactiva los controles sin
+  // reponer valores previos inválidos. Estilo/Preset/Intensidad/Emojis siguen disponibles.
+  _setRenderIncompatible(disabled) {
+    const wpg = document.getElementById('render-wpg');
+    const emph = document.getElementById('use-emphasis');
+    const qa = document.getElementById('use-caption-qa');
+    if (disabled) {
+      if (wpg) { wpg.value = ''; wpg.disabled = true; }
+      if (emph) { emph.checked = false; emph.disabled = true; onEmphasisToggle(); }
+      if (qa) { qa.checked = false; qa.disabled = true; onCaptionQaToggle(); }
+    } else {
+      if (wpg) wpg.disabled = false;
+      if (emph) emph.disabled = false;
+      if (qa) qa.disabled = false;
+    }
+    for (const id of ['field-wpg', 'row-emphasis', 'row-caption-qa']) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('control-disabled', disabled);
+    }
+    const note = document.getElementById('render-srt-incompat');
+    if (note) note.hidden = !disabled;
   },
 
   onVideo(mode) { if (this.source[mode] === 'srt') this.refresh(mode); },
