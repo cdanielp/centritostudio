@@ -67,16 +67,23 @@ def test_run_edl_ffmpeg_ausente_tipado(monkeypatch):
         depurador._run_edl(Path("x.mp4"), [(0.0, 1.0)], Path("o.mp4"))
 
 
-def test_run_edl_ffmpeg_presente_falla_error_saneado(monkeypatch, capsys):
+def test_run_edl_ffmpeg_presente_falla_error_saneado(monkeypatch, tmp_path):
+    # Tras la fase NVENC, _run_edl delega la codificacion en video_encoder (modo cpu -> libx264).
+    # El fallo de FFmpeg se sanea alli: la excepcion publica NO lleva stderr ni rutas.
+    import video_encoder
+
     monkeypatch.setattr(media_deps, "ffmpeg_disponible", lambda which=None: True)
+    monkeypatch.setattr(depurador.media_deps, "require_ffmpeg", lambda: None)
+    monkeypatch.setattr(video_encoder, "active_mode", lambda: video_encoder.EncoderMode.CPU)
     monkeypatch.setattr(
-        depurador.subprocess, "run", lambda *a, **k: _FakeProc(1, "", "C:\\priv\\stderr secreto")
+        video_encoder.subprocess,
+        "run",
+        lambda *a, **k: _FakeProc(1, "", "C:\\priv\\stderr secreto"),
     )
     with pytest.raises(RuntimeError) as exc:
-        depurador._run_edl(Path("x.mp4"), [(0.0, 1.0)], Path("o.mp4"))
-    # Mensaje publico generico: sin stderr ni rutas. El diagnostico va a consola local.
+        depurador._run_edl(Path("x.mp4"), [(0.0, 1.0)], tmp_path / "o.mp4")
     assert "C:\\" not in str(exc.value) and "secreto" not in str(exc.value)
-    assert str(exc.value) == "La depuracion no pudo completarse."
+    assert str(exc.value) == "La codificacion de video no pudo completarse."
 
 
 def test_volume_at_ffmpeg_ausente_tipado(monkeypatch):
