@@ -21,17 +21,15 @@ OUTPUT_DIR = ROOT / "output"
 
 
 def _write_json_pair(p1: Path, blob1: str, p2: Path, blob2: str) -> None:
-    """Escribe dos JSON ya serializados via temporal+replace (no deja uno nuevo con otro viejo)."""
-    import os  # noqa: PLC0415
+    """Escribe dos JSON ya serializados de forma atomica y durable (H2, P2-ATOM-STATE).
 
-    for p in (p1, p2):
-        Path(p).parent.mkdir(parents=True, exist_ok=True)
-    t1 = Path(p1).with_name(Path(p1).name + ".tmp")
-    t2 = Path(p2).with_name(Path(p2).name + ".tmp")
-    t1.write_text(blob1, encoding="utf-8")
-    t2.write_text(blob2, encoding="utf-8")
-    os.replace(t1, p1)
-    os.replace(t2, p2)
+    Cada destino usa el contrato unico de `atomic_io` (temporal UNICO + fsync + os.replace), asi
+    dos writers concurrentes al mismo destino nunca colisionan el `.tmp`.
+    """
+    from atomic_io import atomic_write_text  # noqa: PLC0415
+
+    atomic_write_text(Path(p1), blob1)
+    atomic_write_text(Path(p2), blob2)
 
 
 def run_transcribe(
@@ -141,9 +139,9 @@ def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> 
 
         new_words, drift = dep.recalcular_words(words, result["edl"])
         raw_clean = {**raw, "words": new_words}
-        (TRANSCRIPTS / f"{name}_limpio_words.json").write_text(
-            json.dumps(raw_clean, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        from atomic_io import atomic_write_json  # noqa: PLC0415
+
+        atomic_write_json(TRANSCRIPTS / f"{name}_limpio_words.json", raw_clean)
         drift_note = " (re-transcribir recomendado)" if drift > dep.DRIFT_THRESHOLD else ""
         update_job(
             jid,
