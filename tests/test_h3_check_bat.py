@@ -5,6 +5,7 @@ Aserciones estaticas sobre los .bat: guards, preflight, sin rutas privadas, sin 
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -30,7 +31,10 @@ def test_check_conserva_ruff_format_pytest():
 
 
 def test_check_no_usa_video_privado():
-    assert "0717_corregido" not in CHECK
+    # check.bat no debe referenciar ningun fixture de video real (p. ej. input/archivo_privado.srt);
+    # solo puede usar su fixture SINTETICO _smoke_synth generado con ffmpeg/lavfi.
+    fixtures = re.findall(r"input[\\/]([\w.-]+)\.(?:srt|mp4|mov)", CHECK, re.IGNORECASE)
+    assert all("_smoke_synth" in f for f in fixtures), fixtures
     assert "tacosjuan" not in CHECK  # nombre no versionado del smoke anterior
 
 

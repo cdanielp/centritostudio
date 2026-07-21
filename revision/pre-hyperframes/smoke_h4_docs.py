@@ -24,12 +24,33 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 REV = ROOT / "revision" / "pre-hyperframes"
+
+# Extensiones de texto versionadas que el gate de privacidad escanea (git ls-files).
+TEXT_EXTS = {
+    ".md",
+    ".py",
+    ".bat",
+    ".ps1",
+    ".js",
+    ".html",
+    ".css",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".txt",
+    ".example",
+}
+# Ruta (POSIX) de este propio smoke: se excluye del escaneo porque contiene fixtures
+# sintéticos de detección con nombres ficticios.
+SELF_REL = "revision/pre-hyperframes/smoke_h4_docs.py"
 
 # ── Detecciones puras (operan sobre texto; reutilizadas por self-test y real) ──────────────
 
@@ -75,6 +96,12 @@ INPUT_ALLOWED = {
     "test_16_9",
     "ejemplo",
     "prueba",
+    "demo",  # placeholder sintetico de tests unitarios
+    "fuente",  # placeholder sintetico de tests unitarios
+    "v",  # placeholder sintetico de tests unitarios
+    "x",  # placeholder sintetico de tests unitarios
+    "archivo_privado",  # sentinel SINTETICO (ejemplo de lo prohibido, no un archivo real)
+    "_smoke_synth",  # fixture sintetico generado por check.bat con ffmpeg/lavfi
     # fixtures históricos (videos de prueba del proyecto, ya versionados):
     "podcast_test_60s",
     "prueba2personasenmedio",
@@ -231,6 +258,21 @@ def run_self_test() -> int:
         # secretos
         expect("detecta_secreto", detect_secrets("DEEPSEEK_API_KEY=sk-abcdefghij0123456789xyz"))
         expect("no_marca_placeholder", not detect_secrets("DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxx"))
+        # 9. gate sobre archivos de texto versionados (git ls-files)
+        #    a) una referencia privada dentro de tests/demo.py se detecta;
+        demo_py = "def test_x():\n    fuente = 'input/reunion_privada_x.srt'\n"
+        expect("detecta_input_privado_en_py", detect_private_inputs(demo_py))
+        #    b) un placeholder genérico permitido no se detecta;
+        expect("no_marca_placeholder_input", not detect_private_inputs("clip = 'input/video.mp4'"))
+        #    c) el scanner solo mira archivos VERSIONADOS (no depende de dirs locales);
+        expect("gate_incluye_texto", _is_text_ext("tests/demo.py") and _is_text_ext("a/b.md"))
+        expect("gate_excluye_binario", not _is_text_ext("x.png") and not _is_text_ext("y.mp4"))
+        tracked = _tracked_text_files()
+        expect("gate_excluye_self", SELF_REL not in tracked)
+        expect(
+            "gate_solo_versionado",
+            all(not r.startswith((".claude/", ".agents/", "venv/")) for r in tracked),
+        )
 
     ok = sum(1 for _, c in checks if c)
     total = len(checks)
@@ -327,33 +369,37 @@ def _checks_surface(results, estado_h):
     _r(results, not detect_h5_hf_closed(estado_h), "h5-hf-cerrado-indebido", "ESTADO.md#header")
 
 
-def _project_doc_mds():
-    """Documentación del proyecto de forma DETERMINISTA (idéntica en un clon limpio):
-    los `.md` de la raíz + `docs/` + `revision/`. Excluye dirs locales no versionados como
-    `.claude/`, `.agents/`, etc., para que el conteo sea reproducible."""
-    mds = sorted(ROOT.glob("*.md"))
-    for sub in ("docs", "revision"):
-        d = ROOT / sub
-        if d.exists():
-            mds += sorted(d.rglob("*.md"))
-    return mds
+def _is_text_ext(rel):
+    return PurePosixPath(rel).suffix.lower() in TEXT_EXTS
+
+
+def _tracked_text_files():
+    """Archivos de TEXTO VERSIONADOS por Git, de forma determinista (`git ls-files -z`).
+    Idéntico en un clon limpio; no depende de dirs locales no versionados (`.claude/`, etc.).
+    Excluye este propio smoke (fixtures sintéticos) y extensiones no-texto/binarias. Sin
+    `shell=True`."""
+    out = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    rels = [p for p in out.split("\0") if p]
+    return sorted(rel for rel in rels if rel != SELF_REL and _is_text_ext(rel))
 
 
 def _checks_privacy(results):
-    # Markdown del proyecto: rutas personales, secretos e inputs privados (0 en todo el alcance).
-    for md in _project_doc_mds():
-        t = md.read_text(encoding="utf-8", errors="replace")
-        _r(results, not detect_absolute_paths(t), "ruta-personal", md.name)
-        _r(results, not detect_secrets(t), "secreto-api-key", md.name)
-        _r(results, not detect_private_inputs(t), "input-privado", md.name)
-    # Smokes de pre-hyperframes: que no reintroduzcan el SRT privado ni rutas personales.
-    # Se excluye este propio archivo (contiene fixtures de detección con nombres ficticios).
-    for py in sorted((ROOT / "revision" / "pre-hyperframes").glob("*.py")):
-        if py.name == "smoke_h4_docs.py":
+    # Gate de privacidad sobre TODOS los archivos de texto versionados (git ls-files):
+    # rutas personales, secretos e inputs privados. Determinista en un clon limpio.
+    for rel in _tracked_text_files():
+        try:
+            t = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
             continue
-        t = py.read_text(encoding="utf-8", errors="replace")
-        _r(results, not detect_private_inputs(t), "input-privado", py.name)
-        _r(results, not detect_absolute_paths(t), "ruta-personal", py.name)
+        _r(results, not detect_absolute_paths(t), "ruta-personal", rel)
+        _r(results, not detect_secrets(t), "secreto-api-key", rel)
+        _r(results, not detect_private_inputs(t), "input-privado", rel)
 
 
 def _checks_estado_header(results, estado_h):

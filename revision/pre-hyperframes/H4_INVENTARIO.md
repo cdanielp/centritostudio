@@ -44,6 +44,7 @@ etiquetas `_check("1_..")`…`_check("16_..")`).
 | ESTADO/DECISIONES + evidencia | Nombre del SRT privado del usuario en texto | Debe tratarse el repo como público | política de privacidad H4 | **archivo privado** → sustituir por `input/video.srt` / "SRT privado del usuario" |
 | README_KIT.md | Ruta absoluta del proyecto en la máquina del usuario | Repo público | política de privacidad H4 | **ruta o archivo privado** → placeholder genérico `C:\ruta\centrito` |
 | MAESTRO.md | Roadmap histórico presentado línea a línea | Es arquitectura/roadmap histórico, no estado vivo | lectura | **terminología** → addendum que lo marca como histórico (sin reescritura) |
+| tests/test_h3_check_bat.py | Aserción histórica con el identificador del SRT protegido | Repo público; cero referencias protegidas versionadas | política de privacidad H4 | **archivo privado** → guard por clase con sentinel sintético (`input/archivo_privado.srt`), más fuerte; sin cambiar `check.bat` |
 
 ## Clasificación de contradicciones detectadas (mínimos exigidos)
 
@@ -54,7 +55,7 @@ etiquetas `_check("1_..")`…`_check("16_..")`).
 - **Afirmaciones absolutas "nada se sube":** ✅ (README:5, ALPHA:11).
 - **Capacidades SRT/Auto v2/F6 ausentes de la guía:** ✅ (ALPHA, README).
 - **Limitaciones multi-persona desactualizadas:** ✅ (ALPHA §11).
-- **Rutas/archivos privados en documentos históricos:** ✅ (SRT privado saneado; **0** rutas absolutas del perfil de Windows; ruta de proyecto en README_KIT genericizada; **0** secretos reales — `.env.example` usa el placeholder `sk-xxx`).
+- **Rutas/archivos privados en documentos históricos:** ✅ (**cero referencias protegidas en archivos de texto versionados**, verificado por el gate `git ls-files` del smoke; **0** rutas absolutas del perfil de Windows; ruta de proyecto en README_KIT/MAESTRO genericizada; **0** secretos reales — `.env.example` usa el placeholder `sk-xxx`; test histórico saneado con sentinel sintético).
 - **Documentos que mezclan roadmap histórico con estado actual:** ✅ (ESTADO, MAESTRO).
 
 ## Verificado contra el producto (evidencia)
@@ -81,5 +82,7 @@ etiquetas `_check("1_..")`…`_check("16_..")`).
 - `revision/pre-hyperframes/NVENC_EVIDENCIA.md` y `NVENC_INVENTARIO.md` citan "14 checks" (histórico
   de esa fase). No están en la lista de archivos editables de H4; se corrige la cifra donde H4 sí
   edita (MATRIZ). Registrado como nota, sin tocar producción.
-- Cualquier corrección que exija cambiar código/tests/JS/HTML queda registrada como pendiente y **no**
-  se implementa en H4.
+- Cualquier corrección que exija cambiar código de producción/JS/HTML queda registrada como pendiente
+  y **no** se implementa en H4. La **única** excepción de test es `tests/test_h3_check_bat.py`,
+  modificado exclusivamente por privacidad (saneamiento del identificador protegido), sin cambiar el
+  comportamiento verificado ni `check.bat`.

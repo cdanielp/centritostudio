@@ -52,47 +52,51 @@ Todas las mínimas exigidas quedaron detectadas y corregidas (ver `H4_INVENTARIO
 
 ## Saneamiento (Fase 10)
 
-Escaneo final sobre el markdown versionado **y los smokes de `revision/`** (excl. `venv/`,
-`referencias/`):
+Escaneo final sobre **todos los archivos de texto VERSIONADOS por Git** (`git ls-files`), no solo
+markdown:
 
+- **Cero referencias protegidas en archivos de texto versionados** (`.md`, `.py`, `.bat`, `.txt`,
+  etc.): el identificador del SRT del usuario ya no aparece en ningún archivo rastreado.
 - Rutas absolutas del perfil de Windows: **0**.
 - Rutas absolutas del proyecto en la máquina del usuario: **0** (README_KIT y MAESTRO genericizados
   a `C:\ruta\centrito`).
 - Patrones de API key reales: **0** (`.env.example` usa placeholder `sk-xxx`).
-- Referencias al SRT privado del usuario (nombre / nº de cues / timestamps) en `.md`: **0**.
-- Referencias al SRT privado en los smokes `.py` de `revision/`: **0** (saneadas 5 referencias de
-  docstring/uso a `input/video.srt`).
+- **Test histórico saneado con sentinel sintético.** El único test tocado, `tests/test_h3_check_bat.py`,
+  ya no conserva el identificador protegido: su aserción de privacidad se reescribió a un guard por
+  **clase** (verifica que `check.bat` no referencia ningún fixture de video real, solo su fixture
+  sintético `_smoke_synth`), usando un sentinel genérico (`input/archivo_privado.srt`). El guard
+  quedó **más fuerte**, no más débil, y sin cambiar el comportamiento de `check.bat`.
 
-Total de referencias sensibles saneadas: **18** (solo se reporta la cantidad, no cuáles). Todos los
+Total de referencias sensibles saneadas: **19** (solo se reporta la cantidad, no cuáles). Todos los
 reemplazos usan placeholders genéricos (`input/video.srt`, "SRT privado del usuario",
-`C:\ruta\centrito`).
+`C:\ruta\centrito`, `input/archivo_privado.srt`).
 
-**Registrado, NO tocado (fuera de alcance editable):**
-- `tests/test_h3_check_bat.py` contiene el token del SRT privado dentro de una aserción que
-  comprueba su **ausencia** en `check.bat` (es una protección de privacidad, no una fuga). `tests/`
-  está en la lista prohibida de H4, así que se conserva intacto.
-- Nombres de videos de prueba históricos en las bitácoras (`ESTADO.md`/`DECISIONES.md`/
-  `PREGUNTAS.md` y READMEs de `revision/`) se preservan como **historia útil**; no son el SRT
-  protegido. El artefacto explícitamente protegido (el SRT del usuario) sí quedó saneado en todo el
-  alcance.
+- Los nombres de videos de prueba históricos en las bitácoras (`ESTADO.md`/`DECISIONES.md`/
+  `PREGUNTAS.md` y READMEs de `revision/`) se preservan como **historia útil** vía una allowlist
+  explícita de fixtures sintéticos/históricos; no son el SRT protegido.
+- **Una única modificación de test, exclusivamente por privacidad**; ninguna modificación de
+  producción ni de salida audiovisual.
 
 ## Smoke documental (Fase 11)
 
 `revision/pre-hyperframes/smoke_h4_docs.py` — sin red, GPU, FFmpeg, modelos ni archivos privados.
 
-- `--self-test`: **VERDE (17/17)**. Demuestra la detección de cifra vieja de tests, H3 pendiente,
+- `--self-test`: **VERDE (23/23)**. Demuestra la detección de cifra vieja de tests, H3 pendiente,
   GPU/NVENC abierto, afirmación absoluta "nada se sube", ruta absoluta realista, input específico
-  (separador POSIX **y** Windows `input\...`), enlace relativo roto, H5/HyperFrames cerrado
-  indebidamente y secreto (con contraprueba negativa de cada uno). Ningún fixture usa un nombre o
-  ruta privada real.
-- `--real`: **blockers=0, fails=0** (`checks=341` en este commit; el conteo es **determinista** —
-  un check por documento del proyecto en raíz + `docs/` + `revision/`, idéntico en un clon limpio —
-  no depende de dirs locales como `.claude/`). Verifica archivos requeridos, enlaces relativos,
-  estado H1/H2/H3/NVENC, H4 pendiente de merge, H5 pendiente, HyperFrames no iniciado, baseline
-  2410/4, ausencia de cifras históricas en los encabezados actuales, ausencia de rutas
-  personales/API keys/inputs privados en TODO el markdown del proyecto y en los smokes de
-  `revision/`, privacidad local/externa, formato de feedback en ALPHA, enlaces del README a las
-  guías y consistencia MATRIZ/PLAN.
+  (separador POSIX **y** Windows `input\...`; referencia privada dentro de un `tests/demo.py`
+  sintético detectada, placeholder genérico no), enlace relativo roto, H5/HyperFrames cerrado
+  indebidamente y secreto (con contraprueba negativa de cada uno), más que el gate solo mira
+  archivos versionados (no dirs locales). Ningún fixture usa un nombre o ruta privada real.
+- `--real`: **blockers=0, fails=0** (`checks=1064` en este commit; el conteo es **determinista** —
+  se basa en `git ls-files`, así que es idéntico en un clon limpio y **no** depende de dirs locales
+  como `.claude/`). El gate escanea **todos los archivos de texto VERSIONADOS** (`.md`, `.py`,
+  `.bat`, `.ps1`, `.js`, `.html`, `.css`, `.json`, `.yml/.yaml`, `.toml`, `.txt`, `.example`) —
+  excluyendo el propio smoke (fixtures sintéticos) y binarios — buscando rutas personales, secretos
+  reales e inputs privados fuera de la allowlist. Además verifica archivos requeridos, enlaces
+  relativos, estado H1/H2/H3/NVENC, H4 pendiente de merge, H5 pendiente, HyperFrames no iniciado,
+  baseline 2410/4, ausencia de cifras históricas en los encabezados actuales, privacidad
+  local/externa, formato de feedback en ALPHA, enlaces del README a las guías y consistencia
+  MATRIZ/PLAN.
 
 Los errores del smoke muestran archivo + categoría, nunca el texto sensible.
 
