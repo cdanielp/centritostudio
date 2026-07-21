@@ -13,10 +13,17 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import words_con_procedencia
 
 import auto
 import auto_v2
 from auto_config import PIPELINE_VERSION, AutoConfig, AutoConfigError
+
+
+@pytest.fixture(autouse=True)
+def _mp4_sintetico_valido(ffprobe_ok):
+    """H2 (P1-OUT-3): checkpoint_v2_valido ahora exige video_reanudable; los MP4 sinteticos no
+    vacios de estos tests cuentan como publicables via el ffprobe stub de conftest."""
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +176,11 @@ def entorno(tmp_path, monkeypatch):
     video = tmp_path / "vid.mp4"
     video.write_bytes(b"fake")
     (transcripts / "vid_words.json").write_text(
-        json.dumps({"words": [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 0.9}], "language": "es"}),
+        json.dumps(
+            words_con_procedencia(
+                video, {"words": [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 0.9}], "language": "es"}
+            )
+        ),
         encoding="utf-8",
     )
     grupos = [{"id": 0, "start": 0.0, "end": 1.0, "text": "hola", "words": []}]
@@ -346,7 +357,7 @@ def test_reporte_con_clip_v2_agrega_seccion():
 def test_paquete_classic_excluye_v2(entorno):
     v2_dir = entorno["paquetes"] / "vid_v2_20260718-0001"
     v2_dir.mkdir()
-    d, reanudado = auto._paquete_dir("vid")
+    d, reanudado = auto._paquete_dir("vid", entorno["video"])
     assert reanudado is False and "_v2_" not in d.name
 
 

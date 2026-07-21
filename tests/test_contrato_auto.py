@@ -8,6 +8,33 @@ y el fail-open de emojis/brain no rompe el paquete. Sin GPU ni red.
 import json
 
 import pytest
+from conftest import words_con_procedencia
+
+import auto_classic_provenance as acp
+
+
+def _marcar_paquete_classic(prev, video):
+    """Escribe el marker `auto_classic.json` (H2) para que _paquete_dir reanude este dir."""
+    (prev / "auto_classic.json").write_text(
+        json.dumps(
+            {
+                "schema_version": acp.SCHEMA_VERSION,
+                "pipeline_mode": "classic",
+                "video": acp.build_provenance(video, lang="es", model="auto"),
+                "created_at": "20260101-000000",
+                "run_id": "test-run",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _mp4_sintetico_valido(ffprobe_ok):
+    """H2: los MP4 sinteticos no-vacios de estos tests de orquestacion cuentan como publicables
+    (ffprobe stub de conftest). La validacion real de 0-byte/truncado vive en
+    test_h2_resume_integrity.py; aqui el foco es la orquestacion/reanudacion."""
+
 
 # ── Funciones puras: avisos de tramos ─────────────────────────────────────────
 
@@ -337,9 +364,13 @@ def entorno_auto(tmp_path, monkeypatch):
 
     video = tmp_path / "vid.mp4"
     video.write_bytes(b"fake")
-    # words.json posterior al video -> _asegurar_transcript reutiliza (voto #10)
+    # words.json con procedencia classic del video EXACTO -> _asegurar_transcript reutiliza (H2)
     (transcripts / "vid_words.json").write_text(
-        json.dumps({"words": [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 0.9}], "language": "es"}),
+        json.dumps(
+            words_con_procedencia(
+                video, {"words": [{"w": "hola", "s": 0.0, "e": 0.5, "prob": 0.9}], "language": "es"}
+            )
+        ),
         encoding="utf-8",
     )
     # transcript re-basado del clip (lo exporta el clipper real)
@@ -490,6 +521,7 @@ def test_reanuda_sin_regenerar_clip_con_checkpoint(entorno_auto, monkeypatch):
     # Corrida previa interrumpida: clip1 final + su sidecar de checkpoint ya existen
     prev = auto.PAQUETES_DIR / "vid_20260101-0000"
     prev.mkdir()
+    _marcar_paquete_classic(prev, entorno_auto["video"])  # H2: marker classic para reanudar
     final = prev / "vid_clip1_corto_9x16_hormozi.mp4"
     final.write_bytes(b"ya-renderizado")
     sidecar = final.with_name(final.stem + ".info.json")
@@ -528,9 +560,11 @@ def test_reanuda_orfano_reutiliza_render_sin_avisos(entorno_auto, monkeypatch):
 
     llamadas = []
     _mock_motor(monkeypatch, llamadas)
-    # Clip final de una corrida previa SIN sidecar (paquete pre-reanudacion)
+    # Clip final de una corrida previa SIN sidecar de checkpoint (paquete pre-reanudacion), pero
+    # CON marker classic (H2) para que el dir sea reanudable.
     prev = auto.PAQUETES_DIR / "vid_20260101-0000"
     prev.mkdir()
+    _marcar_paquete_classic(prev, entorno_auto["video"])
     final = prev / "vid_clip1_corto_9x16_hormozi.mp4"
     final.write_bytes(b"ya-renderizado")
 
@@ -551,7 +585,8 @@ def test_analisis_reutilizado_no_regasta_llm(entorno_auto, monkeypatch):
 
     llamadas = []
     _mock_motor(monkeypatch, llamadas)
-    # clips.json fresco de una corrida previa -> el clipper (LLM) no se vuelve a llamar
+    # clips.json fresco + sidecar de procedencia classic del video EXACTO -> el clipper (LLM) no
+    # se vuelve a llamar (H2, P2-CLASSIC-REUSE).
     (auto.CLIPS_DIR / "vid_clips.json").write_text(
         json.dumps(
             {
@@ -568,6 +603,10 @@ def test_analisis_reutilizado_no_regasta_llm(entorno_auto, monkeypatch):
                 "telemetria_resumen": {"costo_usd": 0.001},
             }
         ),
+        encoding="utf-8",
+    )
+    (auto.CLIPS_DIR / "vid_clips.provenance.json").write_text(
+        json.dumps(acp.build_provenance(entorno_auto["video"], lang="es", model="auto")),
         encoding="utf-8",
     )
 
