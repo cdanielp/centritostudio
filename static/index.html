@@ -1293,7 +1293,7 @@ async function loadEditorVideo(name) {
 
   // Montar video
   const wrap = document.getElementById('editor-video-wrap');
-  wrap.innerHTML = `<video id="editor-video" controls src="/input/${name}.mp4" style="max-width:100%;max-height:100%"></video>`;
+  wrap.innerHTML = `<video id="editor-video" controls src="/api/videos/${encodeURIComponent(name)}/source" style="max-width:100%;max-height:100%"></video>`;
   editorVideo = document.getElementById('editor-video');
   editorVideo.addEventListener('timeupdate', onTimeUpdate);
 
