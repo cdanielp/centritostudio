@@ -63,7 +63,31 @@ ABS_PATH_RX = re.compile(r"[A-Za-z]:\\Users\\|[A-Za-z]:\\CLAUDECODE", re.IGNOREC
 SECRET_RX = re.compile(r"sk-[A-Za-z0-9]{20,}")
 # Acepta separador POSIX y Windows: input/foo.srt e input\foo.srt (los docstrings son Windows).
 INPUT_RX = re.compile(r"input[\\/]([\w-]+)\.(srt|mp4|mov)", re.IGNORECASE)
-INPUT_ALLOWED = {"video", "clase", "clase_larga", "clip", "audio", "test_9_16", "ejemplo", "prueba"}
+# Placeholders genéricos + fixtures de prueba históricos preservados como historia útil en las
+# bitácoras. Cualquier input/<name> fuera de este conjunto (p. ej. el SRT privado) se marca.
+INPUT_ALLOWED = {
+    "video",
+    "clase",
+    "clase_larga",
+    "clip",
+    "audio",
+    "test_9_16",
+    "test_16_9",
+    "ejemplo",
+    "prueba",
+    # fixtures históricos (videos de prueba del proyecto, ya versionados):
+    "podcast_test_60s",
+    "prueba2personasenmedio",
+    "pruebaedicionvideoyo",
+    "pruebaparaedicion",
+    "pruebapodcast2personas",
+    "qa_demo_s33",
+    "reel01",
+    "reel01-03",
+    "reel02",
+    "stack_test_estatico",
+    "tacosjuan",
+}
 # "pre-HyperFrames" es etiqueta de fase, no cierre → se excluye con lookbehind.
 H5HF_CLOSED_RX = re.compile(
     r"(\bH5\b|(?<!pre-)\bHyperFrames\b)[^\n]{0,20}(CERRAD[AO]|COMPLETA|MERGEAD[AO]|LISTA|TERMINAD)",
@@ -245,20 +269,7 @@ LINK_DOCS = [
     REV / "H4_INVENTARIO.md",
     REV / "H4_EVIDENCIA.md",
 ]
-# Escaneo duro de privacidad: TODO markdown versionado del repo (excl. venv/referencias).
-PRIVACY_SKIP = {
-    "venv",
-    "referencias",
-    "referencia",
-    "node_modules",
-    ".git",
-    "__pycache__",
-    "models",
-    "output",
-    "input",
-    "transcripts",
-    "thumbs",
-}
+# Escaneo de privacidad: documentación del proyecto (raíz + docs/ + revision/), determinista.
 REQUIRED_FILES = [
     ROOT / "README.md",
     ROOT / "ESTADO.md",
@@ -316,17 +327,28 @@ def _checks_surface(results, estado_h):
     _r(results, not detect_h5_hf_closed(estado_h), "h5-hf-cerrado-indebido", "ESTADO.md#header")
 
 
+def _project_doc_mds():
+    """Documentación del proyecto de forma DETERMINISTA (idéntica en un clon limpio):
+    los `.md` de la raíz + `docs/` + `revision/`. Excluye dirs locales no versionados como
+    `.claude/`, `.agents/`, etc., para que el conteo sea reproducible."""
+    mds = sorted(ROOT.glob("*.md"))
+    for sub in ("docs", "revision"):
+        d = ROOT / sub
+        if d.exists():
+            mds += sorted(d.rglob("*.md"))
+    return mds
+
+
 def _checks_privacy(results):
-    # Todo el markdown versionado: rutas personales y secretos (0 en el alcance público).
-    for md in ROOT.rglob("*.md"):
-        if any(part in PRIVACY_SKIP for part in md.relative_to(ROOT).parts):
-            continue
+    # Markdown del proyecto: rutas personales, secretos e inputs privados (0 en todo el alcance).
+    for md in _project_doc_mds():
         t = md.read_text(encoding="utf-8", errors="replace")
         _r(results, not detect_absolute_paths(t), "ruta-personal", md.name)
         _r(results, not detect_secrets(t), "secreto-api-key", md.name)
+        _r(results, not detect_private_inputs(t), "input-privado", md.name)
     # Smokes de pre-hyperframes: que no reintroduzcan el SRT privado ni rutas personales.
     # Se excluye este propio archivo (contiene fixtures de detección con nombres ficticios).
-    for py in (ROOT / "revision" / "pre-hyperframes").glob("*.py"):
+    for py in sorted((ROOT / "revision" / "pre-hyperframes").glob("*.py")):
         if py.name == "smoke_h4_docs.py":
             continue
         t = py.read_text(encoding="utf-8", errors="replace")

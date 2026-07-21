@@ -85,12 +85,14 @@ reemplazos usan placeholders genéricos (`input/video.srt`, "SRT privado del usu
   (separador POSIX **y** Windows `input\...`), enlace relativo roto, H5/HyperFrames cerrado
   indebidamente y secreto (con contraprueba negativa de cada uno). Ningún fixture usa un nombre o
   ruta privada real.
-- `--real`: **checks=1390, blockers=0, fails=0**. Verifica archivos requeridos, enlaces relativos,
+- `--real`: **blockers=0, fails=0** (`checks=341` en este commit; el conteo es **determinista** —
+  un check por documento del proyecto en raíz + `docs/` + `revision/`, idéntico en un clon limpio —
+  no depende de dirs locales como `.claude/`). Verifica archivos requeridos, enlaces relativos,
   estado H1/H2/H3/NVENC, H4 pendiente de merge, H5 pendiente, HyperFrames no iniciado, baseline
   2410/4, ausencia de cifras históricas en los encabezados actuales, ausencia de rutas
-  personales/API keys en todo el markdown, ausencia de inputs privados en la superficie pública y en
-  los smokes de `revision/`, privacidad local/externa, formato de feedback en ALPHA, enlaces del
-  README a las guías y consistencia MATRIZ/PLAN.
+  personales/API keys/inputs privados en TODO el markdown del proyecto y en los smokes de
+  `revision/`, privacidad local/externa, formato de feedback en ALPHA, enlaces del README a las
+  guías y consistencia MATRIZ/PLAN.
 
 Los errores del smoke muestran archivo + categoría, nunca el texto sensible.
 
