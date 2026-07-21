@@ -11,6 +11,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import media_deps
+
 # Re-exportar funciones de core_ass para mantener compatibilidad de imports
 from core_ass import (  # noqa: F401
     apply_brain,
@@ -66,24 +68,33 @@ def _load_initial_prompt() -> str | None:
 
 
 def _probe_volume(video_path: Path) -> float:
-    """Devuelve mean_volume en dBFS via ffmpeg volumedetect; -99.0 si no se detecta."""
-    vol = subprocess.run(
-        [
-            "ffmpeg",
-            "-i",
-            str(video_path),
-            "-af",
-            "volumedetect",
-            "-vn",
-            "-sn",
-            "-dn",
-            "-f",
-            "null",
-            "NUL",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    """Devuelve mean_volume en dBFS via ffmpeg volumedetect; -99.0 si no se detecta.
+
+    H3 (P1-BOOT-1): si ffmpeg no esta instalado se lanza FFmpegUnavailable con mensaje accionable
+    en vez de un `FileNotFoundError [WinError 2]` crudo. No se ejecuta el subprocess si `which`
+    ya indica que falta.
+    """
+    media_deps.require_ffmpeg()
+    try:
+        vol = subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                str(video_path),
+                "-af",
+                "volumedetect",
+                "-vn",
+                "-sn",
+                "-dn",
+                "-f",
+                "null",
+                "NUL",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise media_deps.FFmpegUnavailable(media_deps._FFMPEG_MSG) from None
     for line in vol.stderr.splitlines():
         if "mean_volume:" in line:
             try:
@@ -104,22 +115,43 @@ def _parse_fps(r_frame_rate: str | None) -> float:
 
 
 def get_video_info(video_path: Path) -> dict:
-    """Devuelve width, height, duration, fps, mean_volume, has_audio."""
-    probe = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_streams",
-            "-show_format",
-            str(video_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    data = json.loads(probe.stdout)
+    """Devuelve width, height, duration, fps, mean_volume, has_audio, volume_unavailable.
+
+    H3 (P1-BOOT-1 / contrato FASE 4): distingue "ffprobe ausente" de "archivo invalido":
+      - ffprobe no instalado -> FFprobeUnavailable (mensaje accionable, sin JSONDecodeError).
+      - ffprobe presente pero returncode!=0 / stdout vacio / JSON invalido -> MediaProbeError
+        ("no se pudo analizar el video") SIN sugerir instalar FFmpeg.
+
+    Metadata PARCIAL sin ffmpeg: la metadata estructural (width/height/duration/fps/has_audio) solo
+    necesita ffprobe. Si el video tiene audio pero falta ffmpeg para medir volumen, NO se descarta
+    la metadata ni se lanza FFmpegUnavailable: se devuelve `mean_volume=None` + `volume_unavailable
+    =True`. Con medicion valida: `volume_unavailable=False`. Sin audio: `mean_volume=-99.0` +
+    `volume_unavailable=False` (silencio real conocido, no "pendiente").
+    """
+    media_deps.require_ffprobe()
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                "-show_format",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise media_deps.FFprobeUnavailable(media_deps._FFPROBE_MSG) from None
+    if probe.returncode != 0 or not (probe.stdout or "").strip():
+        raise media_deps.MediaProbeError("No se pudo analizar el video.")
+    try:
+        data = json.loads(probe.stdout)
+    except ValueError:
+        raise media_deps.MediaProbeError("No se pudo analizar el video.") from None
     info: dict[str, Any] = {
         "width": 0,
         "height": 0,
@@ -127,6 +159,7 @@ def get_video_info(video_path: Path) -> dict:
         "fps": 30.0,
         "mean_volume": -99.0,
         "has_audio": False,
+        "volume_unavailable": False,
     }
     for s in data.get("streams", []):
         if s.get("codec_type") == "video":
@@ -137,7 +170,12 @@ def get_video_info(video_path: Path) -> dict:
             info["has_audio"] = True
     info["duration"] = float(data.get("format", {}).get("duration", 0))
     if info["has_audio"]:
-        info["mean_volume"] = _probe_volume(video_path)
+        # ffmpeg es opcional para el volumen: sin el, se conserva la metadata estructural.
+        try:
+            info["mean_volume"] = _probe_volume(video_path)
+        except media_deps.FFmpegUnavailable:
+            info["mean_volume"] = None
+            info["volume_unavailable"] = True
     return info
 
 

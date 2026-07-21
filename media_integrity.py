@@ -46,7 +46,17 @@ def ruta_temporal(final: Path) -> Path:
 
 
 def _ffprobe(path: Path) -> dict:
-    """Corre ffprobe (streams + format) y devuelve el dict JSON. Lanza MediaIntegrityError."""
+    """Corre ffprobe (streams + format) y devuelve el dict JSON. Lanza MediaIntegrityError.
+
+    H3: si `which` ya indica que ffprobe no esta instalado NO se lanza el subprocess; se lanza
+    MediaIntegrityError (NO FFprobeUnavailable) para preservar el contrato fail-closed de
+    `video_reanudable`, que solo captura MediaIntegrityError -> un ffprobe ausente hace que un
+    output se considere no-reanudable (se re-renderiza) en vez de romper el gate de resume.
+    """
+    import media_deps  # noqa: PLC0415
+
+    if not media_deps.ffprobe_disponible():
+        raise MediaIntegrityError("ffprobe no esta disponible")
     try:
         r = subprocess.run(
             [

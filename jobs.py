@@ -151,7 +151,18 @@ def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> 
             result={**result, "output": out_mp4.name, "drift_s": drift},
         )
     except Exception as exc:
-        update_job(jid, status="error", message=str(exc), error=str(exc))
+        mensaje = _error_publico_depurar(exc)
+        update_job(jid, status="error", message=mensaje, error=mensaje)
+
+
+def _error_publico_depurar(exc: Exception) -> str:
+    """Mensaje accionable y saneado del worker de depurar (sin stderr, rutas ni payloads)."""
+    nombre = type(exc).__name__
+    if nombre in ("FFmpegUnavailable", "FFprobeUnavailable", "MediaDependencyUnavailable"):
+        return str(exc)  # el texto tipado ya es accionable y no lleva rutas
+    if nombre == "MediaProbeError":
+        return "No se pudo analizar el video para depurarlo."
+    return "La depuracion no pudo completarse."
 
 
 # ---Worker: clipper ---───────────────────────────────────────────────────────
@@ -396,6 +407,13 @@ def run_submagic_render(
 
 def _error_publico_auto(exc: Exception) -> str:
     """Traduce fallos del worker sin publicar paths, keys ni payloads internos."""
+    # H3: dependencia multimedia ausente -> mensaje accionable (el texto tipado no lleva rutas).
+    if type(exc).__name__ in (
+        "FFmpegUnavailable",
+        "FFprobeUnavailable",
+        "MediaDependencyUnavailable",
+    ):
+        return str(exc)
     if type(exc).__name__ == "AudioIntegrityError":
         return "La verificacion de integridad de audio no fue aprobada."
     if type(exc).__name__ == "AVSyncError":

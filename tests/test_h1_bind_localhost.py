@@ -21,6 +21,18 @@ def test_app_main_no_bindea_todas_las_interfaces():
 
 
 def test_arranque_bat_usa_loopback():
+    # H3: el bind loopback migro del .bat al launcher (studio_launcher.py). arranque.bat delega
+    # en el launcher y NO deja un 0.0.0.0. La garantia loopback se prueba en studio_launcher.HOST.
     bat = (ROOT / "arranque.bat").read_text(encoding="utf-8")
-    assert "--host 127.0.0.1" in bat
+    assert "studio_launcher.py" in bat
     assert "0.0.0.0" not in bat
+
+
+def test_launcher_bindea_loopback():
+    import studio_launcher
+
+    assert studio_launcher.HOST == "127.0.0.1"
+    src = (ROOT / "studio_launcher.py").read_text(encoding="utf-8")
+    # Sin bind literal a todas las interfaces (el comentario que menciona 0.0.0.0 es informativo).
+    assert 'host="0.0.0.0"' not in src
+    assert '"0.0.0.0"' not in src.replace("Nunca 0.0.0.0", "")

@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import media_deps
+
 MULETILLAS = frozenset({"eh", "em", "mmm", "ehh", "este"})
 SILENCE_GAP = 0.8  # Silencio mayor a esto se comprime
 SILENCE_COMPRESS = 0.25  # Comprimir a este valor
@@ -155,6 +157,7 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
     """Ejecuta el EDL en FFmpeg re-encoding con crossfade de audio."""
     if not edl:
         raise ValueError("EDL vacio: no hay segmentos que conservar")
+    media_deps.require_ffmpeg()  # H3: sin ffmpeg -> FFmpegUnavailable accionable (no WinError 2)
     cmd = [
         "ffmpeg",
         "-y",
@@ -178,9 +181,15 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
         "128k",
         str(output),
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError:
+        raise media_deps.FFmpegUnavailable(media_deps._FFMPEG_MSG) from None
     if r.returncode != 0:
-        raise RuntimeError(f"FFmpeg depurar error:\n{r.stderr[-1500:]}")
+        # ffmpeg SI existe pero fallo el corte: el diagnostico tecnico se queda en consola local
+        # saneada; al job/usuario NO se le expone stderr ni rutas (mensaje generico y seguro).
+        print(f"[depurar] FFmpeg fallo el EDL (rc={r.returncode}): {r.stderr[-1500:]}")
+        raise RuntimeError("La depuracion no pudo completarse.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,26 +199,30 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
 
 def _volume_at(video_path: Path, start: float, dur: float = 0.3) -> float:
     """Devuelve mean_volume dBFS en el tramo [start, start+dur]."""
-    r = subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            str(max(0, start)),
-            "-t",
-            str(dur),
-            "-i",
-            str(video_path),
-            "-af",
-            "volumedetect",
-            "-vn",
-            "-f",
-            "null",
-            "NUL",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    media_deps.require_ffmpeg()  # H3: diagnostico de union; sin ffmpeg -> FFmpegUnavailable
+    try:
+        r = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(max(0, start)),
+                "-t",
+                str(dur),
+                "-i",
+                str(video_path),
+                "-af",
+                "volumedetect",
+                "-vn",
+                "-f",
+                "null",
+                "NUL",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise media_deps.FFmpegUnavailable(media_deps._FFMPEG_MSG) from None
     for line in r.stderr.splitlines():
         if "mean_volume:" in line:
             try:
@@ -276,15 +289,27 @@ def _eval_joins(
 
 
 def _probe_duration(video_path: Path) -> float:
-    """Devuelve duracion en segundos del video."""
-    r = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        raise RuntimeError(f"ffprobe error:\n{r.stderr[-1000:]}")
-    return float(json.loads(r.stdout).get("format", {}).get("duration", 0))
+    """Devuelve duracion en segundos del video.
+
+    H3: ffprobe ausente -> FFprobeUnavailable (no WinError 2 crudo); ffprobe presente pero
+    returncode!=0 / stdout vacio / JSON invalido -> MediaProbeError. No publica stderr ni rutas.
+    """
+    media_deps.require_ffprobe()
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        raise media_deps.FFprobeUnavailable(media_deps._FFPROBE_MSG) from None
+    if r.returncode != 0 or not (r.stdout or "").strip():
+        raise media_deps.MediaProbeError("No se pudo analizar el video para depurarlo.")
+    try:
+        data = json.loads(r.stdout)
+    except ValueError:
+        raise media_deps.MediaProbeError("No se pudo analizar el video para depurarlo.") from None
+    return float(data.get("format", {}).get("duration", 0))
 
 
 def depurar(video_path: Path, words: list[dict], mode: str, output_path: Path) -> dict:

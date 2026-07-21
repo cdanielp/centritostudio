@@ -149,9 +149,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   padding:12px 14px;margin-bottom:8px;display:none}
 .no-transcript-notice p{font-size:13px;margin-bottom:8px}
 .no-transcript-notice .notice-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* H3: aviso discreto de modo degradado (capacidad opcional ausente) */
+#system-banner{display:none;background:#2a1a12;border-bottom:0.5px solid var(--orange);
+  color:var(--text);font-size:13px;font-weight:500;padding:8px clamp(16px,3vw,32px)}
+#system-banner[hidden]{display:none}
+#system-banner:not([hidden]){display:block}
+[data-cap][disabled],[data-cap][aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
+
+<!-- H3: aviso de modo degradado (poblado por system_capabilities.js; oculto si todo esta OK) -->
+<div id="system-banner" hidden></div>
 
 <div id="header">
   <span>🎬</span>
@@ -262,7 +272,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
   <div id="upload-zone" onclick="document.getElementById('file-input').click()"
        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-    <input type="file" id="file-input" accept="video/mp4" onchange="uploadFile(this.files[0])">
+    <input type="file" id="file-input" accept="video/mp4" data-cap="upload_validation" onchange="uploadFile(this.files[0])">
     <div style="font-size:28px;margin-bottom:8px">📁</div>
     <div>Arrastra un .mp4 aquí o <b>haz clic para seleccionar</b></div>
   </div>
@@ -415,7 +425,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <div id="render-srt-incompat" class="srt-incompat" hidden>
       Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
-    <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
+    <button class="btn" onclick="startRender()" id="render-btn" data-cap="render">Renderizar</button>
     <div id="render-status"></div>
   </div>
 
@@ -546,7 +556,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
     <div class="step">
       <div class="step-head"><span class="step-num">5</span> Generar</div>
-      <button class="btn auto-submit" id="auto-btn" onclick="startAuto()">Generar paquete clásico</button>
+      <button class="btn auto-submit" id="auto-btn" data-cap="auto" onclick="startAuto()">Generar paquete clásico</button>
       <div id="auto-status" style="margin-top:10px"></div>
     </div>
 
@@ -762,6 +772,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 </style>
 
 <script src="/static/job_polling.js"></script>
+<script src="/static/system_capabilities.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // Estado global
@@ -1122,6 +1133,25 @@ async function loadVideos() {
   videos = await res.json();
   renderVideoList();
   populateSelects();
+  applyCaps();  // H3: re-gatea controles data-cap recien renderizados (p.ej. Reencuadrar 9:16)
+}
+
+// H3: modo degradado. Consulta capacidades y deshabilita SOLO los controles afectados.
+// Un fallo al consultar NUNCA rompe la UI (los defaults quedan habilitados).
+let _systemCaps = null;
+function applyCaps() {
+  if (_systemCaps && window.CentritoCapabilities) {
+    window.CentritoCapabilities.applyCapabilities(_systemCaps, document);
+  }
+}
+async function checkSystemCapabilities() {
+  try {
+    const r = await fetch('/api/system/capabilities');
+    if (!r.ok) return;
+    const d = await r.json();
+    _systemCaps = d.capabilities || {};
+    applyCaps();
+  } catch (e) { /* informativo: la UI sigue con los controles por defecto */ }
 }
 
 function renderVideoList() {
@@ -1134,7 +1164,13 @@ function renderVideoList() {
   videos.forEach(v => {
     const dur = fmtTime(v.duration);
     const st  = v.stages || {};
-    const hasVoice = v.mean_volume >= -40;
+    // H3: tres estados distintos, ninguno es "sin voz". metaUnknown = ni ffprobe corrio;
+    // volumeUnknown = metadata OK pero sin ffmpeg para medir volumen. Solo hay "Sin voz" cuando
+    // hay una medicion valida por debajo del umbral. En los dos "pendientes" se permite Transcribir.
+    const metaUnknown = v.metadata_unavailable === true;
+    const volumeUnknown = v.volume_unavailable === true || v.mean_volume == null;
+    const hasVoice = !metaUnknown && !volumeUnknown && v.mean_volume >= -40;
+    const puedeTranscribir = hasVoice || metaUnknown || volumeUnknown;
     const transcrito = !!st.transcrito;
 
     // Pipeline badges
@@ -1155,10 +1191,10 @@ function renderVideoList() {
       <img src="${v.thumb || ''}" alt="" onerror="this.style.display='none'">
       <div class="info">
         <div class="name">${v.name}</div>
-        <div class="meta">${v.width}×${v.height} · ${dur} · ${hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz'}</div>
+        <div class="meta">${v.width}×${v.height} · ${dur} · ${metaUnknown ? '⏳ análisis pendiente' : volumeUnknown ? '🔊 volumen pendiente' : (hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz')}</div>
         <div class="pipeline-badges">${badges}</div>
         <div class="actions">
-          ${hasVoice
+          ${puedeTranscribir
             ? `<button class="btn" onclick="transcribeVideo('${n}',this)">Transcribir</button>`
             : `<span class="msg err">Sin voz — no se puede transcribir</span>`}
           ${transcrito ? `<button class="btn secondary" onclick="openEditor('${n}')">Editar</button>` : ''}
@@ -1167,8 +1203,8 @@ function renderVideoList() {
         </div>
         <div id="dep-panel-${v.name}" class="depurar-panel" style="display:none">
           <span>Modo:</span>
-          <button class="btn" onclick="runDepurar('${n}','seguro')">Seguro — silencios</button>
-          <button class="btn secondary" onclick="runDepurar('${n}','agresivo')">Agresivo + muletillas</button>
+          <button class="btn" data-cap="depurar" onclick="runDepurar('${n}','seguro')">Seguro — silencios</button>
+          <button class="btn secondary" data-cap="depurar" onclick="runDepurar('${n}','agresivo')">Agresivo + muletillas</button>
           <button class="btn secondary" onclick="toggleDepurarPanel('${n}')">Cancelar</button>
         </div>
         <div id="job-${v.name}"></div>
@@ -1205,6 +1241,13 @@ function onDrop(e)      { e.preventDefault(); onDragLeave(); if (e.dataTransfer.
 
 async function uploadFile(file) {
   if (!file || !file.name.endsWith('.mp4')) return;
+  // H3: gatea TODA subida (click y arrastrar-soltar) si la capacidad no esta disponible, para no
+  // iniciar una carga que el server rechazara con 503. El input tiene data-cap, pero el drop zone
+  // llama a uploadFile directo; el guard aqui cubre ambos caminos.
+  if (_systemCaps && _systemCaps.upload_validation && _systemCaps.upload_validation.available === false) {
+    alert(_systemCaps.upload_validation.message || 'La subida de video no esta disponible en este entorno.');
+    return;
+  }
   const prog = document.getElementById('upload-progress');
   const bar  = document.getElementById('upload-bar');
   prog.style.display = 'block';
@@ -1601,6 +1644,12 @@ function runDepurar(name, mode) {
   toggleDepurarPanel(name);
   const box = document.getElementById('job-' + name);
   if (!box) return;
+  // H3: guard por capacidad cacheada (cubre invocacion directa o estado desactualizado). Sin
+  // ffmpeg/ffprobe no se envia el POST ni se crea un job condenado a fallar; solo aviso accesible.
+  if (_systemCaps && _systemCaps.depurar && _systemCaps.depurar.available === false) {
+    box.innerHTML = `<div class="msg err" role="alert">${_systemCaps.depurar.message || 'Depuracion no disponible en este entorno.'}</div>`;
+    return;
+  }
   const t0 = Date.now();
   box.innerHTML = `<div class="msg">Iniciando depuracion ${mode}…</div>
     <div class="progress-bar"><div class="fill" id="dep-pb-${name}" style="width:5%"></div></div>`;
@@ -1966,7 +2015,7 @@ function renderClipsCards(data) {
           <button class="btn secondary" style="font-size:12px;padding:5px 12px"
             onclick="openRenderClip('${file.replace('.mp4','')}')">Agregar captions</button>
           <button class="btn secondary" style="font-size:12px;padding:5px 12px"
-            id="reframe-btn-${file.replace('.mp4','')}"
+            id="reframe-btn-${file.replace('.mp4','')}" data-cap="reframe"
             onclick="startReframe('${file.replace('.mp4','')}', this)">Reencuadrar 9:16</button>
         </div>
         <div id="reframe-status-${file.replace('.mp4','')}" style="margin-top:5px;font-size:11px;color:var(--muted)"></div>
@@ -1979,6 +2028,7 @@ function renderClipsCards(data) {
 
   document.getElementById('clips-results').style.display = 'block';
   document.getElementById('clips-note').style.display = 'block';
+  applyCaps();  // H3: re-gatea los botones "Reencuadrar 9:16" recien creados (data-cap="reframe")
 }
 
 function setLayoutMode(mode) {
@@ -2901,6 +2951,7 @@ function tlSeek(ev, dur) {
 loadVideos();
 loadStyles();
 loadPresets();
+checkSystemCapabilities();  // H3: aviso de modo degradado + gating de controles afectados
 
 // Deep-link opcional por hash: #revision, #paquetes, #revision/<pkg_id> (bookmarkable
 // y util para abrir una vista directa). Sin hash valido -> Inicio.
