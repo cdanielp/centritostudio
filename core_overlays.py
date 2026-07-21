@@ -269,6 +269,7 @@ def construir_comando(
     fx_prefilter: str | None = None,
     clips: list[clip_overlay.ClipOverlay] | None = None,
     fps: float = 30.0,
+    video_args: list[str] | None = None,
 ) -> list[str]:
     """Comando FFmpeg completo: FX + ass + emojis (cadena historica) + popups + clips opcionales.
 
@@ -322,6 +323,13 @@ def construir_comando(
 
     cmd += ["-filter_complex", ";".join(fc)]
     cmd += ["-map", f"[{current}]", "-map", "0:a"]  # SOLO 0:a: el audio del clip nunca se mapea
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"]
+    # video_args=None conserva el encoder CPU historico BYTE-IDENTICO (test de contrato lo fija);
+    # produccion inyecta la seleccion NVENC/CPU resuelta. El audio (-c:a copy) nunca cambia.
+    encoder_args = (
+        video_args
+        if video_args is not None
+        else ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
+    )
+    cmd += [*encoder_args, "-c:a", "copy"]
     cmd.append(str(output_video))
     return cmd

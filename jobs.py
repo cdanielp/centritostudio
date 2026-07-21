@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import core
+import video_encoder
 
 # Re-export: los consumidores (app.py, tests) siguen usando jobs.new_job/get_job
 # y jobs.run_render (worker movido a jobs_render.py en el split s34 B2).
@@ -125,6 +126,7 @@ def run_analyze(jid: str, grp_path: Path, name: str) -> None:
 # ---Worker: depuracion ---────────────────────────────────────────────────────
 
 
+@video_encoder.con_snapshot  # instantania inmutable del encoder para todo el job
 def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> None:
     """Worker: depura el video eliminando silencios y opcionalmente muletillas."""
     try:
@@ -160,6 +162,8 @@ def _error_publico_depurar(exc: Exception) -> str:
     nombre = type(exc).__name__
     if nombre in ("FFmpegUnavailable", "FFprobeUnavailable", "MediaDependencyUnavailable"):
         return str(exc)  # el texto tipado ya es accionable y no lleva rutas
+    if nombre == "NVENCUnavailable":
+        return str(exc)  # mensaje accionable saneado (revisa el driver / usa modo auto o cpu)
     if nombre == "MediaProbeError":
         return "No se pudo analizar el video para depurarlo."
     return "La depuracion no pudo completarse."
@@ -168,6 +172,7 @@ def _error_publico_depurar(exc: Exception) -> str:
 # ---Worker: clipper ---───────────────────────────────────────────────────────
 
 
+@video_encoder.con_snapshot  # instantania inmutable del encoder (clipper hereda run_edl)
 def run_clips(jid: str, mp4: Path, words_path: Path, name: str, tipos: str) -> None:
     """Worker: genera clips virales con IA y los guarda en output/clips/."""
     try:
@@ -240,6 +245,7 @@ def run_clips(jid: str, mp4: Path, words_path: Path, name: str, tipos: str) -> N
 # --- Worker: reframe ----------------------------------------------------------
 
 
+@video_encoder.con_snapshot  # instantania inmutable del encoder para todo el job
 def run_reframe(
     jid: str,
     clip_path: Path,
@@ -421,6 +427,7 @@ def _error_publico_auto(exc: Exception) -> str:
     return "El procesamiento automatico no pudo completarse."
 
 
+@video_encoder.con_snapshot  # instantania inmutable del encoder para todo el pipeline Auto
 def run_auto(jid: str, mp4: Path, name: str, objetivo: str = "clips", *, config=None) -> None:
     """Worker: Modo Automatico v1 — capa delgada sobre auto.ejecutar_auto (regla #19)."""
     try:
