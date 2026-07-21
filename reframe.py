@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 
 import reframe_track as rt
+import video_encoder
 from reframe_detect import (
     _crear_detector,
     _detectar_trayectoria,
@@ -242,28 +243,31 @@ def _aplicar_punch_ins(
 # ── Render ────────────────────────────────────────────────────────────────────
 
 
-def _cmd_ffmpeg_pipe(input_path: Path, output_path: Path, fps: float, has_audio: bool) -> list[str]:
-    """Construye el comando FFmpeg para el pipe OpenCV (bgr24) -> MP4 yuv420p."""
+def _cmd_ffmpeg_pipe(
+    input_path: Path, output_path: Path, fps: float, has_audio: bool, video_args: list[str]
+) -> list[str]:
+    """Comando FFmpeg del pipe OpenCV (bgr24) -> MP4. Solo cambia el encoder; el pipe no.
+
+    Con video_args CPU fast (sin -pix_fmt) el comando es BYTE-IDENTICO al historico (se agrega
+    -pix_fmt yuv420p). Los args NVENC ya traen -pix_fmt, asi que no se duplica.
+    """
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24"]
     cmd += ["-s", f"{OUTPUT_W}x{OUTPUT_H}", "-r", str(fps), "-i", "pipe:0"]
     ai = ["-i", str(input_path), "-map", "0:v", "-map", "1:a"] if has_audio else ["-map", "0:v"]
-    cmd += ai + ["-c:v", "libx264", "-crf", "18", "-preset", "fast", "-pix_fmt", "yuv420p"]
+    cmd += ai + list(video_args)
+    if "-pix_fmt" not in video_args:
+        cmd += ["-pix_fmt", "yuv420p"]
     if has_audio:
         cmd += ["-c:a", "copy"]
     cmd += ["-movflags", "+faststart", str(output_path)]
     return cmd
 
 
-def renderizar_reframe(
-    input_path: Path,
-    crop_frames: list[tuple[int, int, int, int]],
-    output_path: Path,
-    fps: float,
-    has_audio: bool = True,
-) -> float:
-    """Lee frames con OpenCV, aplica crops, escala 1080x1920 (LANCZOS4), pipe a FFmpeg."""
+def _pipe_a_ffmpeg(
+    cmd: list[str], crop_frames: list[tuple[int, int, int, int]], input_path: Path
+) -> tuple[int, str, float]:
+    """Corre el pipe OpenCV->FFmpeg (crops+resize LANCZOS4 intactos). Devuelve (rc, stderr, s)."""
     t0 = time.time()
-    cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     cap = cv2.VideoCapture(str(input_path))
     try:
@@ -279,10 +283,63 @@ def renderizar_reframe(
         if proc.stdin:
             proc.stdin.close()
     _, stderr_bytes = proc.communicate()
-    if proc.returncode != 0:
-        tail = (stderr_bytes or b"").decode("utf-8", errors="replace")[-2000:]
-        raise RuntimeError(f"FFmpeg returncode {proc.returncode}: {tail}")
-    return time.time() - t0
+    stderr = (stderr_bytes or b"").decode("utf-8", errors="replace")
+    return proc.returncode, stderr, time.time() - t0
+
+
+def renderizar_reframe(
+    input_path: Path,
+    crop_frames: list[tuple[int, int, int, int]],
+    output_path: Path,
+    fps: float,
+    has_audio: bool = True,
+) -> float:
+    """Lee frames OpenCV, aplica crops, escala 1080x1920 (LANCZOS4), pipe a FFmpeg (NVENC/CPU)."""
+    seleccion = video_encoder.select_encoder(
+        video_encoder.active_mode(), video_encoder.EncoderProfile.FAST
+    )
+    args = video_encoder.build_video_args(seleccion)
+    cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, args)
+    rc, stderr, elapsed = _pipe_a_ffmpeg(cmd, crop_frames, input_path)
+    if rc == 0:
+        return elapsed
+    if _reframe_permite_fallback(seleccion, stderr):
+        return _reframe_fallback_cpu(input_path, crop_frames, output_path, fps, has_audio)
+    raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
+
+
+def _reframe_permite_fallback(seleccion, stderr: str) -> bool:
+    """Solo en modo auto y con NVENC seleccionado, y solo ante un fallo de INICIALIZACION NVENC."""
+    return (
+        seleccion.requested == video_encoder.EncoderMode.AUTO.value
+        and seleccion.selected == "nvenc"
+        and video_encoder.is_nvenc_init_failure(stderr)
+    )
+
+
+def _reframe_fallback_cpu(
+    input_path: Path,
+    crop_frames: list[tuple[int, int, int, int]],
+    output_path: Path,
+    fps: float,
+    has_audio: bool,
+) -> float:
+    """Reintento unico en CPU tras un fallo de init NVENC: limpia el parcial y re-pipea."""
+    try:
+        Path(output_path).unlink()
+    except OSError:
+        pass
+    cpu = video_encoder.select_encoder(
+        video_encoder.EncoderMode.CPU, video_encoder.EncoderProfile.FAST
+    )
+    cmd = _cmd_ffmpeg_pipe(
+        input_path, output_path, fps, has_audio, video_encoder.build_video_args(cpu)
+    )
+    rc, stderr, elapsed = _pipe_a_ffmpeg(cmd, crop_frames, input_path)
+    if rc != 0:
+        raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
+    print("[encoder] NVENC no pudo completar la codificacion; se uso CPU.")
+    return elapsed
 
 
 def _cargar_o_generar_brain(clip_path: Path) -> dict | None:
