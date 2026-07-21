@@ -146,8 +146,10 @@ def test_listado_biblioteca_tolera_ffprobe_ausente(monkeypatch, tmp_path):
     client = TestClient(studio_app.app)
     resp = client.get("/api/videos")
     assert resp.status_code == 200
-    nombres = [v["name"] for v in resp.json()]
-    assert "clip" in nombres  # la tarjeta se lista con metadata en cero
+    card = next(v for v in resp.json() if v["name"] == "clip")
+    # Metadata ausente != silencio: mean_volume null + flag, para que la UI ofrezca Transcribir.
+    assert card["metadata_unavailable"] is True
+    assert card["mean_volume"] is None and card["has_audio"] is None
 
 
 def test_upload_sin_ffprobe_rechaza_antes_de_streamear(monkeypatch):

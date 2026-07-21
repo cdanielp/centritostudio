@@ -251,6 +251,7 @@ def list_videos():
             for c in CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")
         )
 
+        meta_ok = True
         if info_file.exists():
             info = json.loads(info_file.read_text(encoding="utf-8"))
         else:
@@ -262,6 +263,7 @@ def list_videos():
                 info_file.write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
             except Exception:
                 info = {}
+                meta_ok = False
 
         thumb = THUMBS_DIR / f"{mp4.stem}.jpg"
         if not thumb.exists():
@@ -279,8 +281,12 @@ def list_videos():
                 "duration": round(info.get("duration", 0), 2),
                 "width": info.get("width", 0),
                 "height": info.get("height", 0),
-                "mean_volume": info.get("mean_volume", -99),
-                "has_audio": info.get("has_audio", False),
+                # H3: metadata ausente (ffprobe faltante) NO es "silencio". Se envia mean_volume
+                # null + metadata_unavailable para que la UI no muestre "Sin voz" ni oculte
+                # Transcribir en un video valido; el default -99 solo aplica con metadata real.
+                "mean_volume": info.get("mean_volume", -99) if meta_ok else None,
+                "has_audio": info.get("has_audio", False) if meta_ok else None,
+                "metadata_unavailable": not meta_ok,
                 "thumb": f"/thumbs/{mp4.stem}.jpg" if thumb.exists() else None,
                 "outputs": [o.name for o in outputs],
             }

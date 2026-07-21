@@ -1164,7 +1164,11 @@ function renderVideoList() {
   videos.forEach(v => {
     const dur = fmtTime(v.duration);
     const st  = v.stages || {};
-    const hasVoice = v.mean_volume >= -40;
+    // H3: metadata desconocida (ffprobe ausente) != "sin voz". No se oculta Transcribir en ese
+    // caso; el backend permite transcribir y el analisis de volumen ocurre luego.
+    const metaUnknown = v.metadata_unavailable === true || v.mean_volume == null;
+    const hasVoice = !metaUnknown && v.mean_volume >= -40;
+    const puedeTranscribir = hasVoice || metaUnknown;
     const transcrito = !!st.transcrito;
 
     // Pipeline badges
@@ -1185,10 +1189,10 @@ function renderVideoList() {
       <img src="${v.thumb || ''}" alt="" onerror="this.style.display='none'">
       <div class="info">
         <div class="name">${v.name}</div>
-        <div class="meta">${v.width}×${v.height} · ${dur} · ${hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz'}</div>
+        <div class="meta">${v.width}×${v.height} · ${dur} · ${metaUnknown ? '⏳ análisis pendiente' : (hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz')}</div>
         <div class="pipeline-badges">${badges}</div>
         <div class="actions">
-          ${hasVoice
+          ${puedeTranscribir
             ? `<button class="btn" onclick="transcribeVideo('${n}',this)">Transcribir</button>`
             : `<span class="msg err">Sin voz — no se puede transcribir</span>`}
           ${transcrito ? `<button class="btn secondary" onclick="openEditor('${n}')">Editar</button>` : ''}
