@@ -287,27 +287,6 @@ def _pipe_a_ffmpeg(
     return proc.returncode, stderr, time.time() - t0
 
 
-def renderizar_reframe(
-    input_path: Path,
-    crop_frames: list[tuple[int, int, int, int]],
-    output_path: Path,
-    fps: float,
-    has_audio: bool = True,
-) -> float:
-    """Lee frames OpenCV, aplica crops, escala 1080x1920 (LANCZOS4), pipe a FFmpeg (NVENC/CPU)."""
-    seleccion = video_encoder.select_encoder(
-        video_encoder.active_mode(), video_encoder.EncoderProfile.FAST
-    )
-    args = video_encoder.build_video_args(seleccion)
-    cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, args)
-    rc, stderr, elapsed = _pipe_a_ffmpeg(cmd, crop_frames, input_path)
-    if rc == 0:
-        return elapsed
-    if _reframe_permite_fallback(seleccion, stderr):
-        return _reframe_fallback_cpu(input_path, crop_frames, output_path, fps, has_audio)
-    raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
-
-
 def _reframe_permite_fallback(seleccion, stderr: str) -> bool:
     """Solo en modo auto y con NVENC seleccionado, y solo ante un fallo de INICIALIZACION NVENC."""
     return (
@@ -317,29 +296,48 @@ def _reframe_permite_fallback(seleccion, stderr: str) -> bool:
     )
 
 
-def _reframe_fallback_cpu(
+def _render_con_fallback(output_path: Path, ejecutar) -> float:
+    """Selecciona encoder FAST y corre `ejecutar(video_args)->(rc, stderr, s)`.
+
+    En modo auto reintenta UNA vez en CPU ante un fallo de INICIALIZACION NVENC (limpia el
+    parcial primero). Comun a reframe tracking y stack: ambos solo cambian como pipean los frames.
+    """
+    seleccion = video_encoder.select_encoder(
+        video_encoder.active_mode(), video_encoder.EncoderProfile.FAST
+    )
+    rc, stderr, elapsed = ejecutar(video_encoder.build_video_args(seleccion))
+    if rc == 0:
+        return elapsed
+    if _reframe_permite_fallback(seleccion, stderr):
+        try:
+            Path(output_path).unlink()
+        except OSError:
+            pass
+        cpu = video_encoder.select_encoder(
+            video_encoder.EncoderMode.CPU, video_encoder.EncoderProfile.FAST
+        )
+        rc2, stderr2, elapsed2 = ejecutar(video_encoder.build_video_args(cpu))
+        if rc2 != 0:
+            raise RuntimeError(video_encoder.sanitize_encoder_error(stderr2))
+        print("[encoder] NVENC no pudo completar la codificacion; se uso CPU.")
+        return elapsed2
+    raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
+
+
+def renderizar_reframe(
     input_path: Path,
     crop_frames: list[tuple[int, int, int, int]],
     output_path: Path,
     fps: float,
-    has_audio: bool,
+    has_audio: bool = True,
 ) -> float:
-    """Reintento unico en CPU tras un fallo de init NVENC: limpia el parcial y re-pipea."""
-    try:
-        Path(output_path).unlink()
-    except OSError:
-        pass
-    cpu = video_encoder.select_encoder(
-        video_encoder.EncoderMode.CPU, video_encoder.EncoderProfile.FAST
-    )
-    cmd = _cmd_ffmpeg_pipe(
-        input_path, output_path, fps, has_audio, video_encoder.build_video_args(cpu)
-    )
-    rc, stderr, elapsed = _pipe_a_ffmpeg(cmd, crop_frames, input_path)
-    if rc != 0:
-        raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
-    print("[encoder] NVENC no pudo completar la codificacion; se uso CPU.")
-    return elapsed
+    """Lee frames OpenCV, aplica crops, escala 1080x1920 (LANCZOS4), pipe a FFmpeg (NVENC/CPU)."""
+
+    def _ejecutar(video_args: list[str]):
+        cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, video_args)
+        return _pipe_a_ffmpeg(cmd, crop_frames, input_path)
+
+    return _render_con_fallback(output_path, _ejecutar)
 
 
 def _cargar_o_generar_brain(clip_path: Path) -> dict | None:
@@ -537,19 +535,11 @@ def reframe_clip(
 # ── Stack layout ─────────────────────────────────────────────────────────────
 
 
-def renderizar_stack(
-    input_path: Path,
-    bandas: list[tuple[int, int, int, int]],
-    output_path: Path,
-    fps: float,
-    has_audio: bool,
-) -> float:
-    """Render en modo stack: N bandas estaticas apiladas verticalmente."""
-    n = len(bandas)
-    assert OUTPUT_H % n == 0, f"OUTPUT_H={OUTPUT_H} no divisible por n={n}"
-    band_h = OUTPUT_H // n
+def _pipe_stack(
+    cmd: list[str], bandas: list[tuple[int, int, int, int]], input_path: Path, band_h: int
+) -> tuple[int, str, float]:
+    """Corre el pipe stack (N bandas apiladas via vconcat). Devuelve (rc, stderr, s)."""
     t0 = time.time()
-    cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     cap = cv2.VideoCapture(str(input_path))
     try:
@@ -568,12 +558,26 @@ def renderizar_stack(
         if proc.stdin:
             proc.stdin.close()
     _, err = proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"FFmpeg returncode {proc.returncode}: "
-            + (err or b"").decode("utf-8", errors="replace")[-2000:]
-        )
-    return time.time() - t0
+    return proc.returncode, (err or b"").decode("utf-8", errors="replace"), time.time() - t0
+
+
+def renderizar_stack(
+    input_path: Path,
+    bandas: list[tuple[int, int, int, int]],
+    output_path: Path,
+    fps: float,
+    has_audio: bool,
+) -> float:
+    """Render en modo stack: N bandas estaticas apiladas verticalmente (NVENC/CPU)."""
+    n = len(bandas)
+    assert OUTPUT_H % n == 0, f"OUTPUT_H={OUTPUT_H} no divisible por n={n}"
+    band_h = OUTPUT_H // n
+
+    def _ejecutar(video_args: list[str]):
+        cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, video_args)
+        return _pipe_stack(cmd, bandas, input_path, band_h)
+
+    return _render_con_fallback(output_path, _ejecutar)
 
 
 def reframe_stack_clip(input_path: Path, output_path: Path, detector_type: str = "yunet") -> dict:
