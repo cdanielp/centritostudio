@@ -151,7 +151,18 @@ def run_depurar(jid: str, mp4: Path, words_path: Path, name: str, mode: str) -> 
             result={**result, "output": out_mp4.name, "drift_s": drift},
         )
     except Exception as exc:
-        update_job(jid, status="error", message=str(exc), error=str(exc))
+        mensaje = _error_publico_depurar(exc)
+        update_job(jid, status="error", message=mensaje, error=mensaje)
+
+
+def _error_publico_depurar(exc: Exception) -> str:
+    """Mensaje accionable y saneado del worker de depurar (sin stderr, rutas ni payloads)."""
+    nombre = type(exc).__name__
+    if nombre in ("FFmpegUnavailable", "FFprobeUnavailable", "MediaDependencyUnavailable"):
+        return str(exc)  # el texto tipado ya es accionable y no lleva rutas
+    if nombre == "MediaProbeError":
+        return "No se pudo analizar el video para depurarlo."
+    return "La depuracion no pudo completarse."
 
 
 # ---Worker: clipper ---───────────────────────────────────────────────────────

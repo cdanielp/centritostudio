@@ -260,7 +260,10 @@ def list_videos():
             # abriendo en modo degradado; el analisis real ocurre cuando ffprobe este disponible.
             try:
                 info = core.get_video_info(mp4)
-                info_file.write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+                # No se cachea una metadata con el volumen PENDIENTE (ffmpeg ausente): asi se
+                # vuelve a medir cuando ffmpeg este disponible en vez de fijar "volumen pendiente".
+                if not info.get("volume_unavailable"):
+                    info_file.write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
             except Exception:
                 info = {}
                 meta_ok = False
@@ -281,12 +284,16 @@ def list_videos():
                 "duration": round(info.get("duration", 0), 2),
                 "width": info.get("width", 0),
                 "height": info.get("height", 0),
-                # H3: metadata ausente (ffprobe faltante) NO es "silencio". Se envia mean_volume
-                # null + metadata_unavailable para que la UI no muestre "Sin voz" ni oculte
-                # Transcribir en un video valido; el default -99 solo aplica con metadata real.
+                # H3: tres estados distintos, no dos. metadata_unavailable = ni ffprobe corrio.
+                # volume_unavailable = metadata estructural OK pero sin ffmpeg para medir volumen
+                # (mean_volume None). Silencio real = medicion valida bajo el umbral. Ninguno de
+                # los dos "pendiente" debe leerse como "Sin voz" ni ocultar Transcribir.
                 "mean_volume": info.get("mean_volume", -99) if meta_ok else None,
                 "has_audio": info.get("has_audio", False) if meta_ok else None,
                 "metadata_unavailable": not meta_ok,
+                "volume_unavailable": bool(info.get("volume_unavailable", False))
+                if meta_ok
+                else False,
                 "thumb": f"/thumbs/{mp4.stem}.jpg" if thumb.exists() else None,
                 "outputs": [o.name for o in outputs],
             }
@@ -595,6 +602,13 @@ def save_keywords(name: str, body: dict = Body(...)):
 @app.post("/api/videos/{name}/depurar")
 def start_depurar(name: str, mode: str = "seguro"):
     _validar_name(name)
+    # H3: depurar necesita ffmpeg (corte/crossfade) Y ffprobe (duracion). Se comprueba con
+    # media_deps (estado ACTUAL, no el cacheado del startup) ANTES de crear el job/thread, para
+    # no dejar un job condenado a fallar con error crudo. 503 accionable y saneado.
+    import media_deps  # noqa: PLC0415
+
+    if not (media_deps.ffmpeg_disponible() and media_deps.ffprobe_disponible()):
+        raise HTTPException(503, "Depuracion de silencios y muletillas requiere FFmpeg y ffprobe.")
     mp4 = INPUT_DIR / f"{name}.mp4"
     words_path = TRANSCRIPTS / f"{name}_words.json"
     if not mp4.exists():

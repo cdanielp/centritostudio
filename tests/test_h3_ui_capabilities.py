@@ -38,10 +38,13 @@ _READY = {
     "ffprobe": {"available": True, "message": "ok"},
     "render": {"available": True, "message": "ok"},
     "auto": {"available": True, "message": "ok"},
+    "clips": {"available": True, "message": "ok"},
+    "depurar": {"available": True, "message": "ok"},
     "upload_validation": {"available": True, "message": "ok"},
     "reframe": {"available": True, "message": "ok"},
     "detector_yunet": {"available": True},
     "detector_blazeface": {"available": True},
+    "audio_analysis": {"available": True},
 }
 
 
@@ -50,7 +53,13 @@ def _degradado_sin_ffmpeg():
     d["ffmpeg"] = {"available": False, "message": "FFmpeg no esta instalado."}
     d["render"] = {"available": False, "message": "Requiere ffmpeg y ffprobe."}
     d["auto"] = {"available": False, "message": "Requiere ffmpeg y ffprobe."}
+    d["clips"] = {"available": False, "message": "Requiere ffmpeg y ffprobe."}
+    d["depurar"] = {
+        "available": False,
+        "message": "Depuracion de silencios y muletillas requiere FFmpeg y ffprobe.",
+    }
     d["reframe"] = {"available": False, "message": "Requiere ffmpeg, ffprobe y un detector."}
+    d["audio_analysis"] = {"available": False, "message": "Requiere FFmpeg."}
     return d
 
 
@@ -70,6 +79,20 @@ def test_index_controles_afectados_tienen_data_cap():
     assert 'data-cap="auto"' in HTML
     assert 'data-cap="upload_validation"' in HTML
     assert 'data-cap="reframe"' in HTML
+    assert HTML.count('data-cap="depurar"') >= 2  # botones Seguro y Agresivo
+
+
+def test_rundepurar_gatea_por_capacidad():
+    frag = HTML[HTML.index("function runDepurar") :]
+    frag = frag[: frag.index("\nfunction ")]
+    assert "_systemCaps" in frag and "depurar" in frag
+
+
+def test_ui_distingue_volumen_pendiente_de_sin_voz():
+    # renderVideoList distingue metadata pendiente, volumen pendiente y silencio real.
+    assert "v.volume_unavailable" in HTML
+    assert "volumen pendiente" in HTML
+    assert "puedeTranscribir" in HTML
 
 
 def test_uploadfile_gatea_por_capacidad_cacheada():
@@ -119,6 +142,7 @@ def test_degradado_deshabilita_afectados_y_deja_los_demas():
             "elements": [
                 {"data-cap": "render"},
                 {"data-cap": "reframe"},
+                {"data-cap": "depurar"},
                 {"data-cap": "upload_validation"},
             ],
         }
@@ -126,7 +150,14 @@ def test_degradado_deshabilita_afectados_y_deja_los_demas():
     by_cap = {e["cap"]: e for e in out["elements"]}
     assert by_cap["render"]["disabled"] is True
     assert by_cap["reframe"]["disabled"] is True
+    assert by_cap["depurar"]["disabled"] is True  # depurar necesita ffmpeg+ffprobe
     assert by_cap["upload_validation"]["disabled"] is False  # ffprobe sigue -> no afectado
+
+
+@requires_node
+def test_depurar_habilitado_cuando_ready():
+    out = _run({"caps": _READY, "elements": [{"data-cap": "depurar"}]})
+    assert out["elements"][0]["disabled"] is False
 
 
 @requires_node

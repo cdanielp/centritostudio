@@ -21,16 +21,22 @@
     render: "Render de captions",
     auto: "Modo Automatico",
     clips: "Generacion de clips",
+    depurar: "Depuracion de silencios",
     reframe: "Reframe 9:16 con seguimiento facial",
     video_metadata: "Analisis de video",
     upload_validation: "Validacion de subidas",
     detector_yunet: "Detector YuNet",
     detector_blazeface: "Detector BlazeFace",
+    audio_analysis: "Analisis de volumen",
   };
 
-  // Los detectores individuales no se listan en el aviso: "reframe" ya resume su ausencia
-  // (evita ruido cuando falta un detector pero no ffmpeg).
-  var OCULTAS_EN_AVISO = { detector_yunet: true, detector_blazeface: true };
+  // No se listan en el aviso: los detectores individuales ("reframe" ya resume su ausencia) y
+  // audio_analysis (el estado "volumen pendiente" se muestra por tarjeta; evita ruido).
+  var OCULTAS_EN_AVISO = {
+    detector_yunet: true,
+    detector_blazeface: true,
+    audio_analysis: true,
+  };
 
   function unavailableList(caps) {
     caps = caps || {};

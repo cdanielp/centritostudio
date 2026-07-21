@@ -1164,11 +1164,13 @@ function renderVideoList() {
   videos.forEach(v => {
     const dur = fmtTime(v.duration);
     const st  = v.stages || {};
-    // H3: metadata desconocida (ffprobe ausente) != "sin voz". No se oculta Transcribir en ese
-    // caso; el backend permite transcribir y el analisis de volumen ocurre luego.
-    const metaUnknown = v.metadata_unavailable === true || v.mean_volume == null;
-    const hasVoice = !metaUnknown && v.mean_volume >= -40;
-    const puedeTranscribir = hasVoice || metaUnknown;
+    // H3: tres estados distintos, ninguno es "sin voz". metaUnknown = ni ffprobe corrio;
+    // volumeUnknown = metadata OK pero sin ffmpeg para medir volumen. Solo hay "Sin voz" cuando
+    // hay una medicion valida por debajo del umbral. En los dos "pendientes" se permite Transcribir.
+    const metaUnknown = v.metadata_unavailable === true;
+    const volumeUnknown = v.volume_unavailable === true || v.mean_volume == null;
+    const hasVoice = !metaUnknown && !volumeUnknown && v.mean_volume >= -40;
+    const puedeTranscribir = hasVoice || metaUnknown || volumeUnknown;
     const transcrito = !!st.transcrito;
 
     // Pipeline badges
@@ -1189,7 +1191,7 @@ function renderVideoList() {
       <img src="${v.thumb || ''}" alt="" onerror="this.style.display='none'">
       <div class="info">
         <div class="name">${v.name}</div>
-        <div class="meta">${v.width}×${v.height} · ${dur} · ${metaUnknown ? '⏳ análisis pendiente' : (hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz')}</div>
+        <div class="meta">${v.width}×${v.height} · ${dur} · ${metaUnknown ? '⏳ análisis pendiente' : volumeUnknown ? '🔊 volumen pendiente' : (hasVoice ? (v.mean_volume.toFixed(1) + ' dB') : '⚠ Sin voz')}</div>
         <div class="pipeline-badges">${badges}</div>
         <div class="actions">
           ${puedeTranscribir
@@ -1201,8 +1203,8 @@ function renderVideoList() {
         </div>
         <div id="dep-panel-${v.name}" class="depurar-panel" style="display:none">
           <span>Modo:</span>
-          <button class="btn" onclick="runDepurar('${n}','seguro')">Seguro — silencios</button>
-          <button class="btn secondary" onclick="runDepurar('${n}','agresivo')">Agresivo + muletillas</button>
+          <button class="btn" data-cap="depurar" onclick="runDepurar('${n}','seguro')">Seguro — silencios</button>
+          <button class="btn secondary" data-cap="depurar" onclick="runDepurar('${n}','agresivo')">Agresivo + muletillas</button>
           <button class="btn secondary" onclick="toggleDepurarPanel('${n}')">Cancelar</button>
         </div>
         <div id="job-${v.name}"></div>
@@ -1642,6 +1644,12 @@ function runDepurar(name, mode) {
   toggleDepurarPanel(name);
   const box = document.getElementById('job-' + name);
   if (!box) return;
+  // H3: guard por capacidad cacheada (cubre invocacion directa o estado desactualizado). Sin
+  // ffmpeg/ffprobe no se envia el POST ni se crea un job condenado a fallar; solo aviso accesible.
+  if (_systemCaps && _systemCaps.depurar && _systemCaps.depurar.available === false) {
+    box.innerHTML = `<div class="msg err" role="alert">${_systemCaps.depurar.message || 'Depuracion no disponible en este entorno.'}</div>`;
+    return;
+  }
   const t0 = Date.now();
   box.innerHTML = `<div class="msg">Iniciando depuracion ${mode}…</div>
     <div class="progress-bar"><div class="fill" id="dep-pb-${name}" style="width:5%"></div></div>`;

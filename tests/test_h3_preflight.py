@@ -144,6 +144,26 @@ def test_faltan_ambos_reframe_no_disponible_pero_no_bloquea(tmp_path):
     assert r["status"] == "degraded"  # NUNCA blocked por modelos
 
 
+# ── capacidad depurar / audio_analysis ─────────────────────────────────────────
+def test_depurar_ready_con_ffmpeg_y_ffprobe(tmp_path):
+    caps = _report(tmp_path, which=_which_todo)["capabilities"]
+    assert caps["depurar"]["available"] is True
+    assert caps["audio_analysis"]["available"] is True
+
+
+def test_depurar_degradado_sin_ffmpeg(tmp_path):
+    caps = _report(tmp_path, which=lambda n: None if n == "ffmpeg" else "x")["capabilities"]
+    assert caps["depurar"]["available"] is False
+    assert "FFmpeg y ffprobe" in caps["depurar"]["message"]
+    assert caps["audio_analysis"]["available"] is False  # volumen necesita ffmpeg
+
+
+def test_depurar_degradado_sin_ffprobe(tmp_path):
+    caps = _report(tmp_path, which=lambda n: None if n == "ffprobe" else "x")["capabilities"]
+    assert caps["depurar"]["available"] is False
+    assert caps["audio_analysis"]["available"] is True  # ffmpeg presente -> volumen medible
+
+
 # ── imports criticos ───────────────────────────────────────────────────────────
 def test_import_critico_ausente_bloquea(tmp_path):
     r = _report(tmp_path, import_probe=lambda m: m != "uvicorn")

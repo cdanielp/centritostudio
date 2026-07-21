@@ -237,6 +237,16 @@ def _build_capabilities(*, ffmpeg: bool, ffprobe: bool, yunet: bool, blazeface: 
         "render": _cap(render, "Render de captions disponible.", "Requiere ffmpeg y ffprobe."),
         "auto": _cap(render, "Modo Automatico disponible.", "Requiere ffmpeg y ffprobe."),
         "clips": _cap(render, "Generacion de clips disponible.", "Requiere ffmpeg y ffprobe."),
+        "depurar": _cap(
+            render,
+            "Depuracion de silencios y muletillas disponible.",
+            "Depuracion de silencios y muletillas requiere FFmpeg y ffprobe.",
+        ),
+        # audio_analysis (medicion de volumen) necesita ffmpeg aunque la metadata estructural
+        # (ffprobe) siga disponible: distingue "volumen pendiente" de "silencio real".
+        "audio_analysis": _cap(
+            ffmpeg, "Analisis de volumen de audio disponible.", "Requiere FFmpeg."
+        ),
         "reframe": _cap(
             reframe,
             "Reframe 9:16 con seguimiento facial disponible.",
