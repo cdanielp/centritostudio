@@ -17,6 +17,7 @@ from pathlib import Path
 
 import cv2
 
+import model_assets
 import reframe_track as rt
 
 # ── Rutas de modelos ──────────────────────────────────────────────────────────
@@ -26,6 +27,27 @@ MODEL_PATH_FULL = Path(__file__).parent / "models" / "blaze_face_full_range.tfli
 YUNET_MODEL_PATH = (
     Path(__file__).parent / "referencia" / "yunet" / "face_detection_yunet_2023mar.onnx"
 )
+
+
+class DetectorUnavailable(Exception):
+    """No hay ningun modelo de deteccion facial disponible para el reframe (H3, P1-BOOT-2).
+
+    El mensaje es ACCIONABLE y usa rutas RELATIVAS: nombra la funcion deshabilitada (reframe con
+    seguimiento facial), las rutas esperadas y el comando de instalacion. Nunca incluye la ruta
+    absoluta local del usuario.
+    """
+
+
+def _mensaje_sin_detector() -> str:
+    """Texto accionable (rutas relativas + comando de setup) cuando falta todo detector."""
+    rutas = "; ".join(f"{m.rel_path}" for m in model_assets.MODELS)
+    return (
+        "Reframe con seguimiento facial deshabilitado: falta el modelo de deteccion. "
+        f"Rutas esperadas: {rutas}. "
+        "Instala un detector con: venv\\Scripts\\python.exe scripts\\setup_models.py "
+        "(o sigue docs\\ENTORNO.md)."
+    )
+
 
 # ── Constantes YuNet ──────────────────────────────────────────────────────────
 
@@ -158,12 +180,15 @@ class YuNetDetector:
 
 def _crear_detector_blazeface(model_path: Path | None = None):
     """Crea un FaceDetector MediaPipe Tasks en modo IMAGE (BlazeFace)."""
+    path = model_path or ACTIVE_MODEL_PATH
+    # H3: el chequeo de existencia va ANTES de importar mediapipe: un clone sin el modelo obtiene
+    # el error accionable (ruta RELATIVA + comando de setup) sin necesitar cargar mediapipe. Un
+    # blazeface pedido explicito que falta NO cae a otro detector (contrato de detector concreto).
+    if not path.exists():
+        raise DetectorUnavailable(_mensaje_sin_detector())
     from mediapipe.tasks import python as _mp_python  # noqa: PLC0415
     from mediapipe.tasks.python import vision as _mp_vision  # noqa: PLC0415
 
-    path = model_path or ACTIVE_MODEL_PATH
-    if not path.exists():
-        raise FileNotFoundError(f"Modelo MediaPipe no encontrado: {path}")
     base = _mp_python.BaseOptions(model_asset_path=str(path))
     opts = _mp_vision.FaceDetectorOptions(
         base_options=base,
@@ -188,7 +213,11 @@ def _crear_detector(
     if detector_type == "yunet":
         yn_path = YUNET_MODEL_PATH
         if not yn_path.exists():
-            print(f"[reframe] YuNet no encontrado en {yn_path} -- fallback a BlazeFace")
+            # Fallback accionable, SIN ruta absoluta ni traceback: si BlazeFace tampoco esta,
+            # _crear_detector_blazeface lanza DetectorUnavailable tipado.
+            print(
+                f"[reframe] YuNet ausente ({model_assets.YUNET.rel_path}) -- fallback a BlazeFace"
+            )
             return _crear_detector_blazeface(model_path)
         return YuNetDetector(model_path=yn_path)
     return _crear_detector_blazeface(model_path)
