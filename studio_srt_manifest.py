@@ -14,10 +14,14 @@ Nunca incluye texto de cues, rutas absolutas ni tracebacks. Tiempos en ms entero
 
 from __future__ import annotations
 
-import unicodedata
 from pathlib import Path, PureWindowsPath
 
 import srt_types
+
+# `is_safe_basename`/`_has_control` viven ahora en el modulo general `path_safety` (H1),
+# fuente UNICA compartida por todos los endpoints. Se reexportan para conservar los imports
+# historicos (`from studio_srt_manifest import is_safe_basename`) sin duplicar la logica.
+from path_safety import _has_control, is_safe_basename  # noqa: F401
 from srt_types import SrtDiagnostic, SrtDocument
 
 MANIFEST_VERSION = 1
@@ -39,26 +43,6 @@ _KNOWN_CODES = frozenset(
 
 
 # ─── Helpers de seguridad ──────────────────────────────────────────────────────
-def _has_control(text: str) -> bool:
-    """True si text contiene algun caracter de control Unicode (categoria Cc).
-
-    Cubre C0 (U+0000-U+001F), DEL (U+007F) y C1 (U+0080-U+009F). No rechaza letras
-    acentuadas (Ll/Lu), emojis (So) ni espacios normales (Zs).
-    """
-    return any(unicodedata.category(c) == "Cc" for c in text)
-
-
-def is_safe_basename(name: object) -> bool:
-    """True solo si name es un basename puro: str no vacio, sin ruta y sin caracteres de control."""
-    return (
-        isinstance(name, str)
-        and name != ""
-        and not _has_control(name)
-        and Path(name).name == name
-        and PureWindowsPath(name).name == name
-    )
-
-
 def is_sha256(value: object) -> bool:
     """True solo si value es exactamente 64 caracteres hex minusculos."""
     return isinstance(value, str) and len(value) == 64 and all(c in _HEX for c in value)

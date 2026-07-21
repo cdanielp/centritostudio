@@ -7,16 +7,16 @@ Detalle y evidencia `archivo:línea` en `AUDITORIA.md`. Plan de corrección en `
 
 | ID | Sev | Archivo/símbolo | Flujo | Estado | UI/AV | Bloquea HF | PR |
 |----|-----|-----------------|-------|--------|-------|-----------|----|
-| P0-1 | **P0** | `app.py` endpoints `{name}` sin `is_safe_basename` | Studio web (transcript/brain/upload/render) | **DEMOSTRADO** (write fuera del repo, un nivel arriba de la raíz) | no | sí | H1 |
-| P0-2 | **P0** | `app.py:151` `upload_video` filename crudo + sin límite | Upload | DEMOSTRADO (código) + DoS | no | sí | H1 |
-| P0-3 | **P0** | `/output` mount + `.ass`/`.keyword_selection.json` | Descarga | **DEMOSTRADO** | no | sí | H1 |
-| P0-4 | **P0** | mounts `/input`,`/output`,`/clips`,`/thumbs` + `host 0.0.0.0` sin auth (`app.py:70-73,841`, `arranque.bat:9`) | Red local (fuente/thumbs/clips/render) | **DEMOSTRADO** (probe: `GET /input/<src>` → 200) | no | sí | H1 |
+| P0-1 | **P0** | `app.py` endpoints `{name}` sin `is_safe_basename` | Studio web (transcript/brain/upload/render) | **CERRADO en H1, pendiente merge** (guard `_validar_name` en cada endpoint) | no | sí | H1 |
+| P0-2 | **P0** | `app.py:151` `upload_video` filename crudo + sin límite | Upload | **CERRADO en H1, pendiente merge** (basename+**stem**+ext+tope+tmp+ffprobe; stem validado tras review P2) | no | sí | H1 |
+| P0-3 | **P0** | `/output` mount + `.ass`/`.keyword_selection.json` | Descarga | **CERRADO en H1, pendiente merge** (`_OutputMedia` allowlist `.mp4`) | no | sí | H1 |
+| P0-4 | **P0** | mounts `/input`,`/output`,`/clips`,`/thumbs` + `host 0.0.0.0` sin auth (`app.py:70-73,841`, `arranque.bat:9`) | Red local (fuente/thumbs/clips/render) | **CERRADO en H1, pendiente merge** (bind 127.0.0.1; `/input` eliminado; mounts allowlist) | no | sí | H1 |
 | P1-POLL-1 | P1 | `static/index.html:1268` `onFailure` nunca pasado | 8 flujos (render/auto/transcribe/clips…) | DEMOSTRADO | UI | sí | H2 |
 | P1-POLL-2 | P1 | `static/index.html:1885` `_pollReframe` sin try/catch | Reframe | DEMOSTRADO | UI | sí | H2 |
 | P1-POLL-3 | P1 | `pollJob`/`pollJobP` sin timeout/límite errores | Todos los jobs | DEMOSTRADO | UI | sí | H2 |
 | P1-POLL-4 | P1 | jobs en memoria; sin estado "server reiniciado"/Reintentar | Todos los jobs | DEMOSTRADO | UI | sí | H2 |
-| P1-OUT-1 | P1 | `core_ass.py:333,420` sin validar size/ffprobe | Render/paquete | DEMOSTRADO | no | sí | H1 |
-| P1-OUT-2 | P1 | `core_ass.py:328` FFmpeg escribe al nombre final | Render/resume | DEMOSTRADO | no | sí | H1 |
+| P1-OUT-1 | P1 | `core_ass.py:333,420` sin validar size/ffprobe | Render/paquete | **CERRADO en H1, pendiente merge** (`media_integrity.verificar_video`) | no | sí | H1 |
+| P1-OUT-2 | P1 | `core_ass.py:328` FFmpeg escribe al nombre final | Render/resume | **CERRADO en H1, pendiente merge** (tmp privado `.render_tmp/<uuid>.mp4` + `os.replace`; fuera de outputs públicos tras review P2) | no | sí | H1 |
 | P1-OUT-3 | P1 | `auto.py:457,546,119`/`auto_v2.py:62` resume acepta 0-byte | Resume | DEMOSTRADO | no | sí | H2 |
 | P1-BOOT-1 | P1 | `core.py:108-122` FFmpeg faltante revienta críptico | Arranque/diagnóstico | DEMOSTRADO | no | sí | H3 |
 | P1-BOOT-2 | P1 | `.gitignore`+`reframe_detect.py:165` modelos sin descarga | Reframe en clone limpio | DEMOSTRADO (clone) | no | no | H3 |

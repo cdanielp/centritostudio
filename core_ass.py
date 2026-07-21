@@ -308,29 +308,39 @@ def _ffmpeg_ass_path(ass_path: Path) -> str:
 
 
 def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
-    """Quema el .ass sobre el video. Devuelve el tiempo de proceso en segundos."""
-    t0 = time.time()
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(input_video),
-        "-vf",
-        f"ass={_ffmpeg_ass_path(ass_path)}",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "18",
-        "-c:a",
-        "copy",
-        str(output_video),
-    ]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
-    return round(time.time() - t0, 2)
+    """Quema el .ass sobre el video. Devuelve el tiempo de proceso en segundos.
+
+    Publica de forma ATOMICA (H1, P1-OUT-1/2): FFmpeg escribe a un temporal en la misma carpeta
+    y solo se renombra al nombre final tras validar returncode+size+ffprobe (media_integrity).
+    Una interrupcion nunca deja un MP4 truncado con el nombre definitivo.
+    """
+    import media_integrity  # noqa: PLC0415
+
+    def _quemar(target: Path) -> float:
+        t0 = time.time()
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_video),
+            "-vf",
+            f"ass={_ffmpeg_ass_path(ass_path)}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-c:a",
+            "copy",
+            str(target),
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
+        return round(time.time() - t0, 2)
+
+    return media_integrity.publicar_mp4_atomico(Path(output_video), _quemar)
 
 
 def _emoji_y_sobre_captions(
@@ -397,27 +407,32 @@ def burn_video_with_emojis(
         if logo_popup is not None:
             popups.append(logo_popup)  # logo/outro = overlay PNG real, encima del ass
 
-    cmd = core_overlays.construir_comando(
-        input_video,
-        _ffmpeg_ass_path(ass_path),
-        output_video,
-        emoji_overlays,
-        size_px,
-        y_px,
-        EMOJI_FADE_S,
-        video_w,
-        video_h,
-        popups,
-        fx_prefilter,
-        clips=clips,
-        fps=info.get("fps", 30.0),
-    )
+    import media_integrity  # noqa: PLC0415
 
-    t0 = time.time()
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
-    return round(time.time() - t0, 2)
+    def _quemar(target: Path) -> float:
+        cmd = core_overlays.construir_comando(
+            input_video,
+            _ffmpeg_ass_path(ass_path),
+            target,
+            emoji_overlays,
+            size_px,
+            y_px,
+            EMOJI_FADE_S,
+            video_w,
+            video_h,
+            popups,
+            fx_prefilter,
+            clips=clips,
+            fps=info.get("fps", 30.0),
+        )
+        t0 = time.time()
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
+        return round(time.time() - t0, 2)
+
+    # Publicacion atomica (H1): mismo contrato de integridad que burn_video.
+    return media_integrity.publicar_mp4_atomico(Path(output_video), _quemar)
 
 
 def extract_thumb(video_path: Path, output_path: Path, at_sec: float = 1.0) -> None:

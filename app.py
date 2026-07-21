@@ -7,8 +7,8 @@ Workers de background en jobs.py.
 from __future__ import annotations
 
 import os
-import shutil
 import threading
+import uuid
 from pathlib import Path
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -16,12 +16,13 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import json
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 import core
 import jobs
+import path_safety
 import studio_auto
 import studio_keywords
 import studio_packages
@@ -47,30 +48,87 @@ CLIPS_DIR = ROOT / "output" / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
 
 
-class _OutputSinPaquetes(StaticFiles):
-    """Mount de /output que NUNCA sirve el subarbol paquetes/ (S35, D32).
+class _AllowlistStatic(StaticFiles):
+    """Mount que solo sirve archivos con extension en una ALLOWLIST y confinados al directorio.
 
-    El binario y el REPORTE.md de un paquete se sirven SOLO por el router validado
-    (studio_packages); aqui se bloquea la ruta abierta para que /output/paquetes/...
-    no exponga paquete.json ni sidecars. El resto de output/ (renders de otras
-    estaciones) se sigue sirviendo igual.
+    H1 (P0-3/P0-4): un mount estatico abierto exponia texto/JSON privado y cualquier binario
+    a la LAN. Esta base sirve UNICAMENTE los tipos declarados por la subclase y ademas resuelve
+    la ruta real y exige que caiga dentro del directorio (bloquea traversal y symlinks que
+    apunten fuera). Rechaza tambien segmentos ocultos (que empiezan por `.`, p.ej. el subdir
+    reservado `.render_tmp`) y nombres reservados de temporal (`.part-`), tanto en la ruta pedida
+    como en la ruta REAL resuelta (bloquea un symlink que apunte a un temporal interno). Cualquier
+    otra cosa -> 404 generico. Sin extra en el constructor: reconstruible con `type(mount)(...)`.
     """
+
+    ALLOWED_EXT: frozenset[str] = frozenset()
+
+    @staticmethod
+    def _es_reservado(segmento: str) -> bool:
+        """True si un segmento de ruta es privado/reservado (oculto o temporal de publicacion)."""
+        return segmento.startswith(".") or ".part-" in segmento
+
+    def _confinado_y_permitido(self, path: str) -> bool:
+        norm = path.replace("\\", "/").strip("/")
+        if not norm:
+            return False
+        segmentos = norm.split("/")
+        base = segmentos[-1]
+        if Path(base).suffix.lower() not in self.ALLOWED_EXT:
+            return False
+        # Defensa por NOMBRE pedido: ningun segmento oculto/reservado (no basta con mover el temp).
+        if any(self._es_reservado(seg) for seg in segmentos):
+            return False
+        try:
+            root = Path(self.directory).resolve()
+            target = (root / norm).resolve()
+            rel = target.relative_to(root)  # escape por traversal o symlink fuera -> ValueError
+        except (ValueError, OSError):
+            return False
+        # Defensa por ruta REAL resuelta: un symlink no debe apuntar a un reservado interno.
+        if any(self._es_reservado(p) for p in rel.parts):
+            return False
+        return True
+
+    async def get_response(self, path, scope):
+        if not self._confinado_y_permitido(path):
+            return PlainTextResponse("Not Found", status_code=404)
+        return await super().get_response(path, scope)
+
+
+class _OutputMedia(_AllowlistStatic):
+    """/output: SOLO renders .mp4 publicos. Bloquea .ass/.json/.srt/sidecars y el subarbol
+    paquetes/ (servido unicamente por el router validado studio_packages). Cierra P0-3."""
+
+    ALLOWED_EXT = frozenset({".mp4"})
 
     async def get_response(self, path, scope):
         # El primer segmento, normalizado como lo hace el FS de Windows (case-insensitive,
         # sin puntos/espacios finales): asi /output/Paquetes o /output/paquetes./ tampoco
         # escapan el confinamiento (bypass real detectado en revision).
-        norm = path.replace("\\", "/").strip("/")
-        primer = norm.split("/", 1)[0].rstrip(". ").lower()
+        primer = path.replace("\\", "/").strip("/").split("/", 1)[0].rstrip(". ").lower()
         if primer == "paquetes":
             return PlainTextResponse("Not Found", status_code=404)
         return await super().get_response(path, scope)
 
 
-app.mount("/input", StaticFiles(directory=str(INPUT_DIR)), name="input")
-app.mount("/output", _OutputSinPaquetes(directory=str(OUTPUT_DIR)), name="output")
-app.mount("/clips", StaticFiles(directory=str(CLIPS_DIR)), name="clips")
-app.mount("/thumbs", StaticFiles(directory=str(THUMBS_DIR)), name="thumbs")
+class _ThumbsMedia(_AllowlistStatic):
+    """/thumbs: solo miniaturas de imagen."""
+
+    ALLOWED_EXT = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+
+
+class _ClipsMedia(_AllowlistStatic):
+    """/clips: solo el binario .mp4 del clip para preview/descarga (no JSON/checkpoints)."""
+
+    ALLOWED_EXT = frozenset({".mp4"})
+
+
+# P0-4: el mount publico /input queda ELIMINADO. El binario fuente se sirve por el endpoint
+# validado /api/videos/{name}/source (basename seguro + confinado). Los demas mounts pasan a
+# allowlist estricta por tipo. El servidor ademas bindea solo loopback (ver LISTEN_HOST).
+app.mount("/output", _OutputMedia(directory=str(OUTPUT_DIR)), name="output")
+app.mount("/clips", _ClipsMedia(directory=str(CLIPS_DIR)), name="clips")
+app.mount("/thumbs", _ThumbsMedia(directory=str(THUMBS_DIR)), name="thumbs")
 
 
 @app.get("/")
@@ -81,6 +139,18 @@ def root():
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ─── Guard compartido de identificadores en rutas (H1, P0-1) ──────────────────
+def _validar_name(name: str) -> None:
+    """Rechaza cualquier identificador que no sea un basename PURO antes de tocar el FS.
+
+    Fuente unica: path_safety.is_safe_basename. 404 saneado (no refleja `name`, que puede
+    traer traversal/control), sin abrir ni escribir archivos y sin lanzar jobs. Se llama al
+    INICIO de cada endpoint {name}/{stem} antes de construir cualquier Path (P0-1).
+    """
+    if not path_safety.is_safe_basename(name):
+        raise HTTPException(404, "Recurso no encontrado.")
 
 
 # ─── Videos ───────────────────────────────────────────────────────────────────
@@ -95,7 +165,13 @@ def list_videos():
             continue
         info_file = TRANSCRIPTS / f"{mp4.stem}_info.json"
         groups_file = TRANSCRIPTS / f"{mp4.stem}_groups.json"
-        outputs = list(OUTPUT_DIR.glob(f"{mp4.stem}_*.mp4"))
+        # Defensa: ignora temporales de publicacion (subdir .render_tmp / nombres .part-) para no
+        # inferir "renderizado" ni listar un parcial como output (P2 del review de H1).
+        outputs = [
+            o
+            for o in OUTPUT_DIR.glob(f"{mp4.stem}_*.mp4")
+            if not _AllowlistStatic._es_reservado(o.name)
+        ]
 
         if outputs:
             status = "renderizado"
@@ -118,7 +194,10 @@ def list_videos():
                 stages["clips_n"] = len(clips_data.get("clips", []))
             except Exception:
                 pass
-        stages["reencuadrado"] = bool(list(CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")))
+        stages["reencuadrado"] = any(
+            not _AllowlistStatic._es_reservado(c.name)
+            for c in CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")
+        )
 
         if info_file.exists():
             info = json.loads(info_file.read_text(encoding="utf-8"))
@@ -148,16 +227,143 @@ def list_videos():
     return result
 
 
+@app.get("/api/videos/{name}/source")
+def get_video_source(name: str):
+    """Sirve el binario fuente (input/) por un endpoint VALIDADO en vez del mount abierto (P0-4).
+
+    Confina el basename, resuelve solo dentro de INPUT_DIR (.mp4/.mov, archivo real, sin escapar
+    por symlink) y devuelve un FileResponse (soporta Range para reproduccion/seek). 404 generico.
+    """
+    _validar_name(name)
+    video = _resolver_video_input(name)
+    if video is None:
+        raise HTTPException(404, "Video no encontrado.")
+    media = "video/mp4" if video.suffix.lower() == ".mp4" else "video/quicktime"
+    return FileResponse(str(video), media_type=media)
+
+
+# ─── Upload seguro (H1, P0-2) ─────────────────────────────────────────────────
+_DEFAULT_MAX_VIDEO_BYTES = 20 * 1024**3  # 20 GiB
+_ALLOWED_UPLOAD_EXT = frozenset({".mp4", ".mov"})
+_UPLOAD_CHUNK = 1 << 20  # 1 MiB por lectura; nunca se lee el cuerpo completo de una vez
+
+
+def _max_video_bytes() -> int:
+    """Limite de carga en bytes: CENTRITO_MAX_VIDEO_BYTES o el default seguro (20 GiB).
+
+    Un valor invalido/no-positivo cae al default con un warning y NUNCA tumba la app.
+    """
+    raw = os.environ.get("CENTRITO_MAX_VIDEO_BYTES")
+    if raw is None:
+        return _DEFAULT_MAX_VIDEO_BYTES
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        val = 0
+    if val <= 0:
+        print(f"[studio] CENTRITO_MAX_VIDEO_BYTES invalido ({raw!r}); uso el default de 20 GiB")
+        return _DEFAULT_MAX_VIDEO_BYTES
+    return val
+
+
+def _borrar_tmp(p: Path) -> None:
+    try:
+        p.unlink()
+    except OSError:
+        pass
+
+
+async def _stream_a_temporal(file: UploadFile, tmp: Path, max_bytes: int) -> int:
+    """Copia el upload por chunks al temporal con tope DURO de bytes. Devuelve el total.
+
+    NO confia en Content-Length: aunque falte o mienta, aborta con 413 al superar max_bytes.
+    """
+    total = 0
+    with open(tmp, "wb") as f:
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise HTTPException(413, "El archivo excede el limite permitido.")
+            f.write(chunk)
+    return total
+
+
+def _validar_filename_upload(filename: str | None) -> str:
+    """Valida filename + extension + STEM de un upload. Devuelve la extension (lower). 400 si falla.
+
+    El producto identifica el video por su STEM (name); un filename como "clip .mp4" o "clip..mp4"
+    pasa el guard del filename pero produce un stem ("clip "/"clip.") que el resto de endpoints
+    ({name}/source/transcript) rechaza -> video subido pero inusable. Se exige el MISMO guard sobre
+    filename Y stem, sin recortar ni normalizar, ANTES de escribir ningun temporal.
+    """
+    if not filename:
+        raise HTTPException(400, "Falta el nombre del archivo.")
+    if not path_safety.is_safe_basename(filename):
+        raise HTTPException(400, "Nombre de archivo invalido.")
+    ext = Path(filename).suffix.lower()
+    if ext not in _ALLOWED_UPLOAD_EXT:
+        raise HTTPException(400, "Extension no permitida (solo .mp4/.mov).")
+    if not path_safety.is_safe_basename(Path(filename).stem):
+        raise HTTPException(400, "Nombre de archivo invalido.")
+    return ext
+
+
 @app.post("/api/videos/upload")
-async def upload_video(file: UploadFile = File(...)):
-    dest = INPUT_DIR / file.filename
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    info = core.get_video_info(dest)
-    (TRANSCRIPTS / f"{dest.stem}_info.json").write_text(
-        json.dumps(info, ensure_ascii=False), encoding="utf-8"
-    )
-    core.extract_thumb(dest, THUMBS_DIR / f"{dest.stem}.jpg")
+async def upload_video(request: Request, file: UploadFile = File(...)):
+    """Carga un video confinada a input/: basename seguro + .mp4/.mov + tope de bytes +
+    temporal validado por ffprobe + `os.replace` atomico. Nunca escribe al destino final
+    durante la carga ni borra un final anterior si la nueva carga falla (P0-2, P1-OUT)."""
+    filename = file.filename
+    ext = _validar_filename_upload(filename)
+
+    max_bytes = _max_video_bytes()
+    # Rechazo temprano por Content-Length si esta disponible y ya supera el limite.
+    clen = request.headers.get("content-length")
+    if clen is not None:
+        try:
+            if int(clen) > max_bytes:
+                raise HTTPException(413, "El archivo excede el limite permitido.")
+        except ValueError:
+            pass  # header mentiroso: el tope por chunks lo cubre igual
+
+    # El destino normaliza la extension a minusculas (`VIDEO.MP4` -> `VIDEO.mp4`): en un FS
+    # case-sensitive (WSL/Linux) `list_videos` solo descubre `input/*.mp4` //*.mov en minuscula,
+    # asi que guardar el sufijo crudo dejaria la carga aceptada pero invisible (P2 review 2).
+    dest = INPUT_DIR / f"{Path(filename).stem}{ext}"
+    tmp_dir = INPUT_DIR / ".uploads"  # subdir oculto: no lo lista el glob input/*.mp4
+    tmp_dir.mkdir(exist_ok=True)
+    tmp = tmp_dir / f"{uuid.uuid4().hex}{ext}"  # preserva la extension final para ffprobe
+    try:
+        total = await _stream_a_temporal(file, tmp, max_bytes)
+        if total == 0:
+            raise HTTPException(422, "El archivo esta vacio.")
+        import media_integrity  # noqa: PLC0415
+
+        try:
+            media_integrity.verificar_video(tmp)
+        except media_integrity.MediaIntegrityError:
+            raise HTTPException(422, "El archivo no es un video valido.") from None
+        os.replace(tmp, dest)  # publicacion atomica SOLO tras validar
+    except HTTPException:
+        _borrar_tmp(tmp)
+        raise
+    except Exception:
+        _borrar_tmp(tmp)
+        raise HTTPException(500, "No se pudo procesar la carga.") from None
+
+    # Post-proceso (info + thumb). Fail-open: no invalida una carga ya publicada.
+    info: dict = {}
+    try:
+        info = core.get_video_info(dest)
+        (TRANSCRIPTS / f"{dest.stem}_info.json").write_text(
+            json.dumps(info, ensure_ascii=False), encoding="utf-8"
+        )
+        core.extract_thumb(dest, THUMBS_DIR / f"{dest.stem}.jpg")
+    except Exception:
+        print(f"[studio] post-proceso de carga fallo para {dest.name} (carga ya publicada)")
     return {"name": dest.stem, "filename": dest.name, **info}
 
 
@@ -166,6 +372,7 @@ async def upload_video(file: UploadFile = File(...)):
 def start_transcribe(
     name: str, lang: str = "es", model: str = "auto", caption_source: str = "transcript"
 ):
+    _validar_name(name)
     if caption_source not in ("transcript", "srt"):
         raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
     if caption_source == "srt":
@@ -225,6 +432,7 @@ def _start_transcribe_srt(name: str, lang: str, model: str):
 # ─── Transcript ───────────────────────────────────────────────────────────────
 @app.get("/api/videos/{name}/transcript")
 def get_transcript(name: str):
+    _validar_name(name)
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if not grp_path.exists():
         raise HTTPException(404, "Transcript no encontrado — transcribe primero")
@@ -233,6 +441,7 @@ def get_transcript(name: str):
 
 @app.put("/api/videos/{name}/transcript")
 def save_transcript(name: str, body: list = Body(...)):
+    _validar_name(name)
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     rebalanced = [core.rebalance_timestamps(g) if g.get("edited") else g for g in body]
     for i, g in enumerate(rebalanced):
@@ -244,6 +453,7 @@ def save_transcript(name: str, body: list = Body(...)):
 # ─── Analisis IA ──────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/analyze")
 def start_analyze(name: str):
+    _validar_name(name)
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if not grp_path.exists():
         raise HTTPException(400, "Transcribe el video antes de analizar")
@@ -255,6 +465,7 @@ def start_analyze(name: str):
 # ─── Brain ────────────────────────────────────────────────────────────────────
 @app.get("/api/videos/{name}/brain")
 def get_brain(name: str):
+    _validar_name(name)
     path = TRANSCRIPTS / f"{name}.brain.json"
     if not path.exists():
         return {"groups": []}
@@ -263,6 +474,7 @@ def get_brain(name: str):
 
 @app.put("/api/videos/{name}/brain")
 def save_brain(name: str, body: list = Body(...)):
+    _validar_name(name)
     path = TRANSCRIPTS / f"{name}.brain.json"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if grp_path.exists():
@@ -306,6 +518,7 @@ def save_keywords(name: str, body: dict = Body(...)):
 # ─── Depurador ────────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/depurar")
 def start_depurar(name: str, mode: str = "seguro"):
+    _validar_name(name)
     mp4 = INPUT_DIR / f"{name}.mp4"
     words_path = TRANSCRIPTS / f"{name}_words.json"
     if not mp4.exists():
@@ -324,6 +537,7 @@ def start_depurar(name: str, mode: str = "seguro"):
 # ─── Clips ────────────────────────────────────────────────────────────────────
 @app.post("/api/videos/{name}/clips")
 def start_clips(name: str, tipos: str = "ambos"):
+    _validar_name(name)
     mp4 = INPUT_DIR / f"{name}.mp4"
     # Soportar .mov tambien
     if not mp4.exists():
@@ -348,6 +562,7 @@ def start_clips(name: str, tipos: str = "ambos"):
 
 @app.get("/api/videos/{name}/clips")
 def get_clips(name: str):
+    _validar_name(name)
     clips_dir = ROOT / "output" / "clips"
     clips_path = clips_dir / f"{name}_clips.json"
     if not clips_path.exists():
@@ -361,6 +576,7 @@ def get_clips(name: str):
 @app.post("/api/clips/{name}/detectar")
 def detectar_caras_clip(name: str, detector: str = "yunet"):
     """Detecta caras en un clip y devuelve la lista con thumbnails."""
+    _validar_name(name)
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
@@ -373,6 +589,7 @@ def detectar_caras_clip(name: str, detector: str = "yunet"):
 @app.post("/api/clips/{name}/turnos")
 def save_turnos_clip(name: str, body: dict = Body(...)):
     """Guarda el archivo de turnos para un clip multi-cara."""
+    _validar_name(name)
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
@@ -390,6 +607,7 @@ def start_reframe(
     tracker: str = "escenas",
 ):
     """Inicia el reencuadre 9:16: tracking (escenas default | ema) o stack."""
+    _validar_name(name)
     clip_path = CLIPS_DIR / f"{name}.mp4"
     if not clip_path.exists():
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
@@ -454,6 +672,7 @@ def start_render(
     guion: str | None = None,
     caption_source: str = "transcript",
 ):
+    _validar_name(name)
     _validar_params_render(caption_source, caption_qa, densidad, position)
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -635,6 +854,7 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
     template: templateName elegido (None -> default Hormozi 2 del motor)."""
     import submagic  # noqa: PLC0415
 
+    _validar_name(name)
     mp4 = _resolver_video_input(name)
     if mp4 is None:
         raise HTTPException(404, f"Video {name} no encontrado en input/")
@@ -678,6 +898,7 @@ def start_auto(
     caption_source: str = "transcript",
 ):
     """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
+    _validar_name(name)
     if caption_source not in ("transcript", "srt"):
         raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
     if caption_source == "srt":
@@ -835,7 +1056,13 @@ def list_presets_cve():
         return {"presets": [], "intensidades": []}
 
 
+# H1 (P0-4): el servidor escucha SOLO en loopback. No hay modo LAN en esta fase (sin token
+# ni auth); habilitar la red se difiere a una fase disenada para eso. No debe quedar 0.0.0.0
+# como host de arranque de produccion.
+LISTEN_HOST = "127.0.0.1"
+LISTEN_PORT = 8787
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="0.0.0.0", port=8787, reload=False)
+    uvicorn.run("app:app", host=LISTEN_HOST, port=LISTEN_PORT, reload=False)

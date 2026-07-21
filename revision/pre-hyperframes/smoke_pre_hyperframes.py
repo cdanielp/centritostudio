@@ -191,19 +191,21 @@ def _patch_app_globals(app_mod, sandbox: Path) -> dict:
 
 
 def _rebuild_mounts(app_mod, sandbox: Path, static_cls, mount_cls) -> list[tuple]:
-    """Reconstruye los mounts StaticFiles apuntando al sandbox. Devuelve (route, app_previa)."""
+    """Reconstruye los mounts StaticFiles apuntando al sandbox, PRESERVANDO la clase real.
+
+    Tras H1 los mounts /output //thumbs //clips son subclases con allowlist propia
+    (`_OutputMedia`/`_ThumbsMedia`/`_ClipsMedia`); reconstruir con `StaticFiles` plano perderia
+    esa allowlist y falsearia las probes. `type(route.app)(directory=...)` conserva la subclase.
+    El mount abierto /input ya no existe (P0-4), asi que no aparece aqui. Devuelve (route, previa).
+    """
     saved: list[tuple] = []
     for route in app_mod.app.router.routes:
         if isinstance(route, mount_cls) and route.name in _MOUNT_DIR:
-            target = str(sandbox / _MOUNT_DIR[route.name][1])
-            if route.name == "output":
-                new_app = app_mod._OutputSinPaquetes(directory=target)  # noqa: SLF001
-            elif isinstance(route.app, static_cls):
-                new_app = static_cls(directory=target)
-            else:  # pragma: no cover - mounts inesperados
+            if not isinstance(route.app, static_cls):  # pragma: no cover - mount inesperado
                 continue
+            target = str(sandbox / _MOUNT_DIR[route.name][1])
             saved.append((route, route.app))
-            route.app = new_app
+            route.app = type(route.app)(directory=target)
     return saved
 
 
@@ -504,29 +506,48 @@ def probe_output_exposure(client, sandbox: Path) -> dict:
 
 
 def probe_lan_exposure(client, sandbox: Path) -> dict:
-    """P0-4 (LAN): los mounts privados NO deben servir binarios sin auth. Cubre TRES mounts
-    documentados: /input (fuente), /thumbs (miniatura), /clips (clip)."""
+    """P0-4 (LAN) — contrato seguro de H1 (regresion de cierre):
+
+    - `/input`: el mount ABIERTO queda ELIMINADO; aunque el binario fuente exista en disco, la
+      ruta `/input/<src>.mp4` ya no tiene mount y responde 404 (el fuente se sirve solo por el
+      endpoint validado `/api/videos/{name}/source`).
+    - `/thumbs` y `/clips`: siguen sirviendo su tipo permitido (imagen / .mp4) porque la UI los
+      consume, pero por ALLOWLIST estricta; un sidecar PRIVADO (.ass/.json) NO se sirve.
+
+    Antes de H1 este probe reportaba BLOCKER porque `/input` servia el fuente byte-a-byte. La
+    adaptacion al contrato seguro (mount eliminado + allowlist) es legitima, no oculta el P0.
+    """
+    src = sandbox / "input" / f"{TOKEN}_src.mp4"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(b"SYNTHSRC01")
+    try:
+        kind, status, resp = _do_request(lambda: client.get(f"/input/{TOKEN}_src.mp4"))
+        served = kind == "response" and status == 200 and getattr(resp, "content", b"") == src.read_bytes()
+        input_verdict = classify_exposure(kind, status, served)
+    finally:
+        with contextlib.suppress(OSError):
+            src.unlink()
+
+    priv = SYNTH_ASS_TEXT.encode()
     per = {
-        "input": _served_probe(
-            client, sandbox / "input" / f"{TOKEN}_src.mp4", f"/input/{TOKEN}_src.mp4", b"SYNTHSRC01"
+        "input_mount_eliminado": input_verdict,
+        "thumbs_no_sirve_privado": _served_probe(
+            client, sandbox / "thumbs" / f"{TOKEN}_t.ass", f"/thumbs/{TOKEN}_t.ass", priv
         ),
-        "thumbs": _served_probe(
-            client, sandbox / "thumbs" / f"{TOKEN}_t.jpg", f"/thumbs/{TOKEN}_t.jpg", b"SYNTHTHUMB"
-        ),
-        "clips": _served_probe(
+        "clips_no_sirve_privado": _served_probe(
             client,
-            sandbox / "output" / "clips" / f"{TOKEN}_c.mp4",
-            f"/clips/{TOKEN}_c.mp4",
-            b"SYNTHCLIP0",
+            sandbox / "output" / "clips" / f"{TOKEN}_c.json",
+            f"/clips/{TOKEN}_c.json",
+            b'{"privado":1}',
         ),
     }
     verdict = worst(list(per.values()))
     detail = "; ".join(f"{k}={v}" for k, v in per.items())
     key = "mounts_no_expuestos_lan"
     if verdict == "BLOCKER":
-        record(key, "BLOCKER", f"P0-4: mounts privados servidos sin auth en LAN ({detail})")
+        record(key, "BLOCKER", f"P0-4: mount privado servido sin auth en LAN ({detail})")
     else:
-        record(key, verdict, f"/input //thumbs //clips -> ({detail})")
+        record(key, verdict, f"/input eliminado; /thumbs //clips allowlist -> ({detail})")
     return {"verdict": verdict, "per": per}
 
 
@@ -635,16 +656,17 @@ def run_smoke() -> int:
             record(
                 "cobertura_p0_no_exhaustiva",
                 "SKIP",
-                "muestra: traversal solo en PUT /transcript; NO probados aqui otros endpoints "
-                "{name} (brain/analyze/depurar/clips/reframe/turnos). Verde != todos los P0 "
-                "cerrados; el mapa P0 completo y su cierre estan en AUDITORIA.md/PLAN_DE_PR.md",
+                "muestra: traversal solo en PUT /transcript aqui; el resto de endpoints {name} "
+                "(brain/analyze/depurar/clips/reframe/turnos/render/auto/source) y el upload/"
+                "integridad se cubren en tests/test_h1_*.py (regresiones parametrizadas de H1)",
             )
 
-            # 5. E2E diferido.
+            # 5. E2E render completo (render classic/CVE/reframe/Auto/SRT) sigue DIFERIDO: requiere
+            # FFmpeg + GPU + modelos; su cierre no es alcance de H1 (seguridad+integridad).
             import shutil  # noqa: PLC0415
 
-            motivo = "FFmpeg ausente" if shutil.which("ffmpeg") is None else "P1-OUT abiertos"
-            record("e2e_render", "SKIP", f"E2E render diferido a H1-H3 ({motivo})")
+            motivo = "FFmpeg ausente" if shutil.which("ffmpeg") is None else "requiere GPU/modelos"
+            record("e2e_render", "SKIP", f"E2E render completo diferido ({motivo})")
 
             # Limpieza final de centinelas: no debe quedar ninguno.
             leftovers = []
