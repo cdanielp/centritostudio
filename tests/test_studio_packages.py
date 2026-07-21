@@ -297,11 +297,12 @@ def test_error_de_programacion_se_propaga(tmp_path, monkeypatch):
         pe.enriquecer_clip(_clip(), "pkg", tmp_path, tmp_path)
 
 
-def test_mount_output_confina_subarbol_paquetes(tmp_path):
-    """El mount /output bloquea paquetes/** (D32) pero sirve el resto de output/.
+def test_mount_output_allowlist_y_confina_paquetes(tmp_path):
+    """El mount /output (H1 `_OutputMedia`) SOLO sirve .mp4 publicos y bloquea paquetes/**.
 
-    El paquete.json existe en disco: si aparece un 404 es por el confinamiento del
-    mount, no por archivo ausente. Un render fuera de paquetes/ se sigue sirviendo.
+    Cierra P0-3: .ass/.json/.txt privados dejan de servirse (allowlist). El paquete existe en
+    disco: un 404 es por el contrato del mount, no por archivo ausente. Un render .mp4 fuera de
+    paquetes/ se sigue sirviendo.
     """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -310,16 +311,19 @@ def test_mount_output_confina_subarbol_paquetes(tmp_path):
 
     (tmp_path / "paquetes").mkdir()
     (tmp_path / "paquetes" / "paquete.json").write_text('{"x": 1}', encoding="utf-8")
+    (tmp_path / "paquetes" / "clip.mp4").write_bytes(b"\x00")
     (tmp_path / "render.mp4").write_bytes(b"\x00")
-    (tmp_path / "paquetesX").mkdir()
-    (tmp_path / "paquetesX" / "ok.txt").write_text("ok", encoding="utf-8")
+    (tmp_path / "captions.ass").write_text("[Events]", encoding="utf-8")
+    (tmp_path / "sel.keyword_selection.json").write_text("{}", encoding="utf-8")
     mini = FastAPI()
-    mini.mount("/output", studio._OutputSinPaquetes(directory=str(tmp_path)), name="output")
+    mini.mount("/output", studio._OutputMedia(directory=str(tmp_path)), name="output")
     c = TestClient(mini)
+    # paquetes/** bloqueado (incluso .mp4), case-insensitive y con puntos/espacios finales.
     assert (tmp_path / "paquetes" / "paquete.json").is_file()  # existe en disco
-    assert c.get("/output/paquetes/paquete.json").status_code == 404  # pero el mount lo niega
-    # el bloqueo es case-insensitive y tolera puntos/espacios finales (FS de Windows)
-    assert c.get("/output/Paquetes/paquete.json").status_code == 404
+    assert c.get("/output/paquetes/paquete.json").status_code == 404
+    assert c.get("/output/Paquetes/clip.mp4").status_code == 404
     assert c.get("/output/PAQUETES/paquete.json").status_code == 404
-    assert c.get("/output/render.mp4").status_code == 200  # el resto se sirve
-    assert c.get("/output/paquetesX/ok.txt").status_code == 200  # no bloquea de mas
+    # P0-3: texto/JSON privado ya NO se sirve; el render .mp4 publico si.
+    assert c.get("/output/captions.ass").status_code == 404
+    assert c.get("/output/sel.keyword_selection.json").status_code == 404
+    assert c.get("/output/render.mp4").status_code == 200
