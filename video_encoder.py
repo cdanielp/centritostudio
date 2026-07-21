@@ -417,10 +417,15 @@ def _fallback_cpu(
 
 # ── Payloads para API / capacidades ─────────────────────────────────────────────
 def encoder_status(mode: str | EncoderMode | None = None) -> dict:
-    """Payload de /api/system/video-encoder (no lanza: para GET/PUT y guards informativos)."""
+    """Payload de /api/system/video-encoder (no lanza: para GET/PUT y guards informativos).
+
+    `selected` refleja el encoder REAL que se usaria: en modo `nvenc` explicito siempre NVENC
+    (aunque no este disponible: el job se rechaza con 503, NO cae a CPU; `nvenc.available=false`
+    lo delata). Solo `auto` cae a CPU cuando NVENC no esta; `cpu` es siempre CPU.
+    """
     m = coerce_mode(mode) if mode is not None else _default_mode
     st = detect_nvenc()
-    use_nvenc = st.available and m != EncoderMode.CPU
+    use_nvenc = m == EncoderMode.NVENC or (m == EncoderMode.AUTO and st.available)
     return {
         "requested": m.value,
         "selected": "nvenc" if use_nvenc else "cpu",

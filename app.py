@@ -1041,8 +1041,9 @@ def start_auto(
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from None
+    # Fuera del try: el 503 del guard (nvenc explicito sin NVENC) debe propagarse, no volverse 500.
+    _guard_encoder()  # Auto re-encodea (depurar/reframe/render): nvenc sin NVENC -> 503
     try:
-        _guard_encoder()  # Auto re-encodea (depurar/reframe/render): nvenc sin NVENC -> 503
         jid = jobs.new_job(f"Modo Automatico {mode}: {name}...")
         threading.Thread(
             target=jobs.run_auto,
@@ -1093,8 +1094,9 @@ def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset):
         raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
     except studio_srt.StudioSrtError:
         raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    # Fuera del try: el 503 del guard (nvenc explicito sin NVENC) debe propagarse, no volverse 500.
+    _guard_encoder()  # Auto SRT re-encodea: modo nvenc explicito sin NVENC -> 503
     try:
-        _guard_encoder()  # Auto SRT re-encodea: modo nvenc explicito sin NVENC -> 503
         jid = jobs.new_job(f"Modo Automatico SRT: {name}...")
         threading.Thread(
             target=jobs.run_auto,

@@ -227,3 +227,24 @@ def test_guard_auto_no_bloquea(render_api, monkeypatch):
     r = client.post("/api/videos/vid/render?style=hormozi")
     # auto sin NVENC no bloquea: el job se crea (cae a CPU en ejecucion)
     assert r.status_code == 200 and creados
+
+
+def test_encoder_status_nvenc_forzado_reporta_nvenc(monkeypatch):
+    # Codex P2 round 2: en modo nvenc explicito, selected refleja NVENC (no CPU) aunque no este
+    # disponible; el job se rechaza con 503, no cae a CPU. nvenc.available lo delata.
+    monkeypatch.setattr(ve, "detect_nvenc", lambda **k: _NO)
+    d = ve.encoder_status("nvenc")
+    assert d["selected"] == "nvenc" and d["encoder"] == "h264_nvenc"
+    assert d["nvenc"]["available"] is False
+    # auto sin NVENC si cae a CPU:
+    assert ve.encoder_status("auto")["selected"] == "cpu"
+
+
+def test_auto_guard_nvenc_503_no_500(render_api, monkeypatch):
+    # Codex P2 round 2: el 503 del guard NO debe volverse 500 dentro del try del endpoint Auto.
+    client, creados = render_api
+    ve.set_default_mode("nvenc")
+    monkeypatch.setattr(ve, "detect_nvenc", lambda **k: _NO)
+    r = client.post("/api/videos/vid/auto?mode=classic")
+    assert r.status_code == 503  # accionable, no 500 generico
+    assert creados == []
