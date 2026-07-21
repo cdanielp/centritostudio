@@ -70,8 +70,11 @@ symlink que escapa). `/input` era el único consumidor frontend que exigía reem
   `is_file()`.
 
 **Decisión:** atomicidad INTERNA a las dos funciones vía `media_integrity.publicar_mp4_atomico`
-(temporal `*.part-<uuid>.mp4` en la misma carpeta → validar returncode+size+ffprobe → `os.replace`).
-Así **todos** los callers (jobs_render, Auto, CLI) heredan la publicación atómica sin cambiar firmas.
+(temporal en el subdir privado `<dir_final>/.render_tmp/<uuid>.mp4` — mismo volumen → `os.replace`
+atómico; **fuera** de los outputs públicos, corrección post-review P2 → un temporal en curso o
+abandonado no se sirve ni se lista → validar returncode+size+ffprobe → `os.replace`). Así **todos**
+los callers (jobs_render, Auto, CLI) heredan la publicación atómica sin cambiar firmas. `/output` y
+`/api/videos` rechazan/ignoran además segmentos ocultos y nombres `.part-`.
 
 ## 4. Otros escritores FFmpeg de MP4 (fuera de H1 — documentados)
 

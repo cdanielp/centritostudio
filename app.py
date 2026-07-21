@@ -54,24 +54,38 @@ class _AllowlistStatic(StaticFiles):
     H1 (P0-3/P0-4): un mount estatico abierto exponia texto/JSON privado y cualquier binario
     a la LAN. Esta base sirve UNICAMENTE los tipos declarados por la subclase y ademas resuelve
     la ruta real y exige que caiga dentro del directorio (bloquea traversal y symlinks que
-    apunten fuera). Cualquier otra cosa -> 404 generico. Sin extra en el constructor: se puede
-    reconstruir con `type(mount)(directory=...)`.
+    apunten fuera). Rechaza tambien segmentos ocultos (que empiezan por `.`, p.ej. el subdir
+    reservado `.render_tmp`) y nombres reservados de temporal (`.part-`), tanto en la ruta pedida
+    como en la ruta REAL resuelta (bloquea un symlink que apunte a un temporal interno). Cualquier
+    otra cosa -> 404 generico. Sin extra en el constructor: reconstruible con `type(mount)(...)`.
     """
 
     ALLOWED_EXT: frozenset[str] = frozenset()
+
+    @staticmethod
+    def _es_reservado(segmento: str) -> bool:
+        """True si un segmento de ruta es privado/reservado (oculto o temporal de publicacion)."""
+        return segmento.startswith(".") or ".part-" in segmento
 
     def _confinado_y_permitido(self, path: str) -> bool:
         norm = path.replace("\\", "/").strip("/")
         if not norm:
             return False
-        base = norm.rsplit("/", 1)[-1]
+        segmentos = norm.split("/")
+        base = segmentos[-1]
         if Path(base).suffix.lower() not in self.ALLOWED_EXT:
+            return False
+        # Defensa por NOMBRE pedido: ningun segmento oculto/reservado (no basta con mover el temp).
+        if any(self._es_reservado(seg) for seg in segmentos):
             return False
         try:
             root = Path(self.directory).resolve()
             target = (root / norm).resolve()
-            target.relative_to(root)  # escape por traversal o symlink -> ValueError
+            rel = target.relative_to(root)  # escape por traversal o symlink fuera -> ValueError
         except (ValueError, OSError):
+            return False
+        # Defensa por ruta REAL resuelta: un symlink no debe apuntar a un reservado interno.
+        if any(self._es_reservado(p) for p in rel.parts):
             return False
         return True
 
@@ -151,7 +165,13 @@ def list_videos():
             continue
         info_file = TRANSCRIPTS / f"{mp4.stem}_info.json"
         groups_file = TRANSCRIPTS / f"{mp4.stem}_groups.json"
-        outputs = list(OUTPUT_DIR.glob(f"{mp4.stem}_*.mp4"))
+        # Defensa: ignora temporales de publicacion (subdir .render_tmp / nombres .part-) para no
+        # inferir "renderizado" ni listar un parcial como output (P2 del review de H1).
+        outputs = [
+            o
+            for o in OUTPUT_DIR.glob(f"{mp4.stem}_*.mp4")
+            if not _AllowlistStatic._es_reservado(o.name)
+        ]
 
         if outputs:
             status = "renderizado"
@@ -174,7 +194,10 @@ def list_videos():
                 stages["clips_n"] = len(clips_data.get("clips", []))
             except Exception:
                 pass
-        stages["reencuadrado"] = bool(list(CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")))
+        stages["reencuadrado"] = any(
+            not _AllowlistStatic._es_reservado(c.name)
+            for c in CLIPS_DIR.glob(f"{mp4.stem}_*_9x16.mp4")
+        )
 
         if info_file.exists():
             info = json.loads(info_file.read_text(encoding="utf-8"))
@@ -268,12 +291,14 @@ async def _stream_a_temporal(file: UploadFile, tmp: Path, max_bytes: int) -> int
     return total
 
 
-@app.post("/api/videos/upload")
-async def upload_video(request: Request, file: UploadFile = File(...)):
-    """Carga un video confinada a input/: basename seguro + .mp4/.mov + tope de bytes +
-    temporal validado por ffprobe + `os.replace` atomico. Nunca escribe al destino final
-    durante la carga ni borra un final anterior si la nueva carga falla (P0-2, P1-OUT)."""
-    filename = file.filename
+def _validar_filename_upload(filename: str | None) -> str:
+    """Valida filename + extension + STEM de un upload. Devuelve la extension (lower). 400 si falla.
+
+    El producto identifica el video por su STEM (name); un filename como "clip .mp4" o "clip..mp4"
+    pasa el guard del filename pero produce un stem ("clip "/"clip.") que el resto de endpoints
+    ({name}/source/transcript) rechaza -> video subido pero inusable. Se exige el MISMO guard sobre
+    filename Y stem, sin recortar ni normalizar, ANTES de escribir ningun temporal.
+    """
     if not filename:
         raise HTTPException(400, "Falta el nombre del archivo.")
     if not path_safety.is_safe_basename(filename):
@@ -281,6 +306,18 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
     ext = Path(filename).suffix.lower()
     if ext not in _ALLOWED_UPLOAD_EXT:
         raise HTTPException(400, "Extension no permitida (solo .mp4/.mov).")
+    if not path_safety.is_safe_basename(Path(filename).stem):
+        raise HTTPException(400, "Nombre de archivo invalido.")
+    return ext
+
+
+@app.post("/api/videos/upload")
+async def upload_video(request: Request, file: UploadFile = File(...)):
+    """Carga un video confinada a input/: basename seguro + .mp4/.mov + tope de bytes +
+    temporal validado por ffprobe + `os.replace` atomico. Nunca escribe al destino final
+    durante la carga ni borra un final anterior si la nueva carga falla (P0-2, P1-OUT)."""
+    filename = file.filename
+    ext = _validar_filename_upload(filename)
 
     max_bytes = _max_video_bytes()
     # Rechazo temprano por Content-Length si esta disponible y ya supera el limite.

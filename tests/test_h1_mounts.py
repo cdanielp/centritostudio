@@ -62,19 +62,33 @@ def test_input_mount_eliminado(tmp_path, monkeypatch):
     assert c.get("/input/fuente.mp4").status_code == 404
 
 
-def test_symlink_fuera_del_directorio_rechazado(tmp_path):
-    """Un symlink DENTRO del mount que apunta FUERA debe rechazarse (no exfiltra el target)."""
-    secreto = tmp_path / "secreto.mp4"
-    secreto.write_bytes(b"PRIVADO-FUERA")
+def test_symlink_rechazado(tmp_path):
+    """Un symlink servible se rechaza si apunta FUERA del mount O a un temporal interno reservado.
+
+    Cubre ambos vectores en un solo test (una sola guarda de skip por la limitacion conocida de
+    symlink en Windows, para no multiplicar skips): (1) symlink -> secreto fuera del root;
+    (2) symlink -> archivo dentro de `.render_tmp` (temporal de publicacion).
+    """
+    import media_integrity as mi
+
     served = tmp_path / "served"
     served.mkdir()
-    link = served / "link.mp4"
+    secreto = tmp_path / "secreto.mp4"  # fuera del root servido
+    secreto.write_bytes(b"PRIVADO-FUERA")
+    render_tmp = served / mi.TEMP_DIRNAME
+    render_tmp.mkdir()
+    parcial = render_tmp / "parcial.mp4"  # temporal interno reservado
+    parcial.write_bytes(b"PARCIAL")
+    link_fuera = served / "link_fuera.mp4"
+    link_tmp = served / "link_tmp.mp4"
     try:
-        os.symlink(secreto, link)
+        os.symlink(secreto, link_fuera)
+        os.symlink(parcial, link_tmp)
     except (OSError, NotImplementedError):
         pytest.skip("El SO no permite crear symlinks sin privilegios (misma limitacion conocida)")
-    c = _mini(studio_app._ClipsMedia, served)
-    assert c.get("/m/link.mp4").status_code == 404
+    c = _mini(studio_app._OutputMedia, served)
+    assert c.get("/m/link_fuera.mp4").status_code == 404
+    assert c.get("/m/link_tmp.mp4").status_code == 404
 
 
 # ── Endpoint validado /api/videos/{name}/source (reemplazo de /input) ─────────
@@ -109,3 +123,73 @@ def test_source_traversal_404(api, name):
     client, inp = api
     (inp.parent / "secreto.mp4").write_bytes(b"FUERA")
     assert client.get(f"/api/videos/{name}/source").status_code == 404
+
+
+# ── P2-2: temporales de render nunca expuestos por /output ni por /api/videos ──
+def test_output_no_sirve_render_tmp_ni_part(tmp_path):
+    """El subdir reservado .render_tmp y los nombres .part- nunca se sirven (aunque sean .mp4)."""
+    import media_integrity as mi
+
+    render_tmp = tmp_path / mi.TEMP_DIRNAME
+    render_tmp.mkdir()
+    (render_tmp / "abcdef123456.mp4").write_bytes(b"\x00")
+    (tmp_path / "demo_hormozi.part-deadbeef.mp4").write_bytes(b"\x00")
+    (tmp_path / "demo_hormozi.mp4").write_bytes(b"\x00")  # render real
+    c = _mini(studio_app._OutputMedia, tmp_path)
+    assert c.get("/m/.render_tmp/abcdef123456.mp4").status_code == 404
+    assert c.get("/m/demo_hormozi.part-deadbeef.mp4").status_code == 404
+    assert c.get("/m/demo_hormozi.mp4").status_code == 200  # el render real si
+
+
+@pytest.fixture
+def videos_api(tmp_path, monkeypatch):
+    """App con todos los dirs redirigidos: para ejercitar /api/videos con fixtures sinteticos."""
+    inp = tmp_path / "input"
+    trans = tmp_path / "transcripts"
+    out = tmp_path / "output"
+    clips = out / "clips"
+    thumbs = tmp_path / "thumbs"
+    for d in (inp, trans, out, clips, thumbs):
+        d.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(studio_app, "ROOT", tmp_path)
+    monkeypatch.setattr(studio_app, "INPUT_DIR", inp)
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    monkeypatch.setattr(studio_app, "OUTPUT_DIR", out)
+    monkeypatch.setattr(studio_app, "CLIPS_DIR", clips)
+    monkeypatch.setattr(studio_app, "THUMBS_DIR", thumbs)
+    monkeypatch.setattr(studio_app.core, "get_video_info", lambda _p: {"duration": 1.0})
+    monkeypatch.setattr(studio_app.core, "extract_thumb", lambda *a, **k: None)
+    (inp / "demo.mp4").write_bytes(b"SRC")
+    (trans / "demo_info.json").write_text('{"duration":1}', encoding="utf-8")
+    (thumbs / "demo.jpg").write_bytes(b"J")
+    return TestClient(studio_app.app), tmp_path, out
+
+
+def test_api_videos_ignora_temporal_abandonado(videos_api):
+    """Hard-kill simulado: un temporal en .render_tmp NO marca renderizado ni se lista."""
+    client, _tmp, out = videos_api
+    render_tmp = out / ".render_tmp"
+    render_tmp.mkdir()
+    (render_tmp / "abandonado.mp4").write_bytes(b"PARCIAL")
+    v = client.get("/api/videos").json()[0]
+    assert v["name"] == "demo"
+    assert v["status"] == "sin_transcribir"  # el temporal NO lo pone en "renderizado"
+    assert v["outputs"] == []
+
+
+def test_api_videos_lista_render_real(videos_api):
+    """Un render final valido si aparece como output y marca renderizado."""
+    client, _tmp, out = videos_api
+    (out / "demo_hormozi.mp4").write_bytes(b"\x00")
+    v = client.get("/api/videos").json()[0]
+    assert v["status"] == "renderizado"
+    assert "demo_hormozi.mp4" in v["outputs"]
+
+
+def test_api_videos_ignora_part_suelto(videos_api):
+    """Un .part- suelto (legacy) tampoco marca renderizado ni se lista."""
+    client, _tmp, out = videos_api
+    (out / "demo_hormozi.part-deadbeef.mp4").write_bytes(b"\x00")
+    v = client.get("/api/videos").json()[0]
+    assert v["status"] == "sin_transcribir"
+    assert v["outputs"] == []

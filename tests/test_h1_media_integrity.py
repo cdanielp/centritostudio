@@ -42,7 +42,12 @@ def _quemar_ok(contenido=b"FAKEMP4DATA"):
 
 
 def _no_part_residual(directory):
-    return not any(".part-" in p.name for p in directory.iterdir())
+    """No quedan temporales: el subdir privado .render_tmp no existe o esta vacio, y no hay
+    ningun .part- suelto en el directorio final."""
+    tmp = directory / mi.TEMP_DIRNAME
+    sin_subdir = not tmp.exists() or not any(tmp.iterdir())
+    sin_sueltos = not any(".part-" in p.name for p in directory.iterdir())
+    return sin_subdir and sin_sueltos
 
 
 # ── verificar_video ──────────────────────────────────────────────────────────
@@ -96,13 +101,17 @@ def test_verificar_video_invalidos(tmp_path, monkeypatch, payload):
 
 
 # ── ruta_temporal ────────────────────────────────────────────────────────────
-def test_ruta_temporal_unica_y_mp4(tmp_path):
+def test_ruta_temporal_unica_privada_y_mp4(tmp_path):
     final = tmp_path / "video.mp4"
     a = mi.ruta_temporal(final)
     b = mi.ruta_temporal(final)
     assert a != b  # dos operaciones nunca reutilizan el mismo temporal
-    assert a.suffix == ".mp4" and a.parent == final.parent
-    assert ".part-" in a.name
+    assert a.suffix == ".mp4"
+    # Vive en el subdir PRIVADO reservado del mismo directorio del final (mismo volumen).
+    assert a.parent == final.parent / mi.TEMP_DIRNAME
+    assert a.parent.name.startswith(".")
+    # No incluye el stem privado del usuario.
+    assert "video" not in a.name
 
 
 # ── publicar_mp4_atomico ─────────────────────────────────────────────────────

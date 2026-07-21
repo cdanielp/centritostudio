@@ -27,14 +27,22 @@ class MediaIntegrityError(Exception):
     """Un video recien escrito no cumple el contrato de integridad y NO es publicable."""
 
 
-def ruta_temporal(final: Path) -> Path:
-    """Ruta temporal UNICA en el MISMO directorio del final, terminada en `.mp4`.
+TEMP_DIRNAME = ".render_tmp"  # subdir PRIVADO reservado para temporales de publicacion (H1)
 
-    Termina en `.mp4` (no `.mp4.part`) porque FFmpeg elige el muxer por la extension del archivo
-    de salida. El uuid garantiza que dos operaciones nunca reutilicen el mismo temporal.
+
+def ruta_temporal(final: Path) -> Path:
+    """Ruta temporal UNICA en un subdir PRIVADO del mismo directorio del final, `.mp4`.
+
+    Vive en `<dir_final>/.render_tmp/<uuid>.mp4` (mismo volumen -> `os.replace` sigue siendo
+    atomico) para que un temporal en curso o abandonado tras un hard-kill NO sea servido por
+    `/output` ni listado como render (P2 del review: los `/output/*.mp4` sueltos exponian
+    parciales). Termina en `.mp4` porque FFmpeg elige el muxer por la extension; no incluye el
+    stem privado del usuario. El uuid garantiza que dos operaciones nunca reutilicen el temporal.
     """
     final = Path(final)
-    return final.parent / f"{final.stem}.part-{uuid.uuid4().hex}.mp4"
+    tmp_dir = final.parent / TEMP_DIRNAME
+    tmp_dir.mkdir(exist_ok=True)
+    return tmp_dir / f"{uuid.uuid4().hex}.mp4"
 
 
 def _ffprobe(path: Path) -> dict:

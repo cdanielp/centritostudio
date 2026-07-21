@@ -172,3 +172,55 @@ def test_reemplazo_fallido_preserva_original(api, monkeypatch):
     assert r.status_code == 422
     assert (inp / "video.mp4").read_bytes() == b"ORIGINAL"  # el final anterior intacto
     assert _sin_temporales(inp)
+
+
+# ── P2-1: stem inseguro (filename aceptable, stem inutilizable) ───────────────
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "clip .mp4",  # stem "clip " (espacio final)
+        "clip..mp4",  # stem "clip."
+        "clip...mp4",  # stem "clip.."
+        ".mp4",  # sin extension real (stem ".mp4")
+        " .mp4",  # stem " "
+        "termina_en_punto..mp4",
+        "termina_en_espacio .mp4",
+    ],
+)
+def test_upload_stem_inseguro_400(api, monkeypatch, filename):
+    client, inp = api
+    llamadas = {"ffprobe": 0}
+
+    def _track(_p):
+        llamadas["ffprobe"] += 1
+
+    monkeypatch.setattr(media_integrity, "verificar_video", _track)
+    trans = inp.parent / "transcripts"
+    thumbs = inp.parent / "thumbs"
+    r = _post(client, filename)
+    assert r.status_code == 400  # rechazo saneado
+    # No hay archivo final, ni temporal residual, ni ffprobe, ni info/thumbnail.
+    assert not any(p.is_file() for p in inp.iterdir())  # nada escrito en input/
+    assert _sin_temporales(inp)
+    assert llamadas["ffprobe"] == 0
+    assert not any(trans.iterdir())
+    assert not any(thumbs.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("filename", "stem"),
+    [("mi clip.mp4", "mi clip"), ("vídeo_final.MP4", "vídeo_final"), ("clase-01.mov", "clase-01")],
+)
+def test_upload_stem_valido_usable(api, filename, stem):
+    client, inp = api
+    r = _post(client, filename)
+    assert r.status_code == 200
+    assert r.json()["name"] == stem
+    # El stem devuelto pasa el guard general y sirve por el endpoint validado /source.
+    import path_safety
+
+    assert path_safety.is_safe_basename(stem) is True
+    assert client.get(f"/api/videos/{stem}/source").status_code == 200
+    # transcript aun no existe, pero NO lo rechaza el guard (404 de "no encontrado", no de guard).
+    tr = client.get(f"/api/videos/{stem}/transcript")
+    assert tr.status_code == 404 and "Recurso no encontrado" not in tr.text

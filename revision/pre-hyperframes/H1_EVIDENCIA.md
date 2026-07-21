@@ -91,7 +91,7 @@ Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU/red y 
   cobertura y E2E se actualizaron a la realidad post-H1.
 
 ## Suite / calidad
-- `pytest` → **2126 passed, 4 skipped** (baseline 1894/3). El +1 skip es el test de symlink en
+- `pytest` → **2173 passed, 4 skipped** (baseline 1894/3; incluye correcciones P2 post-review). El +1 skip vs baseline es el test de symlink en
   `test_h1_mounts.py`, que usa **el mismo patrón de skip conocido** que `test_paquete_editor.py:206`,
   `test_studio_packages.py:60` y `test_studio_srt.py:83` (Windows sin privilegio de symlink),
   sancionado por el alcance de la Fase 6.F. Ningún test verde depende de que el código siga vulnerable.
@@ -105,6 +105,42 @@ Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU/red y 
 - **No** se añadió autenticación/LAN (diferido por diseño). **No** se cambió apariencia ni salida
   audiovisual: no aplica gate visual de K; sí verificación funcional de que previews/clips/fuente
   se reproducen (endpoint `/source` + mounts allowlist).
+
+## Correcciones post-review (Codex, 2 P2 del PR #25)
+
+### P2-1 · Validar también el STEM del upload — CERRADO
+- `upload_video` valida ahora `Path(filename).stem` con el **mismo** `path_safety.is_safe_basename`
+  (helper `_validar_filename_upload`), **antes** de escribir ningún temporal. Un filename como
+  `clip .mp4`/`clip..mp4` (stem `clip `/`clip.`) se rechaza con **400** en vez de aceptar un video
+  cuyo `name` el resto de endpoints (`/source`, `/transcript`) rechazaría → carga inusable. No se
+  recorta ni normaliza; el `name` devuelto es exactamente ese stem ya validado.
+- **Tests:** `tests/test_h1_upload.py` — stems inseguros (`clip .mp4`, `clip..mp4`, `clip...mp4`,
+  `.mp4`, ` .mp4`, trailing punto/espacio) → 400 sin archivo final, sin `.uploads/` residual, sin
+  ffprobe, sin info/thumbnail; controles válidos (`mi clip.mp4`, `vídeo_final.MP4`, `clase-01.mov`)
+  → 200 y el stem sirve de inmediato en `/api/videos/{stem}/source` y pasa el guard de `/transcript`.
+
+### P2-2 · Temporales de render fuera de los outputs públicos — CERRADO
+- `media_integrity.ruta_temporal` escribe ahora en `<dir_final>/.render_tmp/<uuid>.mp4` (subdir
+  privado reservado, **mismo volumen** → `os.replace` sigue atómico; sin el stem del usuario en el
+  nombre). Un temporal en curso o abandonado tras un **hard-kill** ya no es un `/output/*.mp4`.
+- **`_OutputMedia`/`_AllowlistStatic`** rechaza además, por nombre pedido **y** por ruta REAL
+  resuelta, cualquier segmento oculto (`.`) o reservado (`.part-`): bloquea `/output/.render_tmp/…`,
+  `/output/*.part-*.mp4` y un symlink servible que apunte a un temporal interno.
+- **`/api/videos`** filtra defensivamente los globs de outputs/clips (ignora `.render_tmp` y
+  `.part-`): un temporal abandonado **no** marca `renderizado` ni se lista como output descargable.
+- **No** se añadió recolección automática de temporales abandonados en el arranque (política de GC
+  documentada para H2/H3 si se decide necesaria).
+- **Tests:** `tests/test_h1_mounts.py` — `/output/.render_tmp/x.mp4`→404, `/output/x.part-*.mp4`→404,
+  symlink→temporal interno→404 (misma guarda de skip conocida), `/api/videos` ignora temporal
+  abandonado (status `sin_transcribir`, `outputs=[]`) y `.part-` suelto, render real sí aparece;
+  `tests/test_h1_media_integrity.py` — `ruta_temporal` en `.render_tmp` sin stem, atomicidad y cero
+  residuales adaptados al subdir privado.
+- **Sin cambio de salida audiovisual:** solo cambia la ubicación del temporal y el momento de
+  publicación; el MP4 final es byte-idéntico.
+
+Suite tras P2: **2173 passed, 4 skipped** (4 skips = misma limitación de symlink en Windows; el
+test de symlink de `.render_tmp` se pliega al test de symlink existente para no añadir skips).
+ruff/format/diff-check/`check.bat` verdes; smoke self-test 20/20 y `blockers=0 fails=0`.
 
 ## H2 / H3 / HyperFrames
 **No iniciados.**
