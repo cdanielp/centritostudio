@@ -127,15 +127,15 @@ GPU ni FFmpeg. El CI pasa aunque el SRT real no exista.
 ## Smoke real (local, opcional)
 
 ```
-venv\Scripts\python revision\s36-srt-import\smoke_srt_real.py input\0717_corregido.srt
+venv\Scripts\python revision\s36-srt-import\smoke_srt_real.py input\el SRT privado del usuario
 ```
 
 Verifica contra los datos conocidos, hace round-trip en un temp dir, confirma que el
 original queda intacto (mismo sha256) y solo imprime resumen + PASS/FAIL. **No** imprime
 frases privadas, **no** copia el archivo, **no** lo commitea.
 
-Resultado registrado (2026-07-17): `n_cues=1072`, ultimo index `1072`, ultimo
-`start_ms=2473300`, ultimo `end_ms=2474600`, `0` errores, `0` warnings, encoding
+Resultado registrado (2026-07-17): `0 err`, ultimo index `1072`, ultimo
+`start_ms=`, ultimo `end_ms=`, `0` errores, `0` warnings, encoding
 `utf-8`, round-trip PASS, original intacto. **RESULTADO: PASS.**
 
 ## Privacidad

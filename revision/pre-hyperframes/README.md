@@ -59,7 +59,7 @@ $env:PYTHONIOENCODING="utf-8"
   deliberadamente contenido privado, pero esa afirmación absoluta no era demostrable y se retiró.
   El arnés corregido (`sandboxed-v2`) usa un **sandbox completo** y la nueva corrida confirma
   **cero acceso** a directorios reales (`aislamiento_datos_reales = PASS`).
-- **Nunca** se abre, imprime ni versiona `input/0717_corregido.srt` ni nada bajo
+- **Nunca** se abre, imprime ni versiona `input/video.srt` ni nada bajo
   `input/`, `transcripts/`, `output/`, `studio_srt/`, `thumbs/`.
 - Las probes usan datos sintéticos (`_SMOKE_PRE_HF_SENTINEL`, `texto-sintetico-de-prueba-no-privado`).
   El snapshot de defensa lee **sólo metadata** (ruta/tamaño/mtime), nunca contenido.

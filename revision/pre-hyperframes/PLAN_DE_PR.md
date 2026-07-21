@@ -1,12 +1,25 @@
 # Plan de PRs — Hardening Pre-HyperFrames
 
-**Alcance CASO B (hallazgos dispersos):** 4 P0 + ~9 P1 en seguridad, jobs/UI, arranque e integridad del render. No caben en un solo PR cohesivo → se propone la secuencia H1..H5. **Ninguno se abre en esta fase**; se abrirán uno por uno tras aprobación.
+**Alcance CASO B (hallazgos dispersos):** 4 P0 + ~9 P1 en seguridad, jobs/UI, arranque e integridad del render. No caben en un solo PR cohesivo → secuencia H1..H5.
+
+**Estado de la secuencia (sobre `cdcea7a`):**
+
+| PR | Fase | Estado | Merge |
+|---|---|---|---|
+| H1 | Seguridad e integridad | **COMPLETADO en main** | `4dab852` (PR #25) |
+| H2 | Jobs y recuperación | **COMPLETADO en main** | `5779a77` (PR #26) |
+| H3 | Arranque y diagnóstico | **COMPLETADO en main** | `b59989f` (PR #27) |
+| — | GPU/NVENC (fase independiente de rendimiento) | **COMPLETADO en main** | `cdcea7a` (PR #28) |
+| **H4** | Documentación y readiness | **ACTUAL — PR abierto, no mergeado** | — |
+| H5 | CI / quality gate remoto | Pendiente | — |
+
+HyperFrames/F7 queda **fuera** de la secuencia H1–H5 (bloqueado hasta el gate final; no hay H6).
 
 > Regla: una tarea coherente = una rama = un PR. Cada PR con cambio de UI genera capturas escritorio+móvil + demo de error/timeout/recuperación (sin reclamar gate de K). Ningún PR de esta serie cambia salida audiovisual, así que no requieren gate visual de K — **excepto** que P0-3 se resuelva moviendo/renombrando archivos (no cambia el render → tampoco requiere gate).
 
 ---
 
-## PR-H1 — Seguridad e integridad de outputs `[BLOQUEANTE]`
+## PR-H1 — Seguridad e integridad de outputs `[BLOQUEANTE]` · ✅ MERGEADO `4dab852` (PR #25)
 **Rama:** `fix/h1-seguridad-integridad`
 **Cierra:** P0-1, P0-2, P0-3, P0-4, P1-OUT-1, P1-OUT-2.
 **Cambios mínimos:**
@@ -19,7 +32,7 @@
 **Criterio de cierre:** suite verde; probe de traversal (sintético) no escribe fuera del sandbox; `.ass` no accesible por HTTP; server no bindea `0.0.0.0` por default; ningún MP4 0-byte publicable.
 **Dependencia:** ninguna. **Primero** (mayor riesgo).
 
-## PR-H2 — Jobs y recuperación `[BLOQUEANTE]`
+## PR-H2 — Jobs y recuperación `[BLOQUEANTE]` · ✅ MERGEADO `5779a77` (PR #26)
 **Rama:** `fix/h2-jobs-resume`
 **Cierra:** P1-POLL-1..4, P1-OUT-3; P2-POLL-5/6/7, P2-ATOM-STATE, P2-CLASSIC-REUSE, P2-PAQUETE-DIR.
 **Cambios mínimos:**
@@ -31,7 +44,7 @@
 **Criterio:** no existe spinner infinito silencioso; resume no acepta truncados; suite verde.
 **Dependencia:** ideal tras H1 (comparte el tmp+rename de P1-OUT-2).
 
-## PR-H3 — Instalación y diagnóstico `[BLOQUEANTE]`
+## PR-H3 — Instalación y diagnóstico `[BLOQUEANTE]` · ✅ MERGEADO `b59989f` (PR #27)
 **Rama:** `fix/h3-arranque-diagnostico`
 **Cierra:** P1-BOOT-1, P1-BOOT-2; P2-BOOT-3..6.
 **Cambios mínimos:**
@@ -42,17 +55,24 @@
 **Tests:** unit del preflight (mock `which`); mensajes accionables. **Criterio:** arranque desde estado limpio da errores accionables, no tracebacks crípticos.
 **Dependencia:** ninguna.
 
-## PR-H4 — Documentación y tester readiness `[NO BLOQUEANTE]`
+> **Nota:** entre H3 y H4 se ejecutó la fase independiente **GPU/NVENC** (rendimiento, no readiness):
+> `video_encoder.py` con modos auto/nvenc/cpu y fallback CPU. **MERGEADO `cdcea7a` (PR #28).** No
+> es parte de la secuencia bloqueante; la ruta CPU sigue siendo válida. Ver `NVENC_EVIDENCIA.md`.
+
+## PR-H4 — Documentación y tester readiness `[NO BLOQUEANTE]` · 🔶 ACTUAL (PR abierto, no mergeado)
 **Rama:** `docs/h4-readiness-docs`
-**Cierra:** todos los P2-DOCS + ALPHA-01..07 + PREGUNTAS-TAXONOMIA + README-157.
-**Cambios mínimos:**
-- `ESTADO.md`: corregir estado actual (F6 esencial MERGEADA `4a378d8`, S36 COMPLETA, suite 1894); addendum de bitácora que registre el merge de #23; marcar listas viejas como HISTÓRICO (no borrar).
-- `DECISIONES.md`: addendum a D40 (mergeado + suite real). **No** reescribir el bloque histórico.
-- `PREGUNTAS.md`: marca de estado por ítem (ACTIVA/CERRADA/TRIGGER); cerrar #52 stale (C2C/C2A1).
-- `docs/ALPHA_TESTERS.md`: contrastar con el producto real y añadir SRT, Auto v2, F6/CVE, avoid_faces, Reanudar clips fallidos, límites multi-persona reales, qué requiere ComfyUI, diagnóstico sin compartir archivos privados, cómo limpiar outputs, versión/commit probado (`4a378d8`).
-- Verificar `D40-MULTITURNOS-FACEY` contra `reframe.py` antes de tocar esa línea.
-**Criterio:** documentación actual sin contradicciones; ALPHA no promete lo inexistente.
-**Dependencia:** debería ir **después** de H1/H2/H3 (para documentar el estado ya endurecido).
+**Cierra:** todos los P2-DOCS + guía de testers + taxonomía de PREGUNTAS + README (conteo de tests).
+**Cambios (documentación únicamente, base `cdcea7a`, suite 2410/4):**
+- `README.md`: Alpha pre-HyperFrames, funciones verificadas, tabla local/remoto, baseline 2410/4 en un solo bloque, sin el conteo antiguo de tests ni conteo de líneas.
+- `ESTADO.md`: encabezado con estado real (H1/H2/H3/NVENC cerrados + merges exactos), readiness verificable (0 P0/0 P1), bitácora de H1–H4; marcar 88/100 y 1894 como HISTÓRICO (no borrar).
+- `DECISIONES.md`: addendum de cierre de D40 (mergeado) + D41 (hardening) + D42 (NVENC) + D43 (privacidad/servicios). **No** reescribir bloques históricos.
+- `PREGUNTAS.md`: tabla de navegación por estado (ACTIVA/CERRADA/DIFERIDA-TRIGGER/HISTÓRICA); cerrar #52 y las resueltas por S36/Auto v2/F6/H1-3/NVENC.
+- `docs/ALPHA_TESTERS.md`: contrastar con el producto real y añadir SRT, Auto v2, GPU/NVENC, 7 pestañas (incl. Submagic), recuperación, servicios externos, compatibilidad, formato de feedback, limpieza segura.
+- `docs/ENTORNO.md`: checklist de clon limpio + matriz de compatibilidad + requisito vs opcional + enlaces.
+- `MATRIZ_READINESS.md` / `PLAN_DE_PR.md`: readiness 0 P0/0 P1, H1/H2/H3/NVENC cerrados, smoke NVENC 16 checks.
+- Saneamiento de referencias privadas (SRT privado del usuario → placeholder genérico).
+**Criterio:** documentación actual sin contradicciones; ALPHA no promete lo inexistente; sin cambios de producción ni audiovisuales.
+**Dependencia:** va **después** de H1/H2/H3 y GPU/NVENC (documenta el estado ya endurecido).
 
 ## PR-H5 — CI / quality gate remoto ligero `[NO BLOQUEANTE]`
 **Rama:** `ci/h5-quality-gate`
@@ -66,7 +86,9 @@
 
 ## Orden y dependencias
 ```
-H1 (seguridad+integridad)  → H2 (jobs+resume)  → H3 (arranque)  → H4 (docs)  → H5 (CI)
-   BLOQUEANTE                 BLOQUEANTE           BLOQUEANTE        no-bloq.     no-bloq.
+H1 ✅ → H2 ✅ → H3 ✅ → [GPU/NVENC ✅] → H4 🔶 → H5 ⏳ → (gate final) → HyperFrames
+BLOQ.   BLOQ.   BLOQ.    rendimiento      docs   CI
 ```
-Readiness técnica se alcanza al cerrar **H1+H2+H3** (los P0/P1). H4/H5 elevan calidad y confianza pero no bloquean el arranque de HyperFrames una vez cerrados los bloqueantes.
+Readiness técnica **ya alcanzada** al cerrar **H1+H2+H3** (0 P0 / 0 P1). GPU/NVENC se cerró como
+fase independiente de rendimiento. H4 (docs, este PR) y H5 (CI) elevan calidad y confianza pero no
+bloquean el arranque de HyperFrames, que queda detrás del gate final.

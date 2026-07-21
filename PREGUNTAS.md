@@ -1,5 +1,77 @@
 # Preguntas y Decisiones Pendientes
 
+## Tabla de navegación (estado por ítem)
+
+Índice autoritativo de estado. Los cuerpos originales de cada pregunta se conservan abajo como
+registro histórico; donde una pregunta fue resuelta o superada, su redacción original queda como
+**HISTÓRICO** aunque aún esté escrita en tono de "por validar". Estados: **ACTIVA**, **CERRADA**,
+**DIFERIDA — TRIGGER**, **HISTÓRICA / SUPERADA**.
+
+Actualizado en H4 sobre `cdcea7a` (post F6/H1/H2/H3/GPU-NVENC).
+
+| ID | Estado | Tema | Trigger o cierre |
+|---|---|---|---|
+| 1 | DIFERIDA — TRIGGER | Whisper small vs medium | Reabrir si un tester reporta transcripción pobre en acentos/vocabulario |
+| 2 | ACTIVA | Posición vertical del texto | Preferencia de estilo (avoid_faces ya ajusta por cara) |
+| 3 | ACTIVA | Nº de palabras por grupo | Preferencia de estilo |
+| 4 | DIFERIDA — TRIGGER | Fuente estilo Hormozi | Reabrir si se instala "The Bold Font" |
+| 5 | DIFERIDA — TRIGGER | Referencia benchmark Captions AI | Reabrir cuando exista material de referencia autorizado |
+| 6 | CERRADA | Keywords de calidad baja | Anti-stopword del brain + Caption QA |
+| 7 | CERRADA | Refactor app.py→jobs.py | Hecho |
+| 9 | CERRADA | Clipper: ranking/cuota | SCORE_MIN=60 / MAX_CLIPS=3 confirmados |
+| 10 | CERRADA | Clipper: reutilizar transcripts | Procedencia explícita (H2) |
+| 11 | CERRADA | Clipper `--vertical` en v1 | Reframe entregado (F4.1) |
+| 12 | CERRADA | Clipper: zona muerta | Resuelta |
+| 13 | CERRADA | Clipper: razones de exclusión | Resuelta |
+| 14 | CERRADA | Punch-ins opt-in/default | Voto de arquitecto |
+| 15 | CERRADA | Resolución de salida | 1080×1920 |
+| 16 | CERRADA | CLI reframe módulo/subcomando | Resuelta |
+| 17 | CERRADA | Preview de frames antes de render | Resuelta |
+| 18 | CERRADA | mediapipe 0.10.35 | Fijada |
+| 19 | DIFERIDA — TRIGGER | Preview de frames reframe | Reabrir en v2 si duele |
+| 20 | DIFERIDA — TRIGGER | Densidad punch-in | Reabrir tras validación de F5 |
+| 21 | CERRADA | Descuadre en reposo | Causa raíz corregida |
+| 22 | DIFERIDA — TRIGGER | Detector full-range (lentes oscuros) | Reabrir si un tester reporta cara con lentes oscuros perdida |
+| 23 | HISTÓRICA / SUPERADA | Riesgos revisor s15 | Triageada |
+| 24 | CERRADA | F4.2-LITE Stack | Implementada y validada |
+| 24a | CERRADA | Métrica C1v2 F4.2 | Resuelta en S36 |
+| 24b | DIFERIDA — TRIGGER | Selección manual de caras | Reabrir cuando exista material multi-persona |
+| 24c | HISTÓRICA / SUPERADA | Precondición de fuente | Parcialmente revocada |
+| 24d | DIFERIDA — TRIGGER | Intrusión cruzada stack | Reabrir con material N=3 personas |
+| 25 | CERRADA | Poll de job sin respuesta | Motor `job_polling.js` (H2) |
+| 26 | CERRADA | F4.2-CORTES modo escenas | Default en CLI/Studio |
+| 26a–f | CERRADA | Detalles F4.2-CORTES | Implementados (referencia de diseño) |
+| 27 | DIFERIDA — TRIGGER | Modo pantalla (screen-recording) | Reabrir tras diseño con el arquitecto |
+| 28 | DIFERIDA — TRIGGER | Multi v2 por segmento | Reabrir cuando exista material multi-persona |
+| 29 | CERRADA | Modo Automático (roadmap) | Auto classic + Auto v2 entregados |
+| 30 | CERRADA | Gremlin 0-byte (hook cmd) | Fix en `.claude/settings.json` |
+| 30-hist | HISTÓRICA / SUPERADA | Deuda anterior del gremlin | Contexto histórico |
+| 31 | DIFERIDA — TRIGGER | Dirección de producto (sesión 28B) | Reabrir en sesión de dirección de producto (no en H4) |
+| 32 | DIFERIDA — TRIGGER | F7 Telegram/distribución | Reabrir post-v1 (necesita M5 de K) |
+| 33 | CERRADA | F6 caption_viral_engine | Entregado |
+| 34 | CERRADA | Marcado manual: palabra vs frase | Phrase spans (F6/D40) |
+| 35 | DIFERIDA — TRIGGER | Caption QA en Studio | Alertas ya visibles en el Editor de Paquete; reabrir si testers piden corrección interactiva |
+| 36 | DIFERIDA — TRIGGER | Multi-clip b-roll Pexels | Reabrir para >1 clip de b-roll por ventana |
+| 37 | DIFERIDA — TRIGGER | Editor Paquete: persistencia | Reabrir para aprobar/rechazar persistente |
+| 38 | DIFERIDA — TRIGGER | Editor Paquete: extracción CSS/JS | Reabrir en refactor de `static/` |
+| 39 | DIFERIDA — TRIGGER | Captura pixel-perfect 390px | Limitación de herramienta, no bloqueante |
+| 40 | CERRADA | S36 (SRT round-trip): decisiones | S36 COMPLETA (`aa1790a`) |
+| 41 | CERRADA | S37 densidad b-roll | 27%/35% |
+| 42 | CERRADA | S37 duración b-roll | Resuelta |
+| 43 | CERRADA | S37 imagen vs video | Resuelta |
+| 44 | CERRADA | S37 hook | 3.0s protegidos |
+| 45 | CERRADA | S37 FX default Auto v2 | Express default |
+| 46 | CERRADA | S37 b-roll default | ON solo en Auto v2 |
+| 47 | CERRADA | S37-B deudas | Resueltas |
+| 48 | CERRADA | S37-B cierre visual | K aprobado |
+| 49 | CERRADA | S37-C contrato Studio | PR #13 mergeado |
+| 50 | CERRADA | S36-B SRT con captions | PR #14 mergeado |
+| 51 | CERRADA | S36-C1 backend video↔SRT | PR #15 mergeado (+C1.1/C1.2) |
+| 52 | CERRADA | S36-C2A1 render SRT desde Studio | PR #18 MERGEADO (`d6db673`); S36 COMPLETA |
+
+> Nota H4: no se abrieron nuevas preguntas de producto. Los triggers de "material multi-persona"
+> (#24b, #28, #24d) y GPU/NVENC quedan cubiertos por la guía de testers (`docs/ALPHA_TESTERS.md`).
+
 ## Para validar con el usuario
 
 ### 1. Modelo Whisper: ¿small o medium?

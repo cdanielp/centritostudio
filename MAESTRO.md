@@ -1,7 +1,13 @@
 # MAESTRO.md — Centrito Studio
 **Proyecto:** Suite local de producción de video con IA para Prompt Models Studio
-**Máquina:** Windows 11 · RTX 5070 Ti 16GB · Python 3.12 · FFmpeg 8.0 · carpeta `C:\CLAUDECODE\ediciondevideo`
-**Este documento es la fuente de verdad.** Se ejecuta fase por fase, en sesiones distintas si hace falta.
+**Máquina:** Windows 11 · GPU NVIDIA · Python 3.12 · FFmpeg 8.0 · carpeta `C:\ruta\centrito`
+**Este documento es la fuente de verdad de ARQUITECTURA y ROADMAP.** Se ejecuta fase por fase, en sesiones distintas si hace falta.
+
+> **Addendum de jerarquía (H4).** MAESTRO documenta **arquitectura, reglas y roadmap histórico**;
+> **no** es el estado actualizado línea por línea. Para el **estado vivo** (fases cerradas, merges,
+> siguiente fase) la fuente autoritativa es [`ESTADO.md`](ESTADO.md); para decisiones,
+> [`DECISIONES.md`](DECISIONES.md); para preguntas activas, [`PREGUNTAS.md`](PREGUNTAS.md). Donde
+> este documento describa un plan ya superado, considéralo **histórico** y contrástalo con ESTADO.
 
 ---
 

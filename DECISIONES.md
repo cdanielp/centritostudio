@@ -988,8 +988,8 @@ produccion <=400 lineas; funciones <=50. Excepciones tipadas (`SrtError` base + 
 `SrtParseError`/`SrtLimitError`); sin catch-all en la libreria.
 
 **Evidencia:** 132 tests nuevos en `tests/test_srt_import.py` (sin red/GPU/FFmpeg). Smoke real
-(`revision/s36-srt-import/smoke_srt_real.py` sobre `input/0717_corregido.srt`): `n_cues=1072`, ultimo
-index `1072`, ultimo `start_ms=2473300`/`end_ms=2474600`, `0` errores, `0` warnings, round-trip
+(`revision/s36-srt-import/smoke_srt_real.py` sobre el SRT privado del usuario, fixture local no
+versionado): `0` errores, `0` warnings, round-trip
 semantico PASS, original intacto (sha256 identico). README completo en `revision/s36-srt-import/`.
 **S36 NO esta cerrada** (faltan integracion con captions, word alignment, upload Studio, rebase tras
 cortes y templates 9:16 — ver ESTADO.md y PREGUNTAS.md).
@@ -1618,3 +1618,81 @@ compactos, defaults = naming histórico) y `_rutas_render`/`run_render` los thre
 position/avoid_faces distintos ya no sobreescriben MP4/ASS/sidecar; helper único con la CLI.
 Y la **deuda del punto 3 quedó CERRADA**: `face_y_asignada` es parte del CSV v2 producido por el
 reframe real (ver arriba); avoid_faces vertical top/bottom está conectado de extremo a extremo.
+
+**Addendum de cierre/merge (H4).** F6 esencial (D40) fue **APROBADA por K** y **MERGEADA en `main`**
+vía merge commit `4a378d8` (PR #23). La nota previa "PR abierto, NO mergeado / autorizado para
+merge" queda **SUPERADA**. No se reescribe el contexto original de D40; esto solo sella su estado.
+
+---
+
+## D41 — Hardening pre-HyperFrames (H1 / H2 / H3)
+
+**Contexto.** Tras F6, la auditoría pre-HyperFrames (CASO B) encontró hallazgos dispersos de
+seguridad, jobs/UI y arranque. Se cerraron en tres PRs bloqueantes, cada uno mergeado en `main`.
+No cambian salida audiovisual. Ver `revision/pre-hyperframes/MATRIZ_READINESS.md` y `PLAN_DE_PR.md`.
+
+**Decisiones.**
+1. **H1 — seguridad e integridad (merge `4dab852`).** Confinamiento de rutas: guard de basename en
+   todos los endpoints `{name}`; upload acotado por bytes (basename+ext+tope+tmp+ffprobe); bind a
+   **loopback** `127.0.0.1` por defecto (LAN solo por opt-in explícito y documentado); `/output`
+   restringido a `.mp4` (`.ass`/sidecars fuera del árbol servido); **outputs atómicos** (FFmpeg a
+   temporal + validación + `os.replace`; nunca se publica un MP4 de 0 bytes).
+2. **H2 — jobs y recuperación (merge `5779a77`).** Motor único de polling
+   (`static/job_polling.js`) con fallo seguro por defecto, `deadlineMs` + `maxConsecutiveErrors`,
+   estado terminal `lost`/`timeout` y acciones Reintentar/Cancelar/Seguir esperando (se elimina el
+   spinner infinito). Resume que rechaza truncados (`media_integrity.video_reanudable`), procedencia
+   explícita de Auto classic y atomicidad de checkpoints/markers (`atomic_io`).
+3. **H3 — arranque y diagnóstico (merge `b59989f`).** Preflight de entorno (`system_preflight`),
+   excepciones tipadas de dependencias (`media_deps`), modelos reproducibles verificados por SHA256
+   (`model_assets` + `scripts/setup_models.py`), launcher con health-check (`studio_launcher`) y
+   **modo degradado** (la UI abre sin FFmpeg/modelos y deshabilita solo lo afectado). Endpoints de
+   diagnóstico `/api/system/health` y `/api/system/capabilities`.
+
+**Estado.** H1/H2/H3 **cerrados en main**. Readiness: 0 P0 / 0 P1 abiertos.
+
+---
+
+## D42 — Codificación de video GPU / NVIDIA NVENC
+
+**Contexto.** Fase de **rendimiento** independiente del hardening: mover la codificación H.264 a
+NVENC con fallback a CPU, sin cambiar el resultado audiovisual. Merge `cdcea7a` (PR #28). Detalle y
+benchmarks en `docs/GPU_NVENC.md` y `revision/pre-hyperframes/NVENC_EVIDENCIA.md`.
+
+**Decisiones.**
+1. **Modos `auto` / `nvenc` / `cpu`** (`video_encoder.py`, env `CENTRITO_VIDEO_ENCODER`, preferencia
+   en Ajustes). La **ruta CPU sigue siendo válida y completa** (byte-idéntica a los args históricos,
+   fijado por tests de contrato).
+2. **`nvenc` explícito NO cae silenciosamente:** si NVENC no está disponible, el job se rechaza con
+   503 antes de crearse. **`auto`** permite un fallback acotado (reintenta una vez en CPU si NVENC no
+   inicializa a mitad del encode).
+3. **Publicación atómica** en todas las rutas de encode (depurador/captions/overlays/reframe
+   tracking y stack) vía `media_integrity`: temporales distintos por intento, el final anterior
+   válido se conserva hasta `os.replace`, sin residuos ni 0-byte.
+4. **CUDA de Whisper ≠ NVENC.** Son usos distintos de la GPU. **No** se afirma "todo en GPU":
+   filtros (libavfilter), OpenCV, detección facial, audio y libass siguen en **CPU**.
+5. **Baseline superado.** La decisión histórica de quemado con `libx264 -crf 18` (baseline CPU
+   original) queda **superada por la selección `auto` NVENC/CPU**; `cpu` reproduce ese baseline
+   byte-idéntico para máxima compatibilidad. (No se reescribe el contexto original de ese quemado.)
+
+**Estado.** GPU/NVENC **cerrado en main**. Smoke real: 16 checks (blockers=0/fails=0).
+
+---
+
+## D43 — Privacidad y servicios externos opcionales
+
+**Contexto.** El producto se documenta como **local por defecto**; conviene fijar cómo se
+comunican las integraciones externas para no afirmar de más ("nada se sube"). Recoge y consolida
+D28-D31 (Pexels), Fase 2/D24 (LLM), D9/D10/D13 (ComfyUI) y la estación Submagic.
+
+**Decisiones.**
+1. **Producto local por defecto.** Transcripción (Whisper), FFmpeg, reframe, captions, overlays,
+   codificación y ComfyUI corren en la PC; ComfyUI es local (loopback `127.0.0.1:8188`) y **no** se
+   describe como SaaS.
+2. **Toda integración externa es explícita y opt-in.** La documentación debe indicar **qué dato
+   sale** de la PC: **DeepSeek/LLM** envía texto/contexto (remoto), **Pexels** envía búsquedas y
+   descarga assets (remoto), **Submagic** puede **subir el video** cuando el usuario elige esa
+   estación (remoto). Sin su API key / sin elegir la estación, esas capas quedan deshabilitadas.
+3. **No afirmar "nada se sube" de forma absoluta.** Frase canónica en la documentación pública:
+   *"Local por defecto, con integraciones externas explícitas y opcionales."*
+
+**Estado.** Aplicado a README y guías en H4.

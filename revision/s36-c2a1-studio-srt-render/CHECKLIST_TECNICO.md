@@ -75,7 +75,7 @@
 - [x] SRT original nunca modificado; bytes/SHA administrados intactos.
 - [x] Sidecar sin rutas absolutas; resumen público sin cues/texto/rutas.
 - [x] Mensajes de error saneados (sin ruta/traceback/contenido).
-- [x] Archivo privado `input/0717_corregido.srt` no tocado, no asociado, no impreso.
+- [x] Archivo privado `input/video.srt` no tocado, no asociado, no impreso.
 
 ## Verificación
 - [x] `git diff --check`, `ruff check .`, `ruff format --check .` verdes.

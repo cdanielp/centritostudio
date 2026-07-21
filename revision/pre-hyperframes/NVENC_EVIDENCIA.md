@@ -91,5 +91,5 @@ horizontal+nvenc→NVENC; vertical y `reframe=false`→permitido; snapshot inmut
 
 - **No** se modificaron algoritmos audiovisuales: EDL, silencios, muletillas, crossfades,
   captions, overlays, tracking, crops, audio, sincronización, resolución, FPS, Whisper, detectores.
-- **No** se usaron datos privados (`input/0717_corregido.srt` intacto; todo lavfi/TemporaryDirectory).
+- **No** se usaron datos privados (`input/video.srt` intacto; todo lavfi/TemporaryDirectory).
 - **H4, H5 y HyperFrames/F7 no iniciados.**

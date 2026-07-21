@@ -4,7 +4,7 @@
 **Alcance:** P0-1, P0-2, P0-3, P0-4, P1-OUT-1, P1-OUT-2. **NO** H2/H3/HyperFrames.
 
 Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU/red y sin tocar
-`input/0717_corregido.srt` (nunca se abre, imprime, hashea ni versiona).
+`input/video.srt` (nunca se abre, imprime, hashea ni versiona).
 
 ---
 

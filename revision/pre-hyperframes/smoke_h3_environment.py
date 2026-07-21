@@ -1,7 +1,7 @@
 """Smoke H3 — arranque y diagnostico de entorno pre-HyperFrames. Arnes SINTETICO, sin red, sin
 GPU, sin datos privados. El entorno se simula con dependencias INYECTADAS (version, ejecutable,
 which, rutas de modelos, puerto). NO abre puertos reales, NO abre el navegador y NO toca
-`input/0717_corregido.srt`.
+`input/video.srt`.
 
 Cubre 12 checks:
     1. ready completo.

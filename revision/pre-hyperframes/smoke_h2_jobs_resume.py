@@ -1,6 +1,6 @@
 """Smoke H2 — jobs y recuperacion pre-HyperFrames. Arnes SINTETICO, sin red, sin GPU, sin datos
 privados. Todo en TemporaryDirectory; ffprobe se sustituye por un stub en memoria (no invoca
-FFmpeg). NO abre, imprime ni versiona `input/0717_corregido.srt`.
+FFmpeg). NO abre, imprime ni versiona `input/video.srt`.
 
 Cubre:
     A. Polling (motor real static/job_polling.js via Node): done / 404 lost / 500 recovery /

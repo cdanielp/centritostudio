@@ -17,7 +17,7 @@ Cubre 14 checks (1-7 logica, 8-14 real):
     6. nvenc explicito falla antes del job.          13. A/V dentro de tolerancia.
     7. cpu no intenta usar NVENC.                    14. salida sin rutas ni stderr privados.
 
-NO toca input/0717_corregido.srt ni ningun dato privado. Sin red.
+NO toca input/video.srt ni ningun dato privado. Sin red.
 """
 
 from __future__ import annotations
