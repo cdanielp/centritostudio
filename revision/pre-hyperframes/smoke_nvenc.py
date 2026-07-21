@@ -188,6 +188,11 @@ def _check_overlays(work: Path) -> None:
            "overlays (emoji) NVENC ok", "overlays NVENC fallo", blocker=True)
 
 
+def _sin_residuo(work: Path) -> bool:
+    tmp_dir = work / media_integrity.TEMP_DIRNAME
+    return not tmp_dir.exists() or not any(tmp_dir.iterdir())
+
+
 def _check_reframe(work: Path) -> None:
     src = work / "rf_src.mp4"
     _fixture_video(src, "1080x1920", 3)
@@ -197,6 +202,40 @@ def _check_reframe(work: Path) -> None:
         reframe.renderizar_reframe(src, frames, out, 30.0, has_audio=True)
     _check("11_reframe_nvenc", _codec(out, "video") == "h264" and out.exists() and out.stat().st_size > 0,
            "reframe NVENC ok (pipe rawvideo)", "reframe NVENC fallo", blocker=True)
+
+
+def _check_reframe_atomico(work: Path) -> None:
+    src = work / "rf_src.mp4"  # reutiliza el fixture 1080x1920 del check anterior
+    frames = [(0, 0, 1080, 1920)] * 90
+    bandas = [(0, 0, 1080, 960), (0, 960, 1080, 960)]
+    # Tracking sobre un final PREVIO valido: debe reemplazarlo y no dejar temporales.
+    out_t = work / "rf_atom.mp4"
+    _fixture_video(out_t, "1080x1920", 1)  # final anterior valido
+    with ve.snapshot_job("auto"):
+        reframe.renderizar_reframe(src, frames, out_t, 30.0, has_audio=True)
+    out_s = work / "stk_atom.mp4"
+    with ve.snapshot_job("cpu"):
+        reframe.renderizar_stack(src, bandas, out_s, 30.0, has_audio=True)
+    ok = (
+        _codec(out_t, "video") == "h264" and media_integrity.video_reanudable(out_t)
+        and _codec(out_s, "video") == "h264" and media_integrity.video_reanudable(out_s)
+        and _sin_residuo(work)
+    )
+    _check("15_reframe_atomico", ok, "tracking y stack publican atomico, sin .render_tmp residual",
+           "reframe no publico atomico o dejo temporales", blocker=True)
+    # Final anterior PRESERVADO ante un fallo simulado (input inexistente -> pipe falla, sin fallback).
+    out_p = work / "rf_preserva.mp4"
+    _fixture_video(out_p, "1080x1920", 1)
+    antes = out_p.read_bytes()
+    fallo_ok = False
+    try:
+        with ve.snapshot_job("cpu"):
+            reframe.renderizar_reframe(work / "no_existe.mp4", frames, out_p, 30.0, has_audio=False)
+    except Exception:
+        fallo_ok = out_p.read_bytes() == antes and _sin_residuo(work)
+    _check("16_reframe_final_preservado", fallo_ok,
+           "final anterior intacto tras fallo de reframe, sin residuos",
+           "el fallo altero el final anterior o dejo temporales", blocker=True)
 
 
 def _check_fallback_real(work: Path) -> None:
@@ -240,6 +279,7 @@ def _run_real() -> int:
         _check_captions(WORK_DIR)
         _check_overlays(WORK_DIR)
         _check_reframe(WORK_DIR)
+        _check_reframe_atomico(WORK_DIR)
         _check_fallback_real(WORK_DIR)
         _check_sanitizacion()
     finally:

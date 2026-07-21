@@ -172,3 +172,37 @@ def publicar_mp4_atomico(final: Path, quemar: Callable[[Path], float]) -> float:
         _borrar_silencioso(temp)
         raise MediaIntegrityError("no se pudo publicar el output final") from None
     return elapsed
+
+
+def publicar_si_ok(final: Path, producir: Callable[[Path], tuple[int, str]]) -> tuple[bool, str]:
+    """Intento de publicacion atomica REUTILIZABLE para flujos con fallback (p.ej. reframe).
+
+    `producir(temp) -> (returncode, stderr)`: corre el encode escribiendo a `temp` (UNICO en
+    `.render_tmp`, mismo volumen que el final). Si returncode==0 y `temp` pasa `verificar_video`,
+    hace `os.replace(temp, final)` y devuelve `(True, "")`. Si returncode!=0 o la verificacion
+    falla, borra SOLO su temp y devuelve `(False, stderr/motivo)` SIN tocar el final anterior.
+    Una excepcion inesperada borra el temp y se propaga. Nunca deja temporales ni publica un
+    0-byte. Comparte `ruta_temporal`/`verificar_video`/`os.replace`/`_borrar_silencioso` con
+    `publicar_mp4_atomico` (misma fuente unica; no duplica el contrato H1/H2).
+    """
+    final = Path(final)
+    temp = ruta_temporal(final)
+    try:
+        rc, stderr = producir(temp)
+    except BaseException:
+        _borrar_silencioso(temp)
+        raise
+    if rc != 0:
+        _borrar_silencioso(temp)
+        return False, stderr
+    try:
+        verificar_video(temp)
+    except MediaIntegrityError as exc:
+        _borrar_silencioso(temp)
+        return False, str(exc)
+    try:
+        os.replace(temp, final)
+    except OSError:
+        _borrar_silencioso(temp)
+        raise MediaIntegrityError("no se pudo publicar el output final") from None
+    return True, ""

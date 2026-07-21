@@ -80,23 +80,8 @@ def test_reframe_nvenc_no_duplica_pix_fmt():
     assert cmd.count("yuv420p") == 1
 
 
-def test_reframe_stack_inyecta_encoder(monkeypatch):
-    # Regresion (Codex P2): la ruta stack tambien debe pasar video_args a _cmd_ffmpeg_pipe.
-    from pathlib import Path
-
-    capt = {}
-
-    def fake_pipe_stack(cmd, bandas, input_path, band_h):
-        capt["cmd"] = cmd
-        return 0, "", 0.1
-
-    monkeypatch.setattr(reframe, "_pipe_stack", fake_pipe_stack)
-    ve.set_default_mode("cpu")
-    reframe.renderizar_stack(
-        Path("in.mp4"), [(0, 0, 1080, 960), (0, 960, 1080, 960)], Path("o.mp4"), 30.0, True
-    )
-    assert "libx264" in capt["cmd"]  # encoder inyectado, no TypeError
-    assert "-movflags" in capt["cmd"] and "+faststart" in capt["cmd"]
+# La inyeccion del encoder en la ruta stack (regresion Codex P2) y su publicacion atomica
+# se cubren en test_nvenc_reframe_atomic.py (tests 2 y 13, con el flujo real de temp+verify).
 
 
 def test_reframe_sin_audio_no_mapea_audio():

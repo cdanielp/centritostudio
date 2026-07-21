@@ -298,27 +298,47 @@ def run_reframe(
 # --- Worker: Submagic (motor nube opt-in) -------------------------------------
 
 
+def _submagic_reframe_local(reframe_9x16: bool, w: int, h: int) -> bool:
+    """Puro: True si Submagic hara un reframe LOCAL (encode) antes del upload remoto.
+
+    Fuente UNICA de la decision (toggle activo Y el video no es ya vertical) para que el guard
+    del endpoint y el worker no divergan. Sin esto, la ruta submagic parecia "no codifica local".
+    """
+    import submagic  # noqa: PLC0415
+
+    return bool(reframe_9x16) and submagic.necesita_reframe(w, h)
+
+
+def submagic_hara_encode_local(mp4: Path, reframe_9x16: bool) -> bool:
+    """Lee el tamano del video y decide si habra encode local (reframe) antes del upload.
+
+    Usada por el endpoint ANTES de crear el job para aplicar el guard de encoder solo cuando
+    corresponda. Comparte el predicado puro con `_reframe_para_submagic` (no diverge)."""
+    info = core.get_video_info(mp4)
+    return _submagic_reframe_local(reframe_9x16, info["width"], info["height"])
+
+
 def _reframe_para_submagic(jid: str, mp4: Path, reframe_9x16: bool) -> tuple[Path, dict]:
     """Decide si reencuadrar a 9:16 antes de subir. Devuelve (ruta_a_subir, evidencia).
 
     Submagic NO reencuadra: si el clip no es vertical hay que darselo ya en 9:16.
-    Reusa reframe.reframe_clip (mismo face tracking del motor local), sin tocar
-    caption.py ni core_ass.py. Si ya es vertical o el toggle esta apagado, se sube
-    el original."""
+    Reusa reframe.reframe_clip (mismo face tracking del motor local, ahora NVENC/CPU segun el
+    snapshot del job), sin tocar caption.py ni core_ass.py. Si ya es vertical o el toggle esta
+    apagado, se sube el original."""
     info = core.get_video_info(mp4)
     w, h = info["width"], info["height"]
     ev = {"origen": f"{w}x{h}", "aplicado": False, "subido": f"{w}x{h}"}
-    import submagic  # noqa: PLC0415
 
-    if not reframe_9x16:
-        ev["motivo"] = "toggle apagado"
-        return mp4, ev
-    if not submagic.necesita_reframe(w, h):
-        ev["motivo"] = "ya era vertical"
-        update_job(jid, message=f"Ya era vertical ({w}x{h}) - sin reencuadre")
+    if not _submagic_reframe_local(reframe_9x16, w, h):
+        if not reframe_9x16:
+            ev["motivo"] = "toggle apagado"
+        else:
+            ev["motivo"] = "ya era vertical"
+            update_job(jid, message=f"Ya era vertical ({w}x{h}) - sin reencuadre")
         return mp4, ev
 
     import reframe  # noqa: PLC0415
+    import submagic  # noqa: PLC0415
 
     stage_dir = OUTPUT_DIR / "submagic_stage"
     staged = stage_dir / f"{mp4.stem}_9x16_for_submagic.mp4"
@@ -333,6 +353,7 @@ def _reframe_para_submagic(jid: str, mp4: Path, reframe_9x16: bool) -> tuple[Pat
     return staged, ev
 
 
+@video_encoder.con_snapshot  # si hace reframe local, usa el modo capturado por el job
 def run_submagic_render(
     jid: str,
     mp4: Path,

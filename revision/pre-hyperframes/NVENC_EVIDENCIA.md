@@ -65,13 +65,29 @@ en OpenCV (CPU)** que alimenta el pipe rawvideo — fuera de alcance de esta fas
 casi instantáneo; por eso el benchmark usa `mandelbrot` (alta entropía **estructurada**), que
 representa mejor el contenido real y a la vez mantiene SSIM alto.
 
-## 4. Suite y calidad
+## 4. Correctivo pre-merge (atomicidad reframe + pre-reframe Submagic)
 
-- Tests NVENC nuevos: `tests/test_nvenc_encoder.py` (31) + `tests/test_nvenc_pipelines.py` (12) = 43.
-- Byte-identidad CPU verificada por los tests de contrato existentes (popups/cutaway) + nuevos.
-- Suite completa, ruff, formato y smokes H1/H2/H3: ver reporte del PR.
+**Reframe atómico** — `renderizar_reframe` (tracking) y `renderizar_stack` publican vía
+`media_integrity.publicar_si_ok` (fuente única): FFmpeg escribe a un temporal único en
+`.render_tmp`, se valida con `verificar_video` y solo tras el éxito se hace `os.replace`. El
+intento NVENC y el fallback CPU usan temporales distintos; un intento fallido borra solo su
+temporal; el final anterior válido sobrevive a fallo NVENC y a fallo NVENC+CPU. Sin residuos, sin
+0-byte. 13 tests (`test_nvenc_reframe_atomic.py`), sin FFmpeg real. Verificado también en real:
+tracking/stack publican y no dejan `.render_tmp`.
 
-## 5. Confirmaciones
+**Submagic** — es remoto pero con `reframe=true` sobre horizontal hace reframe LOCAL antes del
+upload. Predicado puro compartido `jobs._submagic_reframe_local` (endpoint == worker); guard
+**condicional** (`jobs.submagic_hara_encode_local`) y snapshot en `run_submagic_render`. 9 tests
+(`test_nvenc_submagic.py`): horizontal+nvenc-no-disp→503 sin upload; horizontal+auto→CPU;
+horizontal+nvenc→NVENC; vertical y `reframe=false`→permitido; snapshot inmutable.
+
+## 5. Suite y calidad
+
+- Tests NVENC: `test_nvenc_encoder.py` + `test_nvenc_pipelines.py` + `test_nvenc_reframe_atomic.py`
+  (13) + `test_nvenc_submagic.py` (9). Byte-identidad CPU verificada por los tests de contrato.
+- Cifras finales de la suite completa, ruff/format/check.bat y smokes H1/H2/H3: ver el body del PR.
+
+## 6. Confirmaciones
 
 - **No** se modificaron algoritmos audiovisuales: EDL, silencios, muletillas, crossfades,
   captions, overlays, tracking, crops, audio, sincronización, resolución, FPS, Whisper, detectores.

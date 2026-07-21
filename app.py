@@ -976,6 +976,7 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
 
     reframe=True (default): reencuadra a 9:16 antes de subir si no es vertical.
     template: templateName elegido (None -> default Hormozi 2 del motor)."""
+    import media_deps  # noqa: PLC0415
     import submagic  # noqa: PLC0415
 
     _validar_name(name)
@@ -984,6 +985,18 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
         raise HTTPException(404, f"Video {name} no encontrado en input/")
     if not submagic.tiene_key():
         raise HTTPException(400, "Falta SUBMAGIC_API_KEY en .env (ver .env.example)")
+    # Submagic es remoto, pero con reframe=true sobre un video horizontal hace un ENCODE LOCAL
+    # (reframe a 9:16) antes del upload. El guard de encoder solo aplica en ese caso; si no habra
+    # encode local, la ruta remota funciona en cualquier modo aunque no haya NVENC. El probe de
+    # tamano puede fallar: se traduce a un error accionable (no un 500 crudo), como el resto.
+    try:
+        hara_encode_local = jobs.submagic_hara_encode_local(mp4, reframe)
+    except media_deps.FFprobeUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except media_deps.MediaProbeError:
+        raise HTTPException(400, "No se pudo analizar el video.") from None
+    if hara_encode_local:
+        _guard_encoder()  # modo nvenc explicito sin NVENC -> 503 antes de crear el job
     jid = jobs.new_job(f"Editando {name} con Submagic (nube)...")
     threading.Thread(
         target=jobs.run_submagic_render,

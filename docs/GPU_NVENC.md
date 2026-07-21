@@ -95,6 +95,24 @@ pudo completar la codificacion; se uso CPU.”
 **No** hay fallback ante errores de input/filtro/ASS/EDL/audio: esos también fallarían en CPU, así
 que se propagan saneados (sin stderr ni rutas). El modo `nvenc` explícito **nunca** cae a CPU.
 
+### Publicación atómica (depurador, captions, overlays y reframe)
+
+Todas las rutas de encode publican **atómicamente** vía `media_integrity`: FFmpeg escribe a un
+temporal único en `.render_tmp` (mismo volumen), se valida con `verificar_video`, y solo tras el
+éxito se hace `os.replace` al nombre final. Reframe **tracking y stack** comparten este contrato
+(`publicar_si_ok`): el intento NVENC y el fallback CPU usan temporales **distintos**, un intento
+fallido borra solo su temporal, y el **final anterior válido se conserva** hasta el `os.replace`
+(y sigue intacto si ambos intentos fallan). No quedan temporales ni se publican archivos de 0 bytes.
+
+### Submagic: remoto con pre-reframe local opcional
+
+Submagic edita en la **nube**, pero con `reframe=true` sobre un video **horizontal** hace un
+**reframe local** (encode 9:16) antes del upload. El guard de encoder es **condicional**: el
+endpoint calcula si habrá encode local y solo entonces exige NVENC en modo `nvenc` explícito (503
+antes del job, sin iniciar el upload). Ya vertical o `reframe=false` → sube el original sin
+codificar y la ruta remota funciona en cualquier modo. Ese reframe local respeta auto/nvenc/cpu y
+usa el snapshot inmutable del job.
+
 ## Benchmarks (fixture sintético 1080p 20s, RTX 5070 Ti)
 
 Fixture `mandelbrot` (alto detalle + movimiento, estructurado). CPU `libx264 medium` vs NVENC `p5`:

@@ -297,30 +297,41 @@ def _reframe_permite_fallback(seleccion, stderr: str) -> bool:
 
 
 def _render_con_fallback(output_path: Path, ejecutar) -> float:
-    """Selecciona encoder FAST y corre `ejecutar(video_args)->(rc, stderr, s)`.
+    """Selecciona encoder FAST y publica ATOMICAMENTE via media_integrity.publicar_si_ok.
 
-    En modo auto reintenta UNA vez en CPU ante un fallo de INICIALIZACION NVENC (limpia el
-    parcial primero). Comun a reframe tracking y stack: ambos solo cambian como pipean los frames.
+    `ejecutar(video_args, target)->(rc, stderr, s)` escribe el pipe a `target` (temporal UNICO
+    en .render_tmp; FFmpeg nunca escribe al nombre final). En modo auto reintenta UNA vez en CPU
+    ante un fallo de INICIALIZACION NVENC, con OTRO temporal. El final anterior se conserva hasta
+    un os.replace exitoso (verificado); si ambos intentos fallan, queda intacto. Comun a tracking
+    y stack: solo cambia como se pipean los frames.
     """
+    import media_integrity  # noqa: PLC0415
+
     seleccion = video_encoder.select_encoder(
         video_encoder.active_mode(), video_encoder.EncoderProfile.FAST
     )
-    rc, stderr, elapsed = ejecutar(video_encoder.build_video_args(seleccion))
-    if rc == 0:
-        return elapsed
+    tiempo: dict = {}
+
+    def _producir(sel):
+        def _p(target: Path) -> tuple[int, str]:
+            rc, stderr, elapsed = ejecutar(video_encoder.build_video_args(sel), target)
+            tiempo["s"] = elapsed
+            return rc, stderr
+
+        return _p
+
+    ok, stderr = media_integrity.publicar_si_ok(output_path, _producir(seleccion))
+    if ok:
+        return tiempo["s"]
     if _reframe_permite_fallback(seleccion, stderr):
-        try:
-            Path(output_path).unlink()
-        except OSError:
-            pass
         cpu = video_encoder.select_encoder(
             video_encoder.EncoderMode.CPU, video_encoder.EncoderProfile.FAST
         )
-        rc2, stderr2, elapsed2 = ejecutar(video_encoder.build_video_args(cpu))
-        if rc2 != 0:
+        ok2, stderr2 = media_integrity.publicar_si_ok(output_path, _producir(cpu))
+        if not ok2:
             raise RuntimeError(video_encoder.sanitize_encoder_error(stderr2))
         print("[encoder] NVENC no pudo completar la codificacion; se uso CPU.")
-        return elapsed2
+        return tiempo["s"]
     raise RuntimeError(video_encoder.sanitize_encoder_error(stderr))
 
 
@@ -333,8 +344,8 @@ def renderizar_reframe(
 ) -> float:
     """Lee frames OpenCV, aplica crops, escala 1080x1920 (LANCZOS4), pipe a FFmpeg (NVENC/CPU)."""
 
-    def _ejecutar(video_args: list[str]):
-        cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, video_args)
+    def _ejecutar(video_args: list[str], target: Path):
+        cmd = _cmd_ffmpeg_pipe(input_path, target, fps, has_audio, video_args)
         return _pipe_a_ffmpeg(cmd, crop_frames, input_path)
 
     return _render_con_fallback(output_path, _ejecutar)
@@ -573,8 +584,8 @@ def renderizar_stack(
     assert OUTPUT_H % n == 0, f"OUTPUT_H={OUTPUT_H} no divisible por n={n}"
     band_h = OUTPUT_H // n
 
-    def _ejecutar(video_args: list[str]):
-        cmd = _cmd_ffmpeg_pipe(input_path, output_path, fps, has_audio, video_args)
+    def _ejecutar(video_args: list[str], target: Path):
+        cmd = _cmd_ffmpeg_pipe(input_path, target, fps, has_audio, video_args)
         return _pipe_stack(cmd, bandas, input_path, band_h)
 
     return _render_con_fallback(output_path, _ejecutar)
