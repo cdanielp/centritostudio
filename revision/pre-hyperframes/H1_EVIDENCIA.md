@@ -138,6 +138,16 @@ Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU/red y 
 - **Sin cambio de salida audiovisual:** solo cambia la ubicación del temporal y el momento de
   publicación; el MP4 final es byte-idéntico.
 
+### P2-3 · Normalizar la extensión en mayúsculas del upload — CERRADO (2ª ronda)
+- La 2ª ronda de Codex (sobre `d0fe37a`) marcó que un upload `VIDEO.MP4`/`clip.MOV` se guardaba con
+  el sufijo crudo; en un FS **case-sensitive** (WSL/Linux) `list_videos` solo descubre `input/*.mp4`
+  y `*.mov` en minúscula → carga aceptada (200) pero **invisible** en la biblioteca (misma clase
+  "subido pero inutilizable").
+- **Fix:** el destino se construye como `INPUT_DIR / f"{stem}{ext}"` con `ext` ya en minúsculas
+  (`VIDEO.MP4` → `VIDEO.mp4`), conservando el stem del usuario. Descubrible por el glob.
+- **Tests:** `tests/test_h1_upload.py::test_extension_valida_case_insensitive_200` asserta el nombre
+  almacenado normalizado y su visibilidad por `glob("*.mp4"/"*.mov")` (correcto en FS case-sensitive).
+
 Suite tras P2: **2173 passed, 4 skipped** (4 skips = misma limitación de symlink en Windows; el
 test de symlink de `.render_tmp` se pliega al test de symlink existente para no añadir skips).
 ruff/format/diff-check/`check.bat` verdes; smoke self-test 20/20 y `blockers=0 fails=0`.

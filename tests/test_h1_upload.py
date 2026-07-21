@@ -80,12 +80,19 @@ def test_extension_invalida_400(api, filename):
     assert _sin_temporales(inp)
 
 
-@pytest.mark.parametrize("filename", ["VIDEO.MP4", "clip.MOV", "buena.mp4"])
-def test_extension_valida_case_insensitive_200(api, filename):
+@pytest.mark.parametrize(
+    ("filename", "esperado"),
+    [("VIDEO.MP4", "VIDEO.mp4"), ("clip.MOV", "clip.mov"), ("buena.mp4", "buena.mp4")],
+)
+def test_extension_valida_case_insensitive_200(api, filename, esperado):
+    """Mayusculas validas: el sufijo se normaliza a minusculas al guardar (P2 case-sensitive FS)."""
     client, inp = api
     r = _post(client, filename)
     assert r.status_code == 200
-    assert (inp / filename).exists()
+    # Se guarda con el sufijo en minusculas, descubrible por el glob input/*.mp4 //*.mov.
+    assert esperado in {p.name for p in inp.iterdir() if p.is_file()}
+    ext = esperado.rsplit(".", 1)[1]
+    assert esperado in {p.name for p in inp.glob(f"*.{ext}")}  # visible en FS case-sensitive
     assert _sin_temporales(inp)
 
 

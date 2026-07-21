@@ -329,7 +329,10 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
         except ValueError:
             pass  # header mentiroso: el tope por chunks lo cubre igual
 
-    dest = INPUT_DIR / filename
+    # El destino normaliza la extension a minusculas (`VIDEO.MP4` -> `VIDEO.mp4`): en un FS
+    # case-sensitive (WSL/Linux) `list_videos` solo descubre `input/*.mp4` //*.mov en minuscula,
+    # asi que guardar el sufijo crudo dejaria la carga aceptada pero invisible (P2 review 2).
+    dest = INPUT_DIR / f"{Path(filename).stem}{ext}"
     tmp_dir = INPUT_DIR / ".uploads"  # subdir oculto: no lo lista el glob input/*.mp4
     tmp_dir.mkdir(exist_ok=True)
     tmp = tmp_dir / f"{uuid.uuid4().hex}{ext}"  # preserva la extension final para ffprobe
