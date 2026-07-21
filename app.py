@@ -6,6 +6,7 @@ Workers de background en jobs.py.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import uuid
@@ -28,6 +29,7 @@ import studio_keywords
 import studio_packages
 import studio_srt
 import studio_srt_routes
+import system_preflight
 from styles import STYLES
 
 # ─── Directorios ──────────────────────────────────────────────────────────────
@@ -41,8 +43,33 @@ STATIC_DIR = ROOT / "static"
 for d in [INPUT_DIR, TRANSCRIPTS, OUTPUT_DIR, THUMBS_DIR, STATIC_DIR]:
     d.mkdir(exist_ok=True)
 
+# ─── Diagnostico de entorno (H3) ──────────────────────────────────────────────
+# Informe cacheado del preflight. Se computa al importar (sin red) para que /api/system/*
+# responda aunque el lifespan no haya corrido (TestClient sin `with`), y se REFRESCA en el
+# lifespan del arranque real. `_refrescar_system_report` permite una actualizacion controlada
+# en tests. NUNCA expone rutas absolutas, secretos ni variables de entorno.
+_SYSTEM_REPORT: dict = system_preflight.check_environment(root=ROOT)
+
+
+def _refrescar_system_report() -> dict:
+    """Recomputa el informe de entorno (sin red) y lo cachea. Devuelve el informe."""
+    global _SYSTEM_REPORT
+    _SYSTEM_REPORT = system_preflight.check_environment(root=ROOT)
+    return _SYSTEM_REPORT
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Startup: refresca el diagnostico local (which/modelos/venv). Sin comprobaciones de red.
+    _refrescar_system_report()
+    estado = _SYSTEM_REPORT.get("status")
+    print(f"[studio] preflight de entorno: {estado}")
+    yield
+    # Shutdown: nada que limpiar (jobs en memoria, threads daemon).
+
+
 # ─── FastAPI ──────────────────────────────────────────────────────────────────
-app = FastAPI(title="Centrito Studio")
+app = FastAPI(title="Centrito Studio", lifespan=_lifespan)
 
 CLIPS_DIR = ROOT / "output" / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
@@ -141,6 +168,31 @@ def root():
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+# ─── Diagnostico de sistema (H3) ──────────────────────────────────────────────
+@app.get("/api/system/health")
+def system_health():
+    """Health check ligero para el launcher: 200 cuando la app sirve. Sin rutas ni secretos.
+
+    `status` se colapsa a ready/degraded (nunca expone 'blocked' ni el detalle de los checks):
+    el launcher solo necesita saber cuando abrir el navegador.
+    """
+    status = "ready" if _SYSTEM_REPORT.get("status") == "ready" else "degraded"
+    return {"status": status, "service": "Centrito Studio"}
+
+
+@app.get("/api/system/capabilities")
+def system_capabilities():
+    """Disponibilidad booleana + mensaje breve por capacidad (fuente de la UI en modo degradado).
+
+    Solo expone {available, message} saneados por capacidad + el status global. Los mensajes
+    provienen de system_preflight y no contienen rutas absolutas ni secretos.
+    """
+    return {
+        "status": _SYSTEM_REPORT.get("status", "ready"),
+        "capabilities": _SYSTEM_REPORT.get("capabilities", {}),
+    }
+
+
 # ─── Guard compartido de identificadores en rutas (H1, P0-1) ──────────────────
 def _validar_name(name: str) -> None:
     """Rechaza cualquier identificador que no sea un basename PURO antes de tocar el FS.
@@ -202,12 +254,21 @@ def list_videos():
         if info_file.exists():
             info = json.loads(info_file.read_text(encoding="utf-8"))
         else:
-            info = core.get_video_info(mp4)
-            info_file.write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+            # H3: sin ffprobe (o video invalido) el LISTADO NO debe romperse. Se degrada a
+            # metadata vacia (no se cachea un info incompleto) para que la biblioteca siga
+            # abriendo en modo degradado; el analisis real ocurre cuando ffprobe este disponible.
+            try:
+                info = core.get_video_info(mp4)
+                info_file.write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                info = {}
 
         thumb = THUMBS_DIR / f"{mp4.stem}.jpg"
         if not thumb.exists():
-            core.extract_thumb(mp4, thumb)
+            try:
+                core.extract_thumb(mp4, thumb)
+            except Exception:
+                pass  # sin ffmpeg no hay miniatura; la tarjeta se lista igual
 
         result.append(
             {
@@ -340,8 +401,15 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
         total = await _stream_a_temporal(file, tmp, max_bytes)
         if total == 0:
             raise HTTPException(422, "El archivo esta vacio.")
+        import media_deps  # noqa: PLC0415
         import media_integrity  # noqa: PLC0415
 
+        # H3: distinguir "ffprobe ausente" (503 accionable) de "video invalido" (422). Sin este
+        # guard, un entorno sin FFmpeg rechazaba toda carga con "no es un video valido" (enganoso).
+        if not media_deps.ffprobe_disponible():
+            raise HTTPException(
+                503, "FFprobe no esta disponible. Instala FFmpeg y reinicia Centrito Studio."
+            )
         try:
             media_integrity.verificar_video(tmp)
         except media_integrity.MediaIntegrityError:

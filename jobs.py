@@ -396,6 +396,13 @@ def run_submagic_render(
 
 def _error_publico_auto(exc: Exception) -> str:
     """Traduce fallos del worker sin publicar paths, keys ni payloads internos."""
+    # H3: dependencia multimedia ausente -> mensaje accionable (el texto tipado no lleva rutas).
+    if type(exc).__name__ in (
+        "FFmpegUnavailable",
+        "FFprobeUnavailable",
+        "MediaDependencyUnavailable",
+    ):
+        return str(exc)
     if type(exc).__name__ == "AudioIntegrityError":
         return "La verificacion de integridad de audio no fue aprobada."
     if type(exc).__name__ == "AVSyncError":

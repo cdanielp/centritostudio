@@ -149,9 +149,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   padding:12px 14px;margin-bottom:8px;display:none}
 .no-transcript-notice p{font-size:13px;margin-bottom:8px}
 .no-transcript-notice .notice-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* H3: aviso discreto de modo degradado (capacidad opcional ausente) */
+#system-banner{display:none;background:#2a1a12;border-bottom:0.5px solid var(--orange);
+  color:var(--text);font-size:13px;font-weight:500;padding:8px clamp(16px,3vw,32px)}
+#system-banner[hidden]{display:none}
+#system-banner:not([hidden]){display:block}
+[data-cap][disabled],[data-cap][aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
+
+<!-- H3: aviso de modo degradado (poblado por system_capabilities.js; oculto si todo esta OK) -->
+<div id="system-banner" hidden></div>
 
 <div id="header">
   <span>🎬</span>
@@ -262,7 +272,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
   <div id="upload-zone" onclick="document.getElementById('file-input').click()"
        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-    <input type="file" id="file-input" accept="video/mp4" onchange="uploadFile(this.files[0])">
+    <input type="file" id="file-input" accept="video/mp4" data-cap="upload_validation" onchange="uploadFile(this.files[0])">
     <div style="font-size:28px;margin-bottom:8px">📁</div>
     <div>Arrastra un .mp4 aquí o <b>haz clic para seleccionar</b></div>
   </div>
@@ -415,7 +425,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <div id="render-srt-incompat" class="srt-incompat" hidden>
       Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
-    <button class="btn" onclick="startRender()" id="render-btn">Renderizar</button>
+    <button class="btn" onclick="startRender()" id="render-btn" data-cap="render">Renderizar</button>
     <div id="render-status"></div>
   </div>
 
@@ -546,7 +556,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 
     <div class="step">
       <div class="step-head"><span class="step-num">5</span> Generar</div>
-      <button class="btn auto-submit" id="auto-btn" onclick="startAuto()">Generar paquete clásico</button>
+      <button class="btn auto-submit" id="auto-btn" data-cap="auto" onclick="startAuto()">Generar paquete clásico</button>
       <div id="auto-status" style="margin-top:10px"></div>
     </div>
 
@@ -762,6 +772,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 </style>
 
 <script src="/static/job_polling.js"></script>
+<script src="/static/system_capabilities.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // Estado global
@@ -1122,6 +1133,25 @@ async function loadVideos() {
   videos = await res.json();
   renderVideoList();
   populateSelects();
+  applyCaps();  // H3: re-gatea controles data-cap recien renderizados (p.ej. Reencuadrar 9:16)
+}
+
+// H3: modo degradado. Consulta capacidades y deshabilita SOLO los controles afectados.
+// Un fallo al consultar NUNCA rompe la UI (los defaults quedan habilitados).
+let _systemCaps = null;
+function applyCaps() {
+  if (_systemCaps && window.CentritoCapabilities) {
+    window.CentritoCapabilities.applyCapabilities(_systemCaps, document);
+  }
+}
+async function checkSystemCapabilities() {
+  try {
+    const r = await fetch('/api/system/capabilities');
+    if (!r.ok) return;
+    const d = await r.json();
+    _systemCaps = d.capabilities || {};
+    applyCaps();
+  } catch (e) { /* informativo: la UI sigue con los controles por defecto */ }
 }
 
 function renderVideoList() {
@@ -1966,7 +1996,7 @@ function renderClipsCards(data) {
           <button class="btn secondary" style="font-size:12px;padding:5px 12px"
             onclick="openRenderClip('${file.replace('.mp4','')}')">Agregar captions</button>
           <button class="btn secondary" style="font-size:12px;padding:5px 12px"
-            id="reframe-btn-${file.replace('.mp4','')}"
+            id="reframe-btn-${file.replace('.mp4','')}" data-cap="reframe"
             onclick="startReframe('${file.replace('.mp4','')}', this)">Reencuadrar 9:16</button>
         </div>
         <div id="reframe-status-${file.replace('.mp4','')}" style="margin-top:5px;font-size:11px;color:var(--muted)"></div>
@@ -2901,6 +2931,7 @@ function tlSeek(ev, dur) {
 loadVideos();
 loadStyles();
 loadPresets();
+checkSystemCapabilities();  // H3: aviso de modo degradado + gating de controles afectados
 
 // Deep-link opcional por hash: #revision, #paquetes, #revision/<pkg_id> (bookmarkable
 // y util para abrir una vista directa). Sin hash valido -> Inicio.
