@@ -72,6 +72,20 @@ def test_index_controles_afectados_tienen_data_cap():
     assert 'data-cap="reframe"' in HTML
 
 
+def test_uploadfile_gatea_por_capacidad_cacheada():
+    # El drop zone llama uploadFile directo; el guard debe cubrir click Y arrastrar-soltar.
+    frag = HTML[HTML.index("async function uploadFile") :]
+    frag = frag[: frag.index("const prog")]
+    assert "_systemCaps" in frag and "upload_validation" in frag
+
+
+def test_reaplica_capacidades_tras_render_de_clips():
+    # Los botones "Reencuadrar 9:16" se crean dinamicamente -> hay que re-gatearlos.
+    frag = HTML[HTML.index("function renderClipsCards") :]
+    frag = frag[: frag.index("\nfunction setLayoutMode")]
+    assert "applyCaps()" in frag
+
+
 def test_consulta_capabilities_en_try_catch():
     # El fallo al consultar NO debe romper la UI: la funcion envuelve el fetch en try/catch.
     frag = HTML[HTML.index("async function checkSystemCapabilities") :]

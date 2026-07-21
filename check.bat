@@ -2,7 +2,7 @@
 REM check.bat — verificacion completa del proyecto en un comando.
 REM Uso:  check.bat        (entorno + lint + formato + imports + tests)
 REM       check.bat full   (agrega smoke render con GPU sobre un fixture SINTETICO)
-setlocal
+setlocal enabledelayedexpansion
 set PYTHONIOENCODING=utf-8
 set PY=venv\Scripts\python.exe
 
@@ -42,12 +42,14 @@ if /i "%1"=="full" (
   if errorlevel 1 (echo [X] No se pudo generar el fixture ^(ffmpeg^) & exit /b 1)
   echo [full] Smoke render...
   "%PY%" caption.py input\_smoke_synth.mp4 --style hormozi --lang es --out-stem _smoke
-  set RC=%errorlevel%
+  REM Delayed expansion (!RC!): dentro de este bloque en parentesis, %RC% se expandiria en
+  REM tiempo de PARSEO (vacio) y el smoke reportaria fallo aunque el render funcione.
+  set RC=!errorlevel!
   del /q input\_smoke_synth.mp4 >nul 2>&1
   del /q output\_smoke* >nul 2>&1
   del /q transcripts\_smoke_synth* >nul 2>&1
   del /q thumbs\_smoke_synth* >nul 2>&1
-  if not "%RC%"=="0" (echo [X] Smoke render fallo & exit /b 1)
+  if not "!RC!"=="0" (echo [X] Smoke render fallo & exit /b 1)
   echo [full] Smoke OK
 )
 

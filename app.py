@@ -380,6 +380,15 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
     filename = file.filename
     ext = _validar_filename_upload(filename)
 
+    import media_deps  # noqa: PLC0415
+
+    # H3: si ffprobe no esta, la carga se rechazaria SIEMPRE (503). Fallar ANTES de leer el cuerpo
+    # evita copiar varios GB a disco solo para borrarlos (Codex P2). Mensaje accionable, sin 422.
+    if not media_deps.ffprobe_disponible():
+        raise HTTPException(
+            503, "FFprobe no esta disponible. Instala FFmpeg y reinicia Centrito Studio."
+        )
+
     max_bytes = _max_video_bytes()
     # Rechazo temprano por Content-Length si esta disponible y ya supera el limite.
     clen = request.headers.get("content-length")
@@ -401,15 +410,8 @@ async def upload_video(request: Request, file: UploadFile = File(...)):
         total = await _stream_a_temporal(file, tmp, max_bytes)
         if total == 0:
             raise HTTPException(422, "El archivo esta vacio.")
-        import media_deps  # noqa: PLC0415
         import media_integrity  # noqa: PLC0415
 
-        # H3: distinguir "ffprobe ausente" (503 accionable) de "video invalido" (422). Sin este
-        # guard, un entorno sin FFmpeg rechazaba toda carga con "no es un video valido" (enganoso).
-        if not media_deps.ffprobe_disponible():
-            raise HTTPException(
-                503, "FFprobe no esta disponible. Instala FFmpeg y reinicia Centrito Studio."
-            )
         try:
             media_integrity.verificar_video(tmp)
         except media_integrity.MediaIntegrityError:

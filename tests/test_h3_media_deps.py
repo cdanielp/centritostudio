@@ -148,3 +148,18 @@ def test_listado_biblioteca_tolera_ffprobe_ausente(monkeypatch, tmp_path):
     assert resp.status_code == 200
     nombres = [v["name"] for v in resp.json()]
     assert "clip" in nombres  # la tarjeta se lista con metadata en cero
+
+
+def test_upload_sin_ffprobe_rechaza_antes_de_streamear(monkeypatch):
+    """503 accionable ANTES de copiar el cuerpo (no gasta disco para luego borrarlo)."""
+    import app as studio_app
+
+    monkeypatch.setattr(media_deps, "ffprobe_disponible", lambda which=None: False)
+
+    async def _no_stream(*a, **k):
+        raise AssertionError("no debe streamear el cuerpo si ffprobe falta")
+
+    monkeypatch.setattr(studio_app, "_stream_a_temporal", _no_stream)
+    client = TestClient(studio_app.app)
+    resp = client.post("/api/videos/upload", files={"file": ("clip.mp4", b"x" * 1000, "video/mp4")})
+    assert resp.status_code == 503 and "FFprobe" in resp.json()["detail"]

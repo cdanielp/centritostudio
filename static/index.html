@@ -1235,6 +1235,13 @@ function onDrop(e)      { e.preventDefault(); onDragLeave(); if (e.dataTransfer.
 
 async function uploadFile(file) {
   if (!file || !file.name.endsWith('.mp4')) return;
+  // H3: gatea TODA subida (click y arrastrar-soltar) si la capacidad no esta disponible, para no
+  // iniciar una carga que el server rechazara con 503. El input tiene data-cap, pero el drop zone
+  // llama a uploadFile directo; el guard aqui cubre ambos caminos.
+  if (_systemCaps && _systemCaps.upload_validation && _systemCaps.upload_validation.available === false) {
+    alert(_systemCaps.upload_validation.message || 'La subida de video no esta disponible en este entorno.');
+    return;
+  }
   const prog = document.getElementById('upload-progress');
   const bar  = document.getElementById('upload-bar');
   prog.style.display = 'block';
@@ -2009,6 +2016,7 @@ function renderClipsCards(data) {
 
   document.getElementById('clips-results').style.display = 'block';
   document.getElementById('clips-note').style.display = 'block';
+  applyCaps();  // H3: re-gatea los botones "Reencuadrar 9:16" recien creados (data-cap="reframe")
 }
 
 function setLayoutMode(mode) {
