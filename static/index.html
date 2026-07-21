@@ -2628,8 +2628,58 @@ function renderAjustes() {
     <div class="ajustes-row"><span class="k">App</span><span>Centrito Studio · Alpha 0.1</span></div>
     <div class="ajustes-row"><span class="k">Servidor</span><span>FastAPI · puerto 8787</span></div>
     <div class="ajustes-row"><span class="k">Motores</span><span>Whisper · ASS/FFmpeg · Reframe · Clipper · Caption QA</span></div>
+    <div class="ajustes-row"><span class="k">Codificación de video</span><span>
+      <select id="encoder-mode-select" onchange="onEncoderModeChange(this.value)">
+        <option value="auto">Automático — NVIDIA si está disponible</option>
+        <option value="nvenc">GPU NVIDIA — NVENC</option>
+        <option value="cpu">CPU — máxima compatibilidad</option>
+      </select></span></div>
+    <div class="ajustes-row"><span class="k">Aceleración</span><span id="encoder-accel-info" class="k">Consultando…</span></div>
     <div class="ajustes-row"><span class="k">Colores / estilos</span><span>Se editan en <code>styles.py</code> (CLI y Studio)</span></div>
     <div class="ajustes-row"><span class="k">Guía de testers</span><span><a href="/output/../docs/ALPHA_TESTERS.md" onclick="return false" style="color:var(--muted)">docs/ALPHA_TESTERS.md</a></span></div>`;
+  loadEncoderSetting();
+}
+
+// NVENC (FASE 7): selector de codificación. El backend es la autoridad; la preferencia se
+// guarda en localStorage y se re-aplica al backend al cargar la UI. Cambia solo jobs nuevos.
+async function applyStoredEncoderPref() {
+  try {
+    const saved = localStorage.getItem('centrito_video_encoder');
+    if (saved && ['auto', 'nvenc', 'cpu'].includes(saved)) {
+      await fetch('/api/system/video-encoder', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: saved })
+      });
+    }
+  } catch (e) { /* informativo: la UI sigue con el default del backend */ }
+}
+
+async function loadEncoderSetting() {
+  const sel = document.getElementById('encoder-mode-select');
+  const info = document.getElementById('encoder-accel-info');
+  if (!sel) return;
+  try {
+    const d = await (await fetch('/api/system/video-encoder')).json();
+    sel.value = d.requested;
+    const nvOpt = sel.querySelector('option[value="nvenc"]');
+    if (nvOpt) nvOpt.disabled = !(d.nvenc && d.nvenc.available);
+    if (info) {
+      const cod = d.selected === 'nvenc' ? 'NVIDIA NVENC' : 'CPU libx264';
+      const nota = (d.nvenc && !d.nvenc.available) ? ' · ' + escHtml(d.nvenc.message) : '';
+      info.textContent = 'Transcripción: CUDA o CPU · Codificación: ' + cod + ' · Reframe/detección: CPU' + nota;
+    }
+  } catch (e) { if (info) info.textContent = 'No se pudo consultar el codificador.'; }
+}
+
+async function onEncoderModeChange(mode) {
+  try {
+    const res = await fetch('/api/system/video-encoder', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    if (res.ok) localStorage.setItem('centrito_video_encoder', mode);
+  } catch (e) { /* informativo */ }
+  loadEncoderSetting();
 }
 
 // Paquetes / Editor: se implementan en B4-B5. En B2 degradan con gracia.
@@ -2952,6 +3002,7 @@ loadVideos();
 loadStyles();
 loadPresets();
 checkSystemCapabilities();  // H3: aviso de modo degradado + gating de controles afectados
+applyStoredEncoderPref();   // NVENC: re-aplica al backend la preferencia guardada (jobs nuevos)
 
 // Deep-link opcional por hash: #revision, #paquetes, #revision/<pkg_id> (bookmarkable
 // y util para abrir una vista directa). Sin hash valido -> Inicio.

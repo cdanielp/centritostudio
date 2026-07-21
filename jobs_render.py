@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import core
+import video_encoder
 from jobs_registry import update_job
 from styles import get_style
 
@@ -101,6 +102,7 @@ def _aplicar_qa(
         return groups, None
 
 
+@video_encoder.con_snapshot  # instantania inmutable del encoder para todo el render
 def run_render(
     jid: str,
     mp4: Path,

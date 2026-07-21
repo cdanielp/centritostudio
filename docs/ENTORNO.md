@@ -128,4 +128,20 @@ agrega un smoke de render sobre un **fixture sintético** generado con FFmpeg (s
 
 - `GET /api/system/health` — 200 cuando el server sirve; `{status, service}` (sin rutas ni secretos).
 - `GET /api/system/capabilities` — disponibilidad booleana + mensaje por capacidad; fuente del
-  modo degradado de la UI.
+  modo degradado de la UI. Incluye la capacidad `nvenc`; **su ausencia NO degrada la app** (CPU
+  sigue siendo ruta válida).
+- `GET /api/system/video-encoder` — modo solicitado + encoder efectivo + estado NVENC
+  (`{requested, selected, encoder, nvenc:{available,message}}`), saneado.
+- `PUT /api/system/video-encoder` `{mode: auto|nvenc|cpu}` — fija el modo de codificación (enum
+  cerrado). Afecta solo jobs nuevos; los activos conservan su instantánea.
+
+## 8. Codificación de video (NVIDIA NVENC / CPU)
+
+La codificación H.264 usa **NVIDIA NVENC** cuando está disponible, con **fallback a CPU
+(libx264)**. Ver `docs/GPU_NVENC.md` para detalle, requisitos y benchmarks.
+
+- Default por entorno: `CENTRITO_VIDEO_ENCODER=auto|nvenc|cpu` (inválido → `auto`).
+- Preferencia de UI en **Ajustes → Codificación de video** (persistida en `localStorage`).
+- Comprobar NVENC: `ffmpeg -hide_banner -encoders | Select-String h264_nvenc`.
+- CUDA de Whisper (transcripción) es **independiente** de NVENC (codificación). Reframe,
+  detección facial, libass y audio siguen en CPU.

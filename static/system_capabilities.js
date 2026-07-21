@@ -28,14 +28,17 @@
     detector_yunet: "Detector YuNet",
     detector_blazeface: "Detector BlazeFace",
     audio_analysis: "Analisis de volumen",
+    nvenc: "Codificacion NVIDIA NVENC",
   };
 
-  // No se listan en el aviso: los detectores individuales ("reframe" ya resume su ausencia) y
-  // audio_analysis (el estado "volumen pendiente" se muestra por tarjeta; evita ruido).
+  // No se listan en el aviso: los detectores individuales ("reframe" ya resume su ausencia),
+  // audio_analysis (el estado "volumen pendiente" se muestra por tarjeta) y nvenc (su ausencia
+  // NO degrada la app: la CPU sigue siendo una ruta valida; solo el modo explicito nvenc se veta).
   var OCULTAS_EN_AVISO = {
     detector_yunet: true,
     detector_blazeface: true,
     audio_analysis: true,
+    nvenc: true,
   };
 
   function unavailableList(caps) {

@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import media_deps
+import video_encoder
 
 MULETILLAS = frozenset({"eh", "em", "mmm", "ehh", "este"})
 SILENCE_GAP = 0.8  # Silencio mayor a esto se comprime
@@ -148,17 +149,11 @@ def _build_filter(edl: list[tuple[float, float]]) -> str:
     return ";".join(parts_v + parts_a + [concat])
 
 
-def run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> None:
-    """Alias publico de _run_edl para uso por clipper (evita importar privados)."""
-    _run_edl(video_path, edl, output)
-
-
-def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> None:
-    """Ejecuta el EDL en FFmpeg re-encoding con crossfade de audio."""
-    if not edl:
-        raise ValueError("EDL vacio: no hay segmentos que conservar")
-    media_deps.require_ffmpeg()  # H3: sin ffmpeg -> FFmpegUnavailable accionable (no WinError 2)
-    cmd = [
+def _edl_cmd(
+    video_path: Path, edl: list[tuple[float, float]], video_args: list[str], target: Path
+) -> list[str]:
+    """Comando FFmpeg del EDL con los args del ENCODER inyectados. Audio/mapa/filtro intactos."""
+    return [
         "ffmpeg",
         "-y",
         "-i",
@@ -169,27 +164,48 @@ def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path) -> 
         "[outv]",
         "-map",
         "[outa]",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "18",
+        *video_args,
         "-c:a",
         "aac",
         "-b:a",
         "128k",
-        str(output),
+        str(target),
     ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
-    except OSError:
-        raise media_deps.FFmpegUnavailable(media_deps._FFMPEG_MSG) from None
-    if r.returncode != 0:
-        # ffmpeg SI existe pero fallo el corte: el diagnostico tecnico se queda en consola local
-        # saneada; al job/usuario NO se le expone stderr ni rutas (mensaje generico y seguro).
-        print(f"[depurar] FFmpeg fallo el EDL (rc={r.returncode}): {r.stderr[-1500:]}")
-        raise RuntimeError("La depuracion no pudo completarse.")
+
+
+def run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path):
+    """Alias publico de _run_edl para uso por clipper (evita importar privados)."""
+    return _run_edl(video_path, edl, output)
+
+
+def _run_edl(video_path: Path, edl: list[tuple[float, float]], output: Path):
+    """Ejecuta el EDL re-encodeando con el encoder seleccionado (NVENC/CPU) + crossfade de audio.
+
+    Publica de forma ATOMICA (temp -> verificacion -> os.replace via media_integrity): un fallo
+    o un fallback NVENC->CPU nunca deja el nombre final apuntando a un parcial. Devuelve
+    (EncoderSelection efectiva, tiempo de encode en s). No expone stderr ni rutas.
+    """
+    if not edl:
+        raise ValueError("EDL vacio: no hay segmentos que conservar")
+    media_deps.require_ffmpeg()  # H3: sin ffmpeg -> FFmpegUnavailable accionable (no WinError 2)
+    import media_integrity  # noqa: PLC0415
+
+    seleccion = video_encoder.select_encoder(
+        video_encoder.active_mode(), video_encoder.EncoderProfile.QUALITY
+    )
+    holder: dict = {}
+
+    def _quemar(target: Path) -> float:
+        outcome = video_encoder.run_ffmpeg_encode(
+            seleccion,
+            lambda vargs: _edl_cmd(video_path, edl, vargs, target),
+            cleanup=lambda: media_integrity._borrar_silencioso(target),
+        )
+        holder["sel"] = outcome.selection
+        return outcome.elapsed
+
+    elapsed = media_integrity.publicar_mp4_atomico(output, _quemar)
+    return holder["sel"], elapsed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -324,12 +340,19 @@ def depurar(video_path: Path, words: list[dict], mode: str, output_path: Path) -
     if n_cuts == 0:
         shutil.copy2(str(video_path), str(output_path))
         print("[depurar] Sin cortes necesarios.")
-        return {"cuts": 0, "saved_s": 0.0, "edl": edl, "join_report": []}
+        copia = {
+            "video_encoder": "copy",
+            "encoder_mode": video_encoder.active_mode().value,
+            "fallback_used": False,
+            "encode_time_s": 0.0,
+        }
+        return {"cuts": 0, "saved_s": 0.0, "edl": edl, "join_report": [], **copia}
 
     voice_refs = [_last_word_end_before(words, seg[1]) for seg in edl[:-1]]
-    _run_edl(video_path, edl, output_path)
+    seleccion, encode_s = _run_edl(video_path, edl, output_path)
     join_report = _eval_joins(output_path, edl, voice_refs)
 
     saved = round(dur_orig - dur_out, 2)
-    print(f"[depurar] {n_cuts} cortes | -{saved}s | modo={mode}")
-    return {"cuts": n_cuts, "saved_s": saved, "edl": edl, "join_report": join_report}
+    print(f"[depurar] {n_cuts} cortes | -{saved}s | modo={mode} | encoder={seleccion.encoder}")
+    telemetria = video_encoder.selection_telemetry(seleccion, encode_s)
+    return {"cuts": n_cuts, "saved_s": saved, "edl": edl, "join_report": join_report, **telemetria}

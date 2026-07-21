@@ -6,7 +6,6 @@ Importado via core.py (re-exportado); tambien importable directamente en tests.
 from __future__ import annotations
 
 import subprocess
-import time
 from pathlib import Path
 
 import pysubs2
@@ -315,30 +314,34 @@ def burn_video(input_video: Path, ass_path: Path, output_video: Path) -> float:
     Una interrupcion nunca deja un MP4 truncado con el nombre definitivo.
     """
     import media_integrity  # noqa: PLC0415
+    import video_encoder  # noqa: PLC0415
 
-    def _quemar(target: Path) -> float:
-        t0 = time.time()
-        cmd = [
+    def _cmd(vargs: list[str], target: Path) -> list[str]:
+        # -c:a copy y el filtro ass intactos; solo se inyectan los args del encoder de video.
+        return [
             "ffmpeg",
             "-y",
             "-i",
             str(input_video),
             "-vf",
             f"ass={_ffmpeg_ass_path(ass_path)}",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
+            *vargs,
             "-c:a",
             "copy",
             str(target),
         ]
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
-        return round(time.time() - t0, 2)
+
+    seleccion = video_encoder.select_encoder(
+        video_encoder.active_mode(), video_encoder.EncoderProfile.QUALITY
+    )
+
+    def _quemar(target: Path) -> float:
+        outcome = video_encoder.run_ffmpeg_encode(
+            seleccion,
+            lambda vargs: _cmd(vargs, target),
+            cleanup=lambda: media_integrity._borrar_silencioso(target),
+        )
+        return outcome.elapsed
 
     return media_integrity.publicar_mp4_atomico(Path(output_video), _quemar)
 
@@ -408,9 +411,15 @@ def burn_video_with_emojis(
             popups.append(logo_popup)  # logo/outro = overlay PNG real, encima del ass
 
     import media_integrity  # noqa: PLC0415
+    import video_encoder  # noqa: PLC0415
 
-    def _quemar(target: Path) -> float:
-        cmd = core_overlays.construir_comando(
+    seleccion = video_encoder.select_encoder(
+        video_encoder.active_mode(), video_encoder.EncoderProfile.QUALITY
+    )
+
+    def _construir(vargs: list[str], target: Path) -> list[str]:
+        # Filtros, orden de overlays y mapeo de audio intactos: solo se inyecta el encoder.
+        return core_overlays.construir_comando(
             input_video,
             _ffmpeg_ass_path(ass_path),
             target,
@@ -424,12 +433,16 @@ def burn_video_with_emojis(
             fx_prefilter,
             clips=clips,
             fps=info.get("fps", 30.0),
+            video_args=vargs,
         )
-        t0 = time.time()
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"FFmpeg error:\n{r.stderr[-1500:]}")
-        return round(time.time() - t0, 2)
+
+    def _quemar(target: Path) -> float:
+        outcome = video_encoder.run_ffmpeg_encode(
+            seleccion,
+            lambda vargs: _construir(vargs, target),
+            cleanup=lambda: media_integrity._borrar_silencioso(target),
+        )
+        return outcome.elapsed
 
     # Publicacion atomica (H1): mismo contrato de integridad que burn_video.
     return media_integrity.publicar_mp4_atomico(Path(output_video), _quemar)

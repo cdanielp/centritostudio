@@ -30,6 +30,7 @@ import studio_packages
 import studio_srt
 import studio_srt_routes
 import system_preflight
+import video_encoder
 from styles import STYLES
 
 # ─── Directorios ──────────────────────────────────────────────────────────────
@@ -187,10 +188,38 @@ def system_capabilities():
     Solo expone {available, message} saneados por capacidad + el status global. Los mensajes
     provienen de system_preflight y no contienen rutas absolutas ni secretos.
     """
-    return {
-        "status": _SYSTEM_REPORT.get("status", "ready"),
-        "capabilities": _SYSTEM_REPORT.get("capabilities", {}),
-    }
+    caps = dict(_SYSTEM_REPORT.get("capabilities", {}))
+    # NVENC ausente NO degrada la app (CPU sigue siendo ruta valida): se anade como capacidad
+    # informativa sin tocar el status global. Solo el modo explicito nvenc queda indisponible.
+    caps["nvenc"] = video_encoder.capability()
+    return {"status": _SYSTEM_REPORT.get("status", "ready"), "capabilities": caps}
+
+
+@app.get("/api/system/video-encoder")
+def get_video_encoder():
+    """Modo solicitado + encoder efectivo + disponibilidad de NVENC (saneado; sin stderr/rutas)."""
+    return video_encoder.encoder_status()
+
+
+@app.put("/api/system/video-encoder")
+def set_video_encoder(payload: dict = Body(default={})):
+    """Fija el modo (enum cerrado auto|nvenc|cpu). Solo afecta jobs nuevos, no los activos."""
+    try:
+        video_encoder.set_default_mode((payload or {}).get("mode"))
+    except video_encoder.EncoderConfigurationError:
+        raise HTTPException(400, "Modo de encoder invalido. Use auto, nvenc o cpu.") from None
+    return video_encoder.encoder_status()
+
+
+def _guard_encoder() -> None:
+    """503 accionable si el modo explicito 'nvenc' no puede satisfacerse. auto/cpu nunca bloquean.
+
+    El backend es la autoridad: se valida ANTES de crear el job/thread; no se confia en la UI.
+    """
+    if video_encoder.get_default_mode() == video_encoder.EncoderMode.NVENC:
+        estado = video_encoder.detect_nvenc()
+        if not estado.available:
+            raise HTTPException(503, estado.message)
 
 
 # ─── Guard compartido de identificadores en rutas (H1, P0-1) ──────────────────
@@ -617,6 +646,7 @@ def start_depurar(name: str, mode: str = "seguro"):
         raise HTTPException(400, "Transcribe el video antes de depurar")
     if mode not in ("seguro", "agresivo"):
         raise HTTPException(400, "mode debe ser 'seguro' o 'agresivo'")
+    _guard_encoder()  # modo nvenc explicito sin NVENC -> 503 antes de crear el job
     jid = jobs.new_job(f"Depurando {name} ({mode})...")
     threading.Thread(
         target=jobs.run_depurar, args=(jid, mp4, words_path, name, mode), daemon=True
@@ -643,6 +673,7 @@ def start_clips(name: str, tipos: str = "ambos"):
         raise HTTPException(400, "Transcribe el video antes de generar clips")
     if tipos not in ("cortos", "largos", "ambos"):
         raise HTTPException(400, "tipos debe ser 'cortos', 'largos' o 'ambos'")
+    _guard_encoder()  # clipper re-encodea (hereda run_edl): modo nvenc sin NVENC -> 503
     jid = jobs.new_job(f"Generando clips ({tipos}) de {name}...")
     threading.Thread(
         target=jobs.run_clips, args=(jid, mp4, words_path, name, tipos), daemon=True
@@ -703,6 +734,7 @@ def start_reframe(
         raise HTTPException(404, f"Clip {name}.mp4 no encontrado")
     if tracker not in ("escenas", "ema"):
         raise HTTPException(400, "tracker debe ser 'escenas' o 'ema'")
+    _guard_encoder()  # reframe re-encodea el pipe: modo nvenc explicito sin NVENC -> 503
     if layout == "stack":
         output_path = CLIPS_DIR / f"{name}_stack_9x16.mp4"
         jid = jobs.new_job(f"Stack {name} ...")
@@ -800,6 +832,7 @@ def start_render(
         )
     # pop/intensidad invalidos son fail-safe (usan el default del estilo/preset).
     etiqueta = preset or style
+    _guard_encoder()  # modo nvenc explicito sin NVENC -> 503 antes de crear el job
     jid = jobs.new_job(f"Renderizando {name} en {etiqueta}...")
     threading.Thread(
         target=jobs.run_render,
@@ -897,6 +930,7 @@ def _start_render_srt(
         raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
     _verificar_timings_srt(name, selection, binding)
     etiqueta = preset or style
+    _guard_encoder()  # modo nvenc explicito sin NVENC -> 503 antes de crear el job
     jid = jobs.new_job(f"Renderizando {name} (SRT) en {etiqueta}...")
     threading.Thread(
         target=jobs.run_render,
@@ -942,6 +976,7 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
 
     reframe=True (default): reencuadra a 9:16 antes de subir si no es vertical.
     template: templateName elegido (None -> default Hormozi 2 del motor)."""
+    import media_deps  # noqa: PLC0415
     import submagic  # noqa: PLC0415
 
     _validar_name(name)
@@ -950,6 +985,18 @@ def start_submagic(name: str, reframe: bool = True, template: str | None = None)
         raise HTTPException(404, f"Video {name} no encontrado en input/")
     if not submagic.tiene_key():
         raise HTTPException(400, "Falta SUBMAGIC_API_KEY en .env (ver .env.example)")
+    # Submagic es remoto, pero con reframe=true sobre un video horizontal hace un ENCODE LOCAL
+    # (reframe a 9:16) antes del upload. El guard de encoder solo aplica en ese caso; si no habra
+    # encode local, la ruta remota funciona en cualquier modo aunque no haya NVENC. El probe de
+    # tamano puede fallar: se traduce a un error accionable (no un 500 crudo), como el resto.
+    try:
+        hara_encode_local = jobs.submagic_hara_encode_local(mp4, reframe)
+    except media_deps.FFprobeUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    except media_deps.MediaProbeError:
+        raise HTTPException(400, "No se pudo analizar el video.") from None
+    if hara_encode_local:
+        _guard_encoder()  # modo nvenc explicito sin NVENC -> 503 antes de crear el job
     jid = jobs.new_job(f"Editando {name} con Submagic (nube)...")
     threading.Thread(
         target=jobs.run_submagic_render,
@@ -1007,6 +1054,8 @@ def start_auto(
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from None
+    # Fuera del try: el 503 del guard (nvenc explicito sin NVENC) debe propagarse, no volverse 500.
+    _guard_encoder()  # Auto re-encodea (depurar/reframe/render): nvenc sin NVENC -> 503
     try:
         jid = jobs.new_job(f"Modo Automatico {mode}: {name}...")
         threading.Thread(
@@ -1058,6 +1107,8 @@ def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset):
         raise HTTPException(409, "El video asociado al SRT ya no esta disponible.") from None
     except studio_srt.StudioSrtError:
         raise HTTPException(500, "No se pudo leer la seleccion SRT.") from None
+    # Fuera del try: el 503 del guard (nvenc explicito sin NVENC) debe propagarse, no volverse 500.
+    _guard_encoder()  # Auto SRT re-encodea: modo nvenc explicito sin NVENC -> 503
     try:
         jid = jobs.new_job(f"Modo Automatico SRT: {name}...")
         threading.Thread(
