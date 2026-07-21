@@ -391,8 +391,18 @@ def probe_traversal_write(client, sandbox: Path, escape_catch: Path) -> dict:
                 f"/api/videos/{q}/transcript", json=[{"id": 0, "text": "x", "edited": False}]
             )
         )
+        # `wrote_inside`: en POSIX el backslash es un char literal, asi que `..\..\x` se escribe
+        # CONTENIDO en el sandbox (200, sin escape) en vez de escapar como en Windows. Igual que en
+        # el probe de upload, una escritura contenida es un rechazo efectivo del traversal (PASS),
+        # no un fallo del server. El escape real (Windows) sigue primando como BLOCKER.
+        wrote_inside = _token_in_dir(transcripts)
         escapes = _find_and_clean(sandbox, escape_catch, transcripts)
-        per[label] = classify_traversal(kind, status, bool(escapes))
+        if escapes:
+            per[label] = "BLOCKER"
+        elif wrote_inside:
+            per[label] = "PASS"
+        else:
+            per[label] = classify_traversal(kind, status, False)
     verdict = worst(list(per.values()))
     detail = "; ".join(f"{k}={v}" for k, v in per.items())
     if verdict == "BLOCKER":
@@ -762,11 +772,17 @@ def self_test() -> int:
         (escape_catch / "fantasma.mp4").write_bytes(b"G")
         r2 = client.get("/api/videos")
         ck("03_archivo_externo_no_aparece", "fantasma" not in [v["name"] for v in r2.json()])
-        # Review 372cfa8 · el self-test valida el ARNES, no el estado vulnerable de hoy. Antes
-        # aseveraba `== BLOCKER`, lo que romperia el self-test cuando H1 corrija los P0. Ahora:
-        #   (a) un caso CONTROLADO prueba la deteccion+limpieza de escape (independiente de H1);
-        #   (b) las probes contra la app viva aceptan una clasificacion VALIDA: BLOCKER (vulnerable
-        #       hoy) o PASS (endurecido tras H1). Cualquier FAIL/None seria un bug del arnes.
+        # Review 372cfa8/f36a908 · el self-test valida el ARNES, no el estado vulnerable de hoy ni
+        # un SO concreto. La CORRECTUD real la prueban (i) las funciones puras de clasificacion y
+        # (ii) el caso CONTROLADO de deteccion de escape (item 07, independiente de app/SO). Las
+        # probes 08-11 contra la app viva solo confirman que corren y producen una clasificacion
+        # VALIDA (no None/crash del arnes): el verdict observado depende del estado y del SO:
+        #   - BLOCKER: vulnerable hoy (p.ej. escape via backslash en Windows);
+        #   - PASS: endurecido tras H1, o traversal contenido/rechazado (p.ej. backslash literal en
+        #     POSIX, o `/` rechazado por el routing del segmento {name});
+        #   - FAIL: el endpoint no escapa pero falla de otro modo (p.ej. crash con NUL byte, o en
+        #     POSIX donde la ruta {name} no es escapable por URL). Es un defecto real del endpoint,
+        #     no del arnes; por eso tambien es una clasificacion valida aqui.
         # Caso controlado: un centinela plantado FUERA del dir permitido debe detectarse y borrarse.
         planted = escape_catch / f"{TOKEN}_controlado.json"
         planted.write_text("x", encoding="utf-8")
@@ -775,8 +791,8 @@ def self_test() -> int:
             "07_deteccion_escape_controlada",
             any(f"{TOKEN}_controlado" in e for e in detected) and not planted.exists(),
         )
-        valid = {"BLOCKER", "PASS"}
-        # items 8-11: la app viva se clasifica de forma valida (hoy BLOCKER; PASS tras H1).
+        valid = {"BLOCKER", "PASS", "FAIL"}  # cualquier clasificacion valida (no None/crash)
+        # items 8-11: la app viva corre y clasifica de forma valida (BLOCKER/PASS/FAIL segun SO).
         wr = probe_traversal_write(client, sandbox, escape_catch)
         ck(f"08_traversal_write_valido[{wr['verdict']}]", wr["verdict"] in valid)
         up = probe_traversal_upload(client, sandbox, escape_catch)
