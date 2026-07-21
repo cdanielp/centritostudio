@@ -57,3 +57,21 @@ Detalle y evidencia en `AUDITORIA.md` / `H3_EVIDENCIA.md`. Plan en `PLAN_DE_PR.m
 P1-BOOT-1/2 y P2-BOOT-3..6 **cerrados en H3** (rama `fix/h3-arranque-diagnostico`, PENDIENTE MERGE).
 Restan para readiness plena: **H4** (documentación ESTADO/DECISIONES/PREGUNTAS/ALPHA) y **H5** (CI),
 no iniciados. HyperFrames no iniciada.
+
+## Fase GPU / NVIDIA NVENC (independiente, pre-HyperFrames)
+
+Fase de **rendimiento**, no de readiness: mueve la codificación H.264 a NVENC con fallback CPU.
+No es un blocker de la matriz anterior (la ruta CPU sigue siendo completamente válida).
+
+| Aspecto | Estado |
+|---|---|
+| Módulo central `video_encoder.py` (detección real + selección + fallback) | ✅ |
+| Integración depurador / captions / overlays / reframe (clipper y Auto heredan) | ✅ byte-idéntico CPU |
+| Modos auto/nvenc/cpu + guard 503 pre-job + snapshot inmutable por job | ✅ |
+| API `/api/system/video-encoder` (GET/PUT) + capacidad `nvenc` (no degrada) + UI Ajustes | ✅ |
+| Smoke real (`smoke_nvenc.py`) | ✅ 14 checks, blockers=0, fails=0 |
+| Benchmark (`benchmark_nvenc.py`, 1080p): speedup ≥1.25x + SSIM ≥0.95 + A/V ≤50 ms | ✅ (depuración 2.52x) |
+| H4 / H5 / HyperFrames | ⏸️ no iniciados |
+
+Detalle y números: `NVENC_INVENTARIO.md`, `NVENC_EVIDENCIA.md`, `docs/GPU_NVENC.md`.
+PR `perf/gpu-nvenc` **abierto y no mergeado**.
