@@ -61,7 +61,8 @@ ABS_EXCUSES = (
 )
 ABS_PATH_RX = re.compile(r"[A-Za-z]:\\Users\\|[A-Za-z]:\\CLAUDECODE", re.IGNORECASE)
 SECRET_RX = re.compile(r"sk-[A-Za-z0-9]{20,}")
-INPUT_RX = re.compile(r"input/([\w-]+)\.(srt|mp4|mov)", re.IGNORECASE)
+# Acepta separador POSIX y Windows: input/foo.srt e input\foo.srt (los docstrings son Windows).
+INPUT_RX = re.compile(r"input[\\/]([\w-]+)\.(srt|mp4|mov)", re.IGNORECASE)
 INPUT_ALLOWED = {"video", "clase", "clase_larga", "clip", "audio", "test_9_16", "ejemplo", "prueba"}
 # "pre-HyperFrames" es etiqueta de fase, no cierre → se excluye con lookbehind.
 H5HF_CLOSED_RX = re.compile(
@@ -183,9 +184,14 @@ def run_self_test() -> int:
         expect(
             "detecta_ruta_abs", detect_absolute_paths(r"Guardado en C:\Users\Fulano\Videos\a.mp4")
         )
-        # 6. input específico (nombre ficticio privado)
+        # 6. input específico (nombre ficticio privado) — separador POSIX y Windows
         expect("detecta_input_privado", detect_private_inputs("usa input/reunion_privada_x.srt"))
+        expect(
+            "detecta_input_privado_win",
+            detect_private_inputs(r"venv\Scripts\python smoke.py input\reunion_privada_x.srt"),
+        )
         expect("no_marca_input_generico", not detect_private_inputs("usa input/video.srt"))
+        expect("no_marca_input_generico_win", not detect_private_inputs(r"usa input\video.srt"))
         # 7. enlace relativo roto
         broken = d / "broken.md"
         broken.write_text("Ver [y](no_existe.md).\n", encoding="utf-8")

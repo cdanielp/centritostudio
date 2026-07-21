@@ -80,10 +80,11 @@ reemplazos usan placeholders genéricos (`input/video.srt`, "SRT privado del usu
 
 `revision/pre-hyperframes/smoke_h4_docs.py` — sin red, GPU, FFmpeg, modelos ni archivos privados.
 
-- `--self-test`: **VERDE (15/15)**. Demuestra la detección de cifra vieja de tests, H3 pendiente,
-  GPU/NVENC abierto, afirmación absoluta "nada se sube", ruta absoluta realista, input específico,
-  enlace relativo roto, H5/HyperFrames cerrado indebidamente y secreto (con contraprueba negativa de
-  cada uno). Ningún fixture usa un nombre o ruta privada real.
+- `--self-test`: **VERDE (17/17)**. Demuestra la detección de cifra vieja de tests, H3 pendiente,
+  GPU/NVENC abierto, afirmación absoluta "nada se sube", ruta absoluta realista, input específico
+  (separador POSIX **y** Windows `input\...`), enlace relativo roto, H5/HyperFrames cerrado
+  indebidamente y secreto (con contraprueba negativa de cada uno). Ningún fixture usa un nombre o
+  ruta privada real.
 - `--real`: **checks=1390, blockers=0, fails=0**. Verifica archivos requeridos, enlaces relativos,
   estado H1/H2/H3/NVENC, H4 pendiente de merge, H5 pendiente, HyperFrames no iniciado, baseline
   2410/4, ausencia de cifras históricas en los encabezados actuales, ausencia de rutas
