@@ -761,6 +761,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 }
 </style>
 
+<script src="/static/job_polling.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // Estado global
@@ -1263,19 +1264,125 @@ async function transcribeVideo(name, btn) {
 }
 
 // ═══════════════════════════════════════════════════════
-// Polling de jobs
+// Polling de jobs — motor ÚNICO compartido (H2, /static/job_polling.js)
 // ═══════════════════════════════════════════════════════
-function pollJob(jid, cb, interval=900, onFailure=null) {
-  const tick = async () => {
-    try {
-      const r = await fetch('/api/jobs/' + jid);
-      if (!r.ok) { if (onFailure) onFailure('No se pudo consultar el progreso.'); return; }
-      const j = await r.json();
-      cb(j);
-      if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
-    } catch (e) { if (onFailure) onFailure('Se perdió la conexión con el Studio.'); }
+// Un solo poller para toda la UI: dedupe por job ID, deadline, límite de errores consecutivos,
+// AbortController y cleanup garantizado. Sin él (script no cargó) degradamos a un fallo seguro
+// para NO dejar spinners infinitos.
+const jobPoller = window.CentritoJobPolling ? window.CentritoJobPolling.createPoller() : null;
+const JOB_FAIL_MSG = (window.CentritoJobPolling && window.CentritoJobPolling.MESSAGES) || {
+  lost: 'El servidor se reinició o el trabajo ya no existe.',
+  unavailable: 'Se perdió la conexión con el Studio.',
+  timeout: 'El trabajo está tardando más de lo esperado.',
+  invalid_response: 'El servidor devolvió una respuesta inesperada.',
+  cancelled: 'Seguimiento cancelado.',
+};
+
+// pollJob(jid, cb, interval, onFailure): capa adapter sobre el motor para no reescribir los 10
+// call sites de golpe. cb recibe CADA snapshot (pending/running/done/error) como antes. Ante un
+// terminal NO-job (lost/unavailable/timeout/invalid_response/cancelled) hay comportamiento SEGURO
+// POR DEFECTO: sin onFailure se entrega a cb un job sintético {status:'error'} para que el flujo
+// re-habilite su control (cierra P1-POLL-1). Con onFailure, recibe (mensaje, resultado).
+function pollJob(jid, cb, interval = 900, onFailure = null) {
+  if (!jobPoller) {
+    if (onFailure) onFailure(JOB_FAIL_MSG.unavailable, { reason: 'unavailable' });
+    else if (cb) cb({ status: 'error', message: JOB_FAIL_MSG.unavailable });
+    return null;
+  }
+  return jobPoller.track(jid, {
+    intervalMs: interval,
+    onTick: (job) => { if (cb) cb(job); },
+    onTerminal: (res) => {
+      if (res.reason === 'done' || res.reason === 'job_error') return; // cb ya lo recibió por onTick
+      const msg = res.message || JOB_FAIL_MSG[res.reason] || 'No se pudo consultar el progreso.';
+      if (onFailure) onFailure(msg, res);
+      else if (cb) cb({ status: 'error', message: msg, _pollReason: res.reason });
+    },
+  });
+}
+
+// pollJobP(jid, onTick, interval): resultado ESTRUCTURADO (POLL-7) en vez de un booleano sin
+// causa. Devuelve {ok, reason, job?, message?}.
+function pollJobP(jid, onTick, interval = 900) {
+  return new Promise((resolve) => {
+    if (!jobPoller) { resolve({ ok: false, reason: 'unavailable', message: JOB_FAIL_MSG.unavailable }); return; }
+    jobPoller.track(jid, {
+      intervalMs: interval,
+      onTick: (job) => { if (onTick) onTick(job); },
+      onTerminal: (res) => resolve({
+        ok: res.reason === 'done',
+        reason: res.reason,
+        job: res.job,
+        message: res.message || JOB_FAIL_MSG[res.reason] || '',
+      }),
+    });
+  });
+}
+
+// trackJob(jobId, cfg): patrón de alto nivel para los flujos con spinner + botón. Marca el
+// contenedor como región viva (role=status/aria-live) mientras corre y, ante un terminal NO-job,
+// pinta un estado ACCIONABLE (role=alert + Reintentar/Cancelar/Seguir esperando) re-habilitando
+// SIEMPRE el control original. La reanudación re-consulta el MISMO job (nunca crea otro ni
+// relanza el POST). cfg: {interval, onTick, onDone, onJobError, statusEl, reenable, label}.
+function trackJob(jobId, cfg) {
+  cfg = cfg || {};
+  const start = () => {
+    if (cfg.statusEl) {
+      cfg.statusEl.setAttribute('role', 'status');
+      cfg.statusEl.setAttribute('aria-live', 'polite');
+    }
+    return pollJob(jobId, (job) => {
+      if (job && job.status === 'done') { if (cfg.onDone) cfg.onDone(job); return; }
+      if (job && job.status === 'error' && !job._pollReason) { if (cfg.onJobError) cfg.onJobError(job); return; }
+      if (job && job._pollReason) return; // fallo NO-job: lo maneja onFailure abajo
+      if (cfg.onTick) cfg.onTick(job);
+    }, cfg.interval || 900, (msg, res) => {
+      if (cfg.reenable) cfg.reenable();
+      renderJobFailureUI(cfg.statusEl, res || { reason: 'unavailable', message: msg }, {
+        onRetry: start,
+        onDismiss: () => { if (cfg.statusEl) cfg.statusEl.innerHTML = ''; },
+      });
+    });
   };
-  tick();
+  return start();
+}
+
+// renderJobFailureUI(el, res, {onRetry, onDismiss}): estado terminal accionable (role=alert).
+// lost -> aviso de reinicio, sin reintento infinito (el job ya no existe). unavailable/
+// invalid_response -> "Reintentar conexión" (mismo job) + "Cancelar seguimiento". timeout ->
+// "Seguir esperando" (deadline nuevo, sin crear job) + "Cancelar seguimiento". Ningún botón
+// afirma que se detuvo FFmpeg/el worker: sólo detiene el seguimiento LOCAL.
+function renderJobFailureUI(el, res, cbs) {
+  if (!el) return;
+  const reason = (res && res.reason) || 'unavailable';
+  const msg = (res && res.message) || JOB_FAIL_MSG[reason] || 'No se pudo consultar el progreso.';
+  el.setAttribute('role', 'alert');
+  el.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'msg err';
+  box.textContent = msg;
+  el.appendChild(box);
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;margin-top:6px;flex-wrap:wrap';
+  const addBtn = (label, fn) => {
+    const b = document.createElement('button');
+    b.className = 'btn secondary';
+    b.style.cssText = 'font-size:12px;padding:4px 12px';
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    actions.appendChild(b);
+  };
+  if (reason === 'timeout') {
+    addBtn('Seguir esperando', () => { el.innerHTML = ''; if (cbs.onRetry) cbs.onRetry(); });
+    addBtn('Cancelar seguimiento', () => { if (cbs.onDismiss) cbs.onDismiss(); });
+  } else if (reason === 'lost') {
+    // El job ya no existe: no se reintenta ni se relanza automáticamente. Sólo cerrar.
+    addBtn('Entendido', () => { if (cbs.onDismiss) cbs.onDismiss(); });
+  } else {
+    addBtn('Reintentar conexión', () => { el.innerHTML = ''; if (cbs.onRetry) cbs.onRetry(); });
+    addBtn('Cancelar seguimiento', () => { if (cbs.onDismiss) cbs.onDismiss(); });
+  }
+  el.appendChild(actions);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1632,13 +1739,17 @@ async function startRender() {
   const t0 = Date.now();
   statusDiv.innerHTML = '<div class="msg">Iniciando render…</div><div class="progress-bar"><div class="fill" id="render-pb" style="width:5%"></div></div>';
 
-  pollJob(job_id, (j) => {
-    const pb = document.getElementById('render-pb');
-    if (pb) pb.style.width = j.progress + '%';
-    const elapsed = Math.round((Date.now() - t0) / 1000);
-    const msgEl = statusDiv.querySelector('.msg');
-    if (msgEl) msgEl.textContent = `${j.message} (${elapsed}s)`;
-    if (j.status === 'done') {
+  trackJob(job_id, {
+    statusEl: statusDiv,
+    reenable: () => { btn.disabled = false; },
+    onTick: (j) => {
+      const pb = document.getElementById('render-pb');
+      if (pb && j) pb.style.width = j.progress + '%';
+      const elapsed = Math.round((Date.now() - t0) / 1000);
+      const msgEl = statusDiv.querySelector('.msg');
+      if (msgEl && j) msgEl.textContent = `${j.message} (${elapsed}s)`;
+    },
+    onDone: (j) => {
       btn.disabled = false;
       // Mensajes del worker como texto plano (textContent evita inyectar HTML)
       for (const [msg, cls] of [[j.result && j.result.emphasis_msg, 'msg warn'],
@@ -1652,10 +1763,11 @@ async function startRender() {
       }
       showOutputPreview(j.result.output, name, style);
       loadVideos();
-    } else if (j.status === 'error') {
-      statusDiv.innerHTML = `<div class="msg err">Error: ${j.message}</div>`;
+    },
+    onJobError: (j) => {
+      statusDiv.innerHTML = `<div class="msg err">Error: ${escHtml(j.message || '')}</div>`;
       btn.disabled = false;
-    }
+    },
   });
 }
 
@@ -1880,24 +1992,31 @@ function setLayoutMode(mode) {
   document.getElementById('punch-in-row').style.display = mode==='stack' ? 'none' : 'flex';
 }
 
-async function _pollReframe(jobId, stem, btn, statusDiv, outFile) {
+// Reframe sobre el motor compartido: sin setInterval fugado, con try/catch/r.ok/deadline/límite
+// heredados del poller. SIEMPRE re-habilita el botón en cualquier terminal (done/error/red/404/
+// timeout) y no deja promesas rechazadas sin manejar (P1-POLL-2). Devuelve la sesión.
+function _pollReframe(jobId, stem, btn, statusDiv, outFile) {
   const t0 = Date.now();
-  const poll = setInterval(async () => {
-    const j = await (await fetch(`/api/jobs/${jobId}`)).json();
-    const elapsed = Math.round((Date.now() - t0) / 1000);
-    statusDiv.textContent = `${j.message || '...'} (${elapsed}s)`;
-    if (j.status === 'done') {
-      clearInterval(poll);
+  return trackJob(jobId, {
+    interval: 2000,
+    statusEl: statusDiv,
+    reenable: () => { btn.disabled = false; },
+    onTick: (j) => {
+      const elapsed = Math.round((Date.now() - t0) / 1000);
+      statusDiv.textContent = `${(j && j.message) || '...'} (${elapsed}s)`;
+    },
+    onDone: (j) => {
       btn.disabled = false;
+      const elapsed = Math.round((Date.now() - t0) / 1000);
       const out = j.result?.output ? j.result.output.split(/[/\\]/).pop() : outFile;
       statusDiv.innerHTML = `Listo en ${elapsed}s: <a href="/clips/${out}" download style="color:var(--purple)">Descargar 9:16</a>`;
       loadVideos();
-    } else if (j.status === 'error') {
-      clearInterval(poll);
+    },
+    onJobError: (j) => {
       btn.disabled = false;
-      statusDiv.innerHTML = `<span style="color:#e55">Error: ${j.message || j.error}</span>`;
-    }
-  }, 2000);
+      statusDiv.innerHTML = `<span style="color:#e55">Error: ${(j.message || j.error) || ''}</span>`;
+    },
+  });
 }
 
 async function startReframe(stem, btn) {
@@ -2113,24 +2232,8 @@ function fmtTimestamp(s) {
 }
 
 // ═══════════════════════════════════════════════════════
-// Helpers: pollJob promesificado + encadenados
+// Helpers encadenados (pollJobP definido arriba, sobre el motor compartido)
 // ═══════════════════════════════════════════════════════
-function pollJobP(jid, onTick, interval=900) {
-  return new Promise(resolve => {
-    const tick = async () => {
-      try {
-        const r = await fetch('/api/jobs/' + jid);
-        if (!r.ok) { resolve(false); return; }
-        const j = await r.json();
-        if (onTick) onTick(j);
-        if (j.status === 'done')  { resolve(true);  return; }
-        if (j.status === 'error') { resolve(false); return; }
-        if (j.status === 'running' || j.status === 'pending') setTimeout(tick, interval);
-      } catch(e) { resolve(false); }
-    };
-    tick();
-  });
-}
 
 // Navega a Videos y señala el video específico que necesita transcripción
 function goTranscribeVideo(name) {
@@ -2161,7 +2264,7 @@ async function transcribeFromRender(name) {
   }
   const {job_id} = await res.json();
 
-  const ok = await pollJobP(job_id, (j) => {
+  const r = await pollJobP(job_id, (j) => {
     const pb = document.getElementById('render-pb');
     if (pb) pb.style.width = j.progress + '%';
     const elapsed = Math.round((Date.now() - t0) / 1000);
@@ -2170,11 +2273,13 @@ async function transcribeFromRender(name) {
   });
 
   btn.disabled = false;
-  if (ok) {
+  if (r.ok) {
     await loadVideos();
     statusDiv.innerHTML = '<div class="msg ok">Transcripcion lista — ya puedes renderizar.</div>';
   } else {
-    statusDiv.innerHTML = '<div class="msg err">Error en transcripcion. Intenta de nuevo.</div>';
+    // Conserva la causa exacta (POLL-7): job (error del worker), lost, timeout, red…
+    const detail = (r.job && r.job.message) || r.message || 'Intenta de nuevo.';
+    statusDiv.innerHTML = `<div class="msg err">Error en transcripcion: ${escHtml(detail)}</div>`;
   }
 }
 
@@ -2203,7 +2308,7 @@ async function transcribeAndGenerateClips(name) {
   }
   const {job_id: tJobId} = await transcRes.json();
 
-  const transcOk = await pollJobP(tJobId, (j) => {
+  const transc = await pollJobP(tJobId, (j) => {
     const pb = document.getElementById('clips-pb');
     if (pb) pb.style.width = Math.max(3, Math.round(j.progress * 0.5)) + '%';
     const elapsed = Math.round((Date.now() - t0) / 1000);
@@ -2211,13 +2316,10 @@ async function transcribeAndGenerateClips(name) {
     if (msgEl) msgEl.textContent = `Transcribiendo… ${j.message} (${elapsed}s)`;
   });
 
-  if (!transcOk) {
-    try {
-      const job = await (await fetch('/api/jobs/' + tJobId)).json();
-      statusDiv.innerHTML = `<div class="msg err">Error en transcripcion: ${job.message || 'desconocido'}</div>`;
-    } catch(e) {
-      statusDiv.innerHTML = '<div class="msg err">Error en transcripcion.</div>';
-    }
+  if (!transc.ok) {
+    // El resultado estructurado ya trae la causa exacta (POLL-7): sin refetch adicional.
+    const detail = (transc.job && transc.job.message) || transc.message || 'desconocido';
+    statusDiv.innerHTML = `<div class="msg err">Error en transcripcion: ${escHtml(detail)}</div>`;
     btn.disabled = false;
     return;
   }
