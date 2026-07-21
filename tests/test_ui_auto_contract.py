@@ -61,7 +61,10 @@ def test_markers_broll_y_responsive_sin_ancho_fijo_peligroso():
 
 
 def test_polling_reactiva_controles_si_se_pierde_conexion():
-    assert "function pollJob(jid, cb, interval=900, onFailure=null)" in HTML
+    # H2: pollJob es ahora una capa adapter sobre el motor compartido con fallo SEGURO por defecto
+    # (cierra P1-POLL-1). Sigue re-habilitando los controles de Auto y conservando el mensaje.
+    assert "function pollJob(jid, cb, interval = 900, onFailure = null)" in HTML
+    assert "jobPoller.track(" in HTML
     assert "setAutoControlsLocked(false);" in HTML
     assert "Se perdió la conexión con el Studio." in HTML
 

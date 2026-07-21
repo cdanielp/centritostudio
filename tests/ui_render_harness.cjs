@@ -14,7 +14,11 @@
  * Salida (stdout): JSON { ret, out, err, initerr, clips, resume, resumen }.
  */
 const fs = require("fs");
+const path = require("path");
 const vm = require("vm");
+// El motor de polling H2 es un módulo aparte cargado por <script src>; el bundle inline lo espera
+// como window.CentritoJobPolling. Lo inyectamos para que pollJob/pollJobP/trackJob sean reales.
+const CentritoJobPolling = require(path.join(__dirname, "..", "static", "job_polling.js"));
 
 // Statements top-level del bundle disparan cargas async (loadVideos, etc.); con el DOM stub
 // esas promesas se rechazan y se silencian para no tumbar el proceso (no afectan lo probado).
@@ -41,29 +45,39 @@ function makeClassList() {
   };
 }
 const store = {};
+function makeEl(id) {
+  const attrs = {};
+  const listeners = {};
+  const el = {
+    id, innerHTML: "", textContent: "", value: "", disabled: false, checked: false,
+    hidden: false, style: {}, classList: makeClassList(), children: [], _attrs: attrs, _listeners: listeners,
+    setAttribute(k, v) { attrs[k] = String(v); },
+    getAttribute(k) { return k in attrs ? attrs[k] : null; },
+    appendChild(child) { this.children.push(child); return child; },
+    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    click() { (listeners.click || []).forEach((fn) => fn()); },
+    querySelector() { return null; }, querySelectorAll() { return []; },
+    scrollIntoView() {}, focus() {}, remove() {}, closest() { return null; },
+  };
+  return el;
+}
 function fakeEl(id) {
-  if (!store[id]) {
-    store[id] = {
-      id, innerHTML: "", textContent: "", value: "", disabled: false, checked: false,
-      hidden: false, style: {}, classList: makeClassList(),
-      setAttribute() {}, getAttribute() { return null; }, appendChild() {},
-      addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; },
-      scrollIntoView() {}, focus() {}, remove() {}, closest() { return null; },
-    };
-  }
+  if (!store[id]) store[id] = makeEl(id);
   return store[id];
 }
 const documentStub = {
   getElementById: (id) => fakeEl(id),
   querySelector: () => null,
   querySelectorAll: () => [],
-  createElement: () => fakeEl("_el" + Math.random()),
+  createElement: () => makeEl("_el" + Math.random()),
   addEventListener: () => {},
   readyState: "complete", title: "", body: fakeEl("body"), documentElement: fakeEl("html"),
 };
+function FakeAbortController() { this.signal = {}; this.abort = () => {}; }
 const base = {
   document: documentStub, console, location: { hash: "", href: "" }, navigator: {},
   setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
+  AbortController: FakeAbortController, CentritoJobPolling,
   fetch: () => Promise.resolve({ ok: false, status: 0, json: () => Promise.resolve([]), text: () => Promise.resolve("") }),
   URL, URLSearchParams,
   FormData: function () { this.append = () => {}; this.set = () => {}; }, Response: function () {},
@@ -119,6 +133,44 @@ if (fixture.fn === "clip") {
     __out__ = JSON.stringify({
       position: g('render-position').value,
       avoid_faces: !!g('use-avoid-faces').checked,
+    });`;
+} else if (fixture.fn === "failui") {
+  // Estado terminal ACCIONABLE: renderJobFailureUI(el, {reason,message}, {onRetry,onDismiss}).
+  // Reporta role, mensaje, labels de botones y si Reintentar re-consulta (onRetry invocado).
+  body = `
+    const el = document.createElement('div');
+    let retried = 0, dismissed = 0;
+    renderJobFailureUI(el, ${JSON.stringify(fixture.res || {})}, {
+      onRetry: () => { retried++; }, onDismiss: () => { dismissed++; },
+    });
+    // Recorre descendientes y toma sólo los que tienen listener de click (los botones de acción).
+    const buttons = [];
+    (function walk(n) {
+      (n.children || []).forEach((c) => {
+        if (c._listeners && c._listeners.click && c._listeners.click.length) buttons.push(c);
+        walk(c);
+      });
+    })(el);
+    const labels = buttons.map(b => b.textContent);
+    if (${JSON.stringify(!!fixture.clickLabel)}) {
+      const target = buttons.find(b => b.textContent === ${JSON.stringify(fixture.clickLabel || "")});
+      if (target) target.click();
+    }
+    __out__ = JSON.stringify({
+      role: el.getAttribute('role'),
+      msg: (el.children[0] && el.children[0].textContent) || '',
+      labels, retried, dismissed,
+    });`;
+} else if (fixture.fn === "trackaria") {
+  // trackJob REAL: mientras corre, marca su contenedor como región viva (role=status/aria-live).
+  // Es síncrono en start(), así que se puede afirmar sin manejar timers reales.
+  body = `
+    const statusEl = document.createElement('div');
+    trackJob('j', { statusEl, reenable: () => {}, onTick: () => {}, onDone: () => {}, onJobError: () => {} });
+    __out__ = JSON.stringify({
+      role: statusEl.getAttribute('role'),
+      ariaLive: statusEl.getAttribute('aria-live'),
+      hasPoller: !!(window.CentritoJobPolling),
     });`;
 } else if (fixture.fn === "render_params") {
   const pre = fixture.pre || {};

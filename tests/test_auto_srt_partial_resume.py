@@ -13,11 +13,19 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import words_con_procedencia
 
 import auto
 import studio_srt
 import transcript_provenance as tp
 from auto_config import AutoConfig
+
+
+@pytest.fixture(autouse=True)
+def _mp4_sintetico_valido(ffprobe_ok):
+    """H2 (P1-OUT-3): el resume SRT ahora exige video_reanudable en el clip done; los MP4
+    sinteticos no vacios de estos tests cuentan como publicables via el ffprobe stub de conftest.
+    Un output FALTANTE sigue fallando (is_file real), como exige test_done_con_output_faltante."""
 
 
 def _ts(ms):
@@ -68,7 +76,10 @@ def srt_env(tmp_path, monkeypatch):
     monkeypatch.setattr(auto, "ROOT", tmp_path)
     video = inp / "demo.mov"
     video.write_bytes(b"parent-video-bytes")
-    (trans / "demo_words.json").write_text(json.dumps(_PARENT_WORDS), encoding="utf-8")
+    # H2: procedencia classic para reutilizar el transcript del padre sin retranscribir.
+    (trans / "demo_words.json").write_text(
+        json.dumps(words_con_procedencia(video, _PARENT_WORDS)), encoding="utf-8"
+    )
     doc, diags = studio_srt.parse_and_validate(_SRT, source_name="s.srt", video_duration_ms=20000)
     studio_srt.store_and_associate(
         doc,

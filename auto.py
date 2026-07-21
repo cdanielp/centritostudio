@@ -12,11 +12,18 @@ El paquete SIEMPRE termina en revision humana antes de publicar (regla #19).
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import time
+import uuid
 from pathlib import Path
 
+# H2 (P1-OUT-3): un resume NUNCA reutiliza un MP4 0-byte/truncado/sin stream. Fuente unica
+# fail-closed reutilizada de H1 (media_integrity.verificar_video).
+import auto_classic_provenance as acp  # H2 (P2-CLASSIC-REUSE): procedencia explicita classic
+from atomic_io import atomic_write_json, atomic_write_text  # H2 (P2-ATOM-STATE)
+
+# H2 (P2-ATOM-STATE): escrituras atomicas del estado que gobierna el resume (checkpoints,
+# markers, procedencia, words/groups, REPORTE.md).
 # Contrato del Modo Automatico (S37-B): puro, sin red ni disco; default mode="classic"
 # garantiza que ejecutar_auto(...) sin config = comportamiento historico exacto.
 from auto_config import AutoConfig
@@ -33,6 +40,7 @@ from auto_report import (  # noqa: F401
     recomendacion_final,
     resumen_paquete,
 )
+from media_integrity import video_reanudable
 
 ROOT = Path(__file__).parent
 TRANSCRIPTS = ROOT / "transcripts"
@@ -40,64 +48,168 @@ CLIPS_DIR = ROOT / "output" / "clips"
 PAQUETES_DIR = ROOT / "output" / "paquetes"
 
 OBJETIVOS = ("clips",)  # v1: solo "Clips virales"; roadmap en PREGUNTAS #29
+_CLASSIC_MODEL = "auto"  # arg fijo del transcriptor en el Modo Automatico classic (procedencia)
+_CLASSIC_MARKER = "auto_classic.json"  # marker de paquete classic reanudable (H2, P2-PAQUETE-DIR)
 
 
 def _progress_nulo(pct: int, msg: str) -> None:
     print(f"[auto] {pct:3d}% {msg}")
 
 
+def _transcript_reutilizable(raw: dict, video_path: Path, lang: str) -> bool:
+    """True si el words.json puede reutilizarse sin retranscribir (fail-closed).
+
+    Acepta DOS procedencias del video EXACTO (filename+size+mtime):
+      1. `auto_classic_provenance` (mismo lang/model) — la que sella el propio Auto classic;
+      2. `source_video` — la que escribe `jobs.run_transcribe` cuando el usuario transcribe desde
+         el Studio ANTES de correr Auto (flujo comun Transcribir -> Auto). No exige lang/model:
+         ese transcript ya lo produjo el usuario con su seleccion y era reutilizado por el codigo
+         previo. Ambas verifican la identidad estricta del video; sin ninguna -> retranscribe.
+    """
+    if acp.matches(raw.get("auto_classic_provenance"), video_path, lang=lang, model=_CLASSIC_MODEL):
+        return True
+    import transcript_provenance as tp  # noqa: PLC0415
+
+    try:
+        tp.validate_video_provenance(
+            raw, expected_video=video_path, expected_filename=video_path.name
+        )
+        return True
+    except tp.TimingProvenanceError:
+        return False
+
+
 def _asegurar_transcript(video_path: Path, name: str, lang: str = "es") -> tuple[list, bool]:
-    """Devuelve (words, reutilizado). Transcribe SOLO si falta words.json (voto #10)."""
+    """Devuelve (words, reutilizado). Reutiliza SOLO si el words.json trae procedencia classic del
+    video EXACTO (filename+size+mtime) y mismo lang/model (H2, P2-CLASSIC-REUSE). Sin procedencia
+    o incompatible -> retranscribe. words/groups se escriben atomicamente (P2-ATOM-STATE)."""
     import core  # noqa: PLC0415
 
     words_path = TRANSCRIPTS / f"{name}_words.json"
-    if words_path.exists() and words_path.stat().st_mtime >= video_path.stat().st_mtime:
-        raw = json.loads(words_path.read_text(encoding="utf-8"))
-        return raw.get("words", []), True
+    if words_path.exists():
+        try:
+            raw = json.loads(words_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = None  # words.json corrupto -> fail-closed (retranscribe)
+        if isinstance(raw, dict) and _transcript_reutilizable(raw, video_path, lang):
+            return raw.get("words", []), True
     device, compute = core.detect_device()
-    model_path, _label = core.resolve_model("auto")
+    model_path, _label = core.resolve_model(_CLASSIC_MODEL)
     result = core.transcribe_video(video_path, lang, device, compute, model_path)
+    result["auto_classic_provenance"] = acp.build_provenance(
+        video_path, lang=lang, model=_CLASSIC_MODEL
+    )
     groups = core.group_words(result["words"])
     TRANSCRIPTS.mkdir(exist_ok=True)
-    words_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    (TRANSCRIPTS / f"{name}_groups.json").write_text(
-        json.dumps(groups, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    atomic_write_json(words_path, result)
+    atomic_write_json(TRANSCRIPTS / f"{name}_groups.json", groups)
     return result["words"], False
 
 
+def _clips_provenance_path(name: str) -> Path:
+    """Sidecar de procedencia del clipper classic (junto a {name}_clips.json)."""
+    return CLIPS_DIR / f"{name}_clips.provenance.json"
+
+
 def _asegurar_clips(video_path: Path, words: list, name: str) -> tuple[dict, bool]:
-    """Devuelve (resultado_clipper, reutilizado). Reusa {name}_clips.json si es
-    posterior al video: evita re-gastar LLM al reanudar (voto #10 extendido al
-    analisis del clipper). El clipper ya persiste el resultado completo a disco.
+    """Devuelve (resultado_clipper, reutilizado). Reusa {name}_clips.json SOLO si su sidecar de
+    procedencia classic coincide con el video EXACTO (H2, P2-CLASSIC-REUSE): evita re-gastar LLM
+    al reanudar el MISMO video, pero un video distinto (mismo stem) o sin sidecar -> re-ejecuta el
+    clipper. El sidecar se escribe atomicamente. clips.json corrupto -> fail-closed (re-ejecuta).
     """
     import clipper  # noqa: PLC0415
 
     clips_json = CLIPS_DIR / f"{name}_clips.json"
-    if clips_json.exists() and clips_json.stat().st_mtime >= video_path.stat().st_mtime:
-        return json.loads(clips_json.read_text(encoding="utf-8")), True
-    return clipper.generar_clips(video_path, words, "ambos"), False
+    prov_path = _clips_provenance_path(name)
+    if clips_json.exists() and prov_path.exists():
+        try:
+            stored = json.loads(prov_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            stored = None
+        if acp.matches(stored, video_path, lang="es", model=_CLASSIC_MODEL):
+            try:
+                return json.loads(clips_json.read_text(encoding="utf-8")), True
+            except (OSError, ValueError):
+                pass  # clips.json corrupto -> re-ejecuta el clipper (fail-closed)
+    # Invalida cualquier sidecar previo ANTES de re-ejecutar (Codex R2): si el clipper falla y
+    # persiste un clips.json con error, un sidecar viejo que coincida con el video haria que la
+    # proxima corrida reutilice ese clips.json de error (Auto fallaria en vez de reintentar). Sin
+    # sidecar, un fallo queda fail-closed y la corrida siguiente re-ejecuta el clipper.
+    prov_path.unlink(missing_ok=True)
+    resultado = clipper.generar_clips(video_path, words, "ambos")
+    if not resultado.get("error"):
+        # Persiste clips.json + procedencia de forma CONSISTENTE: el sidecar solo valida un
+        # clips.json escrito para ESTE video/resultado exitoso. Ambas escrituras son atomicas.
+        atomic_write_json(clips_json, resultado)
+        atomic_write_json(
+            prov_path, acp.build_provenance(video_path, lang="es", model=_CLASSIC_MODEL)
+        )
+    return resultado, False
 
 
-def _paquete_dir(name: str) -> tuple[Path, bool]:
-    """(paquete_dir, reanudado). Reanuda el paquete incompleto mas reciente del
-    video (sin paquete.json = corrida interrumpida); si no hay, crea uno nuevo.
-    Un autopiloto debe sobrevivir a un cierre de ventana / corte de luz (incidente
-    s27): cada clip ya renderizado es un checkpoint que no se vuelve a pagar.
-    S37-B: los paquetes v2 ({name}_v2_*) se EXCLUYEN — classic jamas reanuda un
-    paquete v2 (ni al reves; ver _paquete_dir_v2).
+def _paquete_classic_reanudable(d: Path, video_path: Path) -> bool:
+    """True si el dir `d` es un paquete classic reanudable para este video EXACTO (fail-closed).
+
+    Exige (H2, P2-PAQUETE-DIR): hijo DIRECTO de PAQUETES_DIR (sin symlink que escapa), nombre del
+    video, marker `auto_classic.json` legible con schema+pipeline_mode=classic y procedencia que
+    coincide con el video (filename+size+mtime), y SIN `paquete.json` final (corrida interrumpida).
+    Un dir manual sin marker, un marker corrupto, de otro video o de v2/SRT -> NO se reanuda.
+    """
+    if not d.is_dir():
+        return False
+    try:
+        if d.resolve().parent != PAQUETES_DIR.resolve():
+            return False  # confinamiento: solo hijos directos, sin symlink fuera
+    except OSError:
+        return False
+    marker = d / _CLASSIC_MARKER
+    try:
+        datos = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else None
+    except (OSError, ValueError):
+        return False  # marker corrupto -> fail-closed
+    if not isinstance(datos, dict):
+        return False
+    if datos.get("schema_version") != acp.SCHEMA_VERSION or datos.get("pipeline_mode") != "classic":
+        return False
+    if not acp.matches(datos.get("video"), video_path, lang="es", model=_CLASSIC_MODEL):
+        return False
+    return not (d / "paquete.json").exists()  # con paquete.json final -> completado, no reanudar
+
+
+def _paquete_dir(name: str, video_path: Path) -> tuple[Path, bool]:
+    """(paquete_dir, reanudado). Reanuda SOLO un paquete classic con marker `auto_classic.json`
+    valido para este video EXACTO (H2, P2-PAQUETE-DIR): un dir `{name}_*` manual SIN marker ya NO
+    se reanuda (se crea uno nuevo, sin borrar el viejo). Un autopiloto debe sobrevivir a un cierre
+    de ventana / corte de luz (incidente s27): cada clip renderizado es un checkpoint. Los paquetes
+    v2/SRT ({name}_v2_*) se EXCLUYEN. El nombre nuevo usa precision de SEGUNDOS + sufijo unico para
+    que dos corridas del mismo minuto nunca compartan directorio.
     """
     PAQUETES_DIR.mkdir(parents=True, exist_ok=True)
-    incompletos = sorted(
+    candidatos = sorted(
         d
         for d in PAQUETES_DIR.glob(f"{name}_*")
-        if d.is_dir() and not (d / "paquete.json").exists() and not d.name.startswith(f"{name}_v2_")
+        if d.is_dir() and not d.name.startswith(f"{name}_v2_")
     )
-    if incompletos:
-        return incompletos[-1], True
-    fecha = time.strftime("%Y%m%d-%H%M")
+    for d in reversed(candidatos):
+        if _paquete_classic_reanudable(d, video_path):
+            return d, True
+    fecha = time.strftime("%Y%m%d-%H%M%S")
     nuevo = PAQUETES_DIR / f"{name}_{fecha}"
+    n = 2
+    while nuevo.exists():  # dos corridas en el mismo segundo: dir NUEVO, no se pisa
+        nuevo = PAQUETES_DIR / f"{name}_{fecha}-{n}"
+        n += 1
     nuevo.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(
+        nuevo / _CLASSIC_MARKER,
+        {
+            "schema_version": acp.SCHEMA_VERSION,
+            "pipeline_mode": "classic",
+            "video": acp.build_provenance(video_path, lang="es", model=_CLASSIC_MODEL),
+            "created_at": fecha,
+            "run_id": uuid.uuid4().hex[:12],
+        },
+    )
     return nuevo, False
 
 
@@ -117,7 +229,8 @@ def _clip_incompleto(info: object, paquete_dir: Path) -> bool:
     if not isinstance(archivo, str) or not archivo:
         return True
     final_path = paquete_dir / archivo
-    if not final_path.exists():
+    # P1-OUT-3: exists() no basta; un MP4 0-byte/truncado/sin stream se reprocesa.
+    if not video_reanudable(final_path):
         return True
     return _cargar_checkpoint(_sidecar_path(final_path)) is None
 
@@ -190,9 +303,8 @@ def _paquete_dir_v2(
         nuevo = PAQUETES_DIR / f"{name}_v2_{fecha}-{n}"
         n += 1
     nuevo.mkdir(parents=True, exist_ok=True)
-    (nuevo / "auto_v2.json").write_text(
-        json.dumps({"config_fingerprint": fingerprint, "pipeline_mode": "v2"}, indent=2),
-        encoding="utf-8",
+    atomic_write_json(
+        nuevo / "auto_v2.json", {"config_fingerprint": fingerprint, "pipeline_mode": "v2"}
     )
     return nuevo, False
 
@@ -454,11 +566,27 @@ def _renderizar_clip(
         return auto_v2.procesar_clip_v2(
             clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
         )
-    if final_path.exists():
+    if video_reanudable(final_path):  # P1-OUT-3: solo reutiliza un MP4 realmente publicable
         progress(pct, f"Clip {etiqueta}: reutilizando render previo")
         return _info_orfano(clip, final_path)
     progress(pct, f"Etapa 3-4/4: reencuadre + captions (clip {etiqueta})...")
     return _procesar_clip(clip, paquete_dir)
+
+
+def _checkpoint_reutilizable(
+    info_prev: dict, *, es_srt: bool, es_v2: bool, fingerprint, final_path: Path
+) -> bool:
+    """True si el checkpoint de un clip se conserva en el resume. Los TRES caminos exigen un MP4
+    realmente publicable (P1-OUT-3): SRT (status!=error), v2 (checkpoint_v2_valido, que ya valida
+    el MP4) y classic (MP4 publicable). Misma definicion que `_clip_incompleto` para no
+    desincronizar la seleccion de paquete con el bucle de resume."""
+    if es_srt:
+        return info_prev.get("status") != "error" and video_reanudable(final_path)
+    if es_v2:
+        import auto_v2  # noqa: PLC0415 (lazy: la ruta clasica jamas importa la capa v2)
+
+        return auto_v2.checkpoint_v2_valido(info_prev, fingerprint, final_path, TRANSCRIPTS)
+    return video_reanudable(final_path)
 
 
 def ejecutar_auto(
@@ -509,8 +637,6 @@ def ejecutar_auto(
         raise RuntimeError(resultado["error"])
     clips = resultado.get("clips", [])
 
-    if es_v2:
-        import auto_v2  # noqa: PLC0415 (lazy: la ruta clasica jamas importa la capa v2)
     if usa_fp:
         # SRT reanuda paquetes TERMINADOS PARCIALMENTE (done<total) ademas de los interrumpidos:
         # la UI "Reanudar clips fallidos" re-invoca este mismo flujo y no borra paquete.json.
@@ -519,7 +645,7 @@ def ejecutar_auto(
         )
         fecha = paquete_dir.name[len(name) + 4 :]  # {name}_v2_{fecha}
     else:
-        paquete_dir, reanudado = _paquete_dir(name)
+        paquete_dir, reanudado = _paquete_dir(name, video_path)
         fecha = paquete_dir.name[len(name) + 1 :]
     srt_ctx = None
     if es_srt:  # resuelve y verifica la fuente SRT del run (selección/video/timings) una vez
@@ -539,16 +665,13 @@ def ejecutar_auto(
         sidecar = _sidecar_path(final_path)
         info_prev = _cargar_checkpoint(sidecar)
         if info_prev is not None:
-            if es_srt:
-                # Misma definicion de "clip valido" que _clip_incompleto (que SELECCIONA el paquete
-                # a reanudar): status=error u output faltante -> re-render. Mantener ambas en sync
-                # evita reabrir un paquete por un clip que el bucle luego trataria de reusar.
-                valido = final_path.exists() and info_prev.get("status") != "error"
-            else:
-                valido = not es_v2 or auto_v2.checkpoint_v2_valido(
-                    info_prev, fingerprint, final_path, TRANSCRIPTS
-                )
-            if valido:
+            if _checkpoint_reutilizable(
+                info_prev,
+                es_srt=es_srt,
+                es_v2=es_v2,
+                fingerprint=fingerprint,
+                final_path=final_path,
+            ):
                 progress(pct, f"Clip {i}/{len(clips)}: ya listo (reanudacion, sin re-render)")
                 clips_info.append(info_prev)
                 continue
@@ -565,7 +688,7 @@ def ejecutar_auto(
             pct=pct,
             progress=progress,
         )
-        sidecar.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(sidecar, info)  # checkpoint atomico: un resume nunca lo lee truncado
         clips_info.append(info)
     t_render = time.time() - t1
 
@@ -585,17 +708,10 @@ def ejecutar_auto(
     _marcar_pipeline_en_meta(
         meta, es_v2=es_v2, es_srt=es_srt, fingerprint=fingerprint, config=config
     )
-    (paquete_dir / "REPORTE.md").write_text(
-        generar_reporte_md(name, clips_info, meta), encoding="utf-8"
-    )
-    # Atomico (tmp + os.replace): un resume nunca deja un paquete.json truncado si el proceso
-    # muere a mitad de escritura (el contenido final es identico al write directo).
-    _pkg_tmp = paquete_dir / "paquete.json.tmp"
-    _pkg_tmp.write_text(
-        json.dumps({"clips": clips_info, "meta": meta}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    os.replace(_pkg_tmp, paquete_dir / "paquete.json")
+    # REPORTE.md atomico: un error a mitad de escritura conserva el REPORTE previo intacto.
+    atomic_write_text(paquete_dir / "REPORTE.md", generar_reporte_md(name, clips_info, meta))
+    # paquete.json ya era atomico (tmp+os.replace); se unifica en el mismo contrato durable.
+    atomic_write_json(paquete_dir / "paquete.json", {"clips": clips_info, "meta": meta})
     if es_srt:  # manifiesto FINAL saneado del run SRT (cierre S36-C2C)
         _emitir_manifiesto_srt(paquete_dir, srt_ctx, clips_info)
     resumen = resumen_paquete(clips_info)

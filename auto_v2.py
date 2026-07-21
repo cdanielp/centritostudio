@@ -24,6 +24,7 @@ from auto_config import PIPELINE_VERSION, AutoConfig
 from broll_plan_io import broll_plan_to_dict, write_broll_plan
 from broll_plan_types import BrollConfig
 from broll_planner import plan_broll
+from media_integrity import video_reanudable  # H2 P1-OUT-3: gate fail-closed del checkpoint v2
 
 
 def broll_config_de(config: AutoConfig) -> BrollConfig:
@@ -59,7 +60,7 @@ def checkpoint_v2_valido(info: dict, fingerprint: str, final_path: Path, transcr
             return False
         if (av.get("sync") or {}).get("status") not in ok_av:
             return False
-    if not final_path.exists():
+    if not video_reanudable(final_path):  # P1-OUT-3: 0-byte/truncado/sin stream -> re-render
         return False
     broll = info.get("broll") or {}
     for clave in ("plan_sidecar", "auto_sidecar", "resolved_sidecar"):
