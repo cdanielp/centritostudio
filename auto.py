@@ -56,6 +56,29 @@ def _progress_nulo(pct: int, msg: str) -> None:
     print(f"[auto] {pct:3d}% {msg}")
 
 
+def _transcript_reutilizable(raw: dict, video_path: Path, lang: str) -> bool:
+    """True si el words.json puede reutilizarse sin retranscribir (fail-closed).
+
+    Acepta DOS procedencias del video EXACTO (filename+size+mtime):
+      1. `auto_classic_provenance` (mismo lang/model) — la que sella el propio Auto classic;
+      2. `source_video` — la que escribe `jobs.run_transcribe` cuando el usuario transcribe desde
+         el Studio ANTES de correr Auto (flujo comun Transcribir -> Auto). No exige lang/model:
+         ese transcript ya lo produjo el usuario con su seleccion y era reutilizado por el codigo
+         previo. Ambas verifican la identidad estricta del video; sin ninguna -> retranscribe.
+    """
+    if acp.matches(raw.get("auto_classic_provenance"), video_path, lang=lang, model=_CLASSIC_MODEL):
+        return True
+    import transcript_provenance as tp  # noqa: PLC0415
+
+    try:
+        tp.validate_video_provenance(
+            raw, expected_video=video_path, expected_filename=video_path.name
+        )
+        return True
+    except tp.TimingProvenanceError:
+        return False
+
+
 def _asegurar_transcript(video_path: Path, name: str, lang: str = "es") -> tuple[list, bool]:
     """Devuelve (words, reutilizado). Reutiliza SOLO si el words.json trae procedencia classic del
     video EXACTO (filename+size+mtime) y mismo lang/model (H2, P2-CLASSIC-REUSE). Sin procedencia
@@ -68,9 +91,7 @@ def _asegurar_transcript(video_path: Path, name: str, lang: str = "es") -> tuple
             raw = json.loads(words_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raw = None  # words.json corrupto -> fail-closed (retranscribe)
-        if isinstance(raw, dict) and acp.matches(
-            raw.get("auto_classic_provenance"), video_path, lang=lang, model=_CLASSIC_MODEL
-        ):
+        if isinstance(raw, dict) and _transcript_reutilizable(raw, video_path, lang):
             return raw.get("words", []), True
     device, compute = core.detect_device()
     model_path, _label = core.resolve_model(_CLASSIC_MODEL)
@@ -111,8 +132,15 @@ def _asegurar_clips(video_path: Path, words: list, name: str) -> tuple[dict, boo
             except (OSError, ValueError):
                 pass  # clips.json corrupto -> re-ejecuta el clipper (fail-closed)
     resultado = clipper.generar_clips(video_path, words, "ambos")
-    # El clipper ya persiste clips.json; sella la procedencia como sidecar atomico.
-    atomic_write_json(prov_path, acp.build_provenance(video_path, lang="es", model=_CLASSIC_MODEL))
+    if not resultado.get("error"):
+        # Persiste clips.json + procedencia de forma CONSISTENTE: el sidecar solo valida un
+        # clips.json escrito para ESTE video/resultado. Si el clipper falla (p.ej. sin API key o
+        # words vacias) NO se sella procedencia -> no se reutiliza un clips.json stale de otro
+        # video con el mismo stem (Codex P2). Ambas escrituras son atomicas.
+        atomic_write_json(clips_json, resultado)
+        atomic_write_json(
+            prov_path, acp.build_provenance(video_path, lang="es", model=_CLASSIC_MODEL)
+        )
     return resultado, False
 
 

@@ -94,7 +94,7 @@ gobiernan resume.
 
 ## Tests
 
-- **Motor JS real (`tests/job_polling_harness.cjs` + `test_h2_job_polling_js.py`):** 23 casos con
+- **Motor JS real (`tests/job_polling_harness.cjs` + `test_h2_job_polling_js.py`):** 25 casos con
   fetch/timers/reloj/AbortController inyectables — done, job error, pending→running→done, 404 lost,
   500 recovery, 500→unavailable, red recovery, red→unavailable, JSON inválido (recupera y límite),
   status desconocido (recupera y límite), deadline, cancel, retry mismo job, dedupe, nueva sesión
@@ -136,6 +136,26 @@ gobiernan resume.
 - Writers FFmpeg diferidos de H1 (`clipper`/`reframe`/`depurador`/`broll_*`/`submagic`/`auto_av`).
 - Atomicidad de `.ass`/keyword sidecars (no gobiernan resume) → P2 residual.
 - GC de temporales `.render_tmp` abandonados (documentado en H1).
+
+## Correcciones post-review (Codex, ronda 1 — 3 P2)
+
+- **P2-1 · Fetch en vuelo colgado (`job_polling.js`):** el deadline solo se chequeaba al INICIAR el
+  request; un `fetch` que quedaba pendiente para siempre (backend acepta la conexión y no responde)
+  no re-agendaba tick → spinner eterno (relacionado con P1-POLL-3). **Fix:** `requestTimeoutMs`
+  (default 20 s) que aborta el controlador en vuelo → error de red reintentable → `unavailable` al
+  límite. Tests Node 22/23 (colgado→timeout→unavailable, colgado→responde→recupera).
+- **P2-2 · Procedencia de clips sellada en fallo (`auto._asegurar_clips`):** si el clipper fallaba
+  sin reescribir `clips.json`, se sellaba el sidecar → una próxima corrida reusaba un `clips.json`
+  stale de otro video con el mismo stem. **Fix:** solo se persiste `clips.json` + sidecar
+  (atómicos, consistentes) cuando el resultado NO tiene `error`. Tests en `test_h2_classic_reuse.py`.
+- **P2-3 · Retranscripción del flujo Transcribir→Auto (`auto._asegurar_transcript`):** el predicado
+  nuevo rechazaba el `source_video` que escribe `jobs.run_transcribe`, forzando un pase Whisper
+  completo antes de cada Transcribir→Auto. **Fix:** `_transcript_reutilizable` acepta también
+  `source_video` del video EXACTO (identidad estricta filename+size+mtime), restaurando el flujo
+  común sin debilitar la garantía de identidad. Tests en `test_h2_classic_reuse.py`.
+
+Suite tras ronda 1: **2231 passed, 4 skipped** (4 skips = mismos symlink históricos). ruff/format/
+`check.bat` verdes; smoke H2 `blockers=0 fails=0`.
 
 ## H3 / H4 / H5 / HyperFrames
 

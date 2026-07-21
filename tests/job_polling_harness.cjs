@@ -58,12 +58,15 @@ async function flush() {
 // ── AbortController falso (registra creaciones + aborts) ──────────────────────
 function makeAbortFactory(log) {
   return function () {
+    const signal = { aborted: false };
     const c = {
       aborted: false,
-      signal: {},
+      signal: signal,
       abort: function () {
         c.aborted = true;
+        signal.aborted = true;
         log.aborts++;
+        if (signal._onabort) signal._onabort(); // despierta a un fetch colgado -> rechazo
       },
     };
     log.created++;
@@ -86,6 +89,14 @@ function makeFetch(steps, log) {
     log.lastInit = init;
     const step = steps[Math.min(i, steps.length - 1)];
     i++;
+    // Fetch COLGADO: nunca resuelve por su cuenta; solo se rechaza cuando el signal se aborta
+    // (timeout del request). Simula un backend que acepta la conexión pero no responde.
+    if (step.hang) {
+      const sig = init && init.signal;
+      return new Promise((_resolve, reject) => {
+        if (sig) sig._onabort = () => { log.concurrent--; reject(new Error("aborted")); };
+      });
+    }
     return new Promise((resolve, reject) => {
       // resuelve en microtask para simular I/O sin timers reales
       Promise.resolve().then(() => {
@@ -379,6 +390,49 @@ test("21_job_error_conserva_causa", async () => {
   const { terminal } = await drive(h, "j");
   assert(terminal.reason === "job_error", "reason");
   assert(terminal.job.error === "OOM" && terminal.message === "OOM en FFmpeg", "causa exacta");
+});
+
+test("22_fetch_colgado_se_aborta_por_timeout", async () => {
+  // Backend mudo: cada fetch queda pendiente hasta que el timeout del request lo aborta -> error
+  // de red reintentable -> al llegar al limite, terminal unavailable. NUNCA queda colgado.
+  const h = makeHarness([{ hang: true }], {
+    requestTimeoutMs: 500,
+    intervalMs: 100,
+    maxConsecutiveErrors: 3,
+    deadlineMs: 10 * 60 * 1000,
+  });
+  let terminal = null;
+  h.poller.track("j", {
+    onTerminal: (r) => (terminal = r),
+    requestTimeoutMs: 500,
+    intervalMs: 100,
+    maxConsecutiveErrors: 3,
+    deadlineMs: 10 * 60 * 1000,
+  });
+  await flush();
+  for (let i = 0; i < 10 && terminal === null; i++) await h.clock.advance(600);
+  assert(terminal && terminal.reason === "unavailable", "reason=" + (terminal && terminal.reason));
+  assert(h.alog.aborts >= 1, "el fetch colgado se aborto por timeout: " + h.alog.aborts);
+  assert(h.clock.pending() === 0, "sin timers pendientes tras terminal");
+});
+
+test("23_fetch_colgado_se_recupera_si_responde", async () => {
+  // Un fetch cuelga una vez (se aborta por timeout) y el siguiente responde done -> recupera.
+  const h = makeHarness(
+    [{ hang: true }, { ok: true, status: 200, json: { status: "done", message: "ok" } }],
+    { requestTimeoutMs: 500, intervalMs: 100, maxConsecutiveErrors: 5, deadlineMs: 10 * 60 * 1000 }
+  );
+  let terminal = null;
+  h.poller.track("j", {
+    onTerminal: (r) => (terminal = r),
+    requestTimeoutMs: 500,
+    intervalMs: 100,
+    maxConsecutiveErrors: 5,
+    deadlineMs: 10 * 60 * 1000,
+  });
+  await flush();
+  for (let i = 0; i < 10 && terminal === null; i++) await h.clock.advance(600);
+  assert(terminal && terminal.reason === "done", "reason=" + (terminal && terminal.reason));
 });
 
 // ── Runner ────────────────────────────────────────────────────────────────────

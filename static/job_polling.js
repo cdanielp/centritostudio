@@ -48,6 +48,7 @@
     intervalMs: 900,
     deadlineMs: 30 * 60 * 1000, // 30 min: cubre renders largos sin colgarse para siempre
     maxConsecutiveErrors: 5,
+    requestTimeoutMs: 20 * 1000, // aborta un GET /api/jobs colgado (backend mudo) para no colgar
     jobUrl: function (jobId) {
       return "/api/jobs/" + jobId;
     },
@@ -74,9 +75,12 @@
       opts.maxConsecutiveErrors != null
         ? opts.maxConsecutiveErrors
         : poller.maxConsecutiveErrors;
+    this.requestTimeoutMs =
+      opts.requestTimeoutMs != null ? opts.requestTimeoutMs : poller.requestTimeoutMs;
     this.consecutiveErrors = 0;
     this.lastErrorKind = "network";
     this.timer = null;
+    this.reqTimer = null;
     this.controller = null;
     this.finished = false;
     this.inFlight = false;
@@ -87,6 +91,16 @@
     if (this.timer !== null) {
       this.poller.clearTimer(this.timer);
       this.timer = null;
+    }
+  };
+
+  // Timer POR REQUEST: si un fetch queda pendiente para siempre (backend acepta la conexión pero
+  // nunca responde), sin esto la sesión jamás vuelve a hacer tick y la UI gira sin fin. Al vencer
+  // aborta el controlador -> el fetch se rechaza -> se trata como error de red reintentable.
+  Session.prototype._clearReqTimer = function () {
+    if (this.reqTimer !== null) {
+      this.poller.clearTimer(this.reqTimer);
+      this.reqTimer = null;
     }
   };
 
@@ -107,6 +121,7 @@
     if (this.finished) return;
     this.finished = true;
     this._clearTimer();
+    this._clearReqTimer();
     this._abort();
     this.poller._remove(this.jobId, this);
     if (this.onTerminal) {
@@ -159,14 +174,25 @@
     var signal = this.controller ? this.controller.signal : undefined;
     var url = this.poller.jobUrl(this.jobId);
 
+    // Arma el timeout del request en vuelo (P1-POLL-3: fetch colgado != spinner eterno).
+    if (this.requestTimeoutMs > 0) {
+      this.reqTimer = this.poller.setTimer(function () {
+        self.reqTimer = null;
+        if (!self.finished && self.inFlight && self.controller) self.controller.abort();
+      }, this.requestTimeoutMs);
+    }
+
     this.poller
       .fetch(url, signal ? { signal: signal } : {})
       .then(function (r) {
+        self._clearReqTimer();
         return self._handleResponse(r);
       })
       .catch(function (err) {
+        self._clearReqTimer();
         if (self.finished) return; // abortado por cancel(): ya se entregó cancelled
-        // Error de red (o abort no provocado por cancel): mismo contrato de errores consecutivos.
+        // Error de red o abort por timeout del request: mismo contrato de errores consecutivos
+        // (no se confunde con 404 ni con cancel).
         self.inFlight = false;
         self._retryable("network");
       });
@@ -267,6 +293,8 @@
     this.deadlineMs = deps.deadlineMs != null ? deps.deadlineMs : DEFAULTS.deadlineMs;
     this.maxConsecutiveErrors =
       deps.maxConsecutiveErrors != null ? deps.maxConsecutiveErrors : DEFAULTS.maxConsecutiveErrors;
+    this.requestTimeoutMs =
+      deps.requestTimeoutMs != null ? deps.requestTimeoutMs : DEFAULTS.requestTimeoutMs;
     this._sessions = {}; // jobId -> Session activa (dedupe)
   }
 
