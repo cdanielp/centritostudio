@@ -135,6 +135,68 @@ agrega un smoke de render sobre un **fixture sintético** generado con FFmpeg (s
 - `PUT /api/system/video-encoder` `{mode: auto|nvenc|cpu}` — fija el modo de codificación (enum
   cerrado). Afecta solo jobs nuevos; los activos conservan su instantánea.
 
+## 9. Checklist de clon limpio
+
+Desde un clon o ZIP recién descargado (sin `input/`, `output/`, `models/`, `.env`):
+
+1. `py -3.12 -m venv venv`
+2. `venv\Scripts\python.exe -m pip install --upgrade pip`
+3. `venv\Scripts\python.exe -m pip install -r requirements.txt`
+4. `ffmpeg -version` y `ffprobe -version` responden (si no, `choco install ffmpeg`).
+5. `venv\Scripts\python.exe scripts\setup_models.py` (descarga verificada por SHA256).
+6. `copy .env.example .env` **solo** si usarás LLM / Pexels / Submagic (opcional).
+7. `.\check.bat` → debe terminar `===== TODO OK =====`.
+8. `.\arranque.bat` → navegador en `http://127.0.0.1:8787`.
+
+Diagnóstico rápido si algo falla: `venv\Scripts\python.exe -m system_preflight` (informe legible).
+
+## 10. Requisito obligatorio vs. capacidad opcional
+
+| Elemento | Tipo | Sin él… |
+|---|---|---|
+| Python 3.12.x + venv + requirements | **Obligatorio** | La app no arranca |
+| FFmpeg + ffprobe en PATH | **Obligatorio para producir video** | La UI abre en modo degradado; render/Auto/clips/reframe deshabilitados |
+| Modelos de detección facial | Capacidad | Reframe con seguimiento facial degradado; el resto sigue |
+| GPU NVIDIA + CUDA (Whisper) | Capacidad | Transcripción en CPU (más lenta) |
+| FFmpeg con `h264_nvenc` + driver | Capacidad | Codificación en CPU (`libx264`); ruta válida |
+| `DEEPSEEK_API_KEY` / `PEXELS_API_KEY` / `SUBMAGIC_API_KEY` | Opcional (opt-in) | Esas integraciones externas quedan deshabilitadas |
+
+## 11. Matriz de compatibilidad
+
+| Entorno | Estado |
+|---|---|
+| Windows 11 + NVIDIA | Validado |
+| Windows 11 sin NVIDIA | CPU fallback soportado por diseño |
+| Windows 10 | No validado |
+| GPU AMD | No validado |
+| Linux / macOS | No validados |
+| FFmpeg sin NVENC | Usa CPU (`libx264`) |
+| Sin modelos | Reframe facial degradado |
+
+No se recomienda Docker ni se añaden dependencias para soportar sistemas no probados.
+
+## 12. Cómo identificar el encoder seleccionado
+
+- **UI:** Ajustes → Codificación de video (muestra "NVIDIA NVENC" o "CPU libx264").
+- **API:** `GET /api/system/video-encoder` → `{requested, selected, encoder, nvenc:{available,message}}`.
+- **NVENC en tu FFmpeg:** `ffmpeg -hide_banner -encoders | Select-String h264_nvenc`.
+
+## 13. Problemas comunes → acción concreta
+
+| Síntoma | Acción |
+|---|---|
+| "Python no soportado" al arrancar | Recrea el venv con `py -3.12 -m venv venv` |
+| La UI abre pero render/reframe deshabilitados | Falta FFmpeg/ffprobe → `choco install ffmpeg` |
+| Reframe facial no disponible | `venv\Scripts\python.exe scripts\setup_models.py` |
+| Puerto 8787 ocupado por otra app | `studio_launcher.py --port 8790` |
+| Job rechazado 503 en modo `nvenc` | Sin GPU/NVENC disponible → usa `auto` o `cpu` |
+| "…h264_nvenc no incluido" | Tu FFmpeg no trae NVENC → build de gyan.dev/BtbN o modo `cpu` |
+
+## Enlaces
+
+- Codificación GPU/CPU, requisitos y benchmarks: [`GPU_NVENC.md`](GPU_NVENC.md).
+- Protocolo de prueba para testers: [`ALPHA_TESTERS.md`](ALPHA_TESTERS.md).
+
 ## 8. Codificación de video (NVIDIA NVENC / CPU)
 
 La codificación H.264 usa **NVIDIA NVENC** cuando está disponible, con **fallback a CPU
