@@ -11,6 +11,8 @@ import os
 import time
 from pathlib import Path
 
+from atomic_io import atomic_write_json  # H2 (P2-ATOM-STATE): clips.json reutilizado por Auto
+
 try:
     from dotenv import load_dotenv
 
@@ -253,12 +255,10 @@ def exportar_transcript_clip(words: list[dict], wi: int, wf: int, clip_stem: str
 
     TRANSCRIPTS_DIR.mkdir(exist_ok=True)
     words_data = {"words": rebased, "language": "es"}
-    words_path = TRANSCRIPTS_DIR / f"{clip_stem}_words.json"
-    words_path.write_text(json.dumps(words_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(TRANSCRIPTS_DIR / f"{clip_stem}_words.json", words_data)
 
     groups = core.group_words(rebased)
-    groups_path = TRANSCRIPTS_DIR / f"{clip_stem}_groups.json"
-    groups_path.write_text(json.dumps(groups, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(TRANSCRIPTS_DIR / f"{clip_stem}_groups.json", groups)
 
     print(f"[clipper] transcript clip: {len(rebased)} palabras, {len(groups)} grupos")
 
@@ -589,5 +589,5 @@ def generar_clips(  # noqa: C901
 def _write_clips_json(stem: str, result: dict) -> None:
     CLIPS_DIR.mkdir(parents=True, exist_ok=True)
     path = CLIPS_DIR / f"{stem}_clips.json"
-    path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(path, result)  # Auto lo reutiliza en resume: nunca debe leerse truncado
     print(f"[clipper] {path.name} escrito")

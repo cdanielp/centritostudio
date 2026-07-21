@@ -115,6 +115,22 @@ def verificar_video(path: Path) -> None:
         raise MediaIntegrityError("el archivo no tiene duracion valida")
 
 
+def video_reanudable(path: Path) -> bool:
+    """Wrapper FAIL-CLOSED de `verificar_video` para los predicados de resume (H2, P1-OUT-3).
+
+    Devuelve True SOLO si el archivo es un video publicable (regular, tamano > 0, ffprobe OK,
+    stream de video, duracion finita > 0). Cualquier fallo (inexistente, 0-byte, truncado, sin
+    stream, duracion 0/NaN/Inf, ffprobe ausente) devuelve False -> el clip se re-renderiza. No
+    lanza: convierte el contrato de integridad en un booleano seguro para los gates de reanudacion
+    (`_clip_incompleto`, reuso classic, checkpoint SRT, checkpoint v2). Nunca borra el archivo.
+    """
+    try:
+        verificar_video(path)
+        return True
+    except MediaIntegrityError:
+        return False
+
+
 def _borrar_silencioso(p: Path) -> None:
     """Borra un archivo ignorando errores (no debe enmascarar la excepcion real que se propaga)."""
     try:
