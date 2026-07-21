@@ -7,7 +7,7 @@
 Todas las pruebas usan `TemporaryDirectory`, fixtures sintéticos y dependencias inyectadas
 (versión, ejecutable, `which`, rutas de modelos, puerto, `fetch`): sin red real, sin GPU, sin abrir
 puertos ni el navegador, sin matar procesos. En ningún momento se abre, imprime, hashea ni versiona
-`input/0717_corregido.srt`.
+`input/video.srt`.
 
 ---
 
@@ -96,7 +96,7 @@ del arranque (FastAPI lifespan, no eventos deprecated). Sin comprobaciones de re
 
 Nuevo paso `[1/5] entorno` = `system_preflight --strict-local` (Python/venv/ffmpeg/ffprobe/≥1
 detector/imports). Conserva ruff/format/imports/pytest. `check.bat full` usa un **fixture sintético**
-generado con FFmpeg (`lavfi`), sin datos privados; **nunca** usa `input/0717_corregido.srt`.
+generado con FFmpeg (`lavfi`), sin datos privados; **nunca** usa `input/video.srt`.
 
 ## UI en modo degradado — `static/system_capabilities.js` (nuevo) + `index.html`
 

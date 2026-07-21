@@ -197,7 +197,7 @@ sobreescribe el `{stem}_popups.json` manual del usuario.
 
 ## 21. Privacidad
 
-Fixtures 100% sintéticas (taller de café inventado). Sin transcript real, sin `0717_corregido.srt`,
+Fixtures 100% sintéticas (taller de café inventado). Sin transcript real, sin el SRT privado del usuario,
 sin videos/audios reales, sin brain real, sin rutas locales, sin secretos ni keys. El JSON de
 salida solo incluye el texto del grupo fuente de cada ventana, nunca la transcripción completa.
 

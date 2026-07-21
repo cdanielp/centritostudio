@@ -1,168 +1,213 @@
-# Centrito Studio — Guía para testers (Alpha 0.1)
+# Centrito Studio — Guía para testers (v0.1.1-alpha candidate)
 
-Gracias por probar el Alpha. Esto es software en construcción: lo que más nos sirve
-es que lo uses con TUS videos reales y nos digas exactamente dónde se sintió mal.
+> **v0.1.1-alpha candidate** es una etiqueta de documentación. **No** existe todavía un tag ni un
+> release publicado; recibes un clon o ZIP del repositorio.
 
-## 1. Qué es Centrito Studio
+Gracias por probar el Alpha. Es software en construcción: lo más útil es que lo uses con TUS
+videos reales y nos digas exactamente dónde se sintió mal. Esta guía sirve para arrancar desde un
+clon/ZIP **limpio**.
 
-Una fábrica local de clips virales: le das un video con voz en español y te devuelve
-un **paquete de clips verticales con captions animados**, listo para que TÚ revises
-y publiques. Todo corre en esta PC (nada se sube a la nube; el único servicio externo
-opcional es la IA de análisis). No es un editor de video tipo CapCut: no hay timeline
-multipista ni cortes manuales. Es una fábrica con opinión + una mesa de revisión.
+Centrito Studio es una **suite local de producción y revisión de video**: transcribe, corta,
+reencuadra a vertical y quema captions animados, con un **Modo Automático** que produce un paquete
+de clips para que **tú** los revises y publiques. No es un editor multipista tipo Premiere/CapCut.
 
-### Los 3 modos (esto es nuevo en Alpha 0.1)
+> **Local por defecto, con integraciones externas explícitas y opcionales.** Nada sale de tu PC a
+> menos que actives una integración remota (ver §7). No afirmamos "nada se sube": si usas Submagic,
+> el video puede subirse a su nube.
 
-Al abrir la app caes en **Inicio**, un tablero con 3 tarjetas:
+---
 
-1. **Modo Automático** — *genera*. Video entra → paquete de clips sale.
-2. **Editor de Paquete** — *revisa*. Abre un paquete ya generado y mira clip por clip
-   qué salió bien y qué revisar (estados, alertas, timeline). NO edita el video: es
-   una vista de revisión sobre lo que ya se produjo.
-3. **Modo Creador** — *controla*. Las herramientas sueltas con control fino
-   (transcribir, clipper, reframe, stack, captions, Caption QA, depurador…).
+## 1. Requisitos previos
 
-Regla mental: **Automático genera · Editor revisa · Creador controla.**
+- **Windows 11** (validado). Otros sistemas: ver §8.
+- **Python 3.12.x** (misma major.minor; el arranque rechaza otra versión con un mensaje accionable).
+- **FFmpeg + ffprobe** en el PATH (`choco install ffmpeg`, o builds de gyan.dev / BtbN).
+- GPU NVIDIA: **opcional** (acelera transcripción y codificación; hay fallback CPU).
 
-## 2. Qué puedes probar
+Instalación reproducible:
 
-- **Modo Automático** (la prueba principal): video entra → paquete de clips sale.
-- **Editor de Paquete** (nuevo): revisa el paquete sin abrir archivos ni JSON.
-- **Modo Creador**: las herramientas por separado — transcribir, editar texto,
-  depurar silencios, generar clips, reencuadrar a vertical, renderizar captions
-  con estilos y presets virales.
-- **Caption QA**: detector de palabras mal transcritas ("confeti UI" en vez de
-  "ComfyUI") con corrección opcional.
+```powershell
+py -3.12 -m venv venv
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe scripts\setup_models.py    # modelos de detección facial (SHA256)
+copy .env.example .env                              # opcional: solo si usarás LLM/Pexels/Submagic
+.\check.bat                                         # debe terminar "===== TODO OK ====="
+```
+
+Guía técnica detallada de instalación, diagnóstico y modo degradado: [`ENTORNO.md`](ENTORNO.md).
+
+## 2. Qué NO viene en el repositorio
+
+Nada de esto se versiona; lo generas tú localmente:
+
+- Videos de entrada (`input/`) y salidas (`output/`).
+- Transcripciones y análisis (`transcripts/`).
+- Modelos de detección facial (`models/`, `referencia/yunet/` — instálalos con `setup_models.py`).
+- `.env` con tus claves.
+- Paquetes generados, miniaturas y renders.
 
 ## 3. Cómo arrancar la app
 
 1. Doble click en `arranque.bat` (raíz del proyecto).
-2. Se abre el navegador en `http://127.0.0.1:8787` con **Centrito Studio** en **Inicio**.
-3. Si no abre solo: abre esa dirección a mano en Edge/Chrome.
-4. Navega con la barra de arriba: **Inicio · Automático · Editor · Creador · Paquetes · Ajustes**.
+2. Se abre el navegador en `http://127.0.0.1:8787` (solo loopback) en **Inicio**.
+3. Si no abre solo, abre esa dirección a mano en Edge/Chrome.
 
-## 4. Qué tipo de videos sirven
+La barra superior tiene **7 secciones**:
 
-- **Sirven**: clases, charlas a cámara, podcasts, grabaciones OBS con voz clara en
-  español. Horizontal (16:9) o vertical. Idealmente 2 a 60 minutos.
-- **Aún flojos** (puedes probarlos, pero avisa que son de estos): grabaciones de
-  pantalla sin cámara (el reencuadre centra fijo), videos con 2+ personas en cuadro
-  todo el tiempo (sigue a una sola), audio con música fuerte o sin voz.
-- Sube tu video desde **Creador → Biblioteca de videos** (arrástralo) o déjalo en `input/`.
+> **Inicio · Automático · Editor · Creador · Submagic · Paquetes · Ajustes**
 
-## 5. Cómo usar el Modo Automático
+Regla mental: **Automático genera · Editor revisa · Creador controla.**
 
-Ahora es un flujo de **5 pasos** en la pestaña **Automático**:
+## 4. Modos que puedes probar
 
-1. **Elige el video.**
-2. **Elige el objetivo** ("Clips virales").
-3. **Qué incluye el paquete**: verás las etapas fijas (reframe, captions, Caption QA,
-   reporte). No se configuran aquí — es solo para que sepas qué vas a recibir.
-4. **Genera el paquete.** Verás el progreso por etapa (transcribe → analiza IA → corta
-   → reencuadra → captions). Un video de 1 hora tarda unos minutos.
-5. **Revisa en el Editor.** Al terminar aparece un botón **"Abrir en el Editor de
-   Paquete"** — úsalo; ahí revisas todo sin buscar archivos.
+- **Automático → Clásico:** video entra → paquete de clips (reframe + captions + emojis, flujo
+  histórico).
+- **Automático → v2:** lo mismo + b-roll automático, FX y verificación A/V.
+- **Creador (herramientas sueltas):** transcribir, clipper, reframe, stack, captions, Caption QA,
+  depurador.
+- **Captions desde transcript** (Whisper) o **desde SRT seleccionado** (ver §6).
+- **Editor de Paquete:** abre un paquete ya generado y revisa clip por clip (estados, alertas,
+  timeline) y su `REPORTE.md` (scores, avisos, telemetría). **Es revisión, no edición**: no
+  recalcula ni toca el video.
 
-## 6. El Editor de Paquete (la mesa de revisión)
+> No prometemos edición persistente ni timeline multipista: el "Editor" es una **mesa de revisión**
+> sobre lo ya producido.
 
-Entra por **Editor** (o por el botón del paso 5, o desde **Paquetes**). A la izquierda
-eliges el paquete y ves sus clips; al seleccionar uno, a la derecha aparece:
+## 5. GPU y codificación
 
-- **Preview del clip** (se reproduce ahí mismo).
-- **Estado** del clip (semáforo, ver §7), **score de IA** y **duración**.
-- **Alertas Caption QA** con timestamp, palabra detectada → sugerencia y confianza.
-- **Calidad por tramos** (dónde el reframe pudo perder a la persona, etc.).
-- **Timeline de revisión**: una barra con marcas de colores —
-  naranja = tramos con aviso, cian = Caption QA, amarillo = keywords, morado = popups.
-  Clic en la barra mueve el video a ese punto.
-- **Recomendación del paquete** (qué revisar, qué tramos mirar, cuál es más publicable).
-- **Botones**: descargar clip, copiar ruta, abrir `REPORTE.md`, y **marcar como
-  aprobado** (queda guardado en tu navegador, no toca los archivos).
+En **Ajustes → Codificación de video** eliges el selector:
 
-El Editor NO recalcula nada: solo muestra lo que el Modo Automático ya escribió.
+- **Automático** — NVIDIA si está disponible; si no, CPU (nunca falla por ausencia de NVENC).
+- **GPU NVIDIA (NVENC)** — fuerza NVENC; si no hay, el job se rechaza (no cae silencioso a CPU).
+- **CPU** — máxima compatibilidad (`libx264`).
 
-## 7. Cómo leer los estados de un clip
+Ten presente:
 
-Cada clip trae un **semáforo** para decidir rápido:
+- **Transcripción (CUDA) y codificación (NVENC) son cosas distintas.** Tener una no implica la otra.
+- **El reframe y los filtros NO son 100% GPU:** la lectura/resize (OpenCV), la detección facial,
+  libass y el audio siguen en **CPU**. Por eso el reframe acelera menos que un encode puro.
+- **CPU es una ruta válida y completa.** Si no tienes GPU NVIDIA, todo funciona.
 
-| Estado | Qué significa | Qué hacer |
+Al reportar rendimiento, incluye: encoder mostrado (Ajustes o el resumen del job), CPU/GPU de tu
+equipo, resolución y duración del video, y tiempos aproximados. Detalle técnico y benchmarks:
+[`GPU_NVENC.md`](GPU_NVENC.md).
+
+## 6. SRT (subtítulos como fuente oficial)
+
+Puedes asociar un archivo `.srt` a un video (pestaña de SRT en Render/Auto):
+
+- La asociación es **explícita** (tú eliges el video y el SRT); **no hay autodiscovery**.
+- El **texto del SRT es la fuente oficial** de los captions; Whisper solo aporta timings.
+- Funciones **incompatibles con la ruta SRT** (se deshabilitan con explicación): **Palabras por
+  grupo**, **Énfasis IA** y **Caption QA**. Estilo/Preset/Intensidad/Emojis siguen disponibles.
+- Para reportar un error con un SRT, **no compartas tu SRT privado** salvo que tú, como propietario,
+  decidas expresamente hacerlo. Describe el problema con un SRT de ejemplo genérico.
+
+## 7. Servicios externos (opt-in) — qué sale de tu PC
+
+Antes de probar una función externa, ten claro qué envía. Todas son **opt-in** (requieren su API
+key en `.env` o elegir la estación):
+
+| Función | Local/remoto | Qué sale de la PC |
 |---|---|---|
-| **LISTO** | Sin avisos de encuadre ni alertas de subtítulos pendientes | Puedes publicar tras un vistazo |
-| **LISTO CON AVISO** | El video está bien, pero Caption QA marcó texto a revisar | Revisa las alertas de subtítulos |
-| **REQUIERE REVISIÓN** | Hay tramos de encuadre/seguimiento que un humano debe ver | Mira los tramos marcados en el timeline |
-| **NO PUBLICAR AÚN** | No hay métricas de ese clip (reutilizado, sin re-render) | No lo publiques a ciegas; regenéralo si dudas |
+| DeepSeek / proveedor LLM | Remoto, opcional | **Texto/contexto** para análisis editorial |
+| Pexels (b-roll) | Remoto, opcional | **Búsquedas** de stock (descarga assets) |
+| Submagic (pestaña) | Remoto, opcional | Puede **subir el video** a la nube de Submagic |
+| ComfyUI (emojis/popups) | **Local** (loopback `127.0.0.1:8188`) | Assets PNG locales; no sale de la PC |
 
-## 8. Cómo interpretar Caption QA
+**No pruebes las funciones remotas con material sensible sin autorización.** Sin claves, esas capas
+quedan deshabilitadas y el pipeline local sigue.
 
-Caption QA busca palabras que Whisper probablemente transcribió mal. Cada alerta trae:
+## 8. Compatibilidad honesta
 
-- **timestamp** (dónde ocurre), **palabra detectada → sugerencia**, y **confianza**
-  (alta / media / baja).
-- En el Modo Automático las alertas son **solo lectura**: se listan pero NO se aplican
-  al video (por eso salen como "pendiente"). Tú decides si vale la pena corregir.
-- **Confianza alta** = candidata segura; **media/baja** = puede ser un falso positivo.
-- Si QA marca una palabra que estaba BIEN, eso es **oro** para nosotros: avísanos.
-
-## 9. Qué errores reportar (y cómo)
-
-Repórtanos con: qué video era (o mándalo), qué modo/botón tocaste, qué esperabas y qué
-pasó. Captura de pantalla si hay mensaje de error. Nos interesa especialmente:
-
-- La app se congela o un progreso se queda pegado sin mensaje.
-- Un render falla o sale un MP4 corrupto/negro.
-- El Editor no abre un paquete, no reproduce el clip, o muestra estados raros.
-- Captions desincronizados, texto cortado o palabras gigantes fuera de pantalla.
-- El reencuadre pierde a la persona o "tiembla".
-- Caption QA corrige/marca algo que estaba BIEN (falso positivo).
-- Un mensaje de error que no te dice qué hacer a continuación.
-- **Un botón que esperabas encontrar y no estaba.**
-
-## 10. Dónde quedan los outputs
-
-| Qué | Dónde |
+| Entorno | Estado |
 |---|---|
-| Paquetes del Modo Automático | `output/paquetes/{video}_{fecha}/` |
-| Reporte legible de cada paquete | `output/paquetes/{video}_{fecha}/REPORTE.md` |
-| Renders sueltos (Creador → Captions) | `output/` |
-| Clips cortados sin captions | `output/clips/` |
-| Transcripciones y análisis | `transcripts/` |
-| Alertas de Caption QA | `transcripts/{video}_caption_alerts.json` |
+| Windows 11 + NVIDIA | Validado |
+| Windows 11 sin NVIDIA | CPU fallback soportado por diseño |
+| Windows 10 | No validado |
+| GPU AMD | No validado |
+| Linux / macOS | No validados |
+| FFmpeg sin NVENC | Usa CPU (`libx264`) |
+| Sin modelos de detección facial | Reframe con seguimiento facial degradado (el resto sigue) |
 
-## 11. Qué NO esperar todavía (Alpha)
+No inventamos resultados de sistemas que no probamos: si usas uno "no validado", cuéntanos qué pasó.
 
-- **Publicación automática** a TikTok/Reels/Shorts: no existe; publicas a mano.
-- **Editor de video / timeline multipista / cortes manuales**: no lo habrá — no es ese
-  producto. El "Editor" de Centrito es de REVISIÓN, no de edición.
-- Otros idiomas: por ahora español.
-- Multi-persona perfecto: con 2+ caras sigue a una sola (aviso en el reporte).
-- Grabaciones de pantalla: encuadre centrado fijo, sin seguimiento.
-- Emojis/popups IA requieren ComfyUI corriendo local; si no está, salen sin emojis (normal).
-- Corrección total de transcripción: Caption QA solo autoaplica lo seguro (y en el
-  Modo Automático ni eso — solo reporta); el resto te lo deja como alerta a propósito.
+## 9. Recuperación (qué hacer si algo se corta)
+
+- **Cierras la app o se reinicia el servidor a mitad de un job:** al volver, la UI detecta el
+  **job perdido** ("El servidor se reinició o el trabajo ya no existe") y ofrece **Reintentar /
+  Cancelar / Seguir esperando** — no se queda un spinner infinito.
+- **Un paquete quedó a medias:** usa **"Reanudar clips fallidos"**; reprocesa solo los clips
+  fallidos/faltantes del mismo paquete, sin re-render de los que ya salieron bien.
+- **Un output previo válido se preserva:** un intento fallido nunca borra un MP4 bueno anterior ni
+  publica archivos de 0 bytes.
+
+## 10. Formato de feedback (obligatorio)
+
+Primero mándanos esto (NO el video real como primer paso):
+
+- pasos que seguiste;
+- captura de pantalla;
+- mensaje de error (saneado, sin rutas personales);
+- segundo aproximado donde ocurrió;
+- tu configuración (modo, encoder, estilo/preset);
+- un **fixture sintético** o una muestra autorizada.
+
+Luego responde con tus palabras:
+
+```
+Video probado:
+Modo usado:
+Duración y resolución:
+Encoder mostrado:
+Qué funcionó:
+Qué falló:
+Captura o mensaje:
+En qué segundo ocurrió:
+Qué parte fue confusa:
+Qué mejorarías:
+¿Lo usarías en un trabajo real?:
+¿Compartirías este resultado?:
+```
+
+Solo comparte el video original si es necesario y tú decides hacerlo.
+
+## 11. Limpieza segura
+
+Los resultados viven en carpetas locales que puedes borrar a mano cuando quieras:
+
+- Paquetes del Modo Automático: `output/paquetes/`
+- Renders sueltos: `output/`
+- Clips cortados: `output/clips/`
+- Transcripciones y análisis: `transcripts/`
+- Miniaturas: `thumbs/`
+
+Borra solo el contenido de esas carpetas (o la subcarpeta del paquete que ya no quieras).
+
+> **Prohibido** usar `git clean -fdx` u otros comandos destructivos generales: borrarían tu `.env`,
+> tus modelos y cualquier trabajo no versionado.
 
 ---
 
-## Checklist de prueba (marca lo que SÍ funcionó)
+## Qué NO esperar todavía (Alpha)
 
-- [ ] El video carga en Creador → Biblioteca (miniatura + duración visibles)
-- [ ] El Modo Automático genera un paquete completo sin errores
+- Publicación automática a TikTok/Reels/Shorts: publicas a mano.
+- Editor de video / timeline multipista / cortes manuales: no es ese producto.
+- Otros idiomas: por ahora español.
+- Multi-persona perfecto: con 2+ caras el reframe sigue a una sola (aviso en el reporte); no hay
+  selección manual de la persona a seguir.
+- Grabaciones de pantalla sin cámara: el reencuadre centra fijo, sin seguimiento.
+- Emojis/popups IA requieren ComfyUI local; si no está, salen sin emojis (normal).
+
+## Checklist de prueba
+
+- [ ] El video carga en Creador → Biblioteca (miniatura + duración)
+- [ ] El Modo Automático (Clásico y/o v2) genera un paquete sin errores
 - [ ] El botón "Abrir en el Editor" te llevó al paquete recién generado
 - [ ] En el Editor: el preview del clip se reproduce
-- [ ] Los estados, alertas y tramos se muestran y se entienden
 - [ ] Los captions se ven y están sincronizados con la voz
 - [ ] El reencuadre vertical mantiene a la persona en cuadro
-- [ ] El `REPORTE.md` se entiende sin ayuda (scores, avisos, telemetría)
-
-## Preguntas para tu feedback (respóndelas con tus palabras)
-
-1. ¿El **flujo** de punta a punta fue claro?
-2. ¿El **Editor** te ayudó de verdad a revisar, o fue estorbo?
-3. ¿Los **clips** sirven para publicar?
-4. ¿Los **captions** se ven bien?
-5. ¿El **reporte** se entiende?
-6. ¿Las **alertas** de Caption QA son útiles?
-7. ¿La **UI** se siente premium o confusa?
-8. ¿Qué **botón** esperabas encontrar y no estaba?
-
-Cualquier casilla que NO puedas marcar, o cualquier "no" arriba, es exactamente lo
-que queremos saber.
+- [ ] (SRT) Asociar un `.srt` y renderizar con él funciona
+- [ ] (GPU) El encoder mostrado coincide con tu selección en Ajustes
+- [ ] (Recuperación) Cerrar y reabrir ofrece Reintentar/Reanudar, sin spinner infinito

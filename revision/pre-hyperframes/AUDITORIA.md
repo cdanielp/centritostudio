@@ -16,7 +16,7 @@
 > snapshot** (metadata-only, sin leer contenido) que **falla** si el arnés crea/borra/modifica algún
 > archivo fuera del sandbox salvo el reporte de evidencia. La corrida confirmada reporta
 > `aislamiento_datos_reales = PASS` (cero cambios en `input/`, `transcripts/`, `output/`, `thumbs/`,
-> `static/`). En ningún momento se abre, imprime ni versiona `input/0717_corregido.srt`.
+> `static/`). En ningún momento se abre, imprime ni versiona `input/video.srt`.
 
 ---
 

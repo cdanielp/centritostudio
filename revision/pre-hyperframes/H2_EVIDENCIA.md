@@ -5,7 +5,7 @@
 P2-CLASSIC-REUSE, P2-PAQUETE-DIR. **NO** H3/H4/H5/HyperFrames.
 
 Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU ni red, y sin tocar
-`input/0717_corregido.srt` (nunca se abre, imprime, hashea ni versiona). ffprobe se sustituye por
+`input/video.srt` (nunca se abre, imprime, hashea ni versiona). ffprobe se sustituye por
 un stub en memoria (no invoca FFmpeg) en los tests de orquestación.
 
 ---

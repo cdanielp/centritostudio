@@ -5,7 +5,7 @@ puerto). A diferencia del primer arnes (que tenia un defecto de aislamiento dete
 esta version monta la app sobre un SANDBOX temporal completo: TODOS los directorios reales del
 repo (input/ transcripts/ output/ clips/ thumbs/ static/) se redirigen a un TemporaryDirectory y
 los mounts StaticFiles se reconstruyen para apuntar ahi. NO se abre, imprime ni versiona
-`input/0717_corregido.srt` ni ningun archivo real bajo input/ transcripts/ output/.
+`input/video.srt` ni ningun archivo real bajo input/ transcripts/ output/.
 
 Contrato de resultados (probes de seguridad):
     - 2xx con escape/exposicion            -> BLOCKER

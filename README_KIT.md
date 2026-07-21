@@ -23,7 +23,7 @@ tests es una garantía que no puede esquivar.
 
 ## Instalación (6 pasos, 5 minutos)
 
-1. Descomprime este zip EN LA RAÍZ de `C:\CLAUDECODE\ediciondevideo\` (se fusiona con `.claude/` existente; conserva tus skills previas).
+1. Descomprime este zip EN LA RAÍZ de `C:\ruta\centrito\` (se fusiona con `.claude/` existente; conserva tus skills previas).
 2. Si ya tenías un `.claude/settings.json` propio: fusiona a mano las llaves `hooks` y `permissions` (no lo pises a ciegas).
 3. Instala las herramientas en el venv: `venv\Scripts\pip install ruff pytest`
 4. Primera corrida: `check.bat` — es normal que ruff marque cosas en el código existente la primera vez; deja que Claude Code las corrija con `venv\Scripts\python -m ruff check --fix .` y `ruff format .`, revisa el diff y commitea como `chore: baseline ruff`.

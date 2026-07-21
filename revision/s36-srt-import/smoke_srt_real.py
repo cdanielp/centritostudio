@@ -5,7 +5,7 @@ Verifica el contrato contra los datos conocidos del archivo, hace round-trip sem
 sobre un temp dir y confirma que el original queda intacto (mismo sha256 antes/despues).
 
 Uso (local, el .srt real esta gitignoreado):
-    venv\\Scripts\\python revision\\s36-srt-import\\smoke_srt_real.py input\\0717_corregido.srt
+    venv\\Scripts\\python revision\\s36-srt-import\\smoke_srt_real.py input\\video.srt
 """
 
 from __future__ import annotations
