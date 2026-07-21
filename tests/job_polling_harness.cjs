@@ -97,6 +97,21 @@ function makeFetch(steps, log) {
         if (sig) sig._onabort = () => { log.concurrent--; reject(new Error("aborted")); };
       });
     }
+    // BODY colgado: los headers llegan (fetch resuelve ok) pero r.json() se cuelga leyendo el
+    // cuerpo hasta que el signal se aborta. Verifica que el timeout siga activo tras los headers.
+    if (step.bodyHang) {
+      const sig = init && init.signal;
+      log.concurrent--;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: function () {
+          return new Promise((_res, rej) => {
+            if (sig) sig._onabort = () => rej(new Error("body aborted"));
+          });
+        },
+      });
+    }
     return new Promise((resolve, reject) => {
       // resuelve en microtask para simular I/O sin timers reales
       Promise.resolve().then(() => {
@@ -413,6 +428,30 @@ test("22_fetch_colgado_se_aborta_por_timeout", async () => {
   for (let i = 0; i < 10 && terminal === null; i++) await h.clock.advance(600);
   assert(terminal && terminal.reason === "unavailable", "reason=" + (terminal && terminal.reason));
   assert(h.alog.aborts >= 1, "el fetch colgado se aborto por timeout: " + h.alog.aborts);
+  assert(h.clock.pending() === 0, "sin timers pendientes tras terminal");
+});
+
+test("24_body_colgado_se_aborta_por_timeout", async () => {
+  // Headers llegan pero r.json() se cuelga: el timeout debe seguir activo y abortar el body,
+  // tratandolo como error de red reintentable -> unavailable al limite. NUNCA queda colgado.
+  const h = makeHarness([{ bodyHang: true }], {
+    requestTimeoutMs: 500,
+    intervalMs: 100,
+    maxConsecutiveErrors: 3,
+    deadlineMs: 10 * 60 * 1000,
+  });
+  let terminal = null;
+  h.poller.track("j", {
+    onTerminal: (r) => (terminal = r),
+    requestTimeoutMs: 500,
+    intervalMs: 100,
+    maxConsecutiveErrors: 3,
+    deadlineMs: 10 * 60 * 1000,
+  });
+  await flush();
+  for (let i = 0; i < 12 && terminal === null; i++) await h.clock.advance(600);
+  assert(terminal && terminal.reason === "unavailable", "reason=" + (terminal && terminal.reason));
+  assert(h.alog.aborts >= 1, "el body colgado se aborto por timeout: " + h.alog.aborts);
   assert(h.clock.pending() === 0, "sin timers pendientes tras terminal");
 });
 

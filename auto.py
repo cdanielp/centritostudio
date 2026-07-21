@@ -131,12 +131,15 @@ def _asegurar_clips(video_path: Path, words: list, name: str) -> tuple[dict, boo
                 return json.loads(clips_json.read_text(encoding="utf-8")), True
             except (OSError, ValueError):
                 pass  # clips.json corrupto -> re-ejecuta el clipper (fail-closed)
+    # Invalida cualquier sidecar previo ANTES de re-ejecutar (Codex R2): si el clipper falla y
+    # persiste un clips.json con error, un sidecar viejo que coincida con el video haria que la
+    # proxima corrida reutilice ese clips.json de error (Auto fallaria en vez de reintentar). Sin
+    # sidecar, un fallo queda fail-closed y la corrida siguiente re-ejecuta el clipper.
+    prov_path.unlink(missing_ok=True)
     resultado = clipper.generar_clips(video_path, words, "ambos")
     if not resultado.get("error"):
         # Persiste clips.json + procedencia de forma CONSISTENTE: el sidecar solo valida un
-        # clips.json escrito para ESTE video/resultado. Si el clipper falla (p.ej. sin API key o
-        # words vacias) NO se sella procedencia -> no se reutiliza un clips.json stale de otro
-        # video con el mismo stem (Codex P2). Ambas escrituras son atomicas.
+        # clips.json escrito para ESTE video/resultado exitoso. Ambas escrituras son atomicas.
         atomic_write_json(clips_json, resultado)
         atomic_write_json(
             prov_path, acp.build_provenance(video_path, lang="es", model=_CLASSIC_MODEL)

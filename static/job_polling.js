@@ -81,6 +81,7 @@
     this.lastErrorKind = "network";
     this.timer = null;
     this.reqTimer = null;
+    this.reqTimedOut = false;
     this.controller = null;
     this.finished = false;
     this.inFlight = false;
@@ -169,41 +170,55 @@
     }
     if (this.inFlight) return; // invariante: nunca dos requests solapadas
     this.inFlight = true;
+    this.reqTimedOut = false;
     this.controller = this.poller.makeAbortController();
     var self = this;
     var signal = this.controller ? this.controller.signal : undefined;
     var url = this.poller.jobUrl(this.jobId);
 
-    // Arma el timeout del request en vuelo (P1-POLL-3: fetch colgado != spinner eterno).
+    // Arma el timeout del request en vuelo (P1-POLL-3: fetch colgado != spinner eterno). Sigue
+    // ARMADO hasta que el cuerpo JSON se resuelva: `fetch` resuelve al llegar los headers, pero
+    // `r.json()` puede colgarse leyendo el body (proxy que manda headers y calla). Al vencer,
+    // aborta el controlador -> se trata como error de red reintentable.
     if (this.requestTimeoutMs > 0) {
       this.reqTimer = this.poller.setTimer(function () {
         self.reqTimer = null;
-        if (!self.finished && self.inFlight && self.controller) self.controller.abort();
+        if (!self.finished && self.inFlight && self.controller) {
+          self.reqTimedOut = true;
+          self.controller.abort();
+        }
       }, this.requestTimeoutMs);
     }
 
     this.poller
       .fetch(url, signal ? { signal: signal } : {})
       .then(function (r) {
-        self._clearReqTimer();
         return self._handleResponse(r);
       })
-      .catch(function (err) {
-        self._clearReqTimer();
+      .catch(function () {
+        // fetch rechazado (red caída o abort por timeout ANTES de los headers).
+        self._settleRequest();
         if (self.finished) return; // abortado por cancel(): ya se entregó cancelled
-        // Error de red o abort por timeout del request: mismo contrato de errores consecutivos
-        // (no se confunde con 404 ni con cancel).
-        self.inFlight = false;
         self._retryable("network");
       });
   };
 
-  Session.prototype._handleResponse = function (r) {
+  // Cierra el request en vuelo: limpia su timer y libera inFlight. Se llama cuando la respuesta
+  // COMPLETA (headers + body) queda resuelta o rechazada, no solo al llegar los headers.
+  Session.prototype._settleRequest = function () {
+    this._clearReqTimer();
     this.inFlight = false;
-    if (this.finished) return; // cancelado mientras la respuesta estaba en vuelo
+  };
+
+  Session.prototype._handleResponse = function (r) {
+    if (this.finished) {
+      this._settleRequest();
+      return;
+    }
     var status = r && typeof r.status === "number" ? r.status : 0;
     var ok = r && r.ok;
     if (!ok) {
+      this._settleRequest(); // no hay body que parsear -> el request ya está resuelto
       if (status === 404) {
         // Servidor reiniciado / job inexistente: terminal, NO se reintenta indefinidamente.
         this._finish("lost", {});
@@ -217,17 +232,22 @@
       return;
     }
     var self = this;
+    // reqTimer sigue armado durante r.json(): un body colgado se aborta igual que un header colgado.
     return Promise.resolve()
       .then(function () {
         return r.json();
       })
       .then(function (job) {
+        self._settleRequest();
         if (self.finished) return;
         self._handleJob(job);
       })
       .catch(function () {
+        var abortada = self.reqTimedOut;
+        self._settleRequest();
         if (self.finished) return;
-        self._retryable("invalid"); // 200 con JSON inválido: contador controlado
+        // Body abortado por timeout -> error de red (transporte); JSON malformado -> invalid.
+        self._retryable(abortada ? "network" : "invalid");
       });
   };
 

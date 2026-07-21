@@ -89,6 +89,25 @@ def test_clips_exito_sella_y_luego_reutiliza(tmp_path, monkeypatch):
     assert reuse2 is True and len(llamadas) == 1
 
 
+def test_clips_rerun_fallido_limpia_sidecar_stale(tmp_path, monkeypatch):
+    # Codex R2: un sidecar viejo + clips.json corrupto -> rerun; si el clipper falla, el sidecar
+    # NO debe quedar (si no, la proxima corrida reusaria un clips.json de error).
+    import auto_classic_provenance as acp
+    import clipper
+
+    monkeypatch.setattr(auto, "CLIPS_DIR", tmp_path)
+    v = _video(tmp_path)
+    # sidecar stale que coincide con el video, pero clips.json corrupto (fuerza el rerun)
+    (tmp_path / "vid_clips.json").write_text("{corrupto", encoding="utf-8")
+    (tmp_path / "vid_clips.provenance.json").write_text(
+        __import__("json").dumps(acp.build_provenance(v, lang="es", model="auto")), encoding="utf-8"
+    )
+    monkeypatch.setattr(clipper, "generar_clips", lambda *a, **k: {"error": "LLM caido"})
+    resultado, reutilizado = auto._asegurar_clips(v, [], "vid")
+    assert resultado.get("error") and reutilizado is False
+    assert not (tmp_path / "vid_clips.provenance.json").exists()  # sidecar stale eliminado
+
+
 def test_clips_video_distinto_mismo_stem_no_reutiliza(tmp_path, monkeypatch):
     import clipper
 

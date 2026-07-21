@@ -154,8 +154,21 @@ gobiernan resume.
   `source_video` del video EXACTO (identidad estricta filename+size+mtime), restaurando el flujo
   común sin debilitar la garantía de identidad. Tests en `test_h2_classic_reuse.py`.
 
-Suite tras ronda 1: **2231 passed, 4 skipped** (4 skips = mismos symlink históricos). ruff/format/
-`check.bat` verdes; smoke H2 `blockers=0 fails=0`.
+## Correcciones post-review (Codex, ronda 2 — 2 P2)
+
+- **P2-4 · reqTimer se limpiaba al llegar los headers (`job_polling.js`):** `fetch` resuelve con los
+  headers pero `r.json()` puede colgarse leyendo el body; limpiar el timeout ahí dejaba el
+  AbortController sin disparar → hang pese a `requestTimeoutMs`. **Fix:** el timeout sigue armado
+  (y `inFlight`) hasta que el JSON del body se resuelve (`_settleRequest`); un body abortado por
+  timeout se trata como error de red. Test Node `24_body_colgado_se_aborta_por_timeout`.
+- **P2-5 · Sidecar de procedencia stale en rerun fallido (`auto._asegurar_clips`):** si el rerun
+  ocurría con un sidecar viejo que coincide + el clipper persistía un `clips.json` con error, la
+  próxima corrida reusaba ese error. **Fix:** `prov_path.unlink(missing_ok=True)` ANTES de
+  re-ejecutar; el sidecar solo se re-crea tras un éxito. Test
+  `test_clips_rerun_fallido_limpia_sidecar_stale`.
+
+Suite tras rondas 1+2: **2232 passed, 4 skipped** (4 skips = mismos symlink históricos); harness
+Node **26/26**. ruff/format/`check.bat` verdes; smoke H2 `blockers=0 fails=0`.
 
 ## H3 / H4 / H5 / HyperFrames
 
