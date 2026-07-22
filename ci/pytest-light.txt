@@ -1,0 +1,53 @@
+# Manifiesto del subconjunto PORTABLE de tests para el gate remoto ligero (H5).
+#
+# Una ruta de test por linea, relativa a la raiz del repo, orden determinista.
+# Todos: puros, sin red/FFmpeg/GPU/modelos/Node/archivos privados, cero skips.
+# Seleccion justificada en revision/pre-hyperframes/H5_TEST_MATRIX.md.
+#
+# NO agregar globs, `tests/` completo, rutas fuera de tests/ ni duplicados:
+# ci/run_pytest_light.py rechaza todo eso antes de ejecutar pytest.
+tests/test_auto_fx.py
+tests/test_auto_srt_artifacts.py
+tests/test_auto_srt_manifest.py
+tests/test_auto_srt_run.py
+tests/test_broll_planner.py
+tests/test_caption_srt.py
+tests/test_clip_srt.py
+tests/test_clip_transcript.py
+tests/test_clipper_srt.py
+tests/test_contrato_alpha.py
+tests/test_contrato_caption_qa.py
+tests/test_contrato_clipper.py
+tests/test_contrato_core.py
+tests/test_contrato_cve.py
+tests/test_contrato_fx.py
+tests/test_contrato_paquete_editor.py
+tests/test_contrato_popups.py
+tests/test_contrato_styles.py
+tests/test_cve_avoid_faces.py
+tests/test_cve_center.py
+tests/test_cve_naming.py
+tests/test_cve_presets_json.py
+tests/test_cve_spans.py
+tests/test_depurador.py
+tests/test_estilos.py
+tests/test_h1_bind_localhost.py
+tests/test_h1_path_traversal.py
+tests/test_h2_atomic_io.py
+tests/test_h2_classic_provenance.py
+tests/test_h2_classic_reuse.py
+tests/test_h2_paquete_marker.py
+tests/test_h3_check_bat.py
+tests/test_h3_launcher.py
+tests/test_h3_preflight.py
+tests/test_jobs.py
+tests/test_jobs_render_srt.py
+tests/test_nvenc_encoder.py
+tests/test_spans_glow_align.py
+tests/test_srt_align.py
+tests/test_srt_import.py
+tests/test_srt_slice.py
+tests/test_studio_auto.py
+tests/test_studio_srt_runtime.py
+tests/test_transcript_provenance.py
+tests/test_ui_auto_contract.py
