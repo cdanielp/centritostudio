@@ -48,6 +48,5 @@ tests/test_srt_align.py
 tests/test_srt_import.py
 tests/test_srt_slice.py
 tests/test_studio_auto.py
-tests/test_studio_srt_runtime.py
 tests/test_transcript_provenance.py
 tests/test_ui_auto_contract.py

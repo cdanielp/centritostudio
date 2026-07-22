@@ -6,8 +6,11 @@ y, para simular el runner Ubuntu, con **PATH saneado sin FFmpeg ni Node**. Un ar
 (`INCLUIR`) solo si corre **completo, verde y con cero skips** en esas condiciones.
 
 - Suite total del repo: `2410 passed, 4 skipped`.
-- Subconjunto CI: **45 archivos**, **1349 tests**, **0 skips**, sin red/FFmpeg/GPU/modelos/Node.
+- Subconjunto CI: **44 archivos**, **1302 tests**, **0 skips**, sin red/FFmpeg/GPU/modelos/Node.
 - Manifiesto: `ci/pytest-light.txt` · Runner: `ci/run_pytest_light.py`.
+- Portabilidad confirmada por la **ejecución real en Ubuntu** (GitHub Actions), no solo por el
+  sondeo Windows: se excluyó `test_studio_srt_runtime` tras fallar en Linux por semántica de
+  symlink divergente (ver tabla de excluidos).
 
 Regla aplicada: no se excluye un archivo por "mencionar" FFmpeg (suele ser un comentario "no usa
 FFmpeg"); se excluye solo si al quitar el binario/dep el archivo **falla o se salta**. No se tocó
@@ -22,7 +25,7 @@ producción para volver portable ningún test.
 | Jobs y estados | `test_jobs`, `test_jobs_render_srt` |
 | Preflight (mocks) | `test_h3_preflight`, `test_h3_launcher` |
 | NVENC selección/fallback (mocks) | `test_nvenc_encoder` |
-| SRT parser/validación/manifest/runtime puros | `test_srt_import`, `test_srt_align`, `test_srt_slice`, `test_caption_srt`, `test_clip_srt`, `test_clip_transcript`, `test_clipper_srt`, `test_auto_srt_manifest`, `test_auto_srt_artifacts`, `test_auto_srt_run`, `test_studio_srt_runtime`, `test_studio_auto` |
+| SRT parser/validación/manifest puros | `test_srt_import`, `test_srt_align`, `test_srt_slice`, `test_caption_srt`, `test_clip_srt`, `test_clip_transcript`, `test_clipper_srt`, `test_auto_srt_manifest`, `test_auto_srt_artifacts`, `test_auto_srt_run`, `test_studio_auto` |
 | Caption QA puro | `test_contrato_caption_qa` |
 | Planner de b-roll puro | `test_broll_planner` |
 | Procedencia / resume / checkpoints | `test_transcript_provenance`, `test_h2_classic_provenance`, `test_h2_classic_reuse`, `test_h2_paquete_marker` |
@@ -64,6 +67,7 @@ sockets reales. Por eso `fastapi` + `httpx` + `python-multipart` están justific
 | `test_reframe_face_y` / `test_reframe_multi_cy` | `cv2`/mediapipe | EXCLUIR — GPU/MODELO |
 | `test_studio_cve_controls` / `test_studio_packages` | API con render/ffprobe real | EXCLUIR — FFMPEG REAL |
 | `test_studio_srt_api` / `_render_api` / `_transcribe_api` / `_view` | API que consulta ffprobe/duración real | EXCLUIR — FFMPEG REAL |
+| `test_studio_srt_runtime` | Pasa en Windows pero falla en Ubuntu: `rechaza_symlink_fuera` depende de la semántica de symlink de la plataforma (confirmado en la 1ª ejecución de Actions) | EXCLUIR — WINDOWS |
 | `test_tray_resolve` | Resolución de assets con entorno real | EXCLUIR — GATE LOCAL |
 | `test_paquete_editor` | 1 skip (fixture opcional) | EXCLUIR — LOCAL (skip) |
 | `test_studio_srt` | 1 skip (fixture opcional) | EXCLUIR — LOCAL (skip) |

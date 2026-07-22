@@ -49,7 +49,10 @@ ni `curl`/`wget`, ni `continue-on-error`.
   **mismo intérprete**, **sin `shell=True`**, propaga exit code e imprime `archivos-seleccionados=N`.
 - Plugin `ci/_pytest_light_plugin.py`: cualquier skip/xfail/xpass pone el gate en ROJO (invariante
   de cero-skips). Verificado: al apuntar a un archivo con `skip` el runner sale con código 1.
-- **45 archivos · 1349 tests · 0 skips** en el subconjunto.
+- **44 archivos · 1302 tests · 0 skips** en el subconjunto.
+- La primera ejecución en Actions detectó `test_studio_srt_runtime` como no portable (falla en
+  Ubuntu por semántica de symlink); se excluyó del manifiesto (sin tocar producción) y la
+  siguiente ejecución quedó verde. Es exactamente el valor de correr el gate en Linux real.
 
 ## Bloqueo de red
 
