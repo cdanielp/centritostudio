@@ -1,12 +1,13 @@
 # Matriz de Readiness Pre-HyperFrames
 
-Base actual `cdcea7a` (merge PR #28, cierre GPU/NVENC). **H1 CERRADO EN MAIN — merge `4dab852`. H2
+Base actual `3cbac46` (merge PR #29, cierre H4). **H1 CERRADO EN MAIN — merge `4dab852`. H2
 CERRADO EN MAIN — merge `5779a77`. H3 CERRADO EN MAIN — merge `b59989f`. GPU/NVENC CERRADO EN MAIN —
-merge `cdcea7a`.** **H4 (documentación) técnicamente preparado en este PR, pendiente de merge. H5
-pendiente. HyperFrames no iniciada.** Baseline de suite de este commit: `2410 passed, 4 skipped`
-(4 skips = los cuatro históricos de symlink). Detalle y evidencia en `AUDITORIA.md` /
-`H1_EVIDENCIA.md` / `H2_EVIDENCIA.md` / `H3_EVIDENCIA.md` / `NVENC_EVIDENCIA.md`. Plan en
-`PLAN_DE_PR.md`.
+merge `cdcea7a`. H4 CERRADO EN MAIN — merge `3cbac46`.** **H5 (CI remoto ligero) en curso en este
+PR, pendiente de merge. HyperFrames no iniciada; gate final pendiente.** Baseline de suite (base
+antes de tests H5): `2410 passed, 4 skipped` (4 skips = los cuatro históricos de symlink; H5 no
+añade tests a la suite). Detalle y evidencia en `AUDITORIA.md` / `H1_EVIDENCIA.md` /
+`H2_EVIDENCIA.md` / `H3_EVIDENCIA.md` / `NVENC_EVIDENCIA.md` / `H4_EVIDENCIA.md` / `H5_EVIDENCIA.md`.
+Plan en `PLAN_DE_PR.md`.
 
 ## Tabla de hallazgos
 
@@ -25,7 +26,7 @@ pendiente. HyperFrames no iniciada.** Baseline de suite de este commit: `2410 pa
 | P1-OUT-3 | P1 | `auto.py`/`auto_v2.py` resume acepta 0-byte | Resume | **CERRADO EN MAIN — merge 5779a77** (`media_integrity.video_reanudable` en los 4 predicados) | no | sí | H2 |
 | P1-BOOT-1 | P1 | `core.py:108-122` FFmpeg faltante revienta críptico | Arranque/diagnóstico | **CERRADO EN MAIN — merge b59989f** (`system_preflight`+excepciones tipadas `media_deps`) | no | sí | H3 |
 | P1-BOOT-2 | P1 | `.gitignore`+`reframe_detect.py:165` modelos sin descarga | Reframe en clone limpio | **CERRADO EN MAIN — merge b59989f** (`model_assets`+`scripts/setup_models.py` verificado por SHA256) | no | no | H3 |
-| P2-DOCS-* | P2 | ESTADO/DECISIONES/PREGUNTAS/README/ALPHA | Docs/tester | **EN CURSO — H4 (este PR)** | no | no | H4 |
+| P2-DOCS-* | P2 | ESTADO/DECISIONES/PREGUNTAS/README/ALPHA | Docs/tester | **CERRADO EN MAIN — merge 3cbac46** | no | no | H4 |
 | P2-POLL-5/6/7 | P2 | `static/index.html` dedupe/aria/`pollJobP` | UI | **CERRADO EN MAIN — merge 5779a77** (dedupe por job ID + `role=status/alert`/`aria-live` + `pollJobP` estructurado) | UI | no | H2 |
 | P2-BOOT-3..6 | P2 | `arranque.bat`/`check.bat` guards | Arranque | **CERRADO EN MAIN — merge b59989f** (`studio_launcher`+`arranque.bat` wrapper+`check.bat` preflight) | no | no | H3 |
 | P2-ATOM-STATE | P2 | `auto.py:568` checkpoint + varios | Resume/estado | **CERRADO EN MAIN — merge 5779a77** (`atomic_io` en checkpoints/markers/procedencia/words/groups/REPORTE) | no | no | H2 |
@@ -40,7 +41,7 @@ pendiente. HyperFrames no iniciada.** Baseline de suite de este commit: `2410 pa
 | 0 P0 abiertos | ✅ 0 (P0-1/2/3/4 cerrados en main, `4dab852`) |
 | 0 P1 abiertos | ✅ 0 (POLL/OUT/BOOT cerrados en main) |
 | P2/P3 documentados con trigger y fase | ✅ (este doc + PLAN_DE_PR) |
-| Documentación actual sin contradicciones | ⏳ **H4 en curso (este PR)** |
+| Documentación actual sin contradicciones | ✅ PASS (H4 cerrado en main, `3cbac46`) |
 | Arranque comprobado | ✅ launcher + preflight (H3, `b59989f`) |
 | Errores principales accionables | ✅ PASS (FFmpeg/jobs con mensaje accionable) |
 | No hay spinner infinito | ✅ cerrado (`job_polling.js`, H2) |
@@ -49,18 +50,18 @@ pendiente. HyperFrames no iniciada.** Baseline de suite de este commit: `2410 pa
 | Privacidad técnica verificada | ✅ cerrada (loopback + confinamiento + allowlist, H1) |
 | Suite completa verde | ✅ 2410/4-skip |
 | Quality gate local reproducible | ✅ `check.bat` |
-| CI remoto verde o ausencia justificada | ⚠️ ausente (→ H5) |
+| CI remoto verde o ausencia justificada | ⏳ **H5 en curso (este PR, pendiente de merge)**; gate final pendiente |
 | Smoke E2E sintético completo verde | ✅ harness aislado; blockers=0 tras H1/H2/H3 |
-| Guía de testers actualizada | ⏳ **H4 en curso (este PR)** |
+| Guía de testers actualizada | ✅ PASS (H4 cerrado en main, `3cbac46`) |
 | Review fresco sin P0/P1 | ✅ (Codex por PR; 0 P0/P1) |
-| PR abierto y no mergeado | ✅ (rama `docs/h4-readiness-docs`) |
+| PR abierto y no mergeado | ✅ (rama `ci/h5-quality-gate`, H5) |
 | HyperFrames no iniciada | ✅ |
 
 **Veredicto:** P0-1..4, P1-POLL-1..4, P1-OUT-1..3 **cerrados en main** (H1 `4dab852` + H2 `5779a77`).
 P1-BOOT-1/2 y P2-BOOT-3..6 **cerrados en main** (H3 `b59989f`). GPU/NVENC **cerrado en main**
-(`cdcea7a`). Readiness técnica alcanzada: **0 P0 / 0 P1 abiertos**. Resta: **H4** (documentación —
-este PR, pendiente de merge) y **H5** (CI ligero), no bloqueantes del arranque de HyperFrames.
-HyperFrames no iniciada (bloqueada hasta gate final).
+(`cdcea7a`). H4 (documentación) **cerrado en main** (`3cbac46`). Readiness técnica alcanzada:
+**0 P0 / 0 P1 abiertos**. Resta: **H5** (CI remoto ligero — este PR, pendiente de merge), no
+bloqueante del arranque de HyperFrames. HyperFrames no iniciada (bloqueada hasta gate final).
 
 ## Fase GPU / NVIDIA NVENC (independiente, pre-HyperFrames)
 
@@ -75,8 +76,9 @@ No es un blocker de la matriz anterior (la ruta CPU sigue siendo completamente v
 | API `/api/system/video-encoder` (GET/PUT) + capacidad `nvenc` (no degrada) + UI Ajustes | ✅ |
 | Smoke real (`smoke_nvenc.py`) | ✅ **16 checks**, blockers=0, fails=0 |
 | Benchmark (`benchmark_nvenc.py`, 1080p): speedup ≥1.25x + SSIM ≥0.95 + A/V ≤50 ms | ✅ (depuración 2.52x) |
-| H4 | ⏳ en curso (este PR) |
-| H5 / HyperFrames | ⏸️ no iniciados |
+| H4 | ✅ cerrado en main (`3cbac46`) |
+| H5 | ⏳ en curso (este PR, pendiente de merge) |
+| HyperFrames | ⏸️ no iniciada |
 
 Detalle y números: `NVENC_INVENTARIO.md`, `NVENC_EVIDENCIA.md`, `docs/GPU_NVENC.md`.
 GPU/NVENC **cerrado en main** — merge `cdcea7a` (PR #28).

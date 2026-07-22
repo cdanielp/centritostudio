@@ -3,7 +3,7 @@ Actualizado: 2026-07-21 · Fase: **Alpha pre-HyperFrames**
 
 ## Estado actual (verificable)
 
-Base de este estado: `cdcea7a9860043eb175972758e660895bf9df44c` (merge PR #28, cierre GPU/NVENC).
+Base de este estado: `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` (merge PR #29, cierre H4).
 
 Merges cerrados en `main` (posteriores a F6 esencial):
 
@@ -14,19 +14,20 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 | H2 jobs y recuperación | CERRADA en main | `5779a77f0f46c861806a9d02c21b8e3b4d358a81` |
 | H3 arranque y diagnóstico | CERRADA en main | `b59989f11a8a77cc8925ca066e7aaf1e8908a855` |
 | GPU / NVENC | CERRADA en main | `cdcea7a9860043eb175972758e660895bf9df44c` |
-| **H4 documentación** | **en esta rama, pendiente de revisión/merge** | — |
-| H5 CI ligero | NO iniciado | — |
+| **H4 documentación** | **CERRADA en main** | `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` |
+| **H5 CI ligero** | **en esta rama, pendiente de revisión/merge** | — |
 | HyperFrames / F7 | NO iniciado (bloqueado hasta gate final) | — |
 
 **Readiness:**
 - P0 abiertos: **0**
 - P1 abiertos: **0**
-- H4: en curso (documentación)
-- H5: pendiente
+- H4: CERRADA en `main`
+- H5: en esta rama, pendiente de revisión/merge (gate remoto ligero pre-HyperFrames)
 - HyperFrames: bloqueado hasta gate final
 
-**Baseline de suite (este commit):** `2410 passed, 4 skipped` (4 skips históricos de symlink en
-Windows). `ruff`/formato/`check.bat` verdes.
+**Baseline de suite (base antes de tests H5):** `2410 passed, 4 skipped` (4 skips históricos de
+symlink en Windows). H5 NO añade tests a la suite: su verificación son smokes ejecutables
+(`smoke_h5_ci.py`) y el subconjunto portable del gate remoto. `ruff`/formato/`check.bat` verdes.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
