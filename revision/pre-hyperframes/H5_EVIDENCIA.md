@@ -84,10 +84,18 @@ se elimina al terminar.
 - PR **#30** `ci: añadir quality gate remoto ligero` (abierto, NO mergeado).
 - 1ª ejecución (HEAD `9609a86`): **failure** — solo `test_studio_srt_runtime` falló en Ubuntu por
   symlink; se excluyó del manifiesto (sin tocar producción).
-- Ejecución sobre el HEAD final `3f1239d` — run ID **29880434212**, workflow **Quality Gate**,
+- Ejecuciones posteriores **verdes** (`3f1239d` run 29880434212, `ba2bb83` run 29880490796).
+- HEAD final tras el fix de Codex `64cf6b0` — run ID **29880890712**, workflow **Quality Gate**,
   evento `pull_request`: **conclusion = success**. Los 14 pasos en verde (checkout, setup 3.12,
   install requirements-ci, ruff check, ruff format, smoke H4 self/real, smoke H5 self/real,
   subconjunto portable de tests con red bloqueada).
+
+## Review de Codex
+
+- **Ronda 1** (sobre `ba2bb83`): 1 hallazgo **P2** — el smoke aceptaba `permissions: read-all`
+  aunque el contrato exige exactamente `contents: read`. **Resuelto en `64cf6b0`**
+  (`violaciones_workflow_estructura` exige el mapping exacto; +3 self-tests). Hilo respondido y
+  cerrado. **Ronda 2** solicitada: sin nuevos hallazgos. 0 hilos abiertos.
 
 ## Gate local (autoritativo) y limitaciones del CI
 
