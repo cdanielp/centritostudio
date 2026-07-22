@@ -1,0 +1,64 @@
+name: Quality Gate
+
+# Gate remoto LIGERO pre-HyperFrames (H5). Valida lo portable y determinista:
+# lint, formato, consistencia documental, privacidad versionada, contratos del
+# propio workflow y un subconjunto explicito de tests puros SIN red/FFmpeg/GPU/
+# modelos/Node. NO sustituye al gate local autoritativo de Windows (check.bat).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Minimo privilegio: solo lectura del repo. Sin secrets, sin escritura, sin deploys.
+permissions:
+  contents: read
+
+# Un run por ref; los empujes nuevos cancelan el anterior.
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONIOENCODING: "utf-8"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  quality:
+    name: Lint, formato, docs, privacidad y tests puros
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias CI minimas
+        run: python -m pip install -r requirements-ci.txt
+
+      - name: Ruff check
+        run: python -m ruff check .
+
+      - name: Ruff format --check
+        run: python -m ruff format --check .
+
+      - name: Smoke H4 docs (self-test)
+        run: python revision/pre-hyperframes/smoke_h4_docs.py --self-test
+
+      - name: Smoke H4 docs (real)
+        run: python revision/pre-hyperframes/smoke_h4_docs.py --real
+
+      - name: Smoke H5 CI (self-test)
+        run: python revision/pre-hyperframes/smoke_h5_ci.py --self-test
+
+      - name: Smoke H5 CI (real)
+        run: python revision/pre-hyperframes/smoke_h5_ci.py --real
+
+      - name: Subconjunto portable de tests (red bloqueada)
+        run: python ci/run_pytest_light.py
