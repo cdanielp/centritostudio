@@ -118,15 +118,16 @@ def violaciones_workflow_estructura(data: dict) -> set[str]:
     if "schedule" in on:
         v.add("schedule")
 
+    # El contrato exige EXACTAMENTE `permissions: {contents: read}`. Cualquier otra forma es token
+    # de mas: `contents: write`, un scope adicional, `read-all`/`write-all` (read-all concede lectura
+    # de TODOS los scopes) o permisos ausentes (el default del repo puede ser read-write).
     perms = data.get("permissions")
-    if isinstance(perms, dict):
-        for clave, valor in perms.items():
-            if clave == "contents" and valor != "read":
-                v.add("permiso-contents-write")
-            elif valor != "read":
-                v.add("permiso-write")
-    elif perms is not None and perms != "read-all":
-        v.add("permiso-write")
+    if perms != {"contents": "read"}:
+        contents_val = perms.get("contents") if isinstance(perms, dict) else None
+        if contents_val == "write":
+            v.add("permiso-contents-write")
+        if contents_val != "write" or (isinstance(perms, dict) and len(perms) > 1):
+            v.add("permiso-write")
 
     if "concurrency" not in data:
         v.add("sin-concurrency")
@@ -306,8 +307,20 @@ def run_self_test() -> int:
     expect("2_prt", "pull-request-target" in estruct(_WF_BASE.replace("  pull_request:", "  pull_request_target:")))
     # 3. contents: write
     expect("3_contents_write", "permiso-contents-write" in estruct(_WF_BASE.replace("contents: read", "contents: write")))
-    # 4. otro permiso write
+    # 4. otro permiso write / read-all / write-all / scope extra (todo distinto de contents:read)
     expect("4_otro_write", "permiso-write" in estruct(_WF_BASE.replace("contents: read", "issues: write")))
+    expect(
+        "4_read_all",
+        "permiso-write" in estruct(_WF_BASE.replace("permissions:\n  contents: read", "permissions: read-all")),
+    )
+    expect(
+        "4_write_all",
+        "permiso-write" in estruct(_WF_BASE.replace("permissions:\n  contents: read", "permissions: write-all")),
+    )
+    expect(
+        "4_scope_extra",
+        "permiso-write" in estruct(_WF_BASE.replace("  contents: read", "  contents: read\n  issues: write")),
+    )
     # 5. secrets.*
     expect("5_secrets", "secrets" in violaciones_workflow_texto(_WF_BASE + "        env:\n          T: ${{ secrets.TOKEN }}\n"))
     # 6. accion no permitida
