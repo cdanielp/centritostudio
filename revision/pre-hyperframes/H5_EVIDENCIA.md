@@ -62,7 +62,7 @@ bloqueados, lo que demuestra que ningún test incluido abre red (incluidas las p
 
 ## Smokes
 
-- `smoke_h5_ci.py --self-test`: **33/33** VERDE. Cubre las 23 condiciones prohibidas del §6
+- `smoke_h5_ci.py --self-test`: **36/36** VERDE. Cubre las 23 condiciones prohibidas del §6
   (workflow ausente, `pull_request_target`, permisos write, `secrets.*`, acción no permitida,
   versión de acción no admitida, Python ≠ 3.12, sin timeout, sin concurrency, `continue-on-error`,
   `curl/wget`, pytest completo, `check.bat`, `requirements.txt`, cache, manifiesto ausente, entrada
@@ -70,7 +70,7 @@ bloqueados, lo que demuestra que ningún test incluido abre red (incluidas las p
   `shell=True`, H5/HyperFrames cerrados indebidamente) + negativos.
 - `smoke_h5_ci.py --real`: **16 checks, 0 fails** VERDE.
 - `smoke_h4_docs.py` actualizado al nuevo estado (H4 cerrado en main `3cbac46`, H5 en curso,
-  HyperFrames no iniciado): `--self-test` **28/28**, `--real` **1080 checks, 0 fails** VERDE.
+  HyperFrames no iniciado): `--self-test` **28/28**, `--real` **1083 checks, 0 fails** VERDE.
 
 ## Venv limpio (portabilidad)
 
@@ -84,18 +84,20 @@ se elimina al terminar.
 - PR **#30** `ci: añadir quality gate remoto ligero` (abierto, NO mergeado).
 - 1ª ejecución (HEAD `9609a86`): **failure** — solo `test_studio_srt_runtime` falló en Ubuntu por
   symlink; se excluyó del manifiesto (sin tocar producción).
-- Ejecuciones posteriores **verdes** (`3f1239d` run 29880434212, `ba2bb83` run 29880490796).
-- HEAD final tras el fix de Codex `64cf6b0` — run ID **29880890712**, workflow **Quality Gate**,
-  evento `pull_request`: **conclusion = success**. Los 14 pasos en verde (checkout, setup 3.12,
-  install requirements-ci, ruff check, ruff format, smoke H4 self/real, smoke H5 self/real,
-  subconjunto portable de tests con red bloqueada).
+- **Runs verdes previos** (workflow **Quality Gate**, evento `pull_request`, `conclusion=success`,
+  14 pasos verdes): `3f1239d` (run 29880434212), `ba2bb83` (run 29880490796),
+  `64cf6b0` (run 29880890712, fix de Codex), **`51e5c98` (run 29881420932)**.
+- El run del **HEAD final** (commit de normalización de evidencia) queda registrado en el body del
+  PR #30 con su run ID y `conclusion=success` una vez completado.
 
 ## Review de Codex
 
 - **Ronda 1** (sobre `ba2bb83`): 1 hallazgo **P2** — el smoke aceptaba `permissions: read-all`
-  aunque el contrato exige exactamente `contents: read`. **Resuelto en `64cf6b0`**
-  (`violaciones_workflow_estructura` exige el mapping exacto; +3 self-tests). Hilo respondido y
-  cerrado. **Ronda 2** solicitada: sin nuevos hallazgos. 0 hilos abiertos.
+  aunque el contrato exige exactamente `contents: read`. **Corregido en `64cf6b0`**
+  (`violaciones_workflow_estructura` exige el mapping exacto; +3 self-tests).
+- **Ronda 2** solicitada: **sin hallazgos**.
+- Hilos de review: **total=1, resolved=1, unresolved=0** — el único hilo quedó **formalmente
+  resuelto** en GitHub (respondido + marcado como resolved). No se solicita una tercera ronda.
 
 ## Gate local (autoritativo) y limitaciones del CI
 
