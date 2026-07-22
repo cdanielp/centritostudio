@@ -81,8 +81,13 @@ se elimina al terminar.
 
 ## Ejecución real de GitHub Actions
 
-- Run ID: _(pendiente de la primera ejecución tras abrir el PR — se registra aquí)_.
-- Conclusión exigida: `success` en el HEAD final.
+- PR **#30** `ci: añadir quality gate remoto ligero` (abierto, NO mergeado).
+- 1ª ejecución (HEAD `9609a86`): **failure** — solo `test_studio_srt_runtime` falló en Ubuntu por
+  symlink; se excluyó del manifiesto (sin tocar producción).
+- Ejecución sobre el HEAD final `3f1239d` — run ID **29880434212**, workflow **Quality Gate**,
+  evento `pull_request`: **conclusion = success**. Los 14 pasos en verde (checkout, setup 3.12,
+  install requirements-ci, ruff check, ruff format, smoke H4 self/real, smoke H5 self/real,
+  subconjunto portable de tests con red bloqueada).
 
 ## Gate local (autoritativo) y limitaciones del CI
 
