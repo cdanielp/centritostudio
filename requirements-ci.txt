@@ -1,0 +1,26 @@
+# Dependencias del gate remoto ligero (H5). NO es el entorno de ejecucion real.
+#
+# Contiene UNICAMENTE lo necesario para: ruff, formato, pytest, bloqueo de red y
+# el subconjunto PORTABLE de tests (contratos puros + APIs con TestClient en proceso).
+#
+# NO incluye deps pesadas de render/IA: faster-whisper, mediapipe, rembg, onnxruntime,
+# edge-tts, openai, torch, ctranslate2, cv2, uvicorn ni modelos. Esas viven en
+# requirements.txt y solo se instalan para el gate LOCAL completo (check.bat).
+#
+# Versiones fijadas para reproducibilidad en Python 3.12 (Ubuntu del runner).
+
+# Lint + formato
+ruff==0.15.20
+
+# Runner de tests + bloqueo de red (sin sockets reales durante los tests)
+pytest==9.1.1
+pytest-socket==0.7.0
+
+# Parseo YAML del workflow (smoke H5 en modo --real)
+PyYAML==6.0.3
+
+# Dependencias importadas por el subconjunto portable de tests
+pysubs2==1.8.1            # generacion/lectura de .ass en contratos de estilos/captions
+fastapi==0.139.0         # APIs puras via TestClient en proceso (sin abrir sockets)
+httpx==0.28.1            # transporte ASGI de starlette.testclient
+python-multipart==0.0.32 # parsing multipart de los endpoints de subida
