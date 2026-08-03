@@ -136,7 +136,28 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 
 ## Bitácora
 
-- 2026-08-03: **CVE en cues parciales — PR ABIERTO, pendiente de gate visual de K (D47).**
+- 2026-08-03: **Sin resalte en conectores — PR ABIERTO, pendiente de gate visual de K (D48).**
+  Rama `feat/stopwords-sin-resalte`, sobre `main` con S39 mergeado (`f4e7999`). En el caption
+  word-by-word, una palabra activa que sea conector (`stopwords_es.SIN_RESALTE`) se pinta con el
+  estilo base: sin color de resalte, sin relleno, sin pop. **Su tiempo NO se toca**, una
+  `is_keyword` jamas se apaga, y el gemelo de glow usa el MISMO predicado (`_sin_resalte`) para
+  que las dos capas no se descuadren. La tilde diacritica manda sobre la lista: "qué"/"sí"/"más"
+  NO son conectores. En karaoke el `\kf` se conserva pero INVISIBLE (`\2c`/`\2a` = color base):
+  quitarlo repinta las palabras futuras de toda la linea (14664 px de secundario -> 0, medido
+  sobre un quemado real), y `\kf0` hace lo mismo. Sobre los mismos dos tramos que juzgo K:
+  **52.7% -> 0.0%** y **53.0% -> 0.0%** de resaltes en palabra vacia; los resaltes bajan de 205 a
+  97 y de 202 a 95 (la mitad de las palabras ya no destaca nada al pasar: eso es lo que decide el
+  gate visual). El default es el comportamiento NUEVO; `resaltar_conectores=True` reproduce el
+  render historico **byte por byte** (arnes de S39 con `--historico`: 0 diferencias en 90
+  combinaciones x 2 corpus). Adverbios y muletillas quedan FUERA a proposito, medidos como
+  residuo (6.2% / 8.4%). Suite 2561/4 (+23). Evidencia:
+  `revision/s40-sin-resalte-conectores/EVIDENCIA.md`, renders en `output/revision-sin-resalte/`.
+- 2026-08-03: **CVE en cues parciales CERRADO en main (PR #36, merge `f4e7999`, D47).**
+  Veredicto visual de K **APROBADO**: el punch falso sobre el "2" de "2025" desaparecio y el
+  punch real sobre TERCERA aparecio. En un cue `word_partial` el enfasis automatico exige ancla
+  real; 7 punches falsos retirados y 5 reales ganados al liberar cupo de densidad. Freno de
+  densidad medido y NO tocado: apaga 204 de los 291 cues que podrian llevar enfasis (70%).
+- 2026-08-03: **CVE en cues parciales — detalle de implementacion (D47).**
   Rama `feat/cve-en-cues-parciales`. En un cue `word_partial` el enfasis automatico ahora exige
   **ancla real** (`exact_match`/`substitution_match`): un evento interpolado o absorbido no lleva
   punch. Antes, de 12 cues parciales con enfasis, **7 lo llevaban sobre timing inventado** (caso
