@@ -136,6 +136,25 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 
 ## Bitácora
 
+- 2026-08-03: **Exponer el modo parcial y el offset — PR ABIERTO, pendiente de gate visual de K
+  (D49).** Rama `feat/exponer-modo-parcial-srt`. Hasta aqui, D45/D47/D48 eran **inalcanzables**
+  desde la CLI y el Studio: `srt_modo_parcial` solo existia como parametro de API con default OFF.
+  Ahora: CLI con `--srt-parcial` / `--srt-offset` / `--srt-min-coverage`; Studio con casilla
+  "Alineado parcial de cues" **activada por defecto** (2a excepcion razonada a la regla #15, mismo
+  criterio que D48) y tarjeta del offset propuesto con boton "Aplicar offset". **Hallazgo:** el
+  flag era INERTE, no solo invisible — con `min_coverage` en su default 1.0 el porton exige anclar
+  todos los tokens, o sea la ruta historica; activar el modo parcial ahora baja el umbral a 0.5
+  (el valor con el que se aprobo la evidencia). El offset se PROPONE y jamas se auto-aplica (D45),
+  y lo aceptado caduca si cambia la propuesta, el video o falla el view. Default de la API sin
+  cambios. Byte-identidad clasica probada (0 diferencias, 90 combos x 2 corpus). Revision: 6
+  bloqueantes + 3 puntos de K sobre la pantalla. El desfase caduco aparecio por TRES puertas
+  (`openRender()`, el catch del refresh y `populateSelects()`, que reescribe el select y descarta
+  la seleccion): en vez de un tercer parche, el desfase pasa a llevar encima el video al que
+  pertenece y el render solo aplica el que es suyo. Texto de UI sin em dashes y unificado en
+  "desfase". Suite 2618/4 (+57). Auto queda FUERA: con el mismo SRT sigue estricto mientras
+  Render viene con parcial ON — inconsistencia anotada, se decide aparte. Evidencia y capturas:
+  `revision/s41-exponer-modo-parcial/`.
+
 - 2026-08-03: **Sin resalte en conectores — PR ABIERTO, pendiente de gate visual de K (D48).**
   Rama `feat/stopwords-sin-resalte`, sobre `main` con S39 mergeado (`f4e7999`). En el caption
   word-by-word, una palabra activa que sea conector (`stopwords_es.SIN_RESALTE`) se pinta con el

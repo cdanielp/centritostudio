@@ -1950,3 +1950,62 @@ decisión de estilo, no de gramática. Queda medido como residuo (6.2% y 8.4%), 
 **Verificación.** Suite `2561 passed, 4 skipped` (+23); ruff, formato y `check.bat` verdes.
 Ningún test existente tuvo que reescribirse. Detalle:
 `revision/s40-sin-resalte-conectores/EVIDENCIA.md`.
+
+---
+
+## D49 — El modo parcial y el offset dejan de ser solo API
+
+**Fecha:** 2026-08-03. **Rama:** `feat/exponer-modo-parcial-srt`. **PR PENDIENTE de gate visual de K.**
+Cambio visible en la UI del Studio.
+
+**Contexto.** `srt_modo_parcial` vivia unicamente como parametro de la API, con default OFF. Todo
+lo construido y aprobado en D45 (alineado parcial), D47 (gate de ancla real) y D48 (sin resalte en
+conectores) era **inalcanzable** desde la CLI y desde el Studio: un render con SRT desde la UI
+salia con el comportamiento viejo.
+
+**Decisiones.**
+
+1. **Se exponen tres flags en la CLI** — `--srt-parcial`, `--srt-offset MS` y
+   `--srt-min-coverage F` — y **una** casilla en el Studio ("Alineado parcial de cues"). Los tres
+   flags exigen `--srt`; `--srt-min-coverage` exige ademas `--srt-parcial`, porque sin modo parcial
+   el umbral no cambia una sola salida y aceptarlo callado seria prometer un efecto inexistente.
+2. **El default de la UI es ACTIVADO.** Es el comportamiento que K aprobo en D47/D48, con la
+   escotilla para apagarlo. Segunda excepcion razonada a la regla #15, con el mismo criterio de
+   D48: una opcion que hay que encender a mano no cambia lo que sale por defecto.
+3. **El default de la API NO cambia** (`srt_alineado_parcial=False`). Lo que cambia es que la UI
+   manda el parametro EXPLICITO en cada render (`true` o `false`), para que quede en el registro
+   del job en vez de depender de un default.
+4. **Activar el modo parcial baja el umbral por si solo.** Se descubrio al cablear el control:
+   con `min_coverage` en su default 1.0 el porton exige anclar TODOS los tokens, o sea la ruta
+   historica — el flag era **inerte**, no solo invisible. `srt_caption.umbral_por_defecto()` usa
+   `MIN_COVERAGE_PARCIAL = 0.5` cuando se pide modo parcial sin umbral explicito; 0.5 es el valor
+   con el que se midio y aprobo la evidencia de D45/D47/D48. **Consecuencia de API declarada:** un
+   cliente que ya mandara `srt_alineado_parcial=true` sin `min_coverage` pasa de recibir la salida
+   historica a recibir cues parciales de verdad.
+5. **El offset se propone, jamas se auto-aplica.** El view model publica `offset_propuesto`
+   (offset, anclas, dispersion, confianza, aplicable); la UI lo muestra con un boton y la CLI lo
+   imprime con el flag exacto para usarlo. Un offset mal estimado desincroniza el video entero en
+   silencio (D45), asi que aplicarlo es siempre una decision explicita.
+6. **El desfase PERTENECE a un video, por construccion.** Se guarda como `{video, ms}` y el
+   render solo lo manda si es del video que se esta renderizando; la tarjeta se oculta si la
+   propuesta no es del video seleccionado. Ademas caduca por evento (propuesta nueva, propuesta
+   perdida, cambio de video, `GET /srt/view` fallido). La invariante por construccion existe
+   porque el mismo fallo aparecio por TRES puertas distintas: `openRender()` (fija el select a
+   mano, sin onchange), el `catch` de `refresh()`, y `populateSelects()` (reescribe el select y
+   descarta la seleccion). Caducar en cada puerta habria sido el tercer parche del mismo tipo;
+   llevar el video encima cierra la clase entera.
+7. **El sidecar y el resumen del job declaran con QUE se rindio**: modo, umbral por cue y offset
+   aplicado, separado de la propuesta. Tambien cuando se uso el modo historico.
+
+**Fuera de alcance, anotado.** Auto no recibe el parametro: con el MISMO SRT, Auto sigue estricto
+mientras Render viene con parcial ON por default. Inconsistencia de producto conocida, se decide
+aparte.
+
+**Texto de la UI.** Sin em dashes en texto visible (regla del proyecto), y una sola palabra
+para el concepto: "desfase" en la pantalla, "offset" solo en la CLI porque ahi nombra el flag
+que hay que teclear (`--srt-offset`). Ambas cosas con test.
+
+**Verificacion.** Suite `2618 passed, 4 skipped` (+57); ruff, formato y `check.bat` verdes.
+Byte-identidad de la ruta clasica probada con el arnes de S39/S40 (0 diferencias, 90 combinaciones
+x 2 corpus). Smoke real de la CLI y capturas del Studio con backend real. Detalle:
+`revision/s41-exponer-modo-parcial/EVIDENCIA.md`.

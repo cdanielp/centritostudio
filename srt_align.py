@@ -34,6 +34,13 @@ ALIGN_VERSION = 1
 # honesto en vez de inventarle timing. Ver D36B-2/D36B-3 y PREGUNTAS (threshold final).
 DEFAULT_MIN_COVERAGE = 1.0
 
+# Umbral por cue cuando se pide MODO PARCIAL sin especificar uno (S41). Con el default 1.0 el
+# porton exige anclar TODOS los tokens, que es exactamente la ruta historica: activar el modo
+# parcial y dejar el umbral en 1.0 no produce ni un solo cue parcial. 0.5 es el valor con el que
+# se midio y se aprobo visualmente la evidencia de D45/D47/D48 sobre material real (822 cues
+# parciales de 1072). Pedir `min_coverage` explicito sigue mandando sobre esto.
+MIN_COVERAGE_PARCIAL = 0.5
+
 # Similitud lexica minima (0..1) para aceptar una SUSTITUCION como ancla real. Se calcula
 # con distancia de Levenshtein normalizada por la longitud maxima de los tokens
 # NORMALIZADOS. Ademas, una sustitucion solo cuenta si el cue tiene >=1 exact_match: asi

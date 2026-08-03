@@ -19,6 +19,10 @@ from styles import get_style
 
 _TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 
+# Tope del offset explicito (1 hora). Mismo limite que valida la API: mas alla no es un
+# desajuste de subtitulos, es un archivo equivocado.
+_SRT_OFFSET_MAX_MS = 3_600_000
+
 
 def _load_or_transcribe(
     video_path: Path, stem: str, lang: str, device: str, compute: str, model_path: str
@@ -215,6 +219,33 @@ def _aplicar_preset_srt(
     return merged, plan
 
 
+def _reportar_modo_srt(result, payload: dict) -> None:
+    """Dice QUE modo se uso y QUE offset se aplico, y publica el offset PROPUESTO (S41).
+
+    La propuesta se imprime siempre y jamas se aplica sola (D45): un offset mal estimado
+    desincroniza el video entero en silencio. Si difiere del aplicado, se sugiere el flag.
+    """
+    modo = "parcial" if result.modo_parcial else "solo cues completos"
+    print(
+        f"[srt] modo: {modo} | umbral por cue {result.min_coverage} | "
+        f"offset aplicado {result.offset_ms} ms"
+    )
+    prop = (payload.get("offset", {}) or {}).get("propuesta") or {}
+    if not prop:
+        return
+    sugerido = int(prop.get("offset_ms") or 0)
+    detalle = (
+        f"{sugerido} ms (anclas {prop.get('n_anclas')}, confianza {prop.get('confianza')}, "
+        f"aplicable {prop.get('aplicable')})"
+    )
+    if sugerido == result.offset_ms:
+        # ASCII estricto: la consola de Windows no siempre es cp1252 y un em dash la revienta.
+        print(f"[srt] offset propuesto: {detalle} - ya aplicado")
+    else:
+        print(f"[srt] offset propuesto: {detalle}")
+        print(f"[srt] no se aplica solo: para usarlo, repite con --srt-offset {sugerido}")
+
+
 def _reportar_parciales(plan) -> None:
     """Totales por razon del gate de cues parciales (S39). Silencioso si no hubo parciales."""
     import cve_parciales  # noqa: PLC0415
@@ -248,6 +279,9 @@ def _process_srt(
     fx_preset: str | None,
     qa_opts: dict | None,
     srt_path: Path,
+    srt_parcial: bool = False,
+    srt_offset_ms: int = 0,
+    srt_min_coverage: float | None = None,
 ) -> tuple[float, dict]:
     """Render con SRT como texto oficial (S36-B). Whisper solo aporta timings.
 
@@ -282,12 +316,20 @@ def _process_srt(
 
     transcript = _load_or_transcribe(video_path, stem, lang, device, compute, model_path)
     groups, result, payload = srt_caption.preparar_desde_srt(
-        srt_path, transcript["words"], video_duration_ms=video_ms, words_file=f"{stem}_words.json"
+        srt_path,
+        transcript["words"],
+        video_duration_ms=video_ms,
+        words_file=f"{stem}_words.json",
+        offset_ms=srt_offset_ms,
+        modo_parcial=srt_parcial,
+        min_coverage=srt_min_coverage,
     )
     print(
         f"[srt] {result.n_cues} cues | {result.word_aligned} word-aligned | "
-        f"{result.cue_fallback} fallback | cobertura {result.coverage:.2f}"
+        f"{result.word_partial} parciales | {result.cue_fallback} fallback | "
+        f"cobertura {result.coverage:.2f}"
     )
+    _reportar_modo_srt(result, payload)
 
     if plan:  # preset CVE: enriquece SOLO los cues alineados; los fallback siguen estaticos
         groups, plan = _aplicar_preset_srt(groups, plan, stem, width, height)
@@ -344,6 +386,9 @@ def process_video(
     fx_preset: str | None = None,
     *,
     srt_path: Path | None = None,
+    srt_parcial: bool = False,
+    srt_offset_ms: int = 0,
+    srt_min_coverage: float | None = None,
 ) -> tuple[float, dict]:
     if srt_path is not None:
         return _process_srt(
@@ -363,6 +408,9 @@ def process_video(
             fx_preset,
             qa_opts,
             srt_path,
+            srt_parcial,
+            srt_offset_ms,
+            srt_min_coverage,
         )
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -513,6 +561,32 @@ def _run_clips_cli(input_path: Path, tipos: str, srt_path: Path | None = None) -
     print(f"[clips] {n} clip(s) generados en output/clips/")
 
 
+def _validar_flags_srt(args, srt_path: Path | None) -> None:
+    """Guardas de los flags de alineado del SRT (S41). Error de usuario -> exit no cero.
+
+    Modifican como se alinea el SRT, asi que sin `--srt` no significan nada: pedirlos igual es
+    un error, no algo que se ignore callado. Mismos limites que valida la API.
+    """
+    # `is not None` y no truthiness: `--srt-min-coverage 0.0` es un valor pedido, no un vacio.
+    pedidos = args.srt_parcial or args.srt_offset or args.srt_min_coverage is not None
+    if srt_path is None and pedidos:
+        print("[ERROR] --srt-parcial / --srt-offset / --srt-min-coverage exigen --srt")
+        sys.exit(1)
+    if abs(int(args.srt_offset)) > _SRT_OFFSET_MAX_MS:
+        print(f"[ERROR] --srt-offset fuera de rango (maximo +-{_SRT_OFFSET_MAX_MS} ms)")
+        sys.exit(1)
+    if args.srt_min_coverage is None:
+        return
+    if not 0.0 <= args.srt_min_coverage <= 1.0:
+        print("[ERROR] --srt-min-coverage debe estar entre 0.0 y 1.0")
+        sys.exit(1)
+    # Sin modo parcial el porton exige anclar TODOS los tokens, asi que el umbral no cambia una
+    # sola salida. Aceptarlo callado seria prometer un efecto que no existe.
+    if not args.srt_parcial:
+        print("[ERROR] --srt-min-coverage solo aplica con --srt-parcial (sin el, no cambia nada)")
+        sys.exit(1)
+
+
 def main() -> None:
     args = build_parser().parse_args()
 
@@ -521,6 +595,8 @@ def main() -> None:
     rebote = None if args.rebote is None else (args.rebote == "on")
     qa_opts = qa_opts_de_args(args)
     srt_path = Path(args.srt) if args.srt else None
+
+    _validar_flags_srt(args, srt_path)
 
     # Guardas de --srt (S36-B): opt-in, un solo video, y sin Caption QA (el SRT es el texto
     # oficial; Caption QA opera sobre el transcript de Whisper y en S36-B no hay auditor SRT).
@@ -592,6 +668,9 @@ def main() -> None:
                 qa_opts=qa_opts,
                 fx_preset=args.fx,
                 srt_path=srt_path,
+                srt_parcial=args.srt_parcial,
+                srt_offset_ms=int(args.srt_offset),
+                srt_min_coverage=args.srt_min_coverage,
             )
         except _SrtUserError as exc:
             # Errores de USUARIO del SRT: mensaje corto con basename, exit no cero (no traceback).
