@@ -136,6 +136,22 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 
 ## Bitácora
 
+- 2026-08-03: **CVE en cues parciales — PR ABIERTO, pendiente de gate visual de K (D47).**
+  Rama `feat/cve-en-cues-parciales`. En un cue `word_partial` el enfasis automatico ahora exige
+  **ancla real** (`exact_match`/`substitution_match`): un evento interpolado o absorbido no lleva
+  punch. Antes, de 12 cues parciales con enfasis, **7 lo llevaban sobre timing inventado** (caso
+  testigo: el SRT parte `2025` en `2`+`025` y el punch crecia sobre el `2`). Capas:
+  `stopwords_es.py` (base historica congelada + lista ampliada exclusiva del gate),
+  `kind` propagado hasta el motor, `cve_parciales.py` (gate + auditoria), `gate=None` opcional en
+  `cve.aplicar_preset`. **Byte-identidad clasica PROBADA** con arnes (90 combinaciones x 2 corpus,
+  antes/despues con `git stash`: 0 diferencias). Sidecar y consola publican, por cue parcial,
+  preset si/no + razon (`sin_candidato`/`sin_ancla_real`/`freno_densidad`/`antispam_r7`) y los
+  totales. **Freno de densidad NO aflojado** (decision de K): apaga 204 de los 291 cues que podrian
+  llevar enfasis (70%) — con el default `baja` el tope es 5 keywords para TODO el video, dure 3 o
+  40 minutos; queda para decidirse aparte con esos numeros. Efecto neto: 7 punches falsos retirados
+  y **5 reales ganados** (al liberar cupo de densidad). Suite 2538/4 (+36). Evidencia:
+  `revision/s39-cve-parciales/EVIDENCIA.md`, renders en `output/revision-cve-parciales/`.
+
 - 2026-08-03: **v1 CERRADA — tag `v1.0.0`.** Cierre formal del pipeline local de captions y
   edicion asistida. Ver "## v1 — que la compone" arriba (motores, presets, contratos, naming) y
   "## Deuda conocida de v1.1". HyperFrames sigue **NO iniciado** y detras del gate final.

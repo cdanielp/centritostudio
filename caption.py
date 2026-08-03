@@ -211,7 +211,17 @@ def _aplicar_preset_srt(
     )
     if aviso:
         print(f"[cve] {aviso}")
+    _reportar_parciales(plan)
     return merged, plan
+
+
+def _reportar_parciales(plan) -> None:
+    """Totales por razon del gate de cues parciales (S39). Silencioso si no hubo parciales."""
+    import cve_parciales  # noqa: PLC0415
+
+    linea = cve_parciales.linea_reporte(getattr(plan, "kw_parciales", None))
+    if linea:
+        print(linea)
 
 
 def _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset) -> str:

@@ -448,8 +448,11 @@ def test_preset_srt_llama_aplicar_preset_solo_word_aligned(tmp_path, monkeypatch
     _mock_engine_full(monkeypatch, tmp_path, _tw(("hola", 0.0, 0.5), ("mundo", 0.6, 1.0)))
     recibido = {}
 
-    def _spy(groups, plan, brain, w, h, kw):
+    # S39: el engine recibe ademas `gate` (gate de cues parciales). Sin cues `word_partial`
+    # debe llegar None — la ruta se comporta exactamente como antes del gate.
+    def _spy(groups, plan, brain, w, h, kw, tray=None, gate=None):
         recibido["groups"] = groups
+        recibido["gate"] = gate
         return groups, plan, None
 
     monkeypatch.setattr(cve, "aplicar_preset", _spy)
@@ -465,6 +468,7 @@ def test_preset_srt_llama_aplicar_preset_solo_word_aligned(tmp_path, monkeypatch
     )
     modes = [g["timing_mode"] for g in recibido["groups"]]
     assert modes == ["word_aligned"]  # el cue_fallback NUNCA se pasa al preset
+    assert recibido["gate"] is None  # sin cues parciales no se arma gate
 
 
 def test_aplicar_preset_srt_conserva_fallback_estatico(monkeypatch):
@@ -480,13 +484,18 @@ def test_aplicar_preset_srt_conserva_fallback_estatico(monkeypatch):
         },
     ]
 
-    def _spy(word_groups, plan, *a):
+    # S39: `**k` absorbe el `gate` keyword-only; el plan pasa a ser un RenderPlan real porque
+    # con cues parciales el gate escribe su auditoria en `plan.kw_parciales` (un object()
+    # pelado no acepta atributos). Aqui NO hay parciales, pero el plan realista evita que el
+    # test pase por una razon distinta de la que mide.
+    def _spy(word_groups, plan, *a, **k):
         for g in word_groups:
             g["marcado"] = True
         return word_groups, plan, None
 
     monkeypatch.setattr(cve, "aplicar_preset", _spy)
-    merged, _plan = caption._aplicar_preset_srt(groups, object(), "stem", 1080, 1920)
+    plan = cve.resolve_preset("keyword_punch")
+    merged, _plan = caption._aplicar_preset_srt(groups, plan, "stem", 1080, 1920)
     fb = merged[1]
     assert fb["timing_mode"] == "cue_fallback" and "marcado" not in fb  # intacto
     assert merged[0].get("marcado") is True  # el word_aligned si paso por el motor

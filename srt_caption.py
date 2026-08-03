@@ -41,6 +41,11 @@ def _word_group(gi: int, cue) -> dict:
             "start": round(w.start_ms / 1000, 3),
             "end": round(w.end_ms / 1000, 3),
             "line_idx": w.line_idx,
+            # Procedencia del timing de ESTA palabra (S39): `exact_match`/`substitution_match`
+            # = ancla real medida; `interpolado`/`absorbido` = tiempo repartido por
+            # `srt_eventos`. El motor de render lo ignora (clave aditiva); lo consume el gate
+            # de `cve_parciales` para no poner el enfasis sobre un timing inventado.
+            "kind": w.kind,
         }
         for w in cue.words
     ]

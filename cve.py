@@ -59,6 +59,9 @@ class RenderPlan:
     # Descartadas por el filtro anti-debil (D22): brain words rechazadas por stopword/corta.
     # aplicar_engine lo rellena; el sidecar de seleccion lo publica (transparencia).
     kw_descartadas: list = field(default_factory=list)
+    # Auditoria del gate de cues parciales (S39): lo rellena `srt_render` cuando el render
+    # viene de un SRT con `modo_parcial`. None = no aplica (ruta clasica o sin cues parciales).
+    kw_parciales: dict | None = None
 
 
 # Presets built-in v1 (§1). style = nombre de estilo existente; el resto son modos.
@@ -267,6 +270,7 @@ def aplicar_preset(
     video_h: int,
     manual_kw_path: Path | None = None,
     tray_csv_path: Path | None = None,
+    gate=None,
 ) -> tuple[list[dict], RenderPlan, str | None]:
     """Ruta completa del preset: brain fail-open + engine + posicion + ajuste de plan.
 
@@ -275,6 +279,8 @@ def aplicar_preset(
     `manual_kw_path` = sidecar {stem}_keywords.json opcional (BLOQUE 3, fail-open).
     `tray_csv_path` = trayectoria_{stem}.csv del reframe para avoid_faces (fail-open):
     ausente/sin senal -> posicion del preset intacta (bottom = ruta historica).
+    `gate` = `cve_parciales.GateParciales` opcional (S39), solo lo pasa la ruta SRT con cues
+    parciales. None = ruta clasica, sin un solo cambio de comportamiento.
     """
     brain_data = None
     aviso = None
@@ -287,7 +293,7 @@ def aplicar_preset(
     if plan.keywords_mode in ("brain", "auto+brain") and brain_data is None:
         aviso = "Sin brain.json: el preset rinde sin keywords semanticas (Analizar IA lo habilita)"
     manual_entries = cargar_manual_keywords(manual_kw_path)
-    groups = aplicar_engine(groups, plan, video_w, video_h, brain_data, manual_entries)
+    groups = aplicar_engine(groups, plan, video_w, video_h, brain_data, manual_entries, gate)
     groups = resolver_posicion_captions(groups, plan, tray_csv_path)
     plan = ajustar_plan_a_groups(plan, groups)
     return groups, plan, aviso
@@ -536,6 +542,28 @@ def _marcas_finales(
     return marcas
 
 
+def _aplicar_marcas(
+    limpios: list[dict], marcas: list[tuple[int, int, str]], plan: RenderPlan, w: int, h: int
+) -> list[dict]:
+    """Escribe las marcas elegidas sobre copias de los grupos, ajustando el fit de escala.
+
+    Extraido de `aplicar_engine` (S39) sin cambiar una linea de su logica: la funcion habia
+    superado el limite de complejidad al ganar las ramas del gate.
+    """
+    fontsize = _scaled_fontsize(w, h, plan.style_cfg)
+    ancho_util = int(w * (1.0 - SAFE_LEFT_PCT - SAFE_RIGHT_PCT))
+    result = list(limpios)
+    for g_idx, w_idx, regla in marcas:
+        escala = None
+        if plan.kw_punch_scale > ck.KW_SCALE_BASE or regla == "manual_big":
+            palabra = limpios[g_idx]["words"][w_idx]["text"]
+            escala = ck.ajustar_escala_punch(palabra, fontsize, ancho_util, plan.kw_punch_scale)
+            if escala is None:
+                print(f"[cve] '{palabra}' no cabe ni reducida: punch desactivado (kw normal)")
+        result[g_idx] = _marcar_grupo(result[g_idx], w_idx, regla, escala)
+    return result
+
+
 def aplicar_engine(
     groups: list[dict],
     plan: RenderPlan,
@@ -543,12 +571,14 @@ def aplicar_engine(
     video_h: int,
     brain_data: dict | None = None,
     manual_entries: list | None = None,
+    gate=None,
 ) -> list[dict]:
     """Marca keywords en los grupos segun el plan. Fallo -> grupos originales (§8 nivel 3).
 
     Las marcas manuales se consumen SIEMPRE (aun con keywords off): el ASS jamas
     muestra corchetes de marca (voto #34). `manual_entries` = sidecar {stem}_keywords.json
     (BLOQUE 3): candidatos manuales que ganan a reglas/brain y no se filtran por stopword.
+    `gate` (S39) = filtro + auditoria de cues parciales; None deja la seleccion tal cual.
     """
     try:
         limpios, manuales = _consumir_marcas(groups)
@@ -560,6 +590,8 @@ def aplicar_engine(
     manuales = list(manuales) + ck.candidatos_manuales(limpios, manual_entries)
     plan.kw_descartadas = []  # reset antes de cualquier retorno (no arrastrar de un render previo)
     if plan.keywords_mode == "off" and not manuales:
+        if gate is not None:
+            gate.registrar_sin_seleccion(limpios)  # preset sin keywords: se dice, no se calla
         return limpios
     try:
         candidatos = list(manuales)
@@ -570,24 +602,29 @@ def aplicar_engine(
         # Manuales: TODAS las palabras del span (exentas de 1-por-grupo y densidad, #34).
         # Autos: 1 por grupo + freno de densidad, solo en grupos SIN manual (manual gana).
         manual_map = ck.elegir_manuales(candidatos)
-        elegidos = ck.elegir_keywords(candidatos, len(limpios), plan.kw_densidad)
+        # Gate de cues parciales (S39): descarta las automaticas que caerian sobre timing
+        # inventado ANTES de la seleccion, para que el cupo de densidad se gaste en cues que
+        # si pueden usarlo. Sin gate, la lista pasa intacta.
+        if gate is not None:
+            candidatos = gate.filtrar_candidatos(limpios, candidatos, manual_map)
+        seleccion = ck.elegir_keywords_detallado(candidatos, len(limpios), plan.kw_densidad)
+        elegidos = seleccion.elegidas
         marcas = _marcas_finales(manual_map, elegidos)
+        # El registro va DESPUES de que las marcas existan y JUSTO ANTES de cada retorno con
+        # exito: si algo revienta entre medias, el `except` devuelve grupos sin marcar y la
+        # auditoria no puede quedar afirmando un enfasis que no se aplico.
         if not marcas:
+            if gate is not None:
+                gate.registrar_seleccion(limpios, seleccion, manual_map, plan.kw_densidad)
             return limpios
 
-        fontsize = _scaled_fontsize(video_w, video_h, plan.style_cfg)
-        ancho_util = int(video_w * (1.0 - SAFE_LEFT_PCT - SAFE_RIGHT_PCT))
-        result = list(limpios)
-        for g_idx, w_idx, regla in marcas:
-            escala = None
-            if plan.kw_punch_scale > ck.KW_SCALE_BASE or regla == "manual_big":
-                palabra = limpios[g_idx]["words"][w_idx]["text"]
-                escala = ck.ajustar_escala_punch(palabra, fontsize, ancho_util, plan.kw_punch_scale)
-                if escala is None:
-                    print(f"[cve] '{palabra}' no cabe ni reducida: punch desactivado (kw normal)")
-            result[g_idx] = _marcar_grupo(result[g_idx], w_idx, regla, escala)
+        result = _aplicar_marcas(limpios, marcas, plan, video_w, video_h)
+        if gate is not None:
+            gate.registrar_seleccion(limpios, seleccion, manual_map, plan.kw_densidad)
         print(f"[cve] preset {plan.preset}: {len(marcas)} keyword(s) en {len(limpios)} grupos")
         return result
     except Exception as e:  # fallback total: captions con el estilo del preset, sin marcas
+        if gate is not None:
+            gate.anular()  # el render salio sin marcas: la auditoria no puede decir otra cosa
         print(f"[cve] engine fallo ({e}) - render sigue con captions simples del estilo")
         return limpios

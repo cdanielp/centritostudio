@@ -1840,3 +1840,60 @@ gana `source_media`. Registrado como deuda de v1.1 en `ESTADO.md`.
 **Verificación.** +16 tests en rojo primero, incluidos el guard cableado en el worker (job en
 `error`, sin quemar) y un test del caso REAL que descubre el par en disco sin versionar el nombre
 del material del usuario. Suite `2502 passed, 4 skipped`; ruff, formato y `check.bat` verdes.
+
+---
+
+## D47 — CVE en cues parciales: el énfasis solo sobre timing medido
+
+**Fecha:** 2026-08-03. **Rama:** `feat/cve-en-cues-parciales`. **PR PENDIENTE de gate visual de K.**
+
+**Contexto.** S38 abrió los cues `word_partial`: timing real donde hay ancla, interpolado en los
+huecos, y absorción del token que no llega a `MIN_EVENTO_MS`. `srt_render` ya le pasaba esos cues
+al motor CVE (su docstring decía "solo word_aligned"; llevaba desactualizado desde S38), pero el
+motor **no podía saber** la procedencia del timing: `srt_caption` descartaba el campo `kind`. Sobre
+el material real, de 12 cues parciales con énfasis, **7 lo llevaban sobre timing inventado**. El
+caso testigo: el SRT parte `2025` en `2` + `025`, R1 dispara sobre el fragmento y el punch crecía
+sobre un `2` suelto.
+
+**Decisiones.**
+
+1. **En un cue parcial, la keyword AUTOMÁTICA exige ancla real.** Solo `exact_match` y
+   `substitution_match`. Un evento `interpolado` (tiempo repartido) o `absorbido` (muestra varios
+   tokens a la vez) no puede llevar el punch. Los `word_aligned` no pasan por el gate: todos sus
+   tokens son anclas reales.
+2. **Las marcas manuales quedan exentas.** Destacar es intención explícita del usuario y gana a
+   todo (voto #34), aunque el timing de esa palabra sea interpolado.
+3. **La lista de stopwords se extrae a `stopwords_es.py` con DOS listas.** `STOPWORDS_BASE` es el
+   mismo objeto que consumía el motor (identidad, no copia; el literal histórico queda congelado en
+   un test). `STOPWORDS_ES` la amplía y la consume **únicamente** el gate: la ruta clásica no la ve.
+4. **La razón se publica, y es la verdadera.** Vocabulario cerrado por cue parcial: `con_preset`,
+   `manual`, `sin_candidato`, `sin_ancla_real`, `freno_densidad`, `antispam_r7`. La cuarta razón no
+   estaba pedida y se agrega igual: el anti-spam de R7 tumba 84 cues del material real y meterlos en
+   `freno_densidad` habría inflado esa cifra un 41% — exactamente el defecto que costó D45. La
+   distinción sale de `elegir_keywords_detallado`, no de una heurística. La revisión añadió una
+   séptima, `keywords_off`: un preset que no selecciona keywords no es una decisión del gate, y
+   reportar cero cues parciales se leía como "no había parciales".
+6. **La auditoría se escribe DESPUÉS de aplicar las marcas.** El registro corría antes y el
+   fallback fail-open del engine devolvía grupos sin marcar mientras el resumen afirmaba
+   `preset: true`; ahora el `except` llama a `gate.anular()`. Y `plan.kw_parciales` se resetea
+   siempre, para que un `RenderPlan` reutilizado no arrastre la auditoría del render anterior.
+5. **Byte-identidad de la ruta clásica, probada.** Arnés `byte_identidad.py`: 90 combinaciones
+   (preset × intensidad × densidad, estilo × pop) sobre dos corpus (sintético y transcript real de
+   6736 words), corrido antes y después con `git stash` en medio. **0 diferencias** en el `.ass` y
+   en el sidecar de selección. El sidecar solo gana la clave `parciales` cuando hubo cues parciales.
+
+**El freno de densidad NO se afloja aquí (decisión explícita de K).** Números sobre el material
+real (822 cues parciales): de los 819 sin énfasis, el freno explica el 24.9% (204), `sin_candidato`
+el 58.6% (480) y el gate nuevo solo el 6.2% (51). Pero mirando **solo** los cues que podrían llevar
+énfasis (291 con candidata válida sobre ancla real), el freno apaga **204 de 291 = 70%**: con el
+default `baja` el tope es **5 keywords para todo el video**, dure 3 minutos o 40. El doble freno de
+D21 se calibró sobre clips cortos, donde manda el porcentaje; en un video largo manda siempre el
+tope absoluto, que no escala con la duración. Queda registrado con números para decidirse aparte.
+
+**Efecto neto: no es solo restar.** Al descartar candidatas inválidas antes de la selección, el
+cupo de densidad se libera y otros cues lo aprovechan: 7 punches falsos retirados, **5 punches
+reales ganados**. Ambos casos están en la evidencia visual.
+
+**Verificación.** Suite `2538 passed, 4 skipped` (+36); ruff, formato y `check.bat` verdes. Dos
+tests de la ruta SRT reescritos uno por uno, con su justificación, en la EVIDENCIA — ninguno
+borrado ni relajado. Detalle: `revision/s39-cve-parciales/EVIDENCIA.md`.

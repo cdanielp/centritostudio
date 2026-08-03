@@ -23,20 +23,33 @@ def apply_preset_to_srt_groups(
     height: int,
     manual_keywords_path: Path | None = None,
 ) -> tuple[list, object, str | None]:
-    """Aplica el preset CVE SOLO a los grupos word_aligned; conserva intactos los fallback.
+    """Aplica el preset CVE a los grupos con timing por palabra; deja intactos los fallback.
 
-    Un preset jamas convierte un `cue_fallback` en word-by-word (D36B-3). Reune preservando
-    el orden temporal, reasigna IDs deterministas y es fail-open ante un cambio de conteo
-    (defensivo: `cve.aplicar_preset` enriquece 1:1, así que no ocurre en la practica).
-    Devuelve (groups, plan, aviso); el `aviso` lo imprime el llamador (paridad con la CLI).
+    Un preset jamas convierte un `cue_fallback` en word-by-word (D36B-3). Los `word_partial`
+    (S38) SI entran — tienen timing por palabra — pero pasan por el gate de `cve_parciales`
+    (S39): en un cue parcial el enfasis automatico solo se pone sobre una palabra con ancla
+    REAL, nunca sobre un timing interpolado o absorbido. La auditoria del gate viaja en
+    `plan.kw_parciales` (sidecar + reporte).
+
+    Reune preservando el orden temporal, reasigna IDs deterministas y es fail-open ante un
+    cambio de conteo (defensivo: `cve.aplicar_preset` enriquece 1:1, así que no ocurre en la
+    practica). Devuelve (groups, plan, aviso); el `aviso` lo imprime el llamador (paridad con
+    la CLI).
     """
     import cve  # noqa: PLC0415
+    import cve_parciales  # noqa: PLC0415
 
     word_idx = [i for i, g in enumerate(groups) if g.get("timing_mode") != "cue_fallback"]
     word_groups = [groups[i] for i in word_idx]
+    # El gate solo se arma si hay cues parciales: sin ellos la ruta es la de siempre.
+    hay_parciales = any(g.get("timing_mode") == cve_parciales.MODO_PARCIAL for g in word_groups)
+    gate = cve_parciales.GateParciales() if hay_parciales else None
     processed, plan, aviso = cve.aplicar_preset(
-        word_groups, plan, brain_path, width, height, manual_keywords_path
+        word_groups, plan, brain_path, width, height, manual_keywords_path, gate=gate
     )
+    # Siempre se asigna, tambien sin gate: un `RenderPlan` reutilizado no puede arrastrar la
+    # auditoria de un render anterior (mismo blindaje que `kw_descartadas` en el engine).
+    plan.kw_parciales = gate.resumen() if gate is not None else None
     merged = list(groups)
     if len(processed) == len(word_idx):
         for pos, g in zip(word_idx, processed, strict=True):
