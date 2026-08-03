@@ -64,6 +64,10 @@ FORBIDDEN_FIGURES = [
     "14 checks",
     "1894/3",
 ]
+# Baseline vigente de la suite. UN solo sitio: subirlo aqui y en los tres documentos.
+# 2026-08-03: 2410 -> 2502 (D45 SRT +76, D46 procedencia +16).
+BASELINE_SUITE = "2502 passed"
+BASELINE_SKIPS = "4 skipped"
 H3_PENDING_MARKERS = ["PENDIENTE MERGE", "H3 pendiente", "H3 no iniciad", "H3 sin iniciar"]
 NVENC_OPEN_RX = re.compile(r"NVENC[^\n]{0,80}(PR abierto|abierto y no mergeado)", re.IGNORECASE)
 ABS_CLAIM_RX = re.compile(
@@ -471,7 +475,7 @@ def _checks_estado_header(results, estado_h):
 def _checks_content(results, texts):
     readme, alpha, matriz, plan, estado_h = texts
     for f, t in (("ESTADO.md", estado_h), ("README.md", readme), ("MATRIZ_READINESS.md", matriz)):
-        _r(results, "2410 passed" in t and "4 skipped" in t, "baseline-2410", f)
+        _r(results, BASELINE_SUITE in t and BASELINE_SKIPS in t, "baseline-suite", f)
     _r(
         results,
         "Local/remoto" in readme or "Local por defecto" in readme,

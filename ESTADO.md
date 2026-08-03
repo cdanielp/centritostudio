@@ -1,9 +1,70 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-08-03 · Fase: **Alpha pre-HyperFrames**
+Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames NO iniciado
+
+## v1 — qué la compone
+
+v1 es un pipeline **local** de captions y edición asistida para video hablado en español. Todo el
+render corre en la PC; las integraciones externas (DeepSeek, Pexels, Submagic) son **opt-in** y
+están documentadas en D43.
+
+**Motores** (cada uno con su contrato y sus tests):
+
+| Motor | Qué hace | Módulos |
+|---|---|---|
+| Transcripción | Whisper (faster-whisper/CUDA) → `{stem}_words.json` + groups | `core.py`, `jobs.py` |
+| Captions ASS | word-by-word, estilos y animación | `core_ass.py`, `core_ass_fx.py`, `styles.py` |
+| CVE (viral engine) | presets, keywords, glow, spans, popups | `cve*.py`, `core_overlays.py` |
+| Depurador | corta silencios → `{stem}_limpio.mp4` | `depurador.py` |
+| Clipper | selecciona clips virales | `clipper*.py`, `brain.py` |
+| Reframe | 16:9 → 9:16 con face tracking, escenas y stack | `reframe*.py`, `tray_resolve.py` |
+| B-roll | imágenes y video de stock como cutaway | `broll_*.py` |
+| SRT | texto oficial, offset explícito, alineado parcial | `srt_*.py` |
+| Automático | end-to-end classic y v2 con paquete + reporte | `auto*.py` |
+| Codificación | NVENC con fallback CPU byte-idéntico | `video_encoder.py` |
+| Studio | UI local (FastAPI + estático) | `app.py`, `studio_*.py`, `static/` |
+
+**Presets CVE:** `clean_podcast`, `viral_bounce`, `keyword_punch`, `karaoke_highlight`, más los
+definidos en `cve_presets.json` (loader fail-safe por campo, allowlist estricta, herencia por
+`base`). **Estilos:** `hormozi`, `clean`, `karaoke`, `bounce`, `pms`.
+
+**Contratos vigentes:**
+- `core.py` es la única fuente de lógica del pipeline; CLI, server y worker son envoltorios.
+- Toda capa nueva es **aditiva y default-off**: sin activarla la salida es byte-idéntica
+  (fijado por los tests de contrato de `filter_complex`).
+- Outputs **atómicos**: FFmpeg escribe a temporal, se valida con ffprobe y se publica con
+  `os.replace` (`media_integrity`). Nunca se publica un MP4 de 0 bytes.
+- Rutas **confinadas**: `path_safety` + guard de basename en todos los endpoints `{name}`.
+- Bind a **loopback** por defecto; `/output` restringido a `.mp4`.
+- **Procedencia** video↔words obligatoria antes de renderizar (`media_provenance`, D46).
+
+**Naming de salidas:** `{stem}{variante}[_srt][_emojis][_popups][_fx-{preset}].mp4`, donde
+`variante` sale del helper único `cve.tag_variante` (preset, intensidad, densidad, position,
+avoid_faces). Toda dimensión que cambia la salida entra al tag: dos variantes nunca se pisan.
+Paquetes: `{name}_{fecha}` (classic) y `{name}_v2_{fecha}` (v2/SRT), con marker de fingerprint.
+
+## Deuda conocida de v1.1 (sin maquillar)
+
+1. **Forced aligner — DESCARTADO, no pendiente.** Con offset explícito + alineado parcial se
+   animan **1025 de 1072 cues (95.6%)** sin ninguna dependencia nueva. Los 47 restantes tienen
+   `coverage < 0.5` de verdad. Un aligner (WhisperX/MFA) subiría ese resto a cambio de una
+   dependencia pesada; no lo justifica. Ver D45.
+2. **219 cues recuperables desplazando la ventana del cue al span de sus anclas — RECHAZADO.**
+   Choca con D33: el SRT es un documento de CUES y sus tiempos son autoridad; mover la ventana
+   cambia *cuándo* aparece el caption respecto a lo que el usuario corrigió. Se deja fuera.
+3. **Preset CVE en cues parciales — TAREA SIGUIENTE, ya acordada con K.** Hoy
+   `apply_preset_to_srt_groups` anima todo lo que no sea `cue_fallback`, así que un `word_partial`
+   recibe el preset igual que un `word_aligned`. Falta decidir si un token **interpolado** o
+   **absorbido** debe poder llevar keyword/glow, o si el énfasis debe limitarse a tokens con
+   timing medido.
+4. **`srt_align.py` por encima del límite de 400 líneas** del skill `centrito-dev` (entró con 415).
+   Partirlo es un refactor con riesgo propio.
+5. **Falso positivo posible del guard de procedencia** en un video con cola larga de silencio cuyo
+   transcript legítimo acabe >2 s antes del final. Ruidoso y accionable, nunca silencioso; se
+   disuelve al re-transcribir (el words gana `source_media`).
 
 ## Estado actual (verificable)
 
-Base de este estado: `373c1ab68944d64b2d348214df188865b3df5cd8` (merge PR #30, cierre H5).
+Base de este estado: `cd8f56b52702e3d7ac9ac1874af8297bcda9d65e` (merge PR #34, procedencia).
 
 Merges cerrados en `main` (posteriores a F6 esencial):
 
@@ -16,6 +77,9 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 | GPU / NVENC | CERRADA en main | `cdcea7a9860043eb175972758e660895bf9df44c` |
 | **H4 documentación** | **CERRADA en main** | `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` |
 | **H5 CI ligero** | **CERRADA en main** | `373c1ab68944d64b2d348214df188865b3df5cd8` |
+| **SRT offset + alineado parcial (D45)** | **CERRADA en main** | `0c05003d926eb1b719631b2d24f454ed0aa8afc0` |
+| **Procedencia video↔words (D46)** | **CERRADA en main** | `cd8f56b52702e3d7ac9ac1874af8297bcda9d65e` |
+| **v1** | **CERRADA — tag `v1.0.0`** | — |
 | HyperFrames / F7 | NO iniciado (bloqueado hasta gate final) | — |
 
 **Readiness:**
@@ -23,11 +87,11 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - P1 abiertos: **0**
 - H4: CERRADA en `main`
 - H5: CERRADA en `main` (gate remoto ligero pre-HyperFrames, merge `373c1ab`, 2026-08-03)
-- HyperFrames: bloqueado hasta gate final
+- v1: **CERRADA** y etiquetada `v1.0.0`
+- HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2410 passed, 4 skipped` (4 skips históricos de symlink en Windows). H5 NO
-añadió tests a la suite: su verificación son smokes ejecutables (`smoke_h5_ci.py`) y el subconjunto
-portable del gate remoto. `ruff`/formato/`check.bat` verdes.
+**Baseline de suite:** `2502 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+`ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
@@ -72,6 +136,22 @@ portable del gate remoto. `ruff`/formato/`check.bat` verdes.
 
 ## Bitácora
 
+- 2026-08-03: **v1 CERRADA — tag `v1.0.0`.** Cierre formal del pipeline local de captions y
+  edicion asistida. Ver "## v1 — que la compone" arriba (motores, presets, contratos, naming) y
+  "## Deuda conocida de v1.1". HyperFrames sigue **NO iniciado** y detras del gate final.
+- 2026-08-03: **Procedencia video<->words CERRADA en main (PR #34, merge `cd8f56b`, D46).**
+  Campo aditivo `source_media` (relpath + sha256 + duracion + fps) al transcribir, y validacion
+  obligatoria antes de renderizar en las dos rutas del worker, en la CLI y en el script de
+  evidencia. Cierra el agujero que costo tres rondas de revision visual: timings del video
+  depurado quemados sobre el original, con deriva creciente hasta 122 s y sin ningun aviso.
+  +16 tests. Suite 2502/4.
+- 2026-08-03: **SRT offset explicito + alineado parcial CERRADO en main (PR #32, merge
+  `0c05003`, D45).** Veredicto visual de K **APROBADO** sobre el render v3. De **0 a 1025 de 1072
+  cues animados (95.6%)** sin ninguna dependencia nueva. `srt_offset.py` (detecta y propone, nunca
+  auto-aplica), `srt_eventos.py` (arranque en `cue.start`, minimo 150 ms, contigüidad, monotonia)
+  y `srt_align_partial.py`. Se eliminaron dos portones no documentados que tumbaban 329 cues con
+  cobertura suficiente. Historial completo (dos rechazos de K y la evidencia invalidada por
+  procedencia) en `revision/s38-srt-offset-parcial/EVIDENCIA.md`.
 - 2026-08-03: **H5 — Quality Gate remoto CERRADO en main (PR #30, merge
   `373c1ab68944d64b2d348214df188865b3df5cd8`, rama `ci/h5-quality-gate`).** Workflow
   `.github/workflows/quality.yml` (Ubuntu/Python 3.12): ruff check + ruff format + smoke documental

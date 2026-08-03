@@ -1796,3 +1796,47 @@ sobre `output/clase1_limpio.mp4` es el que K aprobó. Ese agujero se cierra en D
 
 **Verificación.** Suite `2486 passed, 4 skipped`; ruff, formato y `check.bat` verdes; gate de
 privacidad 0 blockers. Detalle: `revision/s38-srt-offset-parcial/EVIDENCIA.md`.
+
+---
+
+## D46 — Procedencia obligatoria video ↔ words antes de renderizar
+
+**Fecha:** 2026-08-03. **Rama:** `fix/procedencia-words-video`. **PR #34 MERGEADO** en `main` vía
+merge commit `cd8f56b52702e3d7ac9ac1874af8297bcda9d65e`. Sin cambios visuales.
+
+**Contexto.** Los timings del video **depurado** (`output/{stem}_limpio.mp4`) se usaron para
+quemar captions sobre el video **original** (`input/{stem}.mp4`). No es un desfase constante: el
+depurador quita silencios REPARTIDOS, así que la deriva **crece** (0 → 122 s en el material real).
+Ningún test lo detectaba y el error solo se ve comparando el audio con la imagen. Costó **tres
+rondas de revisión visual** antes de encontrarse.
+
+**Decisiones.**
+
+1. **El transcript declara de dónde salió.** Campo aditivo `source_media` en `{stem}_words.json`:
+   `relpath` (POSIX, nunca absoluta), `sha256`, `duration_ms`, `fps`. Lo escriben
+   `jobs.run_transcribe` y `caption._load_or_transcribe`.
+2. **Complementa, no reemplaza, a `source_video`.** `transcript_provenance` seguirá fijando
+   `filename+size+mtime` para el binding TOCTOU del namespace SRT de Studio. Aquí interesa la
+   **identidad del contenido** (sha256) y la **coherencia temporal** (duración), que es lo que
+   fallaba. `source_video` no cambia de versión ni de forma.
+3. **Fail-open al PRODUCIR, fail-closed al CONSUMIR.** Si ffprobe o el hash fallan al transcribir,
+   el transcript se guarda igual como procedencia desconocida — nunca se pierde una transcripción.
+   Pero al renderizar, si no se puede afirmar que los timings son de ese video, **se para**.
+4. **Regla del validador.** Con procedencia y sha256 distinto → error. Sin procedencia → se
+   compara la duración del video con el último `word.end`; más de **2 s** → error indicando
+   cuántos segundos difieren y cuál sería el archivo esperado, deducido del naming
+   (`{stem}_words.json` → `{stem}.mp4` en `output/`, `input/` o `clips/`). Sin duración legible y
+   sin procedencia → también error.
+5. **Los words json existentes siguen válidos** como procedencia DESCONOCIDA: no se invalida nada
+   de lo ya transcrito.
+6. **Nunca un aviso silencioso.** Un warning en consola es exactamente lo que no habría evitado
+   este fallo: el render habría salido igual.
+
+**Riesgo asumido y declarado.** El heurístico de duración puede dar falso positivo en un video con
+cola larga de silencio cuyo transcript legítimo acabe >2 s antes del final. Se acepta porque el
+fallo es ruidoso y accionable (no silencioso) y desaparece en cuanto ese video se re-transcribe y
+gana `source_media`. Registrado como deuda de v1.1 en `ESTADO.md`.
+
+**Verificación.** +16 tests en rojo primero, incluidos el guard cableado en el worker (job en
+`error`, sin quemar) y un test del caso REAL que descubre el par en disco sin versionar el nombre
+del material del usuario. Suite `2502 passed, 4 skipped`; ruff, formato y `check.bat` verdes.
