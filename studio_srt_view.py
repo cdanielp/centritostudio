@@ -54,6 +54,37 @@ def _timings_state(video_path: Path, *, transcripts_dir: Path, selection) -> str
     return TIMINGS_VALID
 
 
+def _offset_propuesto(video_path: Path, *, transcripts_dir: Path, selection) -> dict | None:
+    """Offset que el estimador PROPONE para este par SRT/timings, o None si no se puede estimar.
+
+    Solo informa. Nunca se aplica ni se persiste: un offset mal estimado desincroniza el video
+    entero en silencio y solo se nota al ver el render (D45), asi que aplicarlo es una decision
+    explicita de quien mira. Fail-open total — cualquier fallo degrada a None y el resto del
+    view model sigue respondiendo.
+
+    Devuelve solo conteos y milisegundos: ni texto de cues, ni rutas, ni nombres de archivo.
+    """
+    try:
+        import json  # noqa: PLC0415
+
+        import srt_offset  # noqa: PLC0415
+        from srt_import import load_srt  # noqa: PLC0415
+
+        arts = transcript_provenance.resolve_srt_timing_artifacts(
+            transcripts_dir=Path(transcripts_dir),
+            video_stem=selection.video_stem,
+            video_filename=selection.video_filename,
+        )
+        words = json.loads(arts.words_path.read_text(encoding="utf-8"))["words"]
+        estimacion = srt_offset.estimar_offset(load_srt(selection.managed_path), words)
+        return srt_offset.offset_a_dict(estimacion)
+    except Exception as exc:  # noqa: BLE001 — informativo: jamas puede tumbar el view model
+        # Se registra el TIPO (nunca la ruta ni el contenido): sin esto, un estimador roto
+        # dejaria la UI diciendo "sin propuesta" para siempre y nadie se enteraria.
+        print(f"[studio-srt] offset no estimado ({type(exc).__name__}) - la UI no lo ofrece")
+        return None
+
+
 def _srt_block(
     name: str, *, input_dir: Path, storage_root: Path, manifest_dir: Path, transcripts_dir: Path
 ) -> dict:
@@ -72,6 +103,7 @@ def _srt_block(
             "ready_render": False,
             "ready_auto": False,
             "action": ACTION_REPLACE,
+            "offset_propuesto": None,
         }
     if selection is None:
         return {
@@ -82,6 +114,7 @@ def _srt_block(
             "ready_render": False,
             "ready_auto": False,
             "action": ACTION_SELECT,
+            "offset_propuesto": None,
         }
 
     source_name = selection.source_name if isinstance(selection.source_name, str) else None
@@ -96,6 +129,7 @@ def _srt_block(
             "ready_render": False,
             "ready_auto": False,
             "action": ACTION_RESTORE_VIDEO,
+            "offset_propuesto": None,
         }
     except studio_srt.StudioSrtError:
         return {
@@ -106,6 +140,7 @@ def _srt_block(
             "ready_render": False,
             "ready_auto": False,
             "action": ACTION_REPLACE,
+            "offset_propuesto": None,
         }
 
     timings = _timings_state(video_path, transcripts_dir=transcripts_dir, selection=selection)
@@ -124,6 +159,13 @@ def _srt_block(
         "ready_render": ready,
         "ready_auto": ready,
         "action": action,
+        # Solo tiene sentido estimar con timings validos; en cualquier otro estado no hay con
+        # que comparar y la UI no debe mostrar un numero inventado.
+        "offset_propuesto": (
+            _offset_propuesto(video_path, transcripts_dir=transcripts_dir, selection=selection)
+            if ready
+            else None
+        ),
     }
 
 

@@ -422,6 +422,18 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         Puede ser el guion completo, un resumen o una lista de términos esperados.
       </span>
     </div>
+    <div id="render-srt-opts" hidden>
+      <div class="emphasis-row" id="row-srt-parcial">
+        <input type="checkbox" id="render-srt-parcial" checked>
+        <label for="render-srt-parcial">Alineado parcial de cues</label>
+        <span class="msg" style="margin:0;color:var(--muted);font-size:11px">(recomendado)</span>
+      </div>
+      <div class="srt-hint" style="margin:-4px 0 10px 26px">
+        Anima también los cues que solo enganchan parte de sus palabras: lo medido usa su tiempo
+        real y los huecos se reparten. Sin esto, esos cues salen estáticos.
+      </div>
+      <div id="render-srt-offset" class="srt-offset" hidden></div>
+    </div>
     <div id="render-srt-incompat" class="srt-incompat" hidden>
       Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
@@ -890,6 +902,11 @@ function escHtml(s) {
 const srtPanel = {
   // caption_source elegido por pestaña (default transcript; no autodiscovery, no cambio automático)
   source: {render: 'transcript', auto: 'transcript'},
+  // Offset (S41): el backend PROPONE, K decide. `aceptado` solo se llena con un clic explícito;
+  // mientras sea null el render va sin desplazar. Un offset mal estimado desincroniza el video
+  // entero en silencio (D45), así que jamás se auto-aplica.
+  offsetPropuesto: {render: null, auto: null},
+  offsetAceptado: {render: null, auto: null},
 
   _videoSel(mode) { return document.getElementById(mode === 'auto' ? 'auto-video-select' : 'render-video-select'); },
   _card(mode) { return document.getElementById(mode + '-srt-card'); },
@@ -931,9 +948,67 @@ const srtPanel = {
     }
     const note = document.getElementById('render-srt-incompat');
     if (note) note.hidden = !disabled;
+    // Las opciones de alineado SRT solo existen con SRT; en transcript no significan nada.
+    const opts = document.getElementById('render-srt-opts');
+    if (opts) opts.hidden = !disabled;
   },
 
-  onVideo(mode) { if (this.source[mode] === 'srt') this.refresh(mode); },
+  // Cambiar de video invalida un offset aceptado: pertenecía a OTRO par SRT/timings.
+  onVideo(mode) {
+    this.offsetPropuesto[mode] = null;
+    this.offsetAceptado[mode] = null;
+    if (this.source[mode] === 'srt') this.refresh(mode);
+  },
+
+  // Guarda la propuesta del view model. Si cambió respecto de la anterior, lo aceptado caduca:
+  // aceptar un número y renderizar otro sería justo el fallo silencioso que D45 vino a evitar.
+  _guardarOffset(mode, prop) {
+    this._offsetInfo = this._offsetInfo || {};
+    const ms = prop && Number.isFinite(prop.offset_ms) ? prop.offset_ms : null;
+    if (ms !== this.offsetPropuesto[mode]) this.offsetAceptado[mode] = null;
+    this.offsetPropuesto[mode] = ms;
+    this._offsetInfo[mode] = ms === null ? null : prop;
+  },
+
+  // Aplica la propuesta a los próximos renders de esta pestaña. Es un clic, no un default.
+  aplicarOffset(mode) {
+    this.offsetAceptado[mode] = this.offsetPropuesto[mode];
+    this._pintarOffset(mode);
+  },
+
+  descartarOffset(mode) {
+    this.offsetAceptado[mode] = null;
+    this._pintarOffset(mode);
+  },
+
+  // Tarjeta del offset propuesto: qué se detectó, con cuánta evidencia, y qué se hará con él.
+  _pintarOffset(mode) {
+    const box = document.getElementById(mode + '-srt-offset');
+    if (!box) return;
+    const prop = this.offsetPropuesto[mode];
+    const info = this._offsetInfo && this._offsetInfo[mode];
+    if (prop === null || prop === undefined || !info) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    const aplicado = this.offsetAceptado[mode];
+    const segundos = (prop / 1000).toFixed(2);
+    const evidencia = `${info.n_anclas} anclas · confianza ${Number(info.confianza).toFixed(2)}`;
+    if (prop === 0) {
+      box.innerHTML = `<span class="srt-hint">Sincronía verificada: el SRT ya coincide con el audio (${escHtml(evidencia)}).</span>`;
+      return;
+    }
+    const accion = aplicado !== null && aplicado !== undefined
+      ? `<span class="srt-badge ready"><span class="dot"></span>Se aplicará al renderizar</span>
+         <button class="btn secondary" onclick="srtPanel.descartarOffset('${esc(mode)}')">Quitar</button>`
+      : `<button class="btn secondary" onclick="srtPanel.aplicarOffset('${esc(mode)}')">Aplicar offset</button>`;
+    const aviso = info.aplicable
+      ? ''
+      : '<div class="srt-hint" style="color:var(--red)">Poca evidencia: revisa el render antes de confiar en este offset.</div>';
+    box.innerHTML = `
+      <div class="srt-hint">Desfase detectado: <strong>${escHtml(segundos)} s</strong> (${escHtml(evidencia)}).
+      No se aplica solo — decides tú.</div>
+      ${aviso}
+      <div class="srt-actions">${accion}</div>`;
+  },
 
   async refresh(mode) {
     const name = this._video(mode);
@@ -943,8 +1018,15 @@ const srtPanel = {
     try {
       const res = await fetch(`/api/videos/${encodeURIComponent(name)}/srt/view?caption_source=srt`);
       if (!res.ok) throw new Error('estado no disponible');
-      this._render(mode, name, (await res.json()).srt || {});
+      const srt = (await res.json()).srt || {};
+      this._guardarOffset(mode, srt.offset_propuesto);
+      this._render(mode, name, srt);
+      this._pintarOffset(mode);
     } catch (e) {
+      // Si no se pudo leer el estado, lo que hubiera aceptado ya no se puede afirmar de este
+      // par SRT/timings: caduca. Mejor sin offset que con uno que quizá ya no corresponde.
+      this._guardarOffset(mode, null);
+      this._pintarOffset(mode);
       card.innerHTML = `<div class="srt-hint" style="color:var(--red)">No se pudo leer el estado del SRT.</div>`;
     }
   },
@@ -1694,6 +1776,10 @@ function onCaptionQaToggle() {
 function openRender(name) {
   showTab('render');
   document.getElementById('render-video-select').value = name;
+  // Fijar `.value` a mano NO dispara el onchange, así que el panel SRT se avisa aquí: sin esto
+  // un offset aceptado para el video anterior sobreviviría y se aplicaría al render de este
+  // (justo el desfase silencioso que D45 existe para evitar).
+  srtPanel.onVideo('render');
 }
 
 async function startRender() {
@@ -1747,7 +1833,16 @@ async function startRender() {
 
   const captionSource = srtPanel.captionSource('render');
   const params = new URLSearchParams({style});
-  if (captionSource === 'srt') params.append('caption_source', 'srt');
+  if (captionSource === 'srt') {
+    params.append('caption_source', 'srt');
+    // S41: el modo parcial viaja SIEMPRE explícito (true o false). El default de la API sigue
+    // siendo OFF; lo que cambia es que la UI dice cuál quiere, y queda en el registro del job.
+    const parcial = document.getElementById('render-srt-parcial');
+    params.append('srt_alineado_parcial', parcial && parcial.checked ? 'true' : 'false');
+    // El offset solo viaja si K lo aceptó con un clic (D45: nunca se auto-aplica).
+    const off = srtPanel.offsetAceptado.render;
+    if (off !== null && off !== undefined) params.append('srt_offset_ms', String(off));
+  }
   if (preset) {
     params.append('preset', preset);
     const inten = document.getElementById('render-intensidad').value;

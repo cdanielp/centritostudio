@@ -16,7 +16,12 @@ import json
 import os
 from pathlib import Path
 
-from srt_align import DEFAULT_MIN_COVERAGE, AlignmentResult, align_srt_to_words
+from srt_align import (
+    DEFAULT_MIN_COVERAGE,
+    MIN_COVERAGE_PARCIAL,
+    AlignmentResult,
+    align_srt_to_words,
+)
 from srt_import import SrtError, load_srt, validate_srt
 
 # Esquema del sidecar de auditoria. v2 (S38) = v1 + bloque `offset` + `summary.word_partial`.
@@ -207,6 +212,16 @@ def escribir_sidecar(payload: dict, destination: Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def umbral_por_defecto(modo_parcial: bool) -> float:
+    """Umbral de cobertura por cue cuando el llamador no pide uno (S41). Fuente unica.
+
+    Sin modo parcial: el historico 1.0 (anclar TODOS los tokens o quedarse estatico). Con modo
+    parcial: `MIN_COVERAGE_PARCIAL`, porque dejarlo en 1.0 hace que el modo parcial no produzca
+    ni un cue parcial — seria un control que no hace nada. Un `min_coverage` explicito gana.
+    """
+    return MIN_COVERAGE_PARCIAL if modo_parcial else DEFAULT_MIN_COVERAGE
+
+
 def preparar_desde_srt(
     srt_path: Path,
     timing_words: list[dict],
@@ -228,7 +243,7 @@ def preparar_desde_srt(
     """
     import srt_offset  # noqa: PLC0415
 
-    mc = DEFAULT_MIN_COVERAGE if min_coverage is None else min_coverage
+    mc = min_coverage if min_coverage is not None else umbral_por_defecto(modo_parcial)
     document = load_srt(Path(srt_path))
     _n_err, n_warn = validar_o_abortar(document, video_duration_ms=video_duration_ms)
     propuesta = srt_offset.offset_a_dict(srt_offset.estimar_offset(document, timing_words))

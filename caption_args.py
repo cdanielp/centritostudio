@@ -55,6 +55,37 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Usa un SRT corregido como texto oficial; Whisper aporta unicamente timings (S36-B)",
     )
+    parser.add_argument(
+        "--srt-parcial",
+        action="store_true",
+        default=False,
+        help=(
+            "Anima tambien los cues con timing PARCIAL: lo anclado usa su tiempo medido y los "
+            "huecos se reparten (S38/D45). Sin este flag, un cue que no ancla todos sus tokens "
+            "queda estatico. Exige --srt"
+        ),
+    )
+    parser.add_argument(
+        "--srt-offset",
+        type=int,
+        default=0,
+        metavar="MS",
+        help=(
+            "Desplaza el SRT sobre el timeline del video, en ms (positivo = el audio va despues "
+            "de lo que dice el SRT). NUNCA se estima solo: el render propone y esto lo aplica. "
+            "Exige --srt"
+        ),
+    )
+    parser.add_argument(
+        "--srt-min-coverage",
+        type=float,
+        default=None,
+        metavar="F",
+        help=(
+            "Fraccion de tokens del cue que deben anclar para animarlo (0.0-1.0). Solo con "
+            "--srt-parcial; sin este flag se usa el umbral con el que se aprobo la evidencia"
+        ),
+    )
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--model", default="auto", choices=["auto", "small", "medium"])
     parser.add_argument("--words-per-group", type=int, default=None, metavar="N")

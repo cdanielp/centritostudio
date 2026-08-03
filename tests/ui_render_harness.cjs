@@ -172,6 +172,28 @@ if (fixture.fn === "clip") {
       ariaLive: statusEl.getAttribute('aria-live'),
       hasPoller: !!(window.CentritoJobPolling),
     });`;
+} else if (fixture.fn === "offset_ciclo") {
+  // S41: ejercita el ciclo REAL del offset (guardar propuesta / aplicar / descartar / cambiar
+  // de video / abrir render por fuera del select / refresh que falla) y reporta el estado.
+  body = `
+    const g = (id) => document.getElementById(id);
+    g('render-caption-source').value = 'srt';
+    srtPanel.onSource('render');
+    g('render-video-select').value = 'v1';
+    for (const paso of ${JSON.stringify(fixture.pasos || [])}) {
+      if (paso === 'aplicar') srtPanel.aplicarOffset('render');
+      else if (paso === 'descartar') srtPanel.descartarOffset('render');
+      else if (paso === 'cambiar_video') { g('render-video-select').value = 'v2'; srtPanel.onVideo('render'); }
+      else if (paso === 'open_render') openRender('v2');
+      else if (paso === 'refresh_falla') {
+        fetch = () => Promise.resolve({ok: false, status: 500, json: () => Promise.resolve({})});
+        srtPanel.refresh('render');
+      } else if (paso && paso.guardar !== undefined) srtPanel._guardarOffset('render', paso.guardar);
+    }
+    __out__ = JSON.stringify({
+      propuesto: srtPanel.offsetPropuesto.render,
+      aceptado: srtPanel.offsetAceptado.render,
+    });`;
 } else if (fixture.fn === "render_params") {
   const pre = fixture.pre || {};
   body = `
@@ -189,6 +211,12 @@ if (fixture.fn === "clip") {
     g('use-caption-qa').checked = ${!!pre.qa};
     g('caption-qa-mode').value = 'alertas';
     g('render-wpg').value = ${JSON.stringify(pre.wpg || "")};
+    // S41: el checkbox de alineado parcial nace marcado en el HTML; el DOM stub no lo lee, asi
+    // que el fixture lo declara. offsetPropuesto/offsetAceptado simulan lo que dejo el view
+    // model y lo que K acepto con un clic. (Sin backticks: esto vive dentro de un template.)
+    g('render-srt-parcial').checked = ${pre.parcial === undefined ? true : !!pre.parcial};
+    srtPanel.offsetPropuesto.render = ${pre.offsetPropuesto === undefined ? "null" : Number(pre.offsetPropuesto)};
+    srtPanel.offsetAceptado.render = ${pre.offsetAceptado === undefined ? "null" : Number(pre.offsetAceptado)};
     let __captured = '';
     fetch = (url) => { __captured = String(url); return Promise.resolve({ok: true, json: () => Promise.resolve({job_id: 'j'})}); };
     startRender();
