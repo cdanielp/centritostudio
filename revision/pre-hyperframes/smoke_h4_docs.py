@@ -116,8 +116,11 @@ INPUT_ALLOWED = {
     "tacosjuan",
 }
 # "pre-HyperFrames" es etiqueta de fase, no cierre → se excluye con lookbehind.
+# 2026-08-03: H5 sale del centinela (PR #30 MERGEADO en `373c1ab`, D44) — declararla cerrada ya no
+# es indebido, es la verdad. HyperFrames SIGUE vigilada: no ha iniciado y sigue detras del gate
+# final, asi que declararla cerrada/completa sigue siendo BLOCKER.
 H5HF_CLOSED_RX = re.compile(
-    r"(\bH5\b|(?<!pre-)\bHyperFrames\b)[^\n]{0,20}(CERRAD[AO]|COMPLETA|MERGEAD[AO]|LISTA|TERMINAD)",
+    r"((?<!pre-)\bHyperFrames\b)[^\n]{0,20}(CERRAD[AO]|COMPLETA|MERGEAD[AO]|LISTA|TERMINAD)",
     re.IGNORECASE,
 )
 LINK_RX = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -252,9 +255,10 @@ def run_self_test() -> int:
         expect(
             "no_marca_enlace_ok", not detect_broken_links(good, good.read_text(encoding="utf-8"))
         )
-        # 8. H5/HyperFrames cerrado indebidamente
+        # 8. HyperFrames cerrado indebidamente (H5 salio del centinela el 2026-08-03, D44)
         expect("detecta_hf_cerrado", detect_h5_hf_closed("HyperFrames COMPLETA y mergeada."))
         expect("no_marca_hf_no_iniciado", not detect_h5_hf_closed("HyperFrames no iniciada."))
+        expect("no_marca_h5_cerrada", not detect_h5_hf_closed("H5 CI ligero CERRADA en main."))
         # secretos
         expect("detecta_secreto", detect_secrets("DEEPSEEK_API_KEY=sk-abcdefghij0123456789xyz"))
         expect("no_marca_placeholder", not detect_secrets("DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxx"))
@@ -274,18 +278,20 @@ def run_self_test() -> int:
             all(not r.startswith((".claude/", ".agents/", "venv/")) for r in tracked),
         )
 
-    # 10. Estado ACTUAL del encabezado (post-merge H4): H4 cerrado + merge 3cbac46 + H5 en
-    #     curso + HyperFrames sin iniciar. Se ejercita la función pura con encabezados sintéticos.
+    # 10. Estado ACTUAL del encabezado (post-merge H5): H4 cerrado + merge 3cbac46, H5 cerrado
+    #     + merge 373c1ab, HyperFrames sin iniciar. Se ejercita la funcion pura con encabezados
+    #     sinteticos. Los replace son por FILA para que tocar H4 no arrastre a H5 y viceversa.
     good_hdr = (
         f"Merges: {H1} {H2} {H3} {NVENC} {H4}.\n"
         "| H4 documentación | CERRADA en main | 3cbac46 |\n"
-        "| H5 CI ligero | en esta rama, pendiente de revisión/merge | — |\n"
+        "| H5 CI ligero | CERRADA en main | 373c1ab |\n"
         "| HyperFrames / F7 | NO iniciado (bloqueado hasta gate final) | — |\n"
     )
     expect("header_estado_actual_ok", not header_state_issues(good_hdr))
     expect(
         "detecta_h4_no_cerrado",
-        "h4-no-cerrado" in header_state_issues(good_hdr.replace("CERRADA en main", "en curso")),
+        "h4-no-cerrado"
+        in header_state_issues(good_hdr.replace("H4 documentación | CERRADA", "H4 doc | en curso")),
     )
     expect(
         "detecta_merge_h4_ausente",
@@ -296,8 +302,9 @@ def run_self_test() -> int:
         "hyperframes-iniciado" in header_state_issues(good_hdr.replace("NO iniciado", "iniciado")),
     )
     expect(
-        "detecta_h5_no_pendiente",
-        "h5-no-pendiente" in header_state_issues(good_hdr.replace("pendiente de revisión/merge", "")),
+        "detecta_h5_no_cerrado",
+        "h5-no-cerrado"
+        in header_state_issues(good_hdr.replace("H5 CI ligero | CERRADA", "H5 | pendiente")),
     )
 
     ok = sum(1 for _, c in checks if c)
@@ -430,11 +437,16 @@ def _checks_privacy(results):
 
 
 def header_state_issues(estado_h):
-    """Problemas del encabezado de ESTADO para el estado ACTUAL (post-merge H4).
+    """Problemas del encabezado de ESTADO para el estado ACTUAL (post-merge H5).
 
-    H4 ya está CERRADO en `main` (merge `3cbac469…`, PR #29). El encabezado debe reflejar:
-    todos los merges (H1..H4 + NVENC), H4 cerrado, H5 en curso/pendiente y HyperFrames sin
-    iniciar. Función pura (lista de categorías) para reusar en el modo real y en el self-test.
+    H4 (`3cbac469…`, PR #29) y H5 (`373c1ab6…`, PR #30, D44) ya están CERRADOS en `main`. El
+    encabezado debe reflejar: todos los merges (H1..H4 + NVENC), H4 cerrado, **H5 cerrado** y
+    HyperFrames sin iniciar. Función pura (lista de categorías) para reusar en el modo real y
+    en el self-test.
+
+    2026-08-03: `h5-no-pendiente` se invierte a `h5-no-cerrado`. Exigir "H5 pendiente" era
+    correcto mientras el PR #30 seguía abierto; tras el merge esa exigencia obligaba a que
+    ESTADO.md mintiera para pasar el gate. HyperFrames NO cambia: sigue detrás del gate final.
     """
     issues = []
     if not all(h in estado_h for h in (H1, H2, H3, NVENC, H4)):
@@ -443,8 +455,8 @@ def header_state_issues(estado_h):
         issues.append("estado-hardening")
     if not re.search(r"H4[^\n]*CERRAD", estado_h, re.IGNORECASE):
         issues.append("h4-no-cerrado")
-    if not ("H5" in estado_h and "pendiente" in estado_h.lower()):
-        issues.append("h5-no-pendiente")
+    if not re.search(r"H5[^\n]*CERRAD", estado_h, re.IGNORECASE):
+        issues.append("h5-no-cerrado")
     if not ("HyperFrames" in estado_h and "NO iniciado" in estado_h):
         issues.append("hyperframes-iniciado")
     return issues

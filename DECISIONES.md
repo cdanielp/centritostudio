@@ -1232,6 +1232,13 @@ la revisión visual:
 mapeo video↔SRT y batch, integración Auto v2, edición de SRT en UI, forced aligner si la
 cobertura real no alcanza). S37 permanece COMPLETA. Avance 86/100 sin cambios.
 
+**Addendum de cierre/merge (2026-08-03).** La nota de gobernanza de arriba (*"PR abierto y NO
+mergeado… S36 sigue ABIERTA"*) quedó **SUPERADA**: el PR **#14** fue **MERGEADO** en `main` vía
+merge commit `a200ffdfb428a7d606f22e5f19fa4404cccf51b8` (2026-07-19) con **veredicto visual de K
+APROBADO**, y **S36 quedó COMPLETA** el 2026-07-20 con el merge de S36-C2C (`aa1790a`, PR #22).
+No se reescribe el contexto original de D36; esto sólo sella su estado. La deuda *"forced aligner
+si la cobertura real no alcanza"* sigue **VIVA** y se midió en la auditoría del 2026-08-03.
+
 ## D37 — S36-C1: Studio administra SRT privados por asociación explícita video↔SRT
 
 **Fecha:** 2026-07-18. **Sesión 39.** **Rama:** `feat/s36-c1-studio-srt-backend`. **PR abierto,
@@ -1333,6 +1340,12 @@ visual/render/Auto:
   `build_manifest` es puro y `min([])` reventaría). **No se relajó `sanitize_manifest`**: sigue
   rechazando rangos degenerados; el fix corrige el productor, no el validador. +2 tests (unit de
   `build_manifest` no monótono + E2E POST→GET→re-upload con bytes/SHA idénticos). CERRADA.
+
+**Addendum de cierre/merge (2026-08-03).** La cabecera de D37 (*"PR abierto, NO mergeado"*) quedó
+**SUPERADA**: el PR **#15** fue **MERGEADO** en `main` vía merge commit
+`937c81e94c1e54606fb04d297b6df13b4451fa64` (2026-07-19). Los hotfixes posteriores C1.1 (PR #16,
+`46d24ec`) y C1.2 (PR #17, `1f02dfe`) también están mergeados y **S36-C1 quedó CERRADA**. No se
+reescribe el contexto original de D37; esto sólo sella su estado.
 
 ## D38 — Studio renderiza una seleccion SRT explicita mediante `caption_source=srt` (S36-C2A1)
 
@@ -1696,3 +1709,37 @@ D28-D31 (Pexels), Fase 2/D24 (LLM), D9/D10/D13 (ComfyUI) y la estación Submagic
    *"Local por defecto, con integraciones externas explícitas y opcionales."*
 
 **Estado.** Aplicado a README y guías en H4.
+
+---
+
+## D44 — H5: Quality Gate remoto ligero (cierre de la secuencia H1→H5)
+
+**Fecha:** 2026-08-03. **Rama:** `ci/h5-quality-gate`. **PR #30 MERGEADO** en `main` vía merge
+commit `373c1ab68944d64b2d348214df188865b3df5cd8`. Última pieza de la secuencia de hardening
+pre-HyperFrames (H1→H2→H3→[GPU/NVENC]→H4→H5). **Cero cambios de producción.**
+
+**Contexto.** La verificación del proyecto vivía sólo en la máquina del autor (`check.bat`). Un
+gate remoto evita que una regresión de lint, formato, privacidad o contrato de tests se descubra
+sólo cuando alguien corre la suite local.
+
+**Decisiones.**
+1. **Gate remoto, no suite remota.** `.github/workflows/quality.yml` (Ubuntu / Python 3.12) corre
+   `ruff check`, `ruff format --check`, el smoke documental y el gate de privacidad. **No** intenta
+   reproducir la suite completa: FFmpeg, CUDA, NVENC, modelos Whisper y los symlinks de Windows no
+   existen ahí, y fingir que sí produciría verde falso.
+2. **Subconjunto portable explícito, no `-k` frágil.** `ci/run_pytest_light.py` + `ci/pytest-light.txt`
+   fijan una **lista de archivos** (44 archivos / 1302 tests / **0 skips**). Un subconjunto con
+   skips silenciosos es indistinguible de un subconjunto que no corre.
+3. **Red bloqueada en CI.** `ci/_pytest_light_plugin.py` corta el socket: un test que dependa de red
+   falla en el gate en vez de colarse. La suite local sigue siendo la autoridad completa.
+4. **Permisos mínimos.** `contents: read` exacto en el workflow (P2 de Codex resuelto). Un gate de
+   calidad no necesita permiso de escritura sobre el repo.
+5. **El gate remoto NO reemplaza a `check.bat`.** La verificación de producto (render real, GPU,
+   audiovisual) sigue siendo local y sigue siendo la que decide. `check.bat` continúa siendo el
+   requisito de cierre de fase.
+6. **H5 no desbloquea HyperFrames.** Con H5 cerrado la secuencia H1→H5 está completa, pero
+   **HyperFrames sigue bloqueado hasta el gate final** (`PLAN_DE_PR.md`).
+
+**Verificación.** Run verde de Actions `29885163100` sobre el HEAD final `e7a29e1` antes del merge.
+Suite local `2410 passed, 4 skipped`; ruff, formato y `check.bat` verdes. Detalle:
+`revision/pre-hyperframes/H5_EVIDENCIA.md` y `H5_TEST_MATRIX.md`.

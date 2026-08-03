@@ -1,9 +1,9 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-07-21 · Fase: **Alpha pre-HyperFrames**
+Actualizado: 2026-08-03 · Fase: **Alpha pre-HyperFrames**
 
 ## Estado actual (verificable)
 
-Base de este estado: `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` (merge PR #29, cierre H4).
+Base de este estado: `373c1ab68944d64b2d348214df188865b3df5cd8` (merge PR #30, cierre H5).
 
 Merges cerrados en `main` (posteriores a F6 esencial):
 
@@ -15,19 +15,19 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 | H3 arranque y diagnóstico | CERRADA en main | `b59989f11a8a77cc8925ca066e7aaf1e8908a855` |
 | GPU / NVENC | CERRADA en main | `cdcea7a9860043eb175972758e660895bf9df44c` |
 | **H4 documentación** | **CERRADA en main** | `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` |
-| **H5 CI ligero** | **en esta rama, pendiente de revisión/merge** | — |
+| **H5 CI ligero** | **CERRADA en main** | `373c1ab68944d64b2d348214df188865b3df5cd8` |
 | HyperFrames / F7 | NO iniciado (bloqueado hasta gate final) | — |
 
 **Readiness:**
 - P0 abiertos: **0**
 - P1 abiertos: **0**
 - H4: CERRADA en `main`
-- H5: en esta rama, pendiente de revisión/merge (gate remoto ligero pre-HyperFrames)
+- H5: CERRADA en `main` (gate remoto ligero pre-HyperFrames, merge `373c1ab`, 2026-08-03)
 - HyperFrames: bloqueado hasta gate final
 
-**Baseline de suite (base antes de tests H5):** `2410 passed, 4 skipped` (4 skips históricos de
-symlink en Windows). H5 NO añade tests a la suite: su verificación son smokes ejecutables
-(`smoke_h5_ci.py`) y el subconjunto portable del gate remoto. `ruff`/formato/`check.bat` verdes.
+**Baseline de suite:** `2410 passed, 4 skipped` (4 skips históricos de symlink en Windows). H5 NO
+añadió tests a la suite: su verificación son smokes ejecutables (`smoke_h5_ci.py`) y el subconjunto
+portable del gate remoto. `ruff`/formato/`check.bat` verdes.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
@@ -72,6 +72,21 @@ symlink en Windows). H5 NO añade tests a la suite: su verificación son smokes 
 
 ## Bitácora
 
+- 2026-08-03: **H5 — Quality Gate remoto CERRADO en main (PR #30, merge
+  `373c1ab68944d64b2d348214df188865b3df5cd8`, rama `ci/h5-quality-gate`).** Workflow
+  `.github/workflows/quality.yml` (Ubuntu/Python 3.12): ruff check + ruff format + smoke documental
+  + gate de privacidad (`git ls-files`) + subconjunto portable de la suite (`ci/run_pytest_light.py`,
+  44 archivos / 1302 tests / 0 skips, red bloqueada). **Cero cambios de producción.** Un P2 de Codex
+  resuelto (permisos exactos `contents: read`). Run verde previo al merge:
+  Actions `29885163100`. Detalle: `revision/pre-hyperframes/H5_EVIDENCIA.md` y `H5_TEST_MATRIX.md`.
+  Decisión: **D44**. Con H5 cerrado, la secuencia H1→H5 queda completa; **HyperFrames sigue
+  bloqueado hasta el gate final**.
+- 2026-08-03: **Sincronización documental (rama `docs/sincronizar-estado-real`).** Sólo documentos.
+  Cierra las 6 discrepancias doc↔GitHub detectadas por la auditoría del 2026-08-03 mediante
+  addenda que citan sha y fecha reales (no se reescribe el registro histórico): ESTADO/H4-#29,
+  PREGUNTAS #52-#18 y S36-C2C-#22, DECISIONES D36-#14 y D37-#15, `H1_EVIDENCIA.md`-#25. Agrega la
+  entrada de bitácora del PR #24, registra **D44** (H5) y cierra los P2 **S36-01** y **S36-02** en
+  `revision/pre-hyperframes/AUDITORIA.md`. Sin cambios de código, tests ni salida audiovisual.
 - 2026-07-21: **H4 — Documentación y readiness pre-HyperFrames (rama `docs/h4-readiness-docs`).**
   Documentación únicamente: corrige contradicciones (README 157 tests → 2410/4; ESTADO 88/100/1894
   → estado verificable; H3/NVENC ya cerrados; "nada se sube" absoluto → tabla local/remoto),
@@ -80,6 +95,9 @@ symlink en Windows). H5 NO añade tests a la suite: su verificación son smokes 
   referencias privadas. Inventario en `revision/pre-hyperframes/H4_INVENTARIO.md`; smoke documental
   `revision/pre-hyperframes/smoke_h4_docs.py`. Sin cambios de producción ni audiovisuales. **PR
   ABIERTO, NO mergeado.** H5 y HyperFrames NO iniciados.
+  **[Addendum de cierre 2026-08-03] SUPERADO:** el PR de H4 es el **#29** y quedó **MERGEADO** en
+  `main` vía merge commit `3cbac46922f85c452b65ee8e6bd81b1f4efa3b24` (2026-07-21). H5 se cerró
+  después (ver entrada 2026-08-03). No se reescribe el texto original; esto sólo sella su estado.
 - 2026-07-21: **GPU / NVENC CERRADO en main (PR #28, merge `cdcea7a`, rama `perf/gpu-nvenc`).**
   `video_encoder.py` central (detección + selección + fallback), integración depurador/captions/
   overlays/reframe+stack (CPU byte-idéntico), modos auto/nvenc/cpu + guard 503 + snapshot por job,
@@ -99,6 +117,14 @@ symlink en Windows). H5 NO añade tests a la suite: su verificación son smokes 
   basename en endpoints `{name}`, upload acotado, bind `127.0.0.1` (LAN solo opt-in), `/output`
   allowlist `.mp4`, outputs atómicos (tmp + `os.replace` + ffprobe). Detalle:
   `revision/pre-hyperframes/H1_EVIDENCIA.md`.
+- 2026-07-21: **Auditoría y arnés de readiness pre-HyperFrames CERRADO en main (PR #24, merge
+  `9d87cc754474bbb7d5eef41c7a3d95ecbafc1b20`, rama `chore/pre-hyperframes-readiness`).** Entrada
+  añadida el 2026-08-03: el merge existía en `main` desde el 2026-07-21 pero **nunca se registró en
+  esta bitácora**, y H1/H2/H3 lo citan como base (`H1_EVIDENCIA.md`, `H1_INVENTARIO.md`). **Solo
+  documentos y arnés de auditoría, sin fixes de producción:** `revision/pre-hyperframes/AUDITORIA.md`
+  (CASO B: 3 P0 + ~9 P1), `MATRIZ_READINESS.md` y `PLAN_DE_PR.md` (secuencia H1→H5 + gate final,
+  HyperFrames fuera de la secuencia). Veredicto de esa auditoría: **NO LISTO**; los hallazgos se
+  cerraron después en H1 (`4dab852`), H2 (`5779a77`) y H3 (`b59989f`). Decisión asociada: **D41**.
 - **HISTÓRICO — entradas previas a H1** (métricas 88/100, suite 1894, "PR #23 autorizado para
   merge") reflejan el estado de esa sesión; F6/D40 fue mergeada después (`4a378d8`).
 - 2026-07-20: Sesión 45 — **F6 correcciones bloqueantes del PR #23 (D40 addendum).** Dos P2 de revisión + la deuda de avoid_faces vertical, resueltos. **(1) Puntuación en spans:** un cierre pegado a puntuación (`costo[/strong].`) emitía la puntuación como token extra → el conteo de palabras no cuadraba y `_consumir_marcas` descartaba la marca; `_procesar_token` ahora concatena los segmentos de un token en UNA palabra (la puntuación queda dentro: `costo.`), con índices reales. +13 tests. **(2) Naming sin colisiones:** `_rutas_render` (Studio) llamaba `tag_variante` sin densidad/position/avoid_faces → variantes distintas pisaban el mismo MP4/ASS/sidecar; `tag_variante` gana `position`/`avoid_faces` con allowlist + tokens compactos (defaults = naming histórico), threaded desde `run_render`; helper único con la CLI. +14 tests. **(3) `face_y_asignada` REAL:** el reframe exporta el centro vertical de la cara YA asignada por frame (misma detección que `conf_asignada`, sin otro detector ni segunda pasada) — `_seg_single`/`_seg_multi`/`_detectar_trayectoria` → `sparsa_cy` → `_exportar_trayectoria_csv` (normalizado 0..1, columna omitida en CSV legacy). Flujo real reframe → CSV → `zona_cara_en_rango` → `caption_pos` → `build_ass`. +11 tests de PRODUCCIÓN REAL (productor + serializador reales, no CSV fabricado). **Suite 1838 passed, 3 skipped**; ruff+format+check.bat verdes. **E2E regenerado** con el serializador real: 6 demos (incl. `demo_phrase_span_punctuation` y `demo_avoid_faces_top/bottom`) verificados visualmente (puntuación marca ambas palabras + conserva el signo; cara abajo→caption arriba; cara arriba+base top→caption abajo). **PR #23 sigue ABIERTO, NO mergeado — pendiente veredicto visual de K.**

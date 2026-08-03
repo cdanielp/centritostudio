@@ -3,6 +3,11 @@
 **Base:** `9d87cc7` (merge PR #24). **Rama:** `fix/h1-seguridad-integridad`. **PR abierto, NO mergeado.**
 **Alcance:** P0-1, P0-2, P0-3, P0-4, P1-OUT-1, P1-OUT-2. **NO** H2/H3/HyperFrames.
 
+> **[Addendum de cierre 2026-08-03]** La línea de arriba (*"PR abierto, NO mergeado"*) quedó
+> **SUPERADA**: el PR **#25** fue **MERGEADO** en `main` vía merge commit
+> `4dab852185c8eb220c3da45e6af52cfd8610bb65` (2026-07-21). H1 está **CERRADA**. Este documento se
+> conserva como evidencia de la sesión de cierre; no se reescribe su contenido original.
+
 Todas las pruebas usan `TemporaryDirectory`/fixtures sintéticos, sin GPU/red y sin tocar
 `input/video.srt` (nunca se abre, imprime, hashea ni versiona).
 

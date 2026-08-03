@@ -138,8 +138,8 @@ Se encontraron **4 P0** (uno reproducido como escritura arbitraria fuera del san
 - **D40-02** `ESTADO.md:2` — "Suite **1894 passed**" es válido como cierre pero el doc convive con "1838" en D40. Real actual: 1894/3-skip (1897 colectados).
 - **D40-03/04** `ESTADO.md:41,42` (bitácora) — "PR #23 sigue ABIERTO, NO mergeado / PENDIENTE veredicto de K". No hay entrada que registre el merge.
 - **D40-05** `DECISIONES.md:1608,1611` (bloque D40) — "suite 1838" + "PR abierto, NO mergeado: pendiente veredicto visual de K". El addendum (1613-1621) no actualiza estado ni número.
-- **S36-01** `PREGUNTAS.md:1053-1055` (#52) — "S36-C2C PR #22 ABIERTO… gate final PENDIENTE" (está MERGEADO `aa1790a`, S36 COMPLETA).
-- **S36-02** `PREGUNTAS.md:1070-1073` — "PR queda abierto y no cierra S36-C2A1" (cerrada, PR #18 `d6db673`).
+- **S36-01** ✅ **CERRADO 2026-08-03** (`docs/sincronizar-estado-real`). `PREGUNTAS.md:1053-1055` (#52) — "S36-C2C PR #22 ABIERTO… gate final PENDIENTE" (está MERGEADO `aa1790a`, S36 COMPLETA). **Fix aplicado:** addendum de cierre en `PREGUNTAS.md` que cita `aa1790a0aa2267ea0a1d61c475290f55a25d6521` (2026-07-20) y declara S36 COMPLETA, sin reescribir el texto original.
+- **S36-02** ✅ **CERRADO 2026-08-03** (`docs/sincronizar-estado-real`). `PREGUNTAS.md:1070-1073` — "PR queda abierto y no cierra S36-C2A1" (cerrada, PR #18 `d6db673`). **Fix aplicado:** encabezado de la pregunta #52 marcado CERRADA + addendum que cita `d6db6730fc6971c96ae53ca57927e198595168ae` (2026-07-20) y el veredicto visual de K APROBADO.
 - **FALT-01** `ESTADO.md:17` — lista "Falta: spans #34 + avoid_faces/[center] + cve_presets.json…" (todo mergeado en F6).
 - **FALT-02** `ESTADO.md:29` — "F5-s2, F6, reframe v2 y S36-B/C siguen pendientes" (S36-B/C y F6 esencial completas; sólo F6-Motor B y reframe v2 siguen).
 - **PREGUNTAS-TAXONOMIA** — `PREGUNTAS.md` mezcla decisiones cerradas / triggers futuros / deudas activas sin marca de estado por ítem.
