@@ -44,7 +44,7 @@ def construir_seleccion(groups: list[dict], plan) -> dict:
         for g_idx, g in enumerate(groups)
         if g.get("caption_pos") and g["caption_pos"] != "bottom"
     ]
-    return {
+    data = {
         "preset": plan.preset,
         "densidad": plan.kw_densidad,
         "punch_scale": plan.kw_punch_scale,
@@ -53,6 +53,13 @@ def construir_seleccion(groups: list[dict], plan) -> dict:
         "descartadas": list(getattr(plan, "kw_descartadas", []) or []),
         "posiciones": posiciones,
     }
+    # Auditoria del gate de cues parciales (S39): por cue, si lleva enfasis y por que no.
+    # La clave solo aparece cuando hubo cues parciales — un render clasico produce el mismo
+    # sidecar de siempre, byte por byte.
+    parciales = getattr(plan, "kw_parciales", None)
+    if parciales:
+        data["parciales"] = parciales
+    return data
 
 
 def escribir_sidecar_seleccion(groups: list[dict], plan, out_video: Path) -> Path | None:

@@ -327,6 +327,29 @@ def _run_render_transcript(
         update_job(jid, status="error", message=str(exc), error=str(exc))
 
 
+def _anotar_parciales(summary: dict, plan) -> None:
+    """Suma al resumen publico los TOTALES del gate de cues parciales (S39).
+
+    Solo conteos: el detalle por cue (palabra elegida, frase) vive en el sidecar local, que
+    no sale por la API. Fail-open: sin gate o sin cues parciales, el resumen no cambia.
+    """
+    import cve_parciales  # noqa: PLC0415
+
+    resumen = getattr(plan, "kw_parciales", None)
+    if not resumen or not resumen.get("n_cues_parciales"):
+        return
+    summary["cve_parciales"] = {
+        "n_cues_parciales": resumen["n_cues_parciales"],
+        "con_preset": resumen["con_preset"],
+        "max_auto": resumen["max_auto"],
+        "densidad": resumen["densidad"],
+        "totales": dict(resumen["totales"]),
+    }
+    linea = cve_parciales.linea_reporte(resumen)
+    if linea:
+        print(linea)
+
+
 def _run_render_srt(
     jid: str,
     mp4: Path,
@@ -413,6 +436,7 @@ def _run_render_srt(
                 manual_keywords_path=TRANSCRIPTS / f"{name}_keywords.json",
             )
             preset_msg = preset_msg or aviso
+            _anotar_parciales(prepared.summary, plan)
 
         style_cfg = plan.style_cfg if plan else get_style(style, pop)
         variante = srt_render.variante_tag(plan, style, pop, None, intensidad, None)

@@ -8,6 +8,9 @@ Contrato de salida: mismo formato que apply_brain (is_keyword por palabra) + pun
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+
+import stopwords_es
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes de reglas (§4.1) — scores fijos por regla
@@ -43,13 +46,10 @@ LARGO_MIN_CONTENIDO = 4  # chars minimos para que una palabra sea "de contenido"
 # stopwords ya se cazan por lista sin importar longitud. Evita falsos positivos.
 LARGO_MIN_KEYWORD_DEBIL = 3
 
-# Stopwords: nunca son keyword (lista del prompt del brain + extension conservadora)
-STOPWORDS = frozenset(
-    "el la los las un una unas unos de en que y o a con por para se me te le les "
-    "es son fue era ser estar esta este esto esa ese eso al del lo mi tu su sus "
-    "como mas muy ya si no nos hay han ha he va van voy vas todo toda todos todas "
-    "pero aunque embargo entonces cuando donde porque".split()
-)
+# Stopwords: nunca son keyword (lista del prompt del brain + extension conservadora).
+# Vive en `stopwords_es` (modulo hoja) desde S39; ES EL MISMO OBJETO, extraido palabra por
+# palabra. La lista AMPLIADA de ese modulo NO se usa aqui: la ruta clasica no cambia.
+STOPWORDS = stopwords_es.STOPWORDS_BASE
 
 NUMERALES = frozenset(
     "uno dos tres cuatro cinco seis siete ocho nueve diez once doce veinte treinta "
@@ -82,10 +82,9 @@ FIT_PASO = 10  # reduccion por paso de la cadena "reducir"
 KW_SCALE_BASE = 122  # escala actual del keyword del motor (comportamiento previo)
 
 
-def _normalizar(texto: str) -> str:
-    """Palabra en minusculas sin puntuacion ni acentos (para comparar contra sets)."""
-    t = texto.lower().strip(".,!?;:¿¡\"'()")
-    return t.translate(str.maketrans("áéíóúü", "aeiouu"))
+# Fuente unica de la normalizacion (misma logica, movida a `stopwords_es` en S39): el gate
+# de cues parciales compara contra las mismas formas canonicas que el motor historico.
+_normalizar = stopwords_es.normalizar
 
 
 def _es_contenido(palabra: str) -> bool:
@@ -247,6 +246,51 @@ def max_keywords_auto(n_groups: int, densidad: str | None) -> int:
     return max(int(n_groups * DENSIDAD_MAX), 1)
 
 
+@dataclass(frozen=True)
+class SeleccionKeywords:
+    """Resultado de la seleccion CON su trazabilidad (S39).
+
+    `elegidas` es lo que se marca. Los dos recortes dicen QUE grupo perdio su keyword y por
+    culpa de que regla: sin esto, el sidecar solo puede reportar "no salio" y el gate de
+    cues parciales no podria distinguir un cue sin candidatos de uno que el freno de
+    densidad apago (D45: un sidecar que no sabe por que decidio, miente).
+    """
+
+    elegidas: dict[int, tuple[int, int, str]]
+    recorte_antispam: dict[int, tuple[int, int, str]]
+    recorte_densidad: dict[int, tuple[int, int, str]]
+    max_auto: int
+
+
+def elegir_keywords_detallado(
+    candidatos: list[tuple[int, int, int, str]],
+    n_groups: int,
+    densidad: str | None = None,
+) -> SeleccionKeywords:
+    """Igual que `elegir_keywords` pero devolviendo tambien lo que se recorto y por que."""
+    por_grupo: dict[int, tuple[int, int, str]] = {}
+    for g_idx, w_idx, score, regla in sorted(candidatos, key=lambda c: -c[2]):
+        if 0 <= g_idx < n_groups and g_idx not in por_grupo:
+            por_grupo[g_idx] = (w_idx, score, regla)
+
+    # Anti-spam: dos consecutivos ambos R7 -> cae el de menor score
+    antispam: dict[int, tuple[int, int, str]] = {}
+    for g_idx in sorted(por_grupo):
+        vecino = g_idx + 1
+        if vecino in por_grupo and por_grupo[g_idx][2] == por_grupo[vecino][2] == "R7":
+            peor = g_idx if por_grupo[g_idx][1] <= por_grupo[vecino][1] else vecino
+            antispam[peor] = por_grupo.pop(peor)
+
+    max_kw = max_keywords_auto(n_groups, densidad)
+    autos = {g: v for g, v in por_grupo.items() if v[1] < SCORE_MANUAL}
+    densidad_out: dict[int, tuple[int, int, str]] = {}
+    if len(autos) > max_kw:
+        sobran = sorted(autos.items(), key=lambda kv: -kv[1][1])[max_kw:]
+        for g_idx, _v in sobran:
+            densidad_out[g_idx] = por_grupo.pop(g_idx)
+    return SeleccionKeywords(por_grupo, antispam, densidad_out, max_kw)
+
+
 def elegir_keywords(
     candidatos: list[tuple[int, int, int, str]],
     n_groups: int,
@@ -258,25 +302,7 @@ def elegir_keywords(
     El freno de densidad (D21) recorta solo las AUTOMATICAS (peor score primero); las
     marcas manuales quedan exentas (voto #34: saturar es decision del usuario).
     """
-    por_grupo: dict[int, tuple[int, int, str]] = {}
-    for g_idx, w_idx, score, regla in sorted(candidatos, key=lambda c: -c[2]):
-        if 0 <= g_idx < n_groups and g_idx not in por_grupo:
-            por_grupo[g_idx] = (w_idx, score, regla)
-
-    # Anti-spam: dos consecutivos ambos R7 -> cae el de menor score
-    for g_idx in sorted(por_grupo):
-        vecino = g_idx + 1
-        if vecino in por_grupo and por_grupo[g_idx][2] == por_grupo[vecino][2] == "R7":
-            peor = g_idx if por_grupo[g_idx][1] <= por_grupo[vecino][1] else vecino
-            por_grupo.pop(peor)
-
-    max_kw = max_keywords_auto(n_groups, densidad)
-    autos = {g: v for g, v in por_grupo.items() if v[1] < SCORE_MANUAL}
-    if len(autos) > max_kw:
-        sobran = sorted(autos.items(), key=lambda kv: -kv[1][1])[max_kw:]
-        for g_idx, _v in sobran:
-            por_grupo.pop(g_idx)
-    return por_grupo
+    return elegir_keywords_detallado(candidatos, n_groups, densidad).elegidas
 
 
 def elegir_manuales(
