@@ -228,3 +228,77 @@ def test_quitar_deja_la_propuesta_pero_no_la_aplica(_=None):
         ]
     )
     assert estado["propuesto"] == 5284 and estado["aceptado"] is None
+
+
+# ─── El desfase pertenece a UN video, por construcción ─────────────────────────
+#
+# Las caducidades de arriba dependen de que cada puerta de entrada se acuerde de avisar al
+# panel — así se coló `openRender()` en la revisión anterior. Estos tests fijan la invariante
+# de forma que ninguna puerta, presente o futura, pueda saltársela: lo aceptado lleva el nombre
+# del video al que pertenece, y solo se aplica a ESE video.
+
+
+@requires_node
+def test_lo_aceptado_recuerda_a_que_video_pertenece(_=None):
+    estado = _ciclo(
+        [{"guardar": {"offset_ms": 5284, "n_anclas": 60, "confianza": 0.99}}, "aplicar"]
+    )
+    assert estado["aceptado_video"] == "v1"
+
+
+@requires_node
+def test_repoblar_el_selector_no_deja_la_tarjeta_afirmando_nada(_=None):
+    """`populateSelects()` reescribe el <select> y vacía la selección SIN avisar al panel."""
+    estado = _ciclo(
+        [
+            {"guardar": {"offset_ms": 5284, "n_anclas": 60, "confianza": 0.99}},
+            "aplicar",
+            "repoblar_selector",
+        ]
+    )
+    assert estado["tarjeta_visible"] is False
+    assert estado["tarjeta_html"] == ""
+
+
+@requires_node
+def test_un_desfase_de_otro_video_no_viaja_en_el_render(_=None):
+    """Aunque el estado sobreviva por cualquier puerta, el render solo usa lo que es suyo."""
+    q = _params("srt", {"parcial": True, "offsetAceptado": 5284, "offsetAceptadoVideo": "otro"})
+    assert "srt_offset_ms" not in q
+
+
+@requires_node
+def test_el_desfase_del_video_correcto_si_viaja(_=None):
+    q = _params("srt", {"parcial": True, "offsetAceptado": 5284, "offsetAceptadoVideo": "v1"})
+    assert q.get("srt_offset_ms") == ["5284"]
+
+
+# ─── Idioma de la UI ───────────────────────────────────────────────────────────
+
+
+def _visibles(desde: str, hasta: str) -> str:
+    """Texto del bloque de UI del desfase (el que ve una persona, no los identificadores)."""
+    i = HTML.index(desde)
+    return HTML[i : HTML.index(hasta, i)]
+
+
+def test_los_botones_del_desfase_estan_en_espanol():
+    bloque = _visibles("_pintarOffset(mode) {", "async associate(")
+    assert ">Aplicar desfase<" in bloque
+    assert ">Quitar desfase<" in bloque
+    assert "Aplicar offset" not in bloque and "Quitar offset" not in bloque
+
+
+def test_el_texto_visible_del_desfase_no_lleva_em_dash():
+    """Regla del proyecto: nada de em dashes en texto visible, y menos en la UI."""
+    bloque = _visibles("_pintarOffset(mode) {", "async associate(")
+    for linea in bloque.splitlines():
+        visible = linea.strip()
+        if visible.startswith("//"):
+            continue  # los comentarios de código no los ve nadie
+        assert "—" not in visible, visible
+
+
+def test_el_bloque_de_opciones_srt_no_lleva_em_dash():
+    bloque = _visibles('id="render-srt-opts"', 'id="render-srt-incompat"')
+    assert "—" not in bloque, bloque

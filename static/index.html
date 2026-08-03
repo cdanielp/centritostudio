@@ -902,9 +902,15 @@ function escHtml(s) {
 const srtPanel = {
   // caption_source elegido por pestaña (default transcript; no autodiscovery, no cambio automático)
   source: {render: 'transcript', auto: 'transcript'},
-  // Offset (S41): el backend PROPONE, K decide. `aceptado` solo se llena con un clic explícito;
-  // mientras sea null el render va sin desplazar. Un offset mal estimado desincroniza el video
-  // entero en silencio (D45), así que jamás se auto-aplica.
+  // Desfase (S41): el backend PROPONE, quien mira decide. `aceptado` solo se llena con un clic
+  // explícito; mientras sea null el render va sin desplazar. Un desfase mal estimado
+  // desincroniza el video entero en silencio (D45), así que jamás se auto-aplica.
+  //
+  // Ambos guardan {video, ms}: el desfase PERTENECE a un video. Las caducidades por evento
+  // (cambiar de video, refresh fallido, propuesta nueva) dependen de que cada puerta se acuerde
+  // de avisar — así se coló `openRender()` y así se cuela `populateSelects()`, que reescribe el
+  // <select> y vacía la selección sin pasar por el onchange. Llevar el nombre encima cierra la
+  // clase entera: si no es de este video, no se aplica y no se muestra.
   offsetPropuesto: {render: null, auto: null},
   offsetAceptado: {render: null, auto: null},
 
@@ -960,19 +966,33 @@ const srtPanel = {
     if (this.source[mode] === 'srt') this.refresh(mode);
   },
 
+  // La lista de videos se repobló: la selección pudo perderse. No se borra nada (el estado sabe
+  // de qué video es); solo se repinta, y la tarjeta se oculta sola si ya no corresponde.
+  onListaVideos() {
+    this._pintarOffset('render');
+    this._pintarOffset('auto');
+  },
+
+  // Desfase que la UI puede aplicar AHORA: el aceptado, y solo si es del video seleccionado.
+  desfaseVigente(mode) {
+    const a = this.offsetAceptado[mode];
+    return a && a.video === this._video(mode) ? a.ms : null;
+  },
+
   // Guarda la propuesta del view model. Si cambió respecto de la anterior, lo aceptado caduca:
   // aceptar un número y renderizar otro sería justo el fallo silencioso que D45 vino a evitar.
   _guardarOffset(mode, prop) {
-    this._offsetInfo = this._offsetInfo || {};
+    const video = this._video(mode);
     const ms = prop && Number.isFinite(prop.offset_ms) ? prop.offset_ms : null;
-    if (ms !== this.offsetPropuesto[mode]) this.offsetAceptado[mode] = null;
-    this.offsetPropuesto[mode] = ms;
-    this._offsetInfo[mode] = ms === null ? null : prop;
+    const previo = this.offsetPropuesto[mode];
+    if (!previo || previo.ms !== ms || previo.video !== video) this.offsetAceptado[mode] = null;
+    this.offsetPropuesto[mode] = ms === null ? null : {video, ms, info: prop};
   },
 
-  // Aplica la propuesta a los próximos renders de esta pestaña. Es un clic, no un default.
+  // Aplica la propuesta a los próximos renders de ESE video. Es un clic, no un default.
   aplicarOffset(mode) {
-    this.offsetAceptado[mode] = this.offsetPropuesto[mode];
+    const p = this.offsetPropuesto[mode];
+    this.offsetAceptado[mode] = p ? {video: p.video, ms: p.ms} : null;
     this._pintarOffset(mode);
   },
 
@@ -981,31 +1001,31 @@ const srtPanel = {
     this._pintarOffset(mode);
   },
 
-  // Tarjeta del offset propuesto: qué se detectó, con cuánta evidencia, y qué se hará con él.
+  // Tarjeta del desfase propuesto: qué se detectó, con cuánta evidencia, y qué se hará con él.
   _pintarOffset(mode) {
     const box = document.getElementById(mode + '-srt-offset');
     if (!box) return;
-    const prop = this.offsetPropuesto[mode];
-    const info = this._offsetInfo && this._offsetInfo[mode];
-    if (prop === null || prop === undefined || !info) { box.hidden = true; box.innerHTML = ''; return; }
+    const p = this.offsetPropuesto[mode];
+    // Si la propuesta no es del video que está seleccionado, la tarjeta no puede afirmar nada.
+    if (!p || !p.info || p.video !== this._video(mode)) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
-    const aplicado = this.offsetAceptado[mode];
-    const segundos = (prop / 1000).toFixed(2);
+    const info = p.info;
+    const segundos = (p.ms / 1000).toFixed(2);
     const evidencia = `${info.n_anclas} anclas · confianza ${Number(info.confianza).toFixed(2)}`;
-    if (prop === 0) {
+    if (p.ms === 0) {
       box.innerHTML = `<span class="srt-hint">Sincronía verificada: el SRT ya coincide con el audio (${escHtml(evidencia)}).</span>`;
       return;
     }
-    const accion = aplicado !== null && aplicado !== undefined
+    const accion = this.desfaseVigente(mode) !== null
       ? `<span class="srt-badge ready"><span class="dot"></span>Se aplicará al renderizar</span>
-         <button class="btn secondary" onclick="srtPanel.descartarOffset('${esc(mode)}')">Quitar</button>`
-      : `<button class="btn secondary" onclick="srtPanel.aplicarOffset('${esc(mode)}')">Aplicar offset</button>`;
+         <button class="btn secondary" onclick="srtPanel.descartarOffset('${esc(mode)}')">Quitar desfase</button>`
+      : `<button class="btn secondary" onclick="srtPanel.aplicarOffset('${esc(mode)}')">Aplicar desfase</button>`;
     const aviso = info.aplicable
       ? ''
-      : '<div class="srt-hint" style="color:var(--red)">Poca evidencia: revisa el render antes de confiar en este offset.</div>';
+      : '<div class="srt-hint" style="color:var(--red)">Poca evidencia: revisa el render antes de confiar en este desfase.</div>';
     box.innerHTML = `
       <div class="srt-hint">Desfase detectado: <strong>${escHtml(segundos)} s</strong> (${escHtml(evidencia)}).
-      No se aplica solo — decides tú.</div>
+      No se aplica solo: decides tú.</div>
       ${aviso}
       <div class="srt-actions">${accion}</div>`;
   },
@@ -1303,6 +1323,10 @@ function populateSelects() {
   const opts = videos.map(v => `<option value="${v.name}">${v.name} (${statusLabel(v.status)})</option>`).join('');
   document.getElementById('editor-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
   document.getElementById('render-video-select').innerHTML = '<option value="">— Elegir video —</option>' + opts;
+  // Reescribir el <select> deja la seleccion VACIA sin pasar por el onchange, asi que el panel
+  // SRT se avisa aqui: si no, su tarjeta seguiria afirmando "se aplicara al renderizar" sobre un
+  // video que ya no esta elegido. El estado no se borra (lleva su video encima); solo se repinta.
+  srtPanel.onListaVideos();
   const clipsEl = document.getElementById('clips-video-select');
   if (clipsEl) {
     // Todos los videos — los sin transcript reciben notice accionable al seleccionarlos
@@ -1839,9 +1863,9 @@ async function startRender() {
     // siendo OFF; lo que cambia es que la UI dice cuál quiere, y queda en el registro del job.
     const parcial = document.getElementById('render-srt-parcial');
     params.append('srt_alineado_parcial', parcial && parcial.checked ? 'true' : 'false');
-    // El offset solo viaja si K lo aceptó con un clic (D45: nunca se auto-aplica).
-    const off = srtPanel.offsetAceptado.render;
-    if (off !== null && off !== undefined) params.append('srt_offset_ms', String(off));
+    // El desfase solo viaja si se aceptó con un clic Y pertenece a ESTE video (D45).
+    const off = srtPanel.desfaseVigente('render');
+    if (off !== null) params.append('srt_offset_ms', String(off));
   }
   if (preset) {
     params.append('preset', preset);

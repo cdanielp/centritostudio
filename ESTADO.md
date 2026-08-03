@@ -147,8 +147,11 @@ Merges cerrados en `main` (posteriores a F6 esencial):
   (el valor con el que se aprobo la evidencia). El offset se PROPONE y jamas se auto-aplica (D45),
   y lo aceptado caduca si cambia la propuesta, el video o falla el view. Default de la API sin
   cambios. Byte-identidad clasica probada (0 diferencias, 90 combos x 2 corpus). Revision: 6
-  bloqueantes corregidos, 2 de ellos offsets caducos que sobrevivian a `openRender()` y al catch
-  del refresh. Suite 2611/4 (+50). Auto queda FUERA: con el mismo SRT sigue estricto mientras
+  bloqueantes + 3 puntos de K sobre la pantalla. El desfase caduco aparecio por TRES puertas
+  (`openRender()`, el catch del refresh y `populateSelects()`, que reescribe el select y descarta
+  la seleccion): en vez de un tercer parche, el desfase pasa a llevar encima el video al que
+  pertenece y el render solo aplica el que es suyo. Texto de UI sin em dashes y unificado en
+  "desfase". Suite 2618/4 (+57). Auto queda FUERA: con el mismo SRT sigue estricto mientras
   Render viene con parcial ON — inconsistencia anotada, se decide aparte. Evidencia y capturas:
   `revision/s41-exponer-modo-parcial/`.
 

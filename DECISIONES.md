@@ -1986,10 +1986,14 @@ salia con el comportamiento viejo.
    (offset, anclas, dispersion, confianza, aplicable); la UI lo muestra con un boton y la CLI lo
    imprime con el flag exacto para usarlo. Un offset mal estimado desincroniza el video entero en
    silencio (D45), asi que aplicarlo es siempre una decision explicita.
-6. **Lo aceptado caduca en cuanto deja de pertenecer a esta propuesta.** Cambia la propuesta,
-   desaparece, se cambia de video —tambien por `openRender()`, que fija el select a mano y no
-   dispara el onchange— o falla el `GET /srt/view`: en todos los casos se descarta. Los dos
-   ultimos eran bloqueantes reales que encontro la revision.
+6. **El desfase PERTENECE a un video, por construccion.** Se guarda como `{video, ms}` y el
+   render solo lo manda si es del video que se esta renderizando; la tarjeta se oculta si la
+   propuesta no es del video seleccionado. Ademas caduca por evento (propuesta nueva, propuesta
+   perdida, cambio de video, `GET /srt/view` fallido). La invariante por construccion existe
+   porque el mismo fallo aparecio por TRES puertas distintas: `openRender()` (fija el select a
+   mano, sin onchange), el `catch` de `refresh()`, y `populateSelects()` (reescribe el select y
+   descarta la seleccion). Caducar en cada puerta habria sido el tercer parche del mismo tipo;
+   llevar el video encima cierra la clase entera.
 7. **El sidecar y el resumen del job declaran con QUE se rindio**: modo, umbral por cue y offset
    aplicado, separado de la propuesta. Tambien cuando se uso el modo historico.
 
@@ -1997,7 +2001,11 @@ salia con el comportamiento viejo.
 mientras Render viene con parcial ON por default. Inconsistencia de producto conocida, se decide
 aparte.
 
-**Verificacion.** Suite `2611 passed, 4 skipped` (+50); ruff, formato y `check.bat` verdes.
+**Texto de la UI.** Sin em dashes en texto visible (regla del proyecto), y una sola palabra
+para el concepto: "desfase" en la pantalla, "offset" solo en la CLI porque ahi nombra el flag
+que hay que teclear (`--srt-offset`). Ambas cosas con test.
+
+**Verificacion.** Suite `2618 passed, 4 skipped` (+57); ruff, formato y `check.bat` verdes.
 Byte-identidad de la ruta clasica probada con el arnes de S39/S40 (0 diferencias, 90 combinaciones
 x 2 corpus). Smoke real de la CLI y capturas del Studio con backend real. Detalle:
 `revision/s41-exponer-modo-parcial/EVIDENCIA.md`.

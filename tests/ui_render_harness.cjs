@@ -49,7 +49,7 @@ function makeEl(id) {
   const attrs = {};
   const listeners = {};
   const el = {
-    id, innerHTML: "", textContent: "", value: "", disabled: false, checked: false,
+    id, textContent: "", value: "", disabled: false, checked: false,
     hidden: false, style: {}, classList: makeClassList(), children: [], _attrs: attrs, _listeners: listeners,
     setAttribute(k, v) { attrs[k] = String(v); },
     getAttribute(k) { return k in attrs ? attrs[k] : null; },
@@ -59,6 +59,18 @@ function makeEl(id) {
     querySelector() { return null; }, querySelectorAll() { return []; },
     scrollIntoView() {}, focus() {}, remove() {}, closest() { return null; },
   };
+  // Reescribir el innerHTML de un <select> DESCARTA sus <option>, y con ellos la seleccion:
+  // el navegador deja `value` en "". Sin modelarlo, el stub miente y un test puede pasar por
+  // una razon que en el navegador no se cumple (paso justo con populateSelects, S41).
+  let html = "";
+  Object.defineProperty(el, "innerHTML", {
+    get: () => html,
+    set(v) {
+      html = v;
+      if (id.endsWith("-select")) el.value = "";
+    },
+    enumerable: true,
+  });
   return el;
 }
 function fakeEl(id) {
@@ -179,20 +191,29 @@ if (fixture.fn === "clip") {
     const g = (id) => document.getElementById(id);
     g('render-caption-source').value = 'srt';
     srtPanel.onSource('render');
+    videos = [{name: 'v1', status: 'transcrito', stages: {}}, {name: 'v2', status: 'transcrito', stages: {}}];
     g('render-video-select').value = 'v1';
     for (const paso of ${JSON.stringify(fixture.pasos || [])}) {
       if (paso === 'aplicar') srtPanel.aplicarOffset('render');
       else if (paso === 'descartar') srtPanel.descartarOffset('render');
       else if (paso === 'cambiar_video') { g('render-video-select').value = 'v2'; srtPanel.onVideo('render'); }
       else if (paso === 'open_render') openRender('v2');
+      // La funcion REAL: reescribe el <select> y deja la seleccion vacia sin pasar por el
+      // onchange. Se llama tal cual para que el test no pueda pasar por una simulacion amable.
+      else if (paso === 'repoblar_selector') populateSelects();
       else if (paso === 'refresh_falla') {
         fetch = () => Promise.resolve({ok: false, status: 500, json: () => Promise.resolve({})});
         srtPanel.refresh('render');
       } else if (paso && paso.guardar !== undefined) srtPanel._guardarOffset('render', paso.guardar);
     }
+    const _p = srtPanel.offsetPropuesto.render, _a = srtPanel.offsetAceptado.render;
+    const _box = g('render-srt-offset');
     __out__ = JSON.stringify({
-      propuesto: srtPanel.offsetPropuesto.render,
-      aceptado: srtPanel.offsetAceptado.render,
+      propuesto: _p && typeof _p === 'object' ? _p.ms : _p,
+      aceptado: _a && typeof _a === 'object' ? _a.ms : _a,
+      aceptado_video: _a && typeof _a === 'object' ? _a.video : null,
+      tarjeta_visible: !_box.hidden,
+      tarjeta_html: _box.innerHTML,
     });`;
 } else if (fixture.fn === "render_params") {
   const pre = fixture.pre || {};
@@ -215,8 +236,18 @@ if (fixture.fn === "clip") {
     // que el fixture lo declara. offsetPropuesto/offsetAceptado simulan lo que dejo el view
     // model y lo que K acepto con un clic. (Sin backticks: esto vive dentro de un template.)
     g('render-srt-parcial').checked = ${pre.parcial === undefined ? true : !!pre.parcial};
-    srtPanel.offsetPropuesto.render = ${pre.offsetPropuesto === undefined ? "null" : Number(pre.offsetPropuesto)};
-    srtPanel.offsetAceptado.render = ${pre.offsetAceptado === undefined ? "null" : Number(pre.offsetAceptado)};
+    // El estado del offset lleva el video al que pertenece: 'v1' es el que se renderiza, asi
+    // que un valor con otro nombre simula el residuo de un video anterior.
+    srtPanel.offsetPropuesto.render = ${
+      pre.offsetPropuesto === undefined
+        ? "null"
+        : `{video: 'v1', ms: ${Number(pre.offsetPropuesto)}, info: {n_anclas: 60, confianza: 0.99, aplicable: true}}`
+    };
+    srtPanel.offsetAceptado.render = ${
+      pre.offsetAceptado === undefined
+        ? "null"
+        : `{video: ${JSON.stringify(pre.offsetAceptadoVideo || "v1")}, ms: ${Number(pre.offsetAceptado)}}`
+    };
     let __captured = '';
     fetch = (url) => { __captured = String(url); return Promise.resolve({ok: true, json: () => Promise.resolve({job_id: 'j'})}); };
     startRender();

@@ -45,7 +45,7 @@ que el parámetro signifique lo que dice; el default del parámetro (`False`) no
 |---|---|
 | CLI | `--srt-parcial`, `--srt-offset MS`, `--srt-min-coverage F` |
 | Studio | casilla **«Alineado parcial de cues»** en el render con SRT, **default ACTIVADO** |
-| Studio | tarjeta del offset propuesto + botón **«Aplicar offset»** |
+| Studio | tarjeta del desfase propuesto + botón **«Aplicar desfase»** |
 | API | `GET /srt/view` devuelve `offset_propuesto`; el resumen del job reporta modo, umbral y offset aplicado |
 
 **Guardas de la CLI** (error de usuario, no algo que se ignore callado): los tres flags exigen
@@ -92,16 +92,44 @@ aceptado caduca en cuanto deja de pertenecer a esta propuesta:
   dispara el `onchange` → caduca;
 - el `GET /srt/view` falla → caduca (mejor sin offset que con uno que quizá ya no corresponde).
 
-Los dos últimos son bloqueantes que encontró la revisión: `openRender()` arrastraba el offset
+Los dos últimos son bloqueantes que encontró la revisión: `openRender()` arrastraba el desfase
 del video anterior y el `catch` de `refresh()` dejaba la tarjeta diciendo «Se aplicará al
 renderizar» con un número caduco. Ambos con test que los reproduce (rojo antes del fix).
+
+### 5.1 La tercera puerta, y por qué se cerró la clase entera
+
+K miró la captura y preguntó: el selector dice «— Elegir video —» mientras la tarjeta muestra
+propuesta y badge de aceptado, ¿artefacto o se puede aceptar un desfase sin video?
+
+**Era artefacto de la captura Y un agujero real.** `populateSelects()` (línea 1325) reescribe el
+`innerHTML` del `<select>`, lo que **descarta la selección** sin pasar por el `onchange`. En la
+captura eso ocurrió después de mi inyección; en el uso real ocurre cada vez que se recarga la
+lista de videos. El estado del panel sobrevivía, y con él la tarjeta afirmando algo sobre un
+video que ya no estaba elegido. Medido con el test llamando a la función real:
+`srt_offset_ms` de otro video **sí viajaba** en el render.
+
+Arreglarlo caducando en cada puerta habría sido el tercer parche del mismo tipo. Así que el
+desfase pasa a **llevar encima el video al que pertenece** (`{video, ms}`) y:
+
+- `startRender` solo lo manda si `aceptado.video === el video que se está renderizando`;
+- `_pintarOffset` oculta la tarjeta si la propuesta no es del video seleccionado.
+
+Ninguna puerta —presente o futura— puede saltárselo, porque ya no depende de que alguien se
+acuerde de avisar. `populateSelects()` avisa igual (`srtPanel.onListaVideos()`), pero solo para
+repintar: la corrección de fondo es la invariante, no el aviso.
+
+**El stub del DOM mentía.** El primer intento de test pasaba por la razón equivocada: el
+`makeEl` del arnés guardaba `innerHTML` y `value` como propiedades independientes, así que
+reescribir el `<select>` no borraba la selección como sí hace el navegador. Se corrigió el stub
+(`innerHTML` de un `*-select` ahora resetea `value`) y el test pasó a fallar de verdad antes del
+fix.
 
 ## 6. Gate visual — `revision/s41-exponer-modo-parcial/`
 
 | Captura | Qué muestra |
 |---|---|
-| `render_srt.png` | Fuente = SRT: la casilla **marcada por defecto** con su explicación, y la propuesta real del backend: «Desfase detectado: **2.00 s** (25 anclas · confianza 1.00). No se aplica solo — decides tú» + botón *Aplicar offset* |
-| `render_srt_offset_aceptado.png` | Tras el clic: badge **«Se aplicará al renderizar»** + botón *Quitar* |
+| `render_srt.png` | Fuente = SRT: la casilla **marcada por defecto** con su explicación, y la propuesta real del backend: «Desfase detectado: **2.00 s** (25 anclas · confianza 1.00). No se aplica solo: decides tú» + botón *Aplicar desfase* |
+| `render_srt_offset_aceptado.png` | Tras el clic: badge **«Se aplicará al renderizar»** + botón *Quitar desfase* |
 
 Los números salen del backend real (`GET /srt/view`), no están maquillados. Los controles
 incompatibles con SRT siguen deshabilitados, como fijó S36-C2B.
@@ -120,7 +148,17 @@ incompatibles con SRT siguen deshabilitados, como fijó S36-C2B.
 
 ## 8. Lo que encontró la revisión
 
-Seis bloqueantes, todos corregidos:
+Seis bloqueantes de la primera revisión, más tres puntos de K sobre la pantalla, todos
+corregidos. De K:
+
+- **Em dash fuera del texto visible** (regla del proyecto): «No se aplica solo: decides tú».
+  Hay test que recorre el bloque del desfase y falla si aparece uno.
+- **Idioma unificado**: el texto decía «Desfase» y el botón «Aplicar offset». Ahora *Aplicar
+  desfase* / *Quitar desfase*. En la CLI se conserva «offset» porque nombra el flag
+  (`--srt-offset`), que es lo que hay que teclear.
+- **El selector vacío con la tarjeta activa**: era artefacto de la captura y agujero real (§5.1).
+
+De la primera revisión:
 
 1. `openRender()` arrastraba el offset aceptado de otro video (§5).
 2. El `catch` de `refresh()` dejaba un offset caduco vivo (§5).
@@ -137,7 +175,7 @@ real y 7 tests sobre la invariante.
 
 ## 9. Verificación
 
-- Suite: **2611 passed, 4 skipped** (base S40: 2561/4 → **+50** tests).
+- Suite: **2618 passed, 4 skipped** (base S40: 2561/4 → **+57** tests).
 - `ruff check` / `ruff format --check` / `check.bat` verdes.
 - Byte-identidad clásica: 0 diferencias en 180 combinaciones.
 - Smoke real de la CLI (3 corridas) y capturas del Studio con backend real.
