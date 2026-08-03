@@ -39,7 +39,7 @@ y opcionales**.
 
 - Fase: **Alpha pre-HyperFrames**. Endurecimiento H1/H2/H3, GPU/NVENC y H4 (docs) cerrados en
   `main`. H5 (CI remoto ligero) en curso.
-- Baseline de suite de este commit: **2410 passed, 4 skipped** (4 skips históricos de symlink en
+- Baseline de suite de este commit: **2502 passed, 4 skipped** (4 skips históricos de symlink en
   Windows). `ruff`/formato/`check.bat` verdes.
 - Readiness: **0 P0 abiertos · 0 P1 abiertos**. Detalle en
   [`revision/pre-hyperframes/MATRIZ_READINESS.md`](revision/pre-hyperframes/MATRIZ_READINESS.md).
