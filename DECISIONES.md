@@ -1743,3 +1743,56 @@ sólo cuando alguien corre la suite local.
 **Verificación.** Run verde de Actions `29885163100` sobre el HEAD final `e7a29e1` antes del merge.
 Suite local `2410 passed, 4 skipped`; ruff, formato y `check.bat` verdes. Detalle:
 `revision/pre-hyperframes/H5_EVIDENCIA.md` y `H5_TEST_MATRIX.md`.
+
+---
+
+## D45 — SRT: offset explícito, alineado parcial y reparto de eventos por cue
+
+**Fecha:** 2026-08-03. **Rama:** `feat/srt-offset-y-alineado-parcial`. **PR #32 MERGEADO** en
+`main` vía merge commit `0c05003d926eb1b719631b2d24f454ed0aa8afc0`. **Veredicto visual de K:
+APROBADO** (sobre el render v3, `output/revision-srt-parcial-v3/`). Cero dependencias nuevas.
+
+**Contexto.** La auditoría del 2026-08-03 midió que el SRT corregido del usuario rendía **3.65% de
+cobertura y CERO cues animados** sobre material cuyo texto coincide en un 95% con el audio. Dos
+causas: un desfase constante de +5.28 s entre el SRT y el timeline del transcript, y un portón
+todo-o-nada por cue (`n_matched == n_tok`) que ignoraba `min_coverage`.
+
+**Decisiones.**
+
+1. **El offset se DETECTA y se PROPONE; NUNCA se auto-aplica.** `srt_offset.py` estima el desfase
+   por anclas de token único + mediana, y publica `offset_ms`, `n_anclas`, `dispersion_ms`,
+   `confianza` y `aplicable`. Con <20 anclas o confianza <0.80 propone **0**. Razón: un offset mal
+   estimado desincroniza el video entero **en silencio**, sin error visible, y el usuario solo lo
+   descubre al ver el render. Aplicarlo es decisión explícita del llamador (`srt_offset_ms`).
+2. **El único portón por cue es `min_coverage`.** Se eliminaron dos reglas NO documentadas
+   (`anclas_utilizables` e `interpolar_tramos`) que tumbaban **329 cues con cobertura suficiente**
+   y que `_fallback_reason` reportaba como `cobertura_insuficiente` con cobertura real entre 0.67
+   y 0.89 — el sidecar mentía sobre su propia decisión. `min_coverage` **no se bajó** para
+   maquillar números.
+3. **El cue manda sobre cuándo aparece el caption.** `srt_eventos.py` garantiza por construcción:
+   el primer evento arranca en `cue.start_ms` y el último cierra en `cue.end_ms`; ningún evento
+   baja de `MIN_EVENTO_MS` (default 150, configurable); los eventos son contiguos, estrictamente
+   crecientes y sin duplicados. Un token que no alcanza el mínimo se **absorbe** en el anterior:
+   pierde su resalte, nunca su texto. Las anclas se **acotan** al rango del cue en vez de
+   descartar el cue entero.
+4. **Consecuencia asumida del contrato de contigüidad:** el `end_ms` de una palabra ya no es el de
+   su ancla, sino el inicio de la siguiente. Del ancla se conserva su **inicio**.
+5. **Todo opt-in, byte-identidad intacta.** Sin `offset_ms` y sin `modo_parcial` la salida no
+   cambia ni un byte (tests de contrato lo fijan). El sidecar sube a **v2** de forma aditiva
+   (bloque `offset` + `summary.word_partial`).
+6. **NO se introduce forced aligner** (WhisperX, MFA ni equivalente). Ver deuda de v1.1 en
+   `ESTADO.md`: con 1025 de 1072 cues animados, no lo justifica.
+
+**Resultado sobre material real (1072 cues).** De **0** a **1025 cues animados (95.6%)**:
+203 completos + 822 parciales; 47 estáticos con `coverage < 0.5` de verdad. Sobre el `.ass`
+completo (6736 eventos): 0 eventos bajo 150 ms, 0 solapes, 0 duplicados, 0 cues desviados del
+arranque. El ±4 ms residual es la rejilla de centisegundos del formato ASS, no del reparto.
+
+**Historial de revisión.** K rechazó la v1 por el timing DENTRO del cue (el texto era correcto):
+arranque tardío de hasta +570 ms, 45 eventos bajo 150 ms, 8 solapes y 1 duplicado. Corregido en
+v2. La evidencia v1 y v2 quedó además **invalidada** por un error de procedencia: se quemaron
+timings del video depurado sobre el video original (desfase creciente hasta 122 s). El render v3
+sobre `output/clase1_limpio.mp4` es el que K aprobó. Ese agujero se cierra en D46.
+
+**Verificación.** Suite `2486 passed, 4 skipped`; ruff, formato y `check.bat` verdes; gate de
+privacidad 0 blockers. Detalle: `revision/s38-srt-offset-parcial/EVIDENCIA.md`.
