@@ -25,6 +25,8 @@ from core_ass_fx import (  # noqa: F401
     _glow_event_text,
     _join_parts,
     _kw_scale,
+    _sin_resalte,
+    _texto_sin_resalte,
 )
 from styles import StyleConfig
 
@@ -61,6 +63,11 @@ def _active_highlight_tag(
     return f"{{{anim}\\c{active_color}}}{esc}{{\\r}}"
 
 
+def _dur_cs(w: dict) -> int:
+    """Duracion del relleno de karaoke en centisegundos (minimo 5). Fuente unica."""
+    return max(int((w["end"] - w["start"]) * 100), 5)
+
+
 def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleConfig) -> str:
     """Construye texto ASS con animacion word-by-word y keyword_color persistente al 122%."""
     parts: list[str] = []
@@ -84,10 +91,15 @@ def _word_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
         active_color = kw if is_kw else hl
         kw_sc = f"\\fscx{sc_kw}\\fscy{sc_kw}" if is_kw else ""
 
-        if i == active_idx:
+        if i == active_idx and _sin_resalte(w, style_cfg):
+            # Conector (S40): hereda el estilo base — sin color, sin escala, sin relleno visible.
+            # Su evento y su ventana de tiempo NO se tocan; simplemente le toca el turno sin
+            # llamar la atencion. En karaoke el relleno se conserva pero INVISIBLE, porque
+            # quitarlo repinta la linea entera (ver `_texto_sin_resalte`).
+            parts.append(_texto_sin_resalte(esc, style_cfg, _dur_cs(w)))
+        elif i == active_idx:
             if anim == "karaoke":
-                dur_cs = max(int((w["end"] - w["start"]) * 100), 5)
-                tag = f"{{\\kf{dur_cs}\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
+                tag = f"{{\\kf{_dur_cs(w)}\\c{active_color}{kw_sc}}}{esc}{{\\r}}"
             elif anim == "bounce":
                 hi, lo = (128, 122) if is_kw else (122, 100)
                 tag = (

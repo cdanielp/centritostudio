@@ -51,14 +51,21 @@ STOPWORDS_BASE = frozenset(
 # negaciones — el motor los trata como senal fuerte y destacarlos es correcto.
 # "ahora"/"hoy" son FECHAS; "nunca"/"nadie"/"ninguno" son NEGACIONES: fuera.
 
-_AMPLIACION = frozenset(
-    # Pronombres personales y posesivos que faltaban
+# La ampliacion vive en bloques CON NOMBRE porque no todos sirven para lo mismo: el gate de
+# cues parciales los usa todos, y el resalte visual (S40) solo los gramaticales. Editar un
+# bloque es editar datos: no hay logica escondida en ninguno.
+
+_PRONOMBRES = (
     "yo el ella ello nosotros nosotras vosotros ustedes ellos ellas usted "
-    "conmigo contigo consigo nuestro nuestra nuestros nuestras tus mis "
-    # Preposiciones y locuciones
+    "conmigo contigo consigo nuestro nuestra nuestros nuestras tus mis"
+)
+
+_PREPOSICIONES = (
     "sin sobre bajo entre hasta desde hacia durante tras segun ante contra "
-    "mediante salvo excepto incluso ademas tambien tampoco "
-    # Verbos auxiliares y copulativos (formas frecuentes)
+    "mediante salvo excepto incluso ademas tambien tampoco"
+)
+
+_AUXILIARES = (
     "soy eres somos sois eran fueron fuiste fuimos sea sean seria serian "
     "estoy estas estamos estan estaba estaban estuvo estuve estado "
     "haber habia habian hubo haya hayan hemos has habre habria "
@@ -66,23 +73,54 @@ _AMPLIACION = frozenset(
     "hacer hace hacen hago haces hacemos hicieron hizo hecho "
     "poder puede pueden puedo puedes podemos podia podian pudo pude "
     "decir dice dicen digo dices dijo dijeron dicho "
-    "ir ira iba iban fui vamos vaya "
-    # Demostrativos, indefinidos y cuantificadores
+    "ir ira iba iban fui vamos vaya"
+)
+
+_DEMOSTRATIVOS = (
     "aquel aquella aquellos aquellas estos estas esos esas "
     "algo alguien alguno alguna algunos algunas cualquier cualquiera "
     "otro otra otros otras mismo misma mismos mismas cada cual cuales "
     "quien quienes cuanto cuanta cuantos cuantas tanto tanta tantos tantas "
-    "poco poca pocos pocas mucho mucha muchos muchas demasiado bastante "
-    # Adverbios de lugar, tiempo y modo sin carga semantica
+    "poco poca pocos pocas mucho mucha muchos muchas demasiado bastante"
+)
+
+# Adverbios de lugar, tiempo y modo sin carga semantica.
+_ADVERBIOS = (
     "aqui ahi alli alla aca arriba abajo adelante atras cerca lejos "
     "luego despues antes siempre casi apenas solo solamente asi aun todavia "
-    "mientras quiza quizas acaso tal "
-    # Conectores y muletillas de habla espontanea (transcripciones reales)
-    "pues bueno osea digamos verdad claro obvio "
-    "cosa cosas gente forma manera vez veces parte lado tipo".split()
+    "mientras quiza quizas acaso tal"
+)
+
+# Conectores y muletillas de habla espontanea (transcripciones reales).
+_MULETILLAS = "pues bueno osea digamos verdad claro obvio cosa cosas gente forma manera vez veces parte lado tipo"  # noqa: E501
+
+_AMPLIACION = frozenset(
+    " ".join(
+        (_PRONOMBRES, _PREPOSICIONES, _AUXILIARES, _DEMOSTRATIVOS, _ADVERBIOS, _MULETILLAS)
+    ).split()
 )
 
 STOPWORDS_ES = STOPWORDS_BASE | _AMPLIACION
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIN_RESALTE (S40) — conectores que NO reciben resalte visual en el caption
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Esta es la lista que gobierna el render: una palabra activa que caiga aquí se pinta con el
+# estilo base (sin color de resalte, sin \kf, sin pop). Es DATO editable: agregar o quitar un
+# término aquí cambia el render y nada más.
+#
+# Solo entra lo GRAMATICAL — artículos, preposiciones, pronombres, auxiliares, demostrativos.
+# Quedan deliberadamente FUERA:
+#   * `_ADVERBIOS`: "solo", "siempre", "casi" cargan énfasis real en un caption viral
+#     ("SOLO hoy"); apagarlos mata ritmo a cambio de poco.
+#   * `_MULETILLAS`: "cosa", "gente", "forma" son sustantivos; suprimirlos es una decisión de
+#     estilo, no de gramática, y se toma con el render delante.
+# El medidor reporta ambos porcentajes (esta lista y la ampliada completa) para que el residuo
+# de esos dos bloques sea visible y se decida con números.
+SIN_RESALTE = STOPWORDS_BASE | frozenset(
+    " ".join((_PRONOMBRES, _PREPOSICIONES, _AUXILIARES, _DEMOSTRATIVOS)).split()
+)
 
 
 def es_stopword(palabra: str, *, ampliada: bool = False) -> bool:
@@ -90,4 +128,39 @@ def es_stopword(palabra: str, *, ampliada: bool = False) -> bool:
     return normalizar(palabra) in (STOPWORDS_ES if ampliada else STOPWORDS_BASE)
 
 
-__all__ = ["STOPWORDS_BASE", "STOPWORDS_ES", "es_stopword", "normalizar"]
+# Tilde diacritica: el acento es lo UNICO que separa al conector atono de la palabra con
+# carga. "que" conecta, "qué" pregunta; "si" condiciona, "sí" afirma; "mas" es un "pero"
+# arcaico, "más" es cantidad. `normalizar` borra acentos para comparar contra los sets, asi
+# que sin esta lista el resalte se apagaria justo en la version que SI importa.
+CON_TILDE_DIACRITICA = frozenset(
+    "qué cómo cuál cuáles cuándo cuánto cuánta cuántos cuántas dónde quién quiénes "
+    "sí más tú él mí sé té dé aún".split()
+)
+
+_PUNTUACION = ".,!?;:¿¡\"'()"
+
+
+def _sin_puntuacion(texto: str) -> str:
+    """Minusculas sin puntuacion pero CONSERVANDO los acentos (para la tilde diacritica)."""
+    return texto.lower().strip(_PUNTUACION)
+
+
+def es_conector(palabra: str) -> bool:
+    """True si la palabra NO debe recibir resalte visual (S40). Puro: solo consulta datos.
+
+    La forma ACENTUADA gana: "qué" o "sí" nunca son conectores aunque "que" y "si" lo sean.
+    """
+    if _sin_puntuacion(palabra) in CON_TILDE_DIACRITICA:
+        return False
+    return normalizar(palabra) in SIN_RESALTE
+
+
+__all__ = [
+    "CON_TILDE_DIACRITICA",
+    "SIN_RESALTE",
+    "STOPWORDS_BASE",
+    "STOPWORDS_ES",
+    "es_conector",
+    "es_stopword",
+    "normalizar",
+]

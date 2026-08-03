@@ -1897,3 +1897,56 @@ reales ganados**. Ambos casos están en la evidencia visual.
 **Verificación.** Suite `2538 passed, 4 skipped` (+36); ruff, formato y `check.bat` verdes. Dos
 tests de la ruta SRT reescritos uno por uno, con su justificación, en la EVIDENCIA — ninguno
 borrado ni relajado. Detalle: `revision/s39-cve-parciales/EVIDENCIA.md`.
+
+---
+
+## D48 — El resalte del caption no cae en conectores
+
+**Fecha:** 2026-08-03. **Rama:** `feat/stopwords-sin-resalte`. **PR PENDIENTE de gate visual de K.**
+Cambia el render por defecto.
+
+**Contexto.** En el caption word-by-word TODA palabra recibe su turno de resalte: color, relleno
+de karaoke y pop. Medido sobre los `.ass` del gate visual de S39, ese resalte cae en palabra
+vacía el **52.7%** y el **53.0%** de las veces (`que`, `un`, `es`, `la`, `a`, `de`, `con`,
+`como`). Es ruido con la misma intensidad visual que una palabra que sí importa. El cambio
+estaba planteado desde S39 y se quedó fuera de aquel PR por un error de alcance, no por una
+razón técnica.
+
+**Decisiones.**
+
+1. **Una palabra activa que sea conector se pinta con el estilo base.** Sin color de resalte,
+   sin relleno, sin pop. `stopwords_es.SIN_RESALTE` gobierna, y es DATO editable por bloques
+   (`_PRONOMBRES`, `_PREPOSICIONES`, `_AUXILIARES`, `_DEMOSTRATIVOS`).
+2. **El tiempo NO se toca.** El evento sigue existiendo con su misma ventana: solo cambia cómo
+   se pinta. Ningún evento se fusiona, se borra ni se desplaza.
+3. **Una `is_keyword` jamás se apaga.** El énfasis que puso el engine manda sobre la lista.
+4. **Un predicado único, `_sin_resalte`, lo comparten la capa de texto y el gemelo de glow.**
+   Si cada capa decidiera por su cuenta, el glow escalaría una palabra que el texto dejó plana
+   y las dos capas se descuadrarían — el bug que costó la sesión 47 de F6.
+5. **La tilde diacrítica manda sobre la lista.** `normalizar` borra acentos, así que sin un caso
+   especial se apagaba justo la forma con carga: "qué" no es "que", "sí" no es "si", "más" no es
+   "mas". `CON_TILDE_DIACRITICA` se compara ANTES de normalizar.
+6. **En karaoke el relleno se conserva, invisible.** `\kf` es lo que hace que libass trate la
+   línea como karaoke: quitarlo repinta en base TODAS las palabras futuras del evento (14664 px
+   de `SecondaryColour` → 0, medido sobre un quemado real), y `\kf0` hace lo mismo porque el
+   cursor no avanza. Se emite el relleno con su duración REAL y se igualan `\2c`/`\2a` al color
+   base — alpha incluido, porque el blanco del estilo karaoke es semitransparente.
+7. **El default es el comportamiento NUEVO, con escotilla probada.** `resaltar_conectores=True`
+   en `StyleConfig` reproduce el render histórico **byte por byte** (arnés de S39 con
+   `--historico`: 0 diferencias en 90 combinaciones × 2 corpus). Es la excepción razonada a la
+   regla #15: una escotilla que hay que activar a mano no baja ningún porcentaje. El campo está
+   en la allowlist de `filtrar_overrides_validos`, así que se fija por estilo desde
+   `styles.json` o `cve_presets.json` sin tocar código.
+
+**Resultado.** Sobre los MISMOS dos tramos que juzgó K: **52.7% → 0.0%** y **53.0% → 0.0%**. Lo
+único que sigue contando como vacío si se ignora el acento son `MÁS`, `CÓMO`, `QUÉ` y `TÚ`, que
+por decisión 5 no son conectores. Los resaltes bajan de 205 a 97 y de 202 a 95: **la mitad de
+las palabras ya no destaca nada al pasar**, y eso es lo que decide el gate visual.
+
+**Fuera a propósito.** Adverbios ("solo", "siempre", "casi") y muletillas ("cosa", "gente",
+"forma") NO se apagan: "SOLO hoy" tiene que poder golpear, y suprimir sustantivos es una
+decisión de estilo, no de gramática. Queda medido como residuo (6.2% y 8.4%), no escondido.
+
+**Verificación.** Suite `2561 passed, 4 skipped` (+23); ruff, formato y `check.bat` verdes.
+Ningún test existente tuvo que reescribirse. Detalle:
+`revision/s40-sin-resalte-conectores/EVIDENCIA.md`.

@@ -7,6 +7,7 @@ y sin kw_glow en el estilo, core_ass produce exactamente el ASS de siempre.
 
 from __future__ import annotations
 
+import stopwords_es  # lista de conectores sin resalte (S40); modulo hoja, solo stdlib
 from styles import StyleConfig
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +64,57 @@ def _kw_scale(w: dict) -> int:
     return _KW_SCALE_DEFAULT
 
 
+def _sin_resalte(w: dict, style_cfg: StyleConfig) -> bool:
+    """True si esta palabra, AL LLEGARLE SU TURNO, no debe resaltarse (conector, S40).
+
+    Fuente UNICA del criterio: la comparten la capa de texto (`core_ass._word_event_text`) y
+    la capa de glow (`_glow_event_text`). Si cada una decidiera por su cuenta, el gemelo de
+    glow escalaria una palabra que el texto dejo plana y las dos capas se descuadrarian.
+
+    Tres reglas, en este orden:
+      1. Una `is_keyword` JAMAS se apaga — el enfasis del engine manda sobre la lista.
+      2. `resaltar_conectores=True` en el estilo -> nada se apaga (render historico).
+      3. Lo demas: decide `stopwords_es.SIN_RESALTE`, que es dato editable.
+
+    NO toca tiempos: el evento de esa palabra sigue existiendo con su misma ventana; lo unico
+    que cambia es que se pinta con el estilo base.
+    """
+    if w.get("is_keyword", False):
+        return False
+    if getattr(style_cfg, "resaltar_conectores", False):
+        return False
+    return stopwords_es.es_conector(w.get("text", ""))
+
+
+def _texto_sin_resalte(esc: str, style_cfg: StyleConfig, dur_cs: int) -> str:
+    """Palabra activa que NO se resalta: estilo base, sin color, sin escala, sin relleno.
+
+    Fuera de karaoke basta con no emitir tag: texto pelado, hereda el estilo.
+
+    En karaoke NO alcanza, y las dos salidas ingenuas fallan (medido sobre un quemado real,
+    contando pixeles del SecondaryColour):
+
+      * sin ningun `\\kf`, libass deja de tratar la linea como karaoke y repinta en base las
+        palabras FUTURAS de todo el evento -> parpadea la linea entera, no el conector;
+      * con `\\kf0`, el cursor de karaoke no avanza y libass da por cantada la linea completa
+        -> mismo parpadeo (0 px de secundario donde antes habia 14664).
+
+    La salida correcta conserva la duracion real del relleno — para que el cursor avance y las
+    palabras futuras sigan en SecondaryColour — pero hace el barrido INVISIBLE, pintando el
+    color de "ya cantado" Y el de "por cantar" del mismo color base. La palabra queda igual que
+    el resto de la linea y nada mas del evento cambia.
+    """
+    if style_cfg.animation_type != "karaoke":
+        return esc
+    # Solo se toca el color "por cantar" (`\2c`/`\2a`): el "ya cantado" ya es el del estilo. Y
+    # se copia TAMBIEN el alpha — el blanco del karaoke es semitransparente (&H99FFFFFF), asi
+    # que igualar solo el RGB dejaba media palabra mas brillante que la otra.
+    return (
+        f"{{\\kf{dur_cs}\\2c{_color_sin_alpha(style_cfg.primary_color)}"
+        f"\\2a{_alpha_de(style_cfg.primary_color)}}}{esc}{{\\r}}"
+    )
+
+
 def _active_scale_anim(style_cfg: StyleConfig, is_kw: bool, sc_kw: int) -> str:
     """SOLO la parte de escala/animacion (`\\fscx..\\fscy..` o `\\t(...)`) de la palabra activa.
 
@@ -103,6 +155,12 @@ def _color_sin_alpha(ass_color: str) -> str:
     return f"&H{h[2:]}&"
 
 
+def _alpha_de(ass_color: str) -> str:
+    """&HAABBGGRR -> &HAA& (formato de los tags \\1a/\\2a inline)."""
+    h = ass_color.replace("&H", "").replace("&", "").zfill(8)
+    return f"&H{h[:2]}&"
+
+
 def _glow_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleConfig) -> str:
     """Texto del evento gemelo de glow (capa 0): todo invisible salvo el halo del keyword.
 
@@ -126,7 +184,11 @@ def _glow_event_text(group_words: list[dict], active_idx: int, style_cfg: StyleC
         sc = _kw_scale(w)
         # Escala IDENTICA a la capa de texto: activa -> misma animacion; keyword no activa
         # -> escala persistente; no-keyword -> base (100%). Layout compartido por frame.
-        if i == active_idx:
+        if i == active_idx and _sin_resalte(w, style_cfg):
+            # Conector sin resalte (S40): el texto lo pinta plano, asi que el glow tampoco
+            # escala. Misma metrica por frame en las dos capas -> mismo wrap y centrado.
+            scale = ""
+        elif i == active_idx:
             scale = _active_scale_anim(style_cfg, is_kw, sc)
         elif is_kw:
             scale = f"\\fscx{sc}\\fscy{sc}"
