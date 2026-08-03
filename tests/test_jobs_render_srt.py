@@ -36,6 +36,10 @@ _WORDS = {
     "words": [
         {"w": "hola", "s": 0.0, "e": 0.5, "prob": 1.0},
         {"w": "mundo", "s": 0.6, "e": 1.0, "prob": 1.0},
+        # Cierra el transcript cerca del final del video de 6 s. Sin esto el fixture describia
+        # un video de 6 s cuyo audio acaba en 1 s, que el guard de procedencia (P1) rechaza con
+        # razon. Cae FUERA de los dos cues del SRT, asi que la alineacion no cambia.
+        {"w": "fin", "s": 5.2, "e": 5.6, "prob": 1.0},
     ],
     "language": "es",
 }

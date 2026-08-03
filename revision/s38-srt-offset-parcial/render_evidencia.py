@@ -34,6 +34,7 @@ sys.path.insert(0, str(HERE))
 
 import auditar_ass  # noqa: E402
 import core  # noqa: E402
+import media_provenance  # noqa: E402
 import srt_caption  # noqa: E402
 import srt_offset  # noqa: E402
 import styles  # noqa: E402
@@ -156,6 +157,19 @@ def main() -> int:
 
     info = core.get_video_info(video)
     w, h = info["width"], info["height"]
+    # P1: los timings del video depurado sobre el original desincronizan en silencio. Este
+    # script quemo tres rondas de evidencia con esa mezcla antes de que nada avisara.
+    try:
+        media_provenance.verificar_transcript_contra_video(
+            {"words": words},
+            video,
+            video_duration_s=info["duration"],
+            words_path=words_path,
+            root=ROOT,
+        )
+    except media_provenance.ProcedenciaError as exc:
+        print(f"[X] procedencia: {exc}")
+        return 1
     groups, result, payload = srt_caption.preparar_desde_srt(
         srt_path,
         words,

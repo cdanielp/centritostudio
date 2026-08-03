@@ -40,6 +40,31 @@ def _apply_emphasis(groups: list[dict], name: str) -> tuple[list[dict], str]:
     return enriched, f"Enfasis aplicado: {n_kw} keywords"
 
 
+def _exigir_procedencia(mp4: Path, words_path: Path, duration_s: float) -> None:
+    """Corta el render si los timings no se pueden atribuir a ESTE video (P1).
+
+    El depurado y el original son timelines distintos y el desfase CRECE: quemar unos sobre el
+    otro produce captions desincronizados que ningun test detecta. Si no hay words json no hay
+    nada que verificar (la ruta que los necesita ya falla por su cuenta).
+    """
+    import media_provenance  # noqa: PLC0415
+
+    words_path = Path(words_path)
+    if not words_path.is_file():
+        return
+    try:
+        transcript = json.loads(words_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return  # transcript ilegible: lo reporta quien lo consume, no este guard
+    media_provenance.verificar_transcript_contra_video(
+        transcript,
+        mp4,
+        video_duration_s=duration_s,
+        words_path=words_path,
+        root=ROOT,
+    )
+
+
 def _rutas_render(
     name: str,
     plan,
@@ -225,6 +250,7 @@ def _run_render_transcript(
         update_job(jid, progress=20, message="Leyendo video info...")
         info = core.get_video_info(mp4)
         w, h = info["width"], info["height"]
+        _exigir_procedencia(mp4, TRANSCRIPTS / f"{name}_words.json", info.get("duration", 0.0))
 
         if plan:
             # cve ya quedo importado al resolver el plan (plan no-None lo implica)
@@ -355,6 +381,7 @@ def _run_render_srt(
         info = core.get_video_info(mp4)
         w, h = info["width"], info["height"]
         video_ms = int(round(info["duration"] * 1000)) or None
+        _exigir_procedencia(mp4, arts.words_path, info.get("duration", 0.0))
 
         update_job(jid, progress=25, message="Preparando SRT (texto oficial)...")
         prepared = rt.prepare_selected_srt_groups(
