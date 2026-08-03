@@ -2,7 +2,7 @@
 
 **Alcance CASO B (hallazgos dispersos):** 4 P0 + ~9 P1 en seguridad, jobs/UI, arranque e integridad del render. No caben en un solo PR cohesivo → secuencia H1..H5.
 
-**Estado de la secuencia (sobre `cdcea7a`):**
+**Estado de la secuencia (sobre `3cbac46`):**
 
 | PR | Fase | Estado | Merge |
 |---|---|---|---|
@@ -10,8 +10,8 @@
 | H2 | Jobs y recuperación | **COMPLETADO en main** | `5779a77` (PR #26) |
 | H3 | Arranque y diagnóstico | **COMPLETADO en main** | `b59989f` (PR #27) |
 | — | GPU/NVENC (fase independiente de rendimiento) | **COMPLETADO en main** | `cdcea7a` (PR #28) |
-| **H4** | Documentación y readiness | **ACTUAL — PR abierto, no mergeado** | — |
-| H5 | CI / quality gate remoto | Pendiente | — |
+| H4 | Documentación y readiness | **COMPLETADO en main** | `3cbac46` (PR #29) |
+| **H5** | CI / quality gate remoto ligero | **ACTUAL — PR abierto, no mergeado** | — |
 
 HyperFrames/F7 queda **fuera** de la secuencia H1–H5 (bloqueado hasta el gate final; no hay H6).
 
@@ -59,7 +59,7 @@ HyperFrames/F7 queda **fuera** de la secuencia H1–H5 (bloqueado hasta el gate 
 > `video_encoder.py` con modos auto/nvenc/cpu y fallback CPU. **MERGEADO `cdcea7a` (PR #28).** No
 > es parte de la secuencia bloqueante; la ruta CPU sigue siendo válida. Ver `NVENC_EVIDENCIA.md`.
 
-## PR-H4 — Documentación y tester readiness `[NO BLOQUEANTE]` · 🔶 ACTUAL (PR abierto, no mergeado)
+## PR-H4 — Documentación y tester readiness `[NO BLOQUEANTE]` · ✅ MERGEADO `3cbac46` (PR #29)
 **Rama:** `docs/h4-readiness-docs`
 **Cierra:** todos los P2-DOCS + guía de testers + taxonomía de PREGUNTAS + README (conteo de tests).
 **Cambios (documentación únicamente, base `cdcea7a`, suite 2410/4):**
@@ -74,21 +74,27 @@ HyperFrames/F7 queda **fuera** de la secuencia H1–H5 (bloqueado hasta el gate 
 **Criterio:** documentación actual sin contradicciones; ALPHA no promete lo inexistente; sin cambios de producción ni audiovisuales.
 **Dependencia:** va **después** de H1/H2/H3 y GPU/NVENC (documenta el estado ya endurecido).
 
-## PR-H5 — CI / quality gate remoto ligero `[NO BLOQUEANTE]`
+## PR-H5 — CI / quality gate remoto ligero `[NO BLOQUEANTE]` · 🔶 ACTUAL (PR abierto, no mergeado)
 **Rama:** `ci/h5-quality-gate`
-**Contexto:** no existe `.github/`. La suite depende de Windows/FFmpeg/modelos → separar:
-1. **Gate remoto ligero (GitHub Actions):** `ruff check` + `ruff format --check` + subconjunto de tests puros/contrato que no requieran FFmpeg/GPU/node/modelos/red. Determinista, sin claves, sin archivos privados.
-2. **Gate local completo documentado:** `check.bat full` (suite + smoke render GPU).
-**Criterio:** el workflow queda **verde** (no rojo permanente); documentar qué valida cada gate.
-**Dependencia:** después de H1..H3 (para que el subconjunto remoto sea estable).
+**Contexto:** la suite completa depende de Windows/FFmpeg/modelos/Node → se separa en dos gates:
+1. **Gate remoto ligero (GitHub Actions, Ubuntu, Python 3.12):** `.github/workflows/quality.yml` con
+   `ruff check` + `ruff format --check` + smoke H4 (docs) + smoke H5 (contrato del propio gate) +
+   subconjunto portable de tests puros (`ci/run_pytest_light.py` sobre `ci/pytest-light.txt`), con la
+   red bloqueada (`pytest-socket`). Permisos `contents: read`, sin secrets, sin cache, solo acciones
+   oficiales (`checkout@v6`, `setup-python@v6`). `requirements-ci.txt` mínima (sin deps pesadas).
+2. **Gate local completo autoritativo:** `check.bat` (entorno real + suite completa) y `check.bat full`
+   (smoke render GPU sobre fixture sintético).
+**Criterio:** workflow **verde** en el HEAD final; documentar qué valida y qué NO valida cada gate.
+**Dependencia:** después de H1..H4 (para que el subconjunto remoto y las docs sean estables).
 
 ---
 
 ## Orden y dependencias
 ```
-H1 ✅ → H2 ✅ → H3 ✅ → [GPU/NVENC ✅] → H4 🔶 → H5 ⏳ → (gate final) → HyperFrames
+H1 ✅ → H2 ✅ → H3 ✅ → [GPU/NVENC ✅] → H4 ✅ → H5 🔶 → (gate final) → HyperFrames
 BLOQ.   BLOQ.   BLOQ.    rendimiento      docs   CI
 ```
 Readiness técnica **ya alcanzada** al cerrar **H1+H2+H3** (0 P0 / 0 P1). GPU/NVENC se cerró como
-fase independiente de rendimiento. H4 (docs, este PR) y H5 (CI) elevan calidad y confianza pero no
-bloquean el arranque de HyperFrames, que queda detrás del gate final.
+fase independiente de rendimiento. H4 (docs) cerrado en main. H5 (CI, este PR) eleva calidad y
+confianza pero no bloquea el arranque de HyperFrames, que queda detrás del gate final. HyperFrames/F7
+queda **fuera** del plan H1–H5.

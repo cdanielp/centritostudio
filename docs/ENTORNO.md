@@ -124,6 +124,29 @@ venv\Scripts\python.exe -m system_preflight --strict-local  # exit 1 si falta al
 `check.bat` corre el preflight estricto + ruff + formato + imports + pytest. `check.bat full`
 agrega un smoke de render sobre un **fixture sintético** generado con FFmpeg (sin datos privados).
 
+## Verificación / gates
+
+Hay **dos** gates con alcances distintos y complementarios. El autoritativo es el local.
+
+### Gate local completo (autoritativo)
+
+- **Windows 11**, entorno **real** del producto.
+- `check.bat`: preflight estricto (Python 3.12, venv, **FFmpeg/ffprobe**, **modelos**, imports) +
+  `ruff check` + `ruff format --check` + imports base + **suite completa** de `pytest`.
+- `check.bat full`: agrega un smoke de render (GPU/NVENC si hay) sobre un **fixture sintético**.
+- Debe terminar en `===== TODO OK =====`. Es el gate que decide si un PR entra.
+
+### Gate remoto ligero (GitHub Actions)
+
+- **Ubuntu**, **Python 3.12**, workflow `.github/workflows/quality.yml` (permisos solo lectura,
+  sin secrets, sin cache, solo acciones oficiales). Instala únicamente `requirements-ci.txt`.
+- Valida lo **portable y determinista**: `ruff check` + `ruff format --check`, consistencia
+  documental (`smoke_h4_docs.py`), contrato del propio gate (`smoke_h5_ci.py`), privacidad
+  versionada y un **subconjunto de tests puros** (`ci/run_pytest_light.py`) con la **red
+  bloqueada** (`pytest-socket`).
+- **NO** ejecuta GPU, CUDA, NVENC, FFmpeg real, modelos, Node, red ni `check.bat`; **no** valida
+  render, codificación ni experiencia visual. Eso vive solo en el gate local de Windows.
+
 ## 7. Endpoints de diagnóstico
 
 - `GET /api/system/health` — 200 cuando el server sirve; `{status, service}` (sin rutas ni secretos).

@@ -274,6 +274,32 @@ def run_self_test() -> int:
             all(not r.startswith((".claude/", ".agents/", "venv/")) for r in tracked),
         )
 
+    # 10. Estado ACTUAL del encabezado (post-merge H4): H4 cerrado + merge 3cbac46 + H5 en
+    #     curso + HyperFrames sin iniciar. Se ejercita la función pura con encabezados sintéticos.
+    good_hdr = (
+        f"Merges: {H1} {H2} {H3} {NVENC} {H4}.\n"
+        "| H4 documentación | CERRADA en main | 3cbac46 |\n"
+        "| H5 CI ligero | en esta rama, pendiente de revisión/merge | — |\n"
+        "| HyperFrames / F7 | NO iniciado (bloqueado hasta gate final) | — |\n"
+    )
+    expect("header_estado_actual_ok", not header_state_issues(good_hdr))
+    expect(
+        "detecta_h4_no_cerrado",
+        "h4-no-cerrado" in header_state_issues(good_hdr.replace("CERRADA en main", "en curso")),
+    )
+    expect(
+        "detecta_merge_h4_ausente",
+        "merges-en-encabezado" in header_state_issues(good_hdr.replace(H4, "0000000")),
+    )
+    expect(
+        "detecta_hyperframes_iniciado",
+        "hyperframes-iniciado" in header_state_issues(good_hdr.replace("NO iniciado", "iniciado")),
+    )
+    expect(
+        "detecta_h5_no_pendiente",
+        "h5-no-pendiente" in header_state_issues(good_hdr.replace("pendiente de revisión/merge", "")),
+    )
+
     ok = sum(1 for _, c in checks if c)
     total = len(checks)
     for name, cond in checks:
@@ -331,6 +357,7 @@ H1 = "4dab852185c8eb220c3da45e6af52cfd8610bb65"
 H2 = "5779a77f0f46c861806a9d02c21b8e3b4d358a81"
 H3 = "b59989f11a8a77cc8925ca066e7aaf1e8908a855"
 NVENC = "cdcea7a9860043eb175972758e660895bf9df44c"
+H4 = "3cbac46922f85c452b65ee8e6bd81b1f4efa3b24"  # merge PR #29 (cierre H4 en main)
 
 
 def _estado_header(text: str) -> str:
@@ -402,18 +429,31 @@ def _checks_privacy(results):
         _r(results, not detect_private_inputs(t), "input-privado", rel)
 
 
+def header_state_issues(estado_h):
+    """Problemas del encabezado de ESTADO para el estado ACTUAL (post-merge H4).
+
+    H4 ya está CERRADO en `main` (merge `3cbac469…`, PR #29). El encabezado debe reflejar:
+    todos los merges (H1..H4 + NVENC), H4 cerrado, H5 en curso/pendiente y HyperFrames sin
+    iniciar. Función pura (lista de categorías) para reusar en el modo real y en el self-test.
+    """
+    issues = []
+    if not all(h in estado_h for h in (H1, H2, H3, NVENC, H4)):
+        issues.append("merges-en-encabezado")
+    if "cerrad" not in estado_h.lower():
+        issues.append("estado-hardening")
+    if not re.search(r"H4[^\n]*CERRAD", estado_h, re.IGNORECASE):
+        issues.append("h4-no-cerrado")
+    if not ("H5" in estado_h and "pendiente" in estado_h.lower()):
+        issues.append("h5-no-pendiente")
+    if not ("HyperFrames" in estado_h and "NO iniciado" in estado_h):
+        issues.append("hyperframes-iniciado")
+    return issues
+
+
 def _checks_estado_header(results, estado_h):
     hdr = "ESTADO.md#header"
-    _r(results, all(h in estado_h for h in (H1, H2, H3, NVENC)), "merges-en-encabezado", hdr)
-    _r(results, "cerrad" in estado_h.lower(), "estado-hardening", hdr)
-    _r(results, "pendiente de revisión/merge" in estado_h, "h4-pendiente", hdr)
-    _r(results, "H5" in estado_h and "pendiente" in estado_h.lower(), "h5-pendiente", hdr)
-    _r(
-        results,
-        "HyperFrames" in estado_h and "NO iniciado" in estado_h,
-        "hyperframes-no-iniciado",
-        hdr,
-    )
+    for cat in header_state_issues(estado_h):
+        _r(results, False, cat, hdr)
 
 
 def _checks_content(results, texts):
