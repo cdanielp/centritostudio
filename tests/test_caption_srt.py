@@ -196,12 +196,34 @@ def test_sidecar_contrato_y_basenames(tmp_path):
     _g, _r, payload = srt_caption.preparar_desde_srt(
         srt, _tw(("hola", 0.0, 0.5), ("mundo", 0.6, 1.0)), words_file="video_words.json"
     )
-    assert set(payload) == {"version", "source", "timing_source", "summary", "cues"}
+    # v2 (S38): se agrega `offset` de forma aditiva; el resto del contrato no se toca.
+    assert set(payload) == {"version", "source", "timing_source", "offset", "summary", "cues"}
     assert payload["source"]["name"] == "C_privada.srt"
     assert "/" not in (payload["source"]["name"] or "")
     assert payload["timing_source"]["words_file"] == "video_words.json"
     dumped = json.dumps(payload, ensure_ascii=False)
-    assert json.loads(dumped)["version"] == 1
+    assert json.loads(dumped)["version"] == 2
+
+
+def test_sidecar_publica_offset_y_parcial(tmp_path):
+    """El sidecar declara lo APLICADO y, aparte, lo PROPUESTO por el estimador."""
+    srt = _write_srt(tmp_path, _SRT_OK)
+    _g, _r, payload = srt_caption.preparar_desde_srt(
+        srt, _tw(("hola", 0.0, 0.5), ("mundo", 0.6, 1.0))
+    )
+    off = payload["offset"]
+    assert off["aplicado_ms"] == 0, "sin offset explicito nunca se aplica nada"
+    assert off["modo_parcial"] is False
+    assert set(off["propuesta"]) == {
+        "offset_ms",
+        "n_anclas",
+        "dispersion_ms",
+        "confianza",
+        "aplicable",
+        "metodo",
+        "motivo",
+    }
+    assert "word_partial" in payload["summary"]
 
 
 def test_sidecar_escritura_atomica(tmp_path):
@@ -209,7 +231,7 @@ def test_sidecar_escritura_atomica(tmp_path):
     _g, _r, payload = srt_caption.preparar_desde_srt(srt, _tw(("hola", 0.0, 0.5)))
     dest = tmp_path / "align.json"
     srt_caption.escribir_sidecar(payload, dest)
-    assert json.loads(dest.read_text(encoding="utf-8"))["version"] == 1
+    assert json.loads(dest.read_text(encoding="utf-8"))["version"] == 2
     assert not (tmp_path / "align.json.tmp").exists()
 
 

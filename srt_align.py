@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import bisect
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
+import srt_align_partial
 from srt_types import SrtDocument
 
 ALIGN_VERSION = 1
@@ -55,7 +56,7 @@ class AlignedWord:
     start_ms: int
     end_ms: int
     line_idx: int
-    kind: str  # "exact_match" | "substitution_match"
+    kind: str  # "exact_match" | "substitution_match" | "interpolado"
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ class AlignedCue:
     start_ms: int
     end_ms: int
     lines: tuple[str, ...]
-    mode: str  # "word_aligned" | "cue_fallback"
+    mode: str  # "word_aligned" | "word_partial" | "cue_fallback"
     words: tuple[AlignedWord, ...]
     n_tokens: int
     n_matched: int
@@ -95,6 +96,9 @@ class AlignmentResult:
     source_sha256: str = ""
     min_coverage: float = DEFAULT_MIN_COVERAGE
     video_duration_ms: int | None = None
+    word_partial: int = 0
+    offset_ms: int = 0
+    modo_parcial: bool = False
     n_exact: int = 0
     n_substitution: int = 0
     n_rejected_sub: int = 0
@@ -255,8 +259,25 @@ def _timings_validos(words: tuple[AlignedWord, ...]) -> bool:
     return True
 
 
-def _fallback_reason(n_matched: int, n_tok: int, n_rejected: int, has_exact: bool) -> str:
-    """Motivo determinista y sin texto privado para caer a cue_fallback."""
+def _fallback_reason(
+    n_matched: int,
+    n_tok: int,
+    n_rejected: int,
+    has_exact: bool,
+    *,
+    coverage: float = 0.0,
+    min_coverage: float = DEFAULT_MIN_COVERAGE,
+    modo_parcial: bool = False,
+) -> str:
+    """Motivo determinista y sin texto privado para caer a cue_fallback.
+
+    `cobertura_insuficiente` SOLO se publica cuando la cobertura realmente no alcanza el
+    umbral. Antes se emitia tambien cuando el cue tenia cobertura de sobra pero lo tumbaba
+    otra regla: 293 cues del material real reportaban `cobertura_insuficiente` con cobertura
+    entre 0.67 y 0.89. El sidecar mentia sobre su propia decision.
+    """
+    if coverage >= min_coverage and n_matched != n_tok and not modo_parcial:
+        return "modo_parcial_desactivado"
     if n_rejected and not has_exact:
         return "solo_sustituciones_sin_ancla_exacta"
     if n_rejected:
@@ -264,7 +285,13 @@ def _fallback_reason(n_matched: int, n_tok: int, n_rejected: int, has_exact: boo
     return "cobertura_insuficiente"
 
 
-def _align_cue(cue, window: list[dict], min_coverage: float) -> AlignedCue:  # noqa: C901
+def _align_cue(  # noqa: C901
+    cue,
+    window: list[dict],
+    min_coverage: float,
+    modo_parcial: bool = False,
+    min_evento_ms: int = srt_align_partial.MIN_EVENTO_MS,
+) -> AlignedCue:
     tokens = _tokenize_cue(cue.lines)
     n_tok = len(tokens)
     if n_tok == 0:  # no deberia ocurrir (validador exige texto), pero fail-open honesto
@@ -302,10 +329,34 @@ def _align_cue(cue, window: list[dict], min_coverage: float) -> AlignedCue:  # n
     n_matched = len(accepted)
     coverage = n_matched / n_tok
 
-    # 3) word_aligned exige anclar TODOS los tokens (sin inserciones/rechazos) y superar umbral.
+    stats = (n_tok, n_matched, n_exact, n_sub, n_rejected)
+    razon_kw = {
+        "coverage": coverage,
+        "min_coverage": min_coverage,
+        "modo_parcial": modo_parcial,
+    }
+
+    # 3) Modo parcial (S38): el UNICO porton es `min_coverage`. Todo cue que lo alcanza y tiene
+    #    al menos un ancla se reparte con `srt_eventos`, que normaliza arranque, duracion minima
+    #    y monotonia. La v1 tenia ademas dos reglas NO documentadas (anclas dentro del cue e
+    #    interpolacion con hueco de 1 ms/token) que tumbaban 329 cues con cobertura suficiente;
+    #    eran residuo del porton todo-o-nada y se eliminaron. `srt_eventos` acota las anclas
+    #    en vez de descartar el cue. Con el default min_coverage=1.0 esta rama solo alcanza
+    #    cues completos, asi que la salida historica no cambia.
+    if modo_parcial and n_matched and coverage >= min_coverage:
+        modo = "word_aligned" if n_matched == n_tok else "word_partial"
+        layout = srt_align_partial.construir_cue_layout(
+            cue, tokens, accepted, stats, modo, min_evento_ms
+        )
+        if layout is not None:
+            return layout
+        # Unico motivo real para no repartir: el cue no da ni para un evento del minimo.
+        return _fallback_cue(cue, *stats, "cue_demasiado_corto")
+
+    # 4) Ruta historica: word_aligned exige anclar TODOS los tokens y superar el umbral.
     if n_matched != n_tok or coverage < min_coverage:
-        reason = _fallback_reason(n_matched, n_tok, n_rejected, has_exact)
-        return _fallback_cue(cue, n_tok, n_matched, n_exact, n_sub, n_rejected, reason)
+        reason = _fallback_reason(n_matched, n_tok, n_rejected, has_exact, **razon_kw)
+        return _fallback_cue(cue, *stats, reason)
 
     # 4) Construir words con los timings REALES EXACTOS (sin sumar ni mover ms).
     words = tuple(
@@ -361,6 +412,12 @@ def _fallback_cue(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _desplazar(cue, offset_ms: int):
+    """Cue movido al timeline del VIDEO. Nunca produce tiempos negativos ni end<=start."""
+    start = max(0, cue.start_ms + offset_ms)
+    return replace(cue, start_ms=start, end_ms=max(start + 1, cue.end_ms + offset_ms))
+
+
 def align_srt_to_words(
     document: SrtDocument,
     timing_words: list[dict],
@@ -368,21 +425,32 @@ def align_srt_to_words(
     video_duration_ms: int | None = None,
     min_coverage: float = DEFAULT_MIN_COVERAGE,
     timing_source: str = "whisper_words",
+    offset_ms: int = 0,
+    modo_parcial: bool = False,
+    min_evento_ms: int = srt_align_partial.MIN_EVENTO_MS,
 ) -> AlignmentResult:
     """Alinea el texto oficial del SRT con timings reales. No muta ninguna entrada.
 
     document: SrtDocument ya cargado/validado (texto = autoridad).
     timing_words: [{"w","s","e",...}] en segundos (Whisper u otro transcript).
+    offset_ms: desplazamiento EXPLICITO del SRT sobre el timeline del video (positivo = el
+        audio va despues de lo que dice el SRT). Nunca se estima aqui: lo propone
+        `srt_offset.estimar_offset` y lo decide el llamador. 0 = comportamiento historico.
+    modo_parcial: permite cues `word_partial` (timing real en lo anclado, interpolado en los
+        huecos) cuando la cobertura del cue alcanza `min_coverage` sin llegar al 100%.
+        Con el `min_coverage` por defecto (1.0) no cambia nada.
     """
     mids, words = _prepare_words(timing_words)
     claimed = [False] * len(words)
     aligned: list[AlignedCue] = []
     for cue in document.cues:
-        window = _claim_window(mids, words, claimed, cue.start_ms, cue.end_ms)
-        aligned.append(_align_cue(cue, window, min_coverage))
+        c = _desplazar(cue, offset_ms) if offset_ms else cue
+        window = _claim_window(mids, words, claimed, c.start_ms, c.end_ms)
+        aligned.append(_align_cue(c, window, min_coverage, modo_parcial, min_evento_ms))
 
     n_cues = len(aligned)
     n_word = sum(1 for c in aligned if c.mode == "word_aligned")
+    n_partial = sum(1 for c in aligned if c.mode == "word_partial")
     total_tok = sum(c.n_tokens for c in aligned)
     total_match = sum(c.n_matched for c in aligned)
     coverage = round(total_match / total_tok, 4) if total_tok else 0.0
@@ -391,8 +459,11 @@ def align_srt_to_words(
         cues=tuple(aligned),
         n_cues=n_cues,
         word_aligned=n_word,
-        cue_fallback=n_cues - n_word,
+        cue_fallback=n_cues - n_word - n_partial,
         coverage=coverage,
+        word_partial=n_partial,
+        offset_ms=offset_ms,
+        modo_parcial=modo_parcial,
         timing_source=timing_source,
         source_sha256=document.source_sha256,
         min_coverage=min_coverage,

@@ -123,6 +123,9 @@ def run_render(
     avoid_faces: bool | None = None,
     srt_selection=None,
     srt_binding=None,
+    srt_offset_ms: int = 0,
+    srt_modo_parcial: bool = False,
+    srt_min_coverage: float | None = None,
 ) -> None:
     """Contrato publico del worker de render. Sin `srt_selection` = ruta transcript historica
     EXACTA (byte-identica); con `srt_selection` (S36-C2A1) = ruta SRT como texto oficial.
@@ -132,7 +135,19 @@ def run_render(
     """
     if srt_selection is not None:
         _run_render_srt(
-            jid, mp4, name, style, use_emojis, pop, preset, intensidad, srt_selection, srt_binding
+            jid,
+            mp4,
+            name,
+            style,
+            use_emojis,
+            pop,
+            preset,
+            intensidad,
+            srt_selection,
+            srt_binding,
+            srt_offset_ms=srt_offset_ms,
+            srt_modo_parcial=srt_modo_parcial,
+            srt_min_coverage=srt_min_coverage,
         )
         return
     _run_render_transcript(
@@ -297,6 +312,9 @@ def _run_render_srt(
     intensidad: str | None,
     srt_selection,
     srt_binding=None,
+    srt_offset_ms: int = 0,
+    srt_modo_parcial: bool = False,
+    srt_min_coverage: float | None = None,
 ) -> None:
     """Worker de render con el SRT seleccionado como texto oficial (S36-C2A1).
 
@@ -344,6 +362,9 @@ def _run_render_srt(
             words_path=arts.words_path,
             video_duration_ms=video_ms,
             alignment_sidecar_path=TRANSCRIPTS / f"{name}_srt_alignment.json",
+            offset_ms=srt_offset_ms,
+            modo_parcial=srt_modo_parcial,
+            min_coverage=srt_min_coverage,
         )
         groups = prepared.groups
 
