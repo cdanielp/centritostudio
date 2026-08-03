@@ -23,7 +23,13 @@ _TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 def _load_or_transcribe(
     video_path: Path, stem: str, lang: str, device: str, compute: str, model_path: str
 ) -> dict:
-    """Reutiliza el transcript existente si es mas reciente que el video (voto #10)."""
+    """Reutiliza el transcript existente si es mas reciente que el video (voto #10).
+
+    Un transcript reutilizado se VERIFICA contra el video (P1): el del video depurado y el del
+    original tienen timelines distintos y mezclarlos desincroniza el render en silencio.
+    """
+    import media_provenance  # noqa: PLC0415
+
     words_path = _TRANSCRIPTS_DIR / f"{stem}_words.json"
     if words_path.exists():
         vid_mtime = video_path.stat().st_mtime
@@ -31,12 +37,26 @@ def _load_or_transcribe(
         if words_mtime >= vid_mtime:
             print(f"[whisper] reutilizando transcript existente: {words_path.name}")
             raw = json.loads(words_path.read_text(encoding="utf-8"))
+            media_provenance.verificar_transcript_contra_video(
+                raw,
+                video_path,
+                video_duration_s=core.get_video_info(video_path)["duration"],
+                words_path=words_path,
+                root=Path(__file__).parent,
+            )
             lang_str = raw.get("language", "?")
             print(f"[whisper] {len(raw.get('words', []))} palabras | idioma: {lang_str}")
             return raw
     transcript = core.transcribe_video(video_path, lang, device, compute, model_path)
     print(f"[whisper] {len(transcript['words'])} palabras | idioma: {transcript['language']}")
-    return transcript
+    info = core.get_video_info(video_path)
+    return media_provenance.attach_media_fingerprint(
+        transcript,
+        video_path,
+        duration_s=info["duration"],
+        fps=info.get("fps", 0.0),
+        root=Path(__file__).parent,
+    )
 
 
 def _aplicar_caption_qa(transcript: dict, stem: str, qa_opts: dict) -> dict:

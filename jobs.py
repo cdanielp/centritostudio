@@ -33,6 +33,26 @@ def _write_json_pair(p1: Path, blob1: str, p2: Path, blob2: str) -> None:
     atomic_write_text(Path(p2), blob2)
 
 
+def _fingerprint_media(transcript: dict, video: Path) -> dict:
+    """Agrega `source_media` (relpath + sha256 + duracion + fps) al transcript recien hecho.
+
+    Es lo que permite despues RECHAZAR un render que mezcle timings de un video con otro (el
+    depurado y el original tienen timelines distintos). Fail-open a proposito: si el ffprobe o
+    el hash fallan, el transcript se guarda igual y queda como procedencia DESCONOCIDA, que el
+    validador sigue cubriendo por duracion. Nunca se pierde una transcripcion por esto.
+    """
+    import media_provenance  # noqa: PLC0415
+
+    try:
+        info = core.get_video_info(video)
+        return media_provenance.attach_media_fingerprint(
+            transcript, video, duration_s=info["duration"], fps=info.get("fps", 0.0), root=ROOT
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[procedencia] AVISO: sin fingerprint de video ({type(exc).__name__})")
+        return transcript
+
+
 def run_transcribe(
     jid: str,
     mp4: Path,
@@ -78,6 +98,7 @@ def run_transcribe(
         # Liga los timings al video EXACTO recibido (procedencia): filename + size + mtime.
         # No modifica words/language/timings; solo agrega metadata segura `source_video`.
         result = tp.attach_video_provenance(result, mp4)
+        result = _fingerprint_media(result, mp4)
         update_job(jid, progress=60, message="Agrupando palabras...")
 
         groups = core.group_words(result["words"])
