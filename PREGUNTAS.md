@@ -1094,7 +1094,12 @@ también **mergeados**, cerraron el contrato del manifiesto sin abrir S36-C2:
   `start==end` que el propio saneamiento del GET rechazaba (500 tras un POST 201). Ahora el POST
   persiste el rango real y el GET responde 200. Sin relajar `sanitize_manifest`.
 
-### 52. S36-C2A1 — render del SRT seleccionado desde Studio — **RESUELTA EN PR (D38, sesión 42, feat/s36-c2a1-studio-srt-render, NO mergeado; requiere veredicto visual de K)**
+### 52. S36-C2A1 — render del SRT seleccionado desde Studio — **CERRADA (PR #18 MERGEADO `d6db6730fc6971c96ae53ca57927e198595168ae`, 2026-07-20; veredicto visual de K APROBADO)**
+
+> **[Addendum de cierre 2026-08-03]** El encabezado original decía *"RESUELTA EN PR (D38, sesión 42,
+> feat/s36-c2a1-studio-srt-render, NO mergeado; requiere veredicto visual de K)"*. Eso quedó
+> **SUPERADO**: el PR **#18** se mergeó en `main` (`d6db673`, 2026-07-20) con veredicto visual de K
+> APROBADO. El cuerpo de la pregunta se conserva íntegro como registro de la decisión D38.
 
 Primera mitad de S36-C2A: conecta la asociación privada video↔SRT de S36-C1 con el **render
 normal** de Studio, sin UI nueva, sin Auto v2 y sin tocar el clipper.
@@ -1122,9 +1127,13 @@ Resuelto en D38:
   namespace confinado, checkpoints por clip, fallo aislado, paquete final. CERRADA.
 - **S36-C2B (PR #21 mergeado `ec3476c`):** UI de selección de SRT en Studio (selector fuente +
   `srtPanel` + view model saneado único). CERRADA.
-- **S36-C2C (PR #22 ABIERTO, NO mergeado, gate visual final PENDIENTE):** manifiesto final saneado +
-  robustez de checkpoint + resume de paquetes SRT terminados parcialmente (P2) + E2E real. **NO cierra
-  S36 hasta el veredicto visual final de K + merge del PR #22.**
+- **S36-C2C (PR #22 MERGEADO `aa1790a0aa2267ea0a1d61c475290f55a25d6521`, 2026-07-20):** manifiesto
+  final saneado + robustez de checkpoint + resume de paquetes SRT terminados parcialmente (P2) + E2E
+  real. **CERRADA con veredicto visual de K APROBADO. S36 COMPLETA.**
+  > **[Addendum de cierre 2026-08-03]** El texto original decía *"PR #22 ABIERTO, NO mergeado, gate
+  > visual final PENDIENTE… NO cierra S36 hasta el veredicto visual final de K + merge del PR #22"*.
+  > Quedó **SUPERADO**: el merge y el veredicto ocurrieron el 2026-07-20 (`aa1790a`). Era la última
+  > afirmación viva que declaraba S36 abierta.
 - **Retry dedicado vs resume (decisión formal, D39 + addendum P2):** NO se implementa `POST /api/auto/
   {run_id}/clips/{clip_id}/retry` en v1. El resume EXISTENTE cubre el caso; la UI de C2B expone
   "Reanudar clips fallidos" (botón que re-invoca `startAuto()`, el MISMO flujo Auto). Reanudables:

@@ -40,6 +40,7 @@ PLUGIN = ROOT / "ci" / "_pytest_light_plugin.py"
 ESTADO = ROOT / "ESTADO.md"
 
 MERGE_H4 = "3cbac46"  # merge PR #29 (cierre H4) — prefijo estable
+MERGE_H5 = "373c1ab"  # merge PR #30 (cierre H5, D44) — prefijo estable
 
 ACCIONES_PERMITIDAS = {"actions/checkout": "v6", "actions/setup-python": "v6"}
 
@@ -380,10 +381,11 @@ def run_self_test() -> int:
     # 22. runner con shell=True
     expect("22_shell_true", "runner-shell-true" in violaciones_runner_texto("subprocess.run(cmd, shell=True)\n--disable-socket\nsys.executable\n"))
     expect("runner_sano", not violaciones_runner_texto("subprocess.run([sys.executable, '-m', 'pytest', '--disable-socket'], check=False)\n"))
-    # 23. H5 / HyperFrames cerrado indebidamente
-    expect("23_h5_cerrado", h4.detect_h5_hf_closed("H5 CERRADA y mergeada en main."))
+    # 23. HyperFrames cerrado indebidamente. H5 salio del centinela el 2026-08-03 (PR #30
+    #     MERGEADO en `373c1ab`, D44): declararla cerrada dejo de ser indebido.
     expect("23_hf_cerrado", h4.detect_h5_hf_closed("HyperFrames COMPLETA."))
-    expect("23_no_marca_h5_pendiente", not h4.detect_h5_hf_closed("H5 en esta rama, pendiente de revision/merge."))
+    expect("23_no_marca_h5_cerrada", not h4.detect_h5_hf_closed("H5 CI ligero CERRADA en main."))
+    expect("23_no_marca_hf_no_iniciada", not h4.detect_h5_hf_closed("HyperFrames no iniciada."))
 
     ok = sum(1 for _, c in checks if c)
     total = len(checks)
@@ -419,9 +421,12 @@ def _checks_estado(results: list) -> None:
     estado_h = h4._estado_header(ESTADO.read_text(encoding="utf-8")) if ESTADO.is_file() else ""
     _r(results, re.search(r"H4[^\n]*CERRAD", estado_h, re.I), "h4-no-cerrado", "ESTADO.md#header")
     _r(results, MERGE_H4 in estado_h, "merge-h4-ausente", "ESTADO.md#header")
-    _r(results, re.search(r"H5[^\n]*(pendiente|en esta rama|en curso)", estado_h, re.I), "h5-no-pendiente", "ESTADO.md#header")
+    # 2026-08-03: H5 CERRADA en main (PR #30, merge `373c1ab`, D44). El check se invierte:
+    # antes exigia "pendiente", ahora exige el cierre. HyperFrames NO cambia (gate final).
+    _r(results, re.search(r"H5[^\n]*CERRAD", estado_h, re.I), "h5-no-cerrado", "ESTADO.md#header")
+    _r(results, MERGE_H5 in estado_h, "merge-h5-ausente", "ESTADO.md#header")
     _r(results, "HyperFrames" in estado_h and "NO iniciado" in estado_h, "hyperframes-iniciado", "ESTADO.md#header")
-    _r(results, not h4.detect_h5_hf_closed(estado_h), "h5-hf-cerrado-indebido", "ESTADO.md#header")
+    _r(results, not h4.detect_h5_hf_closed(estado_h), "hf-cerrado-indebido", "ESTADO.md#header")
 
 
 def run_real() -> int:
