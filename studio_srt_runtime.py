@@ -317,15 +317,20 @@ def _cargar_words(words_path: Path) -> list:
 
 
 def _public_summary(
-    runtime: SelectedSrtRuntime, result, n_warnings: int, sidecar_name: str
+    runtime: SelectedSrtRuntime, result, n_warnings: int, sidecar_name: str, propuesta: dict
 ) -> dict:
-    """Resumen publico: solo basenames, conteos y ratios. Sin cues, texto ni rutas."""
+    """Resumen publico: solo basenames, conteos y ratios. Sin cues, texto ni rutas.
+
+    `offset_propuesto` es informativo: lo calcula el estimador y NUNCA se aplica solo. La UI
+    lo muestra para que el usuario decida reenviar el render con `offset_ms` explicito.
+    """
     return {
         "source": "srt",
         "source_sha256": runtime.source_sha256,
         "alignment_sidecar": sidecar_name,
         "n_cues": result.n_cues,
         "word_aligned": result.word_aligned,
+        "word_partial": result.word_partial,
         "cue_fallback": result.cue_fallback,
         "coverage": result.coverage,
         "min_coverage": result.min_coverage,
@@ -333,6 +338,9 @@ def _public_summary(
         "substitution_matches": result.n_substitution,
         "rejected_substitutions": result.n_rejected_sub,
         "n_warnings": n_warnings,
+        "offset_ms": result.offset_ms,
+        "modo_parcial": result.modo_parcial,
+        "offset_propuesto": propuesta,
     }
 
 
@@ -342,6 +350,9 @@ def prepare_selected_srt_groups(
     words_path: Path,
     video_duration_ms: int | None,
     alignment_sidecar_path: Path,
+    offset_ms: int = 0,
+    modo_parcial: bool = False,
+    min_coverage: float | None = None,
 ) -> PreparedSrtRender:
     """Groups del SRT seleccionado (S36-B) + sidecar + resumen publico saneado.
 
@@ -356,13 +367,25 @@ def prepare_selected_srt_groups(
             words,
             video_duration_ms=video_duration_ms,
             words_file=Path(words_path).name,
+            offset_ms=offset_ms,
+            modo_parcial=modo_parcial,
+            min_coverage=min_coverage,
         )
     except SrtError:
         raise StudioSrtRuntimeError("el SRT seleccionado no se pudo alinear") from None
     srt_caption.escribir_sidecar(payload, Path(alignment_sidecar_path))
     n_warnings = payload["summary"]["n_warnings"]
-    summary = _public_summary(runtime, result, n_warnings, Path(alignment_sidecar_path).name)
-    if summary["word_aligned"] + summary["cue_fallback"] != summary["n_cues"]:
+    summary = _public_summary(
+        runtime,
+        result,
+        n_warnings,
+        Path(alignment_sidecar_path).name,
+        payload["offset"]["propuesta"],
+    )
+    if (
+        summary["word_aligned"] + summary["word_partial"] + summary["cue_fallback"]
+        != summary["n_cues"]
+    ):
         raise StudioSrtRuntimeError("resumen de alineacion inconsistente")
     return PreparedSrtRender(groups=groups, result=result, summary=summary)
 

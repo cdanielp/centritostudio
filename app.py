@@ -777,6 +777,30 @@ def _validar_params_render(
         raise HTTPException(400, "position invalida. Opciones: bottom, center, top")
 
 
+# Tope del desplazamiento manual: +-1 h. Un offset mayor no corrige un desfase, lo inventa.
+SRT_OFFSET_MAX_MS = 3600_000
+
+
+def _validar_params_srt(
+    caption_source: str, offset_ms: int, alineado_parcial: bool, min_coverage: float | None
+) -> None:
+    """Valida los parametros de la ruta SRT (S38). Solo aplican con caption_source=srt.
+
+    Pedirlos con `caption_source=transcript` es un error del llamador, no algo que se ignore
+    en silencio: quien manda un offset espera que se aplique.
+    """
+    pedidos = offset_ms or alineado_parcial or min_coverage is not None
+    if caption_source != "srt" and pedidos:
+        raise HTTPException(
+            400,
+            "srt_offset_ms / srt_alineado_parcial / srt_min_coverage exigen caption_source=srt.",
+        )
+    if abs(int(offset_ms)) > SRT_OFFSET_MAX_MS:
+        raise HTTPException(400, "srt_offset_ms fuera de rango (maximo +-3600000 ms).")
+    if min_coverage is not None and not 0.0 <= float(min_coverage) <= 1.0:
+        raise HTTPException(400, "srt_min_coverage debe estar entre 0.0 y 1.0.")
+
+
 @app.post("/api/videos/{name}/render")
 def start_render(
     name: str,
@@ -793,9 +817,13 @@ def start_render(
     caption_qa: str | None = None,
     guion: str | None = None,
     caption_source: str = "transcript",
+    srt_offset_ms: int = 0,
+    srt_alineado_parcial: bool = False,
+    srt_min_coverage: float | None = None,
 ):
     _validar_name(name)
     _validar_params_render(caption_source, caption_qa, densidad, position)
+    _validar_params_srt(caption_source, srt_offset_ms, srt_alineado_parcial, srt_min_coverage)
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
     if caption_source == "transcript":
@@ -829,6 +857,9 @@ def start_render(
             use_emphasis,
             words_per_group,
             caption_qa,
+            srt_offset_ms=int(srt_offset_ms),
+            srt_alineado_parcial=bool(srt_alineado_parcial),
+            srt_min_coverage=srt_min_coverage,
         )
     # pop/intensidad invalidos son fail-safe (usan el default del estilo/preset).
     etiqueta = preset or style
@@ -892,6 +923,10 @@ def _start_render_srt(
     use_emphasis: bool,
     words_per_group: int | None,
     caption_qa: str | None,
+    *,
+    srt_offset_ms: int = 0,
+    srt_alineado_parcial: bool = False,
+    srt_min_coverage: float | None = None,
 ):
     """Render de Studio con el SRT seleccionado como texto oficial (S36-C2A1, D38).
 
@@ -942,6 +977,9 @@ def _start_render_srt(
             "intensidad": intensidad,
             "srt_selection": selection,
             "srt_binding": binding,
+            "srt_offset_ms": srt_offset_ms,
+            "srt_modo_parcial": srt_alineado_parcial,
+            "srt_min_coverage": srt_min_coverage,
         },
         daemon=True,
     ).start()

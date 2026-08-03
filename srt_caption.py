@@ -19,6 +19,9 @@ from pathlib import Path
 from srt_align import DEFAULT_MIN_COVERAGE, AlignmentResult, align_srt_to_words
 from srt_import import SrtError, load_srt, validate_srt
 
+# Esquema del sidecar de auditoria. v2 (S38) = v1 + bloque `offset` + `summary.word_partial`.
+SIDECAR_VERSION = 2
+
 
 def _basename(name: str | None) -> str | None:
     if not name:
@@ -47,7 +50,10 @@ def _word_group(gi: int, cue) -> dict:
         "end": round(cue.end_ms / 1000, 3),
         "text": " ".join(w.text for w in cue.words),
         "words": words,
-        "timing_mode": "word_aligned",
+        # `word_partial` (S38) es un group normal del motor: tiene timing por palabra. El
+        # modo viaja para auditoria y para que el preset CVE lo trate como animable (solo
+        # `cue_fallback` queda estatico, D36B-3).
+        "timing_mode": cue.mode,
     }
 
 
@@ -72,7 +78,7 @@ def construir_groups(result: AlignmentResult) -> list[dict]:
     """Convierte un AlignmentResult en groups compatibles con `core.build_ass`."""
     groups: list[dict] = []
     for gi, cue in enumerate(result.cues):
-        if cue.mode == "word_aligned":
+        if cue.words:  # word_aligned y word_partial traen timing por palabra
             groups.append(_word_group(gi, cue))
         else:
             groups.append(_fallback_group(gi, cue))
@@ -115,10 +121,17 @@ def alignment_a_sidecar(
     encoding: str,
     words_file: str | None,
     n_warnings: int = 0,
+    offset_estimate: dict | None = None,
 ) -> dict:
-    """Contrato JSON v1 del sidecar de alineacion. Solo basenames, tiempos int ms."""
+    """Contrato JSON v2 del sidecar de alineacion. Solo basenames, tiempos int ms.
+
+    v2 (S38) agrega, de forma ADITIVA: bloque `offset` (lo aplicado + la propuesta del
+    estimador) y `summary.word_partial`. Nada de produccion parsea este sidecar (solo se
+    escribe, para auditoria), pero la version sube igual para que un lector externo sepa
+    que el esquema cambio.
+    """
     return {
-        "version": 1,
+        "version": SIDECAR_VERSION,
         "source": {
             "format": "srt",
             "name": _basename(source_name),
@@ -129,9 +142,15 @@ def alignment_a_sidecar(
             "type": result.timing_source,
             "words_file": _basename(words_file),
         },
+        "offset": {
+            "aplicado_ms": result.offset_ms,
+            "modo_parcial": result.modo_parcial,
+            **({} if offset_estimate is None else offset_estimate),
+        },
         "summary": {
             "n_cues": result.n_cues,
             "word_aligned": result.word_aligned,
+            "word_partial": result.word_partial,
             "cue_fallback": result.cue_fallback,
             "coverage": result.coverage,
             "min_coverage": result.min_coverage,
@@ -190,16 +209,30 @@ def preparar_desde_srt(
     video_duration_ms: int | None = None,
     min_coverage: float | None = None,
     words_file: str | None = None,
+    offset_ms: int = 0,
+    modo_parcial: bool = False,
 ) -> tuple[list[dict], AlignmentResult, dict]:
     """Carga y valida el SRT, alinea con timings y devuelve (groups, result, sidecar_payload).
 
     Lanza SrtError si el SRT es estructuralmente invalido (no arranca el render).
+
+    `offset_ms` y `modo_parcial` son EXPLICITOS (S38) y por defecto reproducen exactamente
+    el comportamiento historico. El offset propuesto se calcula SIEMPRE para publicarlo en
+    el sidecar, pero NUNCA se aplica solo: aplicarlo es decision del llamador.
     """
+    import srt_offset  # noqa: PLC0415
+
     mc = DEFAULT_MIN_COVERAGE if min_coverage is None else min_coverage
     document = load_srt(Path(srt_path))
     _n_err, n_warn = validar_o_abortar(document, video_duration_ms=video_duration_ms)
+    propuesta = srt_offset.offset_a_dict(srt_offset.estimar_offset(document, timing_words))
     result = align_srt_to_words(
-        document, timing_words, video_duration_ms=video_duration_ms, min_coverage=mc
+        document,
+        timing_words,
+        video_duration_ms=video_duration_ms,
+        min_coverage=mc,
+        offset_ms=offset_ms,
+        modo_parcial=modo_parcial,
     )
     groups = construir_groups(result)
     payload = alignment_a_sidecar(
@@ -208,6 +241,7 @@ def preparar_desde_srt(
         encoding=document.encoding,
         words_file=words_file,
         n_warnings=n_warn,
+        offset_estimate={"propuesta": propuesta},
     )
     return groups, result, payload
 
