@@ -4,144 +4,195 @@
 **Alcance:** motor de alineación SRT + contrato HTTP. **NO** se introduce forced aligner, WhisperX,
 MFA ni ninguna dependencia nueva: cero deps añadidas, solo stdlib.
 
-> **Privacidad.** El SRT corregido privado del usuario NO se commitea, NO se copia a `revision/`, NO se
-> convierte en fixture y su texto no aparece en ningún artefacto versionado. Los sidecars que
-> quedan en `output/` van **sin el campo `text`**. Todos los fixtures de test son sintéticos.
+> **Privacidad.** El SRT corregido privado del usuario NO se commitea, NO se copia a `revision/`,
+> NO se convierte en fixture y su texto no aparece en ningún artefacto versionado. Su **nombre**
+> tampoco: los scripts reciben las rutas por CLI. Los sidecars que quedan en `output/` van **sin el
+> campo `text`**. Todos los fixtures de test son sintéticos.
 
 ---
 
-## El problema (medido en la auditoría del 2026-08-03, no re-derivado aquí)
+## v2 — corrección tras el rechazo visual de K
 
-1. Desfase **constante de +5.28 s** entre el SRT corregido y el timeline del transcript limpio
-   (567 anclas, 99.3% dentro de ±1 s de la mediana).
-2. `srt_align.py:306` marcaba `cue_fallback` si `n_matched != n_tok` — todo-o-nada, ignorando
-   `min_coverage`.
+**Veredicto de K sobre la v1: RECHAZADO.** El texto era correcto; el timing dentro del cue no.
+El offset de **5284 ms no se tocó** (la cobertura por bloques de 5 min va de 0.72 a 0.92 sin
+tendencia: no hay drift). Se corrigieron los cuatro defectos que K midió.
 
-Resultado: **3.65% de cobertura y CERO cues animados** sobre material cuyo texto coincide en un
-95% con el audio.
+Los "antes" de la tabla no son de memoria: se midieron con `auditar_ass.py` sobre el **mismo
+`.ass` que K juzgó**, que seguía en disco.
 
----
-
-## Lo que se implementó
-
-### 1. `srt_offset.py` — el offset se DETECTA y se PROPONE, nunca se auto-aplica
-
-Estimador puro por **anclas de token único**: un token que aparece exactamente una vez en el SRT
-y una vez en el transcript es un par sin ambigüedad. La **mediana** de las diferencias resiste
-outliers.
-
-Devuelve `OffsetEstimate(offset_ms, n_anclas, dispersion_ms, confianza, aplicable, metodo, motivo)`.
-
-**Por qué no se auto-aplica:** un offset mal estimado desincroniza el video entero *en silencio*,
-sin error visible; el usuario solo lo descubre al ver el render. Por eso:
-
-- sin `offset_ms` explícito el comportamiento es **byte-idéntico** al histórico;
-- con menos de `MIN_ANCLAS=20` anclas o `confianza < 0.80`, la propuesta devuelve `offset_ms=0`
-  y `aplicable=False`, para que nadie desplace nada por accidente.
-
-Medición sobre el material real: `offset_ms=5284`, `n_anclas=566`, `dispersion_ms=221`,
-`confianza=0.9929`, `aplicable=True`.
-
-### 2. `srt_align_partial.py` — cues parcialmente alineados
-
-El portón por cue pasa a **honrar `min_coverage`** en vez de exigir el 100%. Reglas duras:
-
-1. Un token anclado **jamás se mueve**: conserva su timing real, al ms.
-2. Los tokens sin ancla se reparten **uniformemente** en el hueco entre sus vecinos anclados.
-3. Nada **interpolado** sale del rango del cue.
-4. **Monotonía estricta**: cada palabra empieza donde terminó la anterior o después.
-5. Si el hueco no da ni 1 ms por token → **no se inventa nada**, cae a `cue_fallback` estático.
-6. Un cue **sin ninguna ancla** sigue cayendo a estático honesto.
-
-**Decisión de borde, tomada con evidencia.** `_claim_window` reclama por punto MEDIO, así que una
-palabra real puede desbordar el cue por cualquiera de los dos lados. Los dos lados **no** son
-equivalentes:
-
-| Desborde | Qué pasa al pintar | Decisión |
+| Defecto | Antes (ASS v1, tramo de 75 s) | Después |
 |---|---|---|
-| Por el **final** | `core_ass.build_ass:265` cierra el evento de la última palabra en `group["end"]`: el exceso se recorta solo | **Se acepta** |
-| Por el **inicio** | El caption aparecería ANTES de su cue y podría solaparse con el cue anterior (dos líneas en pantalla) | **Se rechaza** → estático |
+| D1 arranque tardío | hasta **+570 ms** | **0** cues desviados (exacto, sobre los 1072) |
+| D2 eventos degenerados | **45** bajo 150 ms, mínimo real **50 ms** | **0**, mínimo real **150 ms** |
+| D3 solapes / duplicados | **8** solapes, **1** duplicado | **0** y **0** |
+| D4 portón que no honra `min_coverage` | **329** cues tumbados con cobertura suficiente | **0** |
+| % de pantalla con caption | 76.1% | **87.1%** (mismo tramo) |
 
-Rechazar los dos costaba **154 cues reales** del material de K sin ganar nada.
+### D4 — la regla REAL que estaba decidiendo
 
-### 3. Contrato HTTP
+No era la cobertura. Eran **dos portones no documentados** dentro de `srt_align_partial`, ambos
+introducidos por mí en la v1 y ambos residuo del portón todo-o-nada:
 
-`POST /api/videos/{name}/render` gana `srt_offset_ms`, `srt_alineado_parcial` y `srt_min_coverage`.
-Pedirlos con `caption_source=transcript` es **400**, no se ignoran en silencio: quien manda un
-offset espera que se aplique. Tope `±3 600 000 ms`; `min_coverage` en `[0.0, 1.0]`.
+| Regla | Qué exigía | Cues tumbados |
+|---|---|---|
+| `anclas_utilizables` | que **ninguna ancla empezara antes** del cue ni se solapara con otra | 230 |
+| `interpolar_tramos` | que quedara **≥1 ms por token** en cada hueco | 99 |
+| (legítimo) `coverage < min_coverage` | — | 47 |
 
-El resumen público del job y el sidecar (**v2**, aditivo) publican lo **aplicado** y, aparte, la
-**propuesta** del estimador: `offset_ms`, `n_anclas`, `dispersion_ms`, `confianza`, `aplicable`.
+Y `_fallback_reason` no se enteraba de ninguna de las dos: publicaba `cobertura_insuficiente`
+para **293** cues cuya cobertura estaba entre **0.67 y 0.89**. El sidecar mentía sobre su propia
+decisión.
+
+**Ninguna de las dos era legítima**, así que se eliminaron. `srt_eventos` **acota** las anclas al
+rango del cue en vez de descartar el cue entero, y **absorbe** tokens cuando no cabe el mínimo. El
+portón ahora es `min_coverage` y nada más. `min_coverage` **no se bajó** de 0.5 para maquillar
+ningún número.
+
+`_fallback_reason` también se corrigió: `cobertura_insuficiente` solo se publica cuando la
+cobertura realmente no alcanza. Se añadieron `modo_parcial_desactivado` y `cue_demasiado_corto`.
+
+> **Nota de numeración:** no se añade entrada a `DECISIONES.md` en esta rama porque **D44 ya está
+> tomada** por el PR #31 (docs), abierto en paralelo. Cuando #31 se mergee, esta decisión entra
+> como D45.
 
 ---
 
-## Tabla comparativa — material REAL (SRT corregido privado + su transcript limpio, 1072 cues)
+## Arquitectura
 
-|                    | HOY     | OFFSET  | OFFSET+PARCIAL |
-|--------------------|---------|---------|----------------|
-| coverage           | 3.65%   | 81.38%  | **81.38%**     |
-| cues animados      | 0       | 201     | **201**        |
-| cues parciales     | n/a     | n/a     | **495**        |
-| cues estáticos     | 1072    | 871     | **376**        |
+### `srt_offset.py` — el offset se DETECTA y se PROPONE, nunca se auto-aplica
 
-`coverage` mide anclaje de tokens, así que el modo parcial no la mueve: lo que mueve es **cuántos
-cues llegan a pantalla con animación**. De **0 a 696 de 1072 (64.9%)**.
+Estimador puro por **anclas de token único** + mediana (resiste outliers). Devuelve `offset_ms`,
+`n_anclas`, `dispersion_ms`, `confianza`, `aplicable`.
 
-Reproducir (las rutas se pasan por CLI; el nombre del archivo privado no se versiona):
+Con menos de `MIN_ANCLAS=20` anclas o `confianza < 0.80` propone **0** y `aplicable=False`. La
+razón es concreta: un offset mal estimado desincroniza el video entero *en silencio*, sin error
+visible; solo se descubre al ver el render.
+
+Material real: `offset_ms=5284`, `n_anclas=566`, `dispersion_ms=221`, `confianza=0.9929`.
+
+### `srt_eventos.py` — el reparto, con las invariantes por construcción
+
+Concentra el layout de eventos dentro de un cue y **garantiza**:
+
+1. `eventos[0].start_ms == cue.start_ms` y `eventos[-1].end_ms == cue.end_ms` (D1).
+2. Ningún evento por debajo de `MIN_EVENTO_MS` (default **150**, configurable) (D2).
+3. Eventos **contiguos**, estrictamente crecientes y sin duplicados (D3).
+
+Un token que no alcanza el mínimo se **absorbe** en el evento anterior: pierde su resalte, nunca
+su texto. Las anclas se **acotan** al rango del cue — el cue manda sobre cuándo aparece el
+caption, y `_claim_window` reclama por punto medio, así que una palabra real puede desbordarlo.
+
+Consecuencia del contrato de contigüidad: el `end_ms` de una palabra ya **no** es el de su ancla,
+sino el inicio de la siguiente. Lo que se conserva del ancla es su **inicio**.
+
+### `srt_align_partial.py` — adaptador
+
+Traduce tokens + anclas a `AlignedCue`. Ya no decide nada: el portón vive en `srt_align`.
+
+### Contrato HTTP
+
+`POST /api/videos/{name}/render` gana `srt_offset_ms`, `srt_alineado_parcial`, `srt_min_coverage`.
+Pedirlos con `caption_source=transcript` es **400** — no se ignoran en silencio. Sidecar **v2**
+(aditivo: bloque `offset` + `summary.word_partial`).
+
+---
+
+## Re-medición sobre el material REAL (1072 cues)
+
+|                    | HOY     | OFFSET  | OFFSET+PARCIAL v1 | **OFFSET+PARCIAL v2** |
+|--------------------|---------|---------|-------------------|------------------------|
+| coverage           | 3.65%   | 81.38%  | 81.38%            | **81.38%**             |
+| cues animados      | 0       | 201     | 201               | **203**                |
+| cues parciales     | n/a     | n/a     | 495               | **822**                |
+| cues estáticos     | 1072    | 871     | 376               | **47**                 |
+
+`coverage` mide anclaje de tokens; lo que mueve el modo parcial es **cuántos cues llegan a
+pantalla animados**: de **0** a **1025 de 1072 (95.6%)**. Los 47 estáticos restantes son el
+fallback legítimo (`coverage < 0.5`), no un rechazo escondido.
+
+### Invariantes sobre el ASS completo (6736 eventos, los 1072 cues)
 
 ```
+D1 sobre el MODELO (exacto)
+  cues cuyo primer evento NO arranca en cue.start: 0
+  cues cuyo ultimo evento NO cierra en cue.end   : 0
+
+Invariantes del ASS (material completo)
+  eventos                    6736
+  bajo el minimo (150 ms)    0
+  duracion minima real       150 ms
+  solapes                    0
+  duplicados                 0
+  desvio de arranque         0/1072 cues fuera de +-5 ms (rejilla ASS), max 4 ms
+  pantalla con caption       82.7%
+  VEREDICTO: INVARIANTES OK
+```
+
+El `max 4 ms` no es un defecto del reparto: **el formato ASS guarda los tiempos en
+centisegundos**, así que la rejilla es de 10 ms y redondear cuesta hasta 5 ms. Por eso el desvío
+exacto se mide sobre el modelo (0) y el del ASS contra esa tolerancia.
+
+---
+
+## Evidencia visual para el gate de K — `output/revision-srt-parcial-v2/`
+
+Dos tramos, cada uno con `.ass`, `.mp4` y contact sheet 3×3:
+
+| Tramo | Qué es | Contenido | Invariantes |
+|---|---|---|---|
+| **A** `t0=1137.75 s` | **el mismo que K rechazó**, para comparar 1:1 | 33 cues: 30 parciales · 1 completo · 2 estáticos | OK |
+| **B** `t0=1360.58 s` | zona de **cobertura baja** (bloque 15-25 min), elegida por el script | 38 cues: 30 parciales · 2 completos · 6 estáticos | OK |
+
+- `A_mismo_tramo_que_K.mp4` · `A_mismo_tramo_que_K_contact_sheet.png`
+- `B_cobertura_baja.mp4` · `B_cobertura_baja_contact_sheet.png`
+- `alignment_sin_texto.json`
+
+El render anterior sigue en `output/revision-srt-parcial/` para comparar lado a lado.
+
+Reproducir:
+
+```
+venv\Scripts\python revision\s38-srt-offset-parcial\render_evidencia.py ^
+    --srt input\<tu_srt>.srt --video input\<tu_video>.mp4 ^
+    --words transcripts\<tu_video>_words.json
 venv\Scripts\python revision\s38-srt-offset-parcial\medir_cobertura_real.py ^
-    --srt input\<tu_srt_corregido>.srt --words transcripts\<tu_video>_words.json
+    --srt input\<tu_srt>.srt --words transcripts\<tu_video>_words.json
+venv\Scripts\python revision\s38-srt-offset-parcial\auditar_ass.py <archivo.ass>
 ```
-
-### Por qué siguen 376 estáticos
-
-| Causa | Cues |
-|---|---|
-| Ancla que **empieza** antes del cue (rechazo deliberado, ver tabla de borde) | 219 |
-| Cobertura < 0.5 o cero anclas (fallback honesto, correcto) | 47 |
-| Anclas solapadas entre sí | 21 |
-| Sin hueco para interpolar | 13 |
-| Resto (`sustitucion_poco_similar`, `non_monotonic_timings`) | 76 |
-
----
-
-## Evidencia visual para el gate de K
-
-- **Video:** `output/revision-srt-parcial/evidencia_srt_parcial.mp4` (75 s, 1920×1080, H.264+AAC)
-- **Contact sheet:** `output/revision-srt-parcial/contact_sheet.png` (3×3)
-- **Sidecar sin texto:** `output/revision-srt-parcial/alignment_sin_texto.json`
-
-El tramo **no se eligió a mano**: `_mejor_tramo` busca la ventana de 75 s con más cues parciales,
-que es justo lo que hay que poder juzgar. Tramo `t0=1137.8 s`, 35 cues:
-**23 parciales · 11 estáticos · 1 completo**.
-
-**Lo que K tiene que decidir:** ¿un cue parcialmente animado (unas palabras con timing real, el
-resto repartido en el hueco) se ve bien, o se nota el relleno y se ve roto?
-
-Reproducir: `venv\Scripts\python revision\s38-srt-offset-parcial\render_evidencia.py`
 
 ---
 
 ## Verificación
 
-- `ruff check .` → All checks passed
-- `ruff format --check .` → sin cambios
+- `ruff check .` → All checks passed · `ruff format --check .` → sin cambios
 - `check.bat` → `===== TODO OK =====`
-- Suite: **2461 passed, 4 skipped** (baseline 2410 + 51 nuevos)
-- Tests nuevos: `tests/test_srt_offset.py` (14), `tests/test_srt_align_partial.py` (24),
-  `tests/test_srt_offset_api.py` (13). Escritos **en rojo primero**.
+- Suite: **2486 passed, 4 skipped** (baseline 2410 + 76 nuevos)
+- Gate de privacidad (`smoke_h4_docs --real`) → 1116 checks, **0 blockers**
+- `smoke_h5_ci --real` → 16 checks, **0 fails**
 
-**Contratos de byte-identidad conservados:** sin `offset_ms` y sin `modo_parcial` la salida no
-cambia ni un byte. `test_offset_cero_es_byte_identico` y
-`test_modo_parcial_sin_bajar_min_coverage_no_cambia_nada` lo fijan; los 2410 tests previos siguen
-verdes sin tocarse (salvo el contrato del sidecar, que sube a v2 de forma aditiva).
+Tests escritos **en rojo primero**: `test_srt_eventos.py` (22, invariantes D1-D3 del motor),
+`test_srt_align_partial.py` (30, integración + D4), `test_srt_offset.py` (14),
+`test_srt_offset_api.py` (13).
+
+**Byte-identidad conservada:** sin `offset_ms` y sin `modo_parcial` la salida no cambia ni un
+byte. Lo fijan `test_offset_cero_es_byte_identico` y
+`test_modo_parcial_sin_bajar_min_coverage_no_cambia_nada`.
+
+### Tests que cambiaron de contrato (y por qué)
+
+7 tests de la v1 fijaban justo el comportamiento que K rechazó y se reescribieron:
+`test_ancla_que_desborda_por_el_INICIO_cae_a_estatico` y `test_anclas_solapadas_caen_a_estatico`
+se **invirtieron** (esos cues ahora se animan, era el bug); los que afirmaban
+`end_ms == end_del_ancla` pasaron a afirmar `start_ms == start_del_ancla` (contigüidad).
+
+---
 
 ## Deuda declarada
 
-- `srt_align.py` queda en **427 líneas**, por encima del límite de 400 del skill `centrito-dev`
-  (ya entraba con 415). La lógica nueva se puso en módulos aparte justamente para no engordarlo
-  más; partirlo es un refactor con riesgo propio y no entra en este PR.
-- Los 219 cues rechazados por desborde inicial son recuperables si se decide desplazar la ventana
-  del cue al span real de sus anclas. **No se hizo aquí:** cambia cuándo aparece el caption y eso
-  necesita el mismo gate visual de K.
+- `srt_align.py` queda por encima del límite de 400 líneas del skill `centrito-dev` (ya entraba
+  con 415). La lógica nueva se puso en módulos aparte justamente para no engordarlo más; partirlo
+  es un refactor con riesgo propio y no entra en este PR.
+- Los 47 cues estáticos restantes tienen `coverage < 0.5` de verdad. Bajar el umbral los animaría,
+  pero con más de la mitad de las palabras sin timing medido — no se hizo.
+- El desvío de ±4 ms en el ASS es el suelo del formato (centisegundos). Solo se eliminaría
+  cuantizando el modelo a la rejilla de 10 ms, lo que no aporta nada visible.

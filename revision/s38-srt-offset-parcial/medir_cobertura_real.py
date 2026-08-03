@@ -18,8 +18,10 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(HERE))
 
 import srt_caption  # noqa: E402
 import srt_offset  # noqa: E402
@@ -96,7 +98,43 @@ def main() -> int:
             v = f[i]
             celdas.append(f"{v:.2f}%" if i == 1 else str(v))
         print(f"{et:22s}{celdas[0]:>12s}{celdas[1]:>12s}{celdas[2]:>16s}")
-    return 0
+
+    print()
+    return _auditar_material_completo(srt_path, words, words_path.name, off)
+
+
+def _auditar_material_completo(srt_path, words, words_file, off) -> int:
+    """Invariantes D1-D3 sobre el ASS de los 1072 cues, no solo sobre un tramo."""
+    import core  # noqa: PLC0415
+    import styles  # noqa: PLC0415
+
+    import auditar_ass  # noqa: PLC0415
+
+    groups, result, _p = srt_caption.preparar_desde_srt(
+        srt_path,
+        words,
+        words_file=words_file,
+        offset_ms=off,
+        modo_parcial=True,
+        min_coverage=MIN_COVERAGE_PARCIAL,
+    )
+    # D1 EXACTO sobre el modelo (sin la rejilla de 10 ms del formato ASS).
+    desvio_ini = sum(
+        1 for g in groups if g["words"] and abs(g["words"][0]["start"] - g["start"]) > 1e-9
+    )
+    desvio_fin = sum(
+        1 for g in groups if g["words"] and abs(g["words"][-1]["end"] - g["end"]) > 1e-9
+    )
+    print("== D1 sobre el MODELO (exacto, los 1072 cues) ==")
+    print(f"  cues cuyo primer evento NO arranca en cue.start: {desvio_ini}  (debe ser 0)")
+    print(f"  cues cuyo ultimo evento NO cierra en cue.end   : {desvio_fin}  (debe ser 0)")
+
+    ass = OUT / "material_completo.ass"
+    core.build_ass(groups, 1920, 1080, styles.get_style("hormozi"), ass)
+    print()
+    ok = auditar_ass.imprimir(auditar_ass.auditar(groups, ass), "(material completo)")
+    print(f"  sidecar/ass -> {ass.relative_to(ROOT)}")
+    return 0 if (ok and not desvio_ini and not desvio_fin) else 1
 
 
 if __name__ == "__main__":

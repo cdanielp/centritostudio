@@ -211,6 +211,7 @@ def preparar_desde_srt(
     words_file: str | None = None,
     offset_ms: int = 0,
     modo_parcial: bool = False,
+    min_evento_ms: int | None = None,
 ) -> tuple[list[dict], AlignmentResult, dict]:
     """Carga y valida el SRT, alinea con timings y devuelve (groups, result, sidecar_payload).
 
@@ -233,6 +234,7 @@ def preparar_desde_srt(
         min_coverage=mc,
         offset_ms=offset_ms,
         modo_parcial=modo_parcial,
+        **({} if min_evento_ms is None else {"min_evento_ms": min_evento_ms}),
     )
     groups = construir_groups(result)
     payload = alignment_a_sidecar(

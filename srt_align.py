@@ -259,8 +259,25 @@ def _timings_validos(words: tuple[AlignedWord, ...]) -> bool:
     return True
 
 
-def _fallback_reason(n_matched: int, n_tok: int, n_rejected: int, has_exact: bool) -> str:
-    """Motivo determinista y sin texto privado para caer a cue_fallback."""
+def _fallback_reason(
+    n_matched: int,
+    n_tok: int,
+    n_rejected: int,
+    has_exact: bool,
+    *,
+    coverage: float = 0.0,
+    min_coverage: float = DEFAULT_MIN_COVERAGE,
+    modo_parcial: bool = False,
+) -> str:
+    """Motivo determinista y sin texto privado para caer a cue_fallback.
+
+    `cobertura_insuficiente` SOLO se publica cuando la cobertura realmente no alcanza el
+    umbral. Antes se emitia tambien cuando el cue tenia cobertura de sobra pero lo tumbaba
+    otra regla: 293 cues del material real reportaban `cobertura_insuficiente` con cobertura
+    entre 0.67 y 0.89. El sidecar mentia sobre su propia decision.
+    """
+    if coverage >= min_coverage and n_matched != n_tok and not modo_parcial:
+        return "modo_parcial_desactivado"
     if n_rejected and not has_exact:
         return "solo_sustituciones_sin_ancla_exacta"
     if n_rejected:
@@ -269,7 +286,11 @@ def _fallback_reason(n_matched: int, n_tok: int, n_rejected: int, has_exact: boo
 
 
 def _align_cue(  # noqa: C901
-    cue, window: list[dict], min_coverage: float, modo_parcial: bool = False
+    cue,
+    window: list[dict],
+    min_coverage: float,
+    modo_parcial: bool = False,
+    min_evento_ms: int = srt_align_partial.MIN_EVENTO_MS,
 ) -> AlignedCue:
     tokens = _tokenize_cue(cue.lines)
     n_tok = len(tokens)
@@ -308,17 +329,33 @@ def _align_cue(  # noqa: C901
     n_matched = len(accepted)
     coverage = n_matched / n_tok
 
-    # 3) word_aligned exige anclar TODOS los tokens (sin inserciones/rechazos) y superar umbral.
+    stats = (n_tok, n_matched, n_exact, n_sub, n_rejected)
+    razon_kw = {
+        "coverage": coverage,
+        "min_coverage": min_coverage,
+        "modo_parcial": modo_parcial,
+    }
+
+    # 3) Modo parcial (S38): el UNICO porton es `min_coverage`. Todo cue que lo alcanza y tiene
+    #    al menos un ancla se reparte con `srt_eventos`, que normaliza arranque, duracion minima
+    #    y monotonia. La v1 tenia ademas dos reglas NO documentadas (anclas dentro del cue e
+    #    interpolacion con hueco de 1 ms/token) que tumbaban 329 cues con cobertura suficiente;
+    #    eran residuo del porton todo-o-nada y se eliminaron. `srt_eventos` acota las anclas
+    #    en vez de descartar el cue. Con el default min_coverage=1.0 esta rama solo alcanza
+    #    cues completos, asi que la salida historica no cambia.
+    if modo_parcial and n_matched and coverage >= min_coverage:
+        modo = "word_aligned" if n_matched == n_tok else "word_partial"
+        layout = srt_align_partial.construir_cue_layout(
+            cue, tokens, accepted, stats, modo, min_evento_ms
+        )
+        if layout is not None:
+            return layout
+        # Unico motivo real para no repartir: el cue no da ni para un evento del minimo.
+        return _fallback_cue(cue, *stats, "cue_demasiado_corto")
+
+    # 4) Ruta historica: word_aligned exige anclar TODOS los tokens y superar el umbral.
     if n_matched != n_tok or coverage < min_coverage:
-        stats = (n_tok, n_matched, n_exact, n_sub, n_rejected)
-        # Modo parcial (S38): el porton pasa a HONRAR min_coverage en vez de exigir el 100%.
-        # Con el default min_coverage=1.0 esta rama es inalcanzable, asi que activar
-        # modo_parcial sin bajar el umbral NO cambia ni un byte de la salida historica.
-        if modo_parcial and n_matched and coverage >= min_coverage:
-            parcial = srt_align_partial.construir_cue_parcial(cue, tokens, accepted, stats)
-            if parcial is not None:
-                return parcial
-        reason = _fallback_reason(n_matched, n_tok, n_rejected, has_exact)
+        reason = _fallback_reason(n_matched, n_tok, n_rejected, has_exact, **razon_kw)
         return _fallback_cue(cue, *stats, reason)
 
     # 4) Construir words con los timings REALES EXACTOS (sin sumar ni mover ms).
@@ -390,6 +427,7 @@ def align_srt_to_words(
     timing_source: str = "whisper_words",
     offset_ms: int = 0,
     modo_parcial: bool = False,
+    min_evento_ms: int = srt_align_partial.MIN_EVENTO_MS,
 ) -> AlignmentResult:
     """Alinea el texto oficial del SRT con timings reales. No muta ninguna entrada.
 
@@ -408,7 +446,7 @@ def align_srt_to_words(
     for cue in document.cues:
         c = _desplazar(cue, offset_ms) if offset_ms else cue
         window = _claim_window(mids, words, claimed, c.start_ms, c.end_ms)
-        aligned.append(_align_cue(c, window, min_coverage, modo_parcial))
+        aligned.append(_align_cue(c, window, min_coverage, modo_parcial, min_evento_ms))
 
     n_cues = len(aligned)
     n_word = sum(1 for c in aligned if c.mode == "word_aligned")
