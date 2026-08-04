@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_hook",
   "plantilla": {
     "nombre": "hook",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "duracion_ms": 2500,
   "fps": 30,
@@ -16,9 +16,9 @@
     "titulo": "Entrena tu LoRA de personaje en 20 minutos"
   },
   "marca": {
-    "primario": "#FF5A2B",
-    "secundario": "#111111",
-    "texto": "#FFFFFF"
+    "primario": "#FF3D3D",
+    "secundario": "#2A2A35",
+    "texto": "#F5F5F7"
   },
   "posicion": {
     "modo": "cuadro_completo"

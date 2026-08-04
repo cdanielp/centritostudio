@@ -1,7 +1,7 @@
 [
   {
     "nombre": "hook",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "slots_texto": [
       "kicker",
       "titulo"
@@ -13,7 +13,7 @@
   },
   {
     "nombre": "lower_third",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "slots_texto": [
       "nombre",
       "rol"
@@ -25,7 +25,7 @@
   },
   {
     "nombre": "titulo_seccion",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "slots_texto": [
       "titulo"
     ],
@@ -36,7 +36,7 @@
   },
   {
     "nombre": "dato_destacado",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "slots_texto": [
       "cifra",
       "etiqueta"
@@ -48,7 +48,7 @@
   },
   {
     "nombre": "cierre",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "slots_texto": [
       "titulo",
       "cta"

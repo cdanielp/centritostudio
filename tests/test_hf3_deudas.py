@@ -82,3 +82,57 @@ def test_el_catalogo_declara_un_proyecto_por_orientacion():
         assert set(d["proyecto"]) == {"vertical", "horizontal"}
         assert (RAIZ / d["proyecto"]["vertical"] / "index.html").is_file()
         assert (RAIZ / d["proyecto"]["horizontal"] / "index.html").is_file()
+
+
+# ── Paleta oficial de marca ──────────────────────────────────────────────────
+
+
+def test_la_paleta_de_marca_es_la_oficial_y_vive_en_un_solo_sitio():
+    """Los hex de marca se declaran UNA vez en `motion_capa`; el resto los deriva de ahi."""
+    import motion_capa as mc
+
+    assert mc.MARCA_TEXTO == "#F5F5F7"
+    assert mc.MARCA_SEPARADOR == "#2A2A35"
+    assert (mc.ACENTO_PRINCIPAL, mc.ACENTO_SECUNDARIO, mc.ACENTO_TERCIARIO) == (
+        "#FF3D3D",
+        "#06B6D4",
+        "#6C3AED",
+    )
+
+
+def test_cada_pieza_usa_UN_acento_y_el_contrato_lo_dice():
+    """Regla de marca: nunca los tres acentos en la misma pieza."""
+    import motion_capa as mc
+
+    for plantilla, acento in mc.ACENTO_POR_PLANTILLA.items():
+        marca = mc.marca_de(plantilla)
+        assert marca["primario"] == acento, plantilla
+        assert marca["secundario"] == mc.MARCA_SEPARADOR
+        assert marca["texto"] == mc.MARCA_TEXTO
+        assert len({marca["primario"], marca["secundario"], marca["texto"]}) == 3
+
+
+def test_el_acento_declarado_en_el_html_coincide_con_el_que_manda_centrito():
+    """Si divergen, la plantilla pinta un color y el contrato pide otro sin que nada falle."""
+    import re
+
+    import motion_capa as mc
+
+    for plantilla, acento in mc.ACENTO_POR_PLANTILLA.items():
+        for sufijo in ("", "horizontal"):
+            html = (RAIZ / "motion" / plantilla / sufijo / "index.html").read_text(
+                encoding="utf-8"
+            )
+            declarado = re.search(
+                r'"id":"marca_primario","type":"color","label":"[^"]+","default":"(#[0-9A-Fa-f]{6})"',
+                html,
+            )
+            assert declarado, f"{plantilla}/{sufijo}"
+            assert declarado.group(1).upper() == acento.upper(), f"{plantilla}/{sufijo}"
+
+
+def test_la_placa_estructural_sigue_siendo_el_fondo_de_marca():
+    """El fondo #0A0A0F no viaja en el contrato porque ya es la placa. No se toca."""
+    for plantilla in ("hook", "lower_third", "titulo_seccion", "dato_destacado", "cierre"):
+        html = (RAIZ / "motion" / plantilla / "index.html").read_text(encoding="utf-8")
+        assert "rgba(8, 8, 15, 0.78)" in html, plantilla

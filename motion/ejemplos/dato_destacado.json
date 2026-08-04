@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_dato_destacado",
   "plantilla": {
     "nombre": "dato_destacado",
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "duracion_ms": 3000,
   "fps": 30,
@@ -16,9 +16,9 @@
     "etiqueta": "menos tiempo de render al activar NVENC"
   },
   "marca": {
-    "primario": "#FF5A2B",
-    "secundario": "#111111",
-    "texto": "#FFFFFF"
+    "primario": "#06B6D4",
+    "secundario": "#2A2A35",
+    "texto": "#F5F5F7"
   },
   "posicion": {
     "modo": "cuadro_completo"

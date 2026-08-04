@@ -107,7 +107,7 @@ def test_contrato_de_pieza_es_valido_para_el_esquema_de_hf1():
     from hyperframes.capacidad import verificar_capacidad
 
     dato = mc.contrato_de_pieza(
-        _pieza(), version="1.0.1", ancho=1080, alto=1920, fps=30, marca=mc.MARCA_PROVISIONAL
+        _pieza(), version="1.0.3", ancho=1080, alto=1920, fps=30, marca=mc.MARCA
     )
     validar_contrato(dato)
     verificar_capacidad(dato, (1080, 1920))
@@ -116,7 +116,7 @@ def test_contrato_de_pieza_es_valido_para_el_esquema_de_hf1():
 def test_el_fps_del_contrato_es_el_del_destino_no_un_default():
     """La cadena de clips fuerza el fps de la base: una pieza a 30 sobre 24 pierde frames."""
     dato = mc.contrato_de_pieza(
-        _pieza(), version="1.0.1", ancho=1920, alto=1080, fps=24, marca=mc.MARCA_PROVISIONAL
+        _pieza(), version="1.0.3", ancho=1920, alto=1080, fps=24, marca=mc.MARCA
     )
     assert dato["fps"] == 24
 

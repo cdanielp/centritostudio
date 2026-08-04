@@ -33,10 +33,39 @@ NOMBRE_CACHE = "piezas"  # subcarpeta de piezas DENTRO del paquete (sobrevive al
 CATALOGO_REL = Path("motion") / "catalogo.json"
 FIT_DEFAULT = "nativo"
 
-# Paleta PROVISIONAL. Nacio de un fixture de los tests de HF-1, no de una identidad verificada
-# (D51.3), y K aun no ha entregado los hex reales. Vive aqui como constante unica para que el
-# dia que llegue el color definitivo se cambie en un sitio y no en cinco.
-MARCA_PROVISIONAL = {"primario": "#FF5A2B", "secundario": "#111111", "texto": "#FFFFFF"}
+# Paleta OFICIAL de Prompt Models Studio. Sustituye a la provisional que se colo desde un
+# fixture de HF-1. El fondo de marca (#0A0A0F) NO viaja en el contrato: ya vive en la placa
+# estructural rgba(8, 8, 15, 0.78) de las plantillas, que es el mismo color.
+MARCA_TEXTO = "#F5F5F7"
+MARCA_SEPARADOR = "#2A2A35"
+ACENTO_PRINCIPAL = "#FF3D3D"
+ACENTO_SECUNDARIO = "#06B6D4"
+ACENTO_TERCIARIO = "#6C3AED"
+
+# Un acento por pieza, NUNCA tres en la misma. El principal va donde el video gana o pierde al
+# espectador (el gancho y la llamada a la accion), el secundario es exclusivo de cifras, y el
+# terciario va en lo que es literalmente una etiqueta: quien habla y de que se habla.
+ACENTO_POR_PLANTILLA = {
+    "hook": ACENTO_PRINCIPAL,
+    "cierre": ACENTO_PRINCIPAL,
+    "dato_destacado": ACENTO_SECUNDARIO,
+    "lower_third": ACENTO_TERCIARIO,
+    "titulo_seccion": ACENTO_TERCIARIO,
+}
+
+MARCA = {"primario": ACENTO_PRINCIPAL, "secundario": MARCA_SEPARADOR, "texto": MARCA_TEXTO}
+
+
+def marca_de(plantilla: str, base: dict | None = None) -> dict:
+    """Marca del contrato para UNA plantilla: la base con su acento en `primario`.
+
+    Se resuelve aqui y no en el CSS porque el acento es un dato del contrato: asi el default
+    declarado en el HTML y lo que manda Centrito dicen lo mismo, que es justo lo que exige el
+    test de coherencia entre defaults y fallbacks.
+    """
+    marca = dict(base or MARCA)
+    marca["primario"] = ACENTO_POR_PLANTILLA.get(plantilla, marca.get("primario"))
+    return marca
 
 
 class SolapamientoDePiezas(ValueError):
@@ -113,7 +142,7 @@ def contrato_de_pieza(
         "fps": int(fps),
         "tamano": {"ancho": int(ancho), "alto": int(alto)},
         "texto": dict(pieza.texto),
-        "marca": dict(marca),
+        "marca": marca_de(pieza.plantilla, marca),
         "posicion": {"modo": "cuadro_completo"},
         "fit": FIT_DEFAULT,
         "audio": False,
@@ -194,7 +223,7 @@ def clips_de_motion(
             alto=alto,
             fps=fps,
             duracion_s=duracion_s,
-            marca=dict(marca or MARCA_PROVISIONAL),
+            marca=dict(marca or MARCA),
             raiz_cache=Path(raiz_cache),
             root=Path(root),
             tramos=tramos,
@@ -324,8 +353,11 @@ __all__ = [
     "OpcionesMotion",
     "ResultadoMotion",
     "SolapamientoDePiezas",
+    "ACENTO_POR_PLANTILLA",
+    "MARCA",
     "clips_de_motion",
     "contrato_de_pieza",
+    "marca_de",
     "orientacion_de",
     "raiz_cache_de_paquete",
     "tramos_de_groups",
