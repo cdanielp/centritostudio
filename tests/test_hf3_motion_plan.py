@@ -266,18 +266,45 @@ def test_el_desplazamiento_en_pixeles_sube_la_pieza(tmp_path):
     assert y == int(round(mp.DESPLAZAMIENTO_SUPERIOR * 1920))
 
 
-def test_en_vertical_sin_csv_la_franja_se_considera_ocupada():
-    """Fail-open conservador: sin dato de la cara no se puede afirmar que el letrero no la tape."""
+def test_en_vertical_sin_csv_se_coloca_en_el_carril_nativo_y_se_avisa():
+    """FAIL-OPEN, no fail-closed: un dato que falta degrada la capa, no la apaga.
+
+    El carril nativo (54-68%) es el que K aprobo en el gate visual de HF-2 justamente por no
+    pisar caras, asi que es el destino correcto cuando no se sabe donde esta la cara. Antes esto
+    dejaba en cero, para siempre, a los clips derivados que no tienen fuente 16:9 de la que
+    sacar una trayectoria.
+    """
     plan = _plan(20000, orientacion="vertical", tray_csv=None)
-    assert plan.piezas == ()
-    for plantilla in ("hook", "lower_third", "cierre"):
-        assert _motivos(plan)[plantilla] == mp.MOTIVO_CARA
+    assert _nombres(plan) == ["hook", "lower_third", "cierre"]
+    assert {p.banda for p in plan.piezas} == {mp.BANDA_CENTRO}
+    assert plan.incidencias == (mp.INCIDENCIA_SIN_DATO_DE_CARA,)
 
 
-def test_en_vertical_un_csv_legacy_sin_columna_vertical_tambien_ocupa(tmp_path):
+def test_un_csv_legacy_sin_columna_vertical_es_lo_mismo_que_no_tenerlo(tmp_path):
     ruta = tmp_path / "trayectoria_legacy.csv"
     ruta.write_text("t,x,y\n0.0,1,2\n1.0,1,2\n", encoding="utf-8")
-    assert _plan(20000, orientacion="vertical", tray_csv=ruta).piezas == ()
+    plan = _plan(20000, orientacion="vertical", tray_csv=ruta)
+    assert _nombres(plan) == ["hook", "lower_third", "cierre"]
+    assert plan.incidencias == (mp.INCIDENCIA_SIN_DATO_DE_CARA,)
+
+
+def test_con_dato_de_cara_no_se_registra_incidencia(tmp_path):
+    assert (
+        _plan(20000, orientacion="vertical", tray_csv=_csv_cara(tmp_path, 0.25)).incidencias == ()
+    )
+
+
+def test_en_16_9_nunca_se_registra_la_incidencia_de_cara():
+    """En 16:9 la cara no se consulta, asi que su ausencia no degrada nada."""
+    assert _plan(20000, orientacion="horizontal", tray_csv=None).incidencias == ()
+
+
+def test_ninguna_pieza_se_omite_jamas_por_la_cara(tmp_path):
+    """Con el fallback ya no existe ese motivo: la cara MUEVE la pieza, nunca la borra."""
+    for fraccion in (0.15, 0.50, 0.75, 0.95):
+        plan = _plan(20000, orientacion="vertical", tray_csv=_csv_cara(tmp_path, fraccion))
+        assert len(plan.piezas) == 3, fraccion
+    assert not hasattr(mp, "MOTIVO_CARA")
 
 
 def test_en_16_9_la_cara_no_se_consulta(tmp_path):

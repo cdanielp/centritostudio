@@ -4,19 +4,29 @@
     "",
     "| piezas colocadas | clips | % |",
     "|---|---|---|",
-    "| 0 | 10 | 29.4% |",
+    "| 0 | 0 | 0.0% |",
     "| 1 | 0 | 0.0% |",
-    "| 2 | 1 | 2.9% |",
-    "| 3 o mas | 23 | 67.6% |",
+    "| 2 | 0 | 0.0% |",
+    "| 3 o mas | 34 | 100.0% |",
     "",
-    "CLIPS EN CERO: 10 de 34 (29.4%)",
+    "CLIPS EN CERO: 0 de 34 (0.0%)",
     "",
     "| motivo del cero | clips |",
     "|---|---|",
-    "| sin carril (sin dato de cara) | 10 |",
     "",
-    "VERTICALES EN CERO: 10 de 21 (47.6%)",
-    "HORIZONTALES EN CERO: 0 de 13 (0.0%)"
+    "VERTICALES EN CERO: 0 de 21 (0.0%)",
+    "HORIZONTALES EN CERO: 0 de 13 (0.0%)",
+    "",
+    "VERTICALES SIN DATO DE CARA: 10 de 21. Colocan en el carril nativo (54-68%), el aprobado en el gate visual de HF-2 por no pisar caras.",
+    "CLIPS POR BANDA USADA: centro=31 superior=6",
+    "",
+    "| pieza | veces colocada |",
+    "|---|---|",
+    "| cierre | 34 |",
+    "| dato_destacado | 16 |",
+    "| hook | 34 |",
+    "| lower_third | 34 |",
+    "| titulo_seccion | 34 |"
   ],
   "clips": [
     {
@@ -32,7 +42,13 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "mariosoto_clip1_corto_9x16.mp4",
@@ -47,7 +63,14 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro",
+        "superior"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "mariosoto_clip2_corto.mp4",
@@ -62,7 +85,11 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "mariosoto_clip2_corto_9x16.mp4",
@@ -77,7 +104,11 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "superior"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "mariosoto_clip3_largo.mp4",
@@ -85,15 +116,21 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
       ],
-      "omisiones": {
-        "dato_destacado": "sin_separacion_minima"
-      }
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "mariosoto_clip3_largo_9x16.mp4",
@@ -101,15 +138,21 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
       ],
-      "omisiones": {
-        "dato_destacado": "sin_separacion_minima"
-      }
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "podcast_test_60s.mp4",
@@ -117,14 +160,20 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 4,
+      "n_piezas": 6,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "podcast_test_60s_9x16.mp4",
@@ -138,9 +187,14 @@
         "lower_third",
         "cierre"
       ],
+      "bandas": [
+        "superior"
+      ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": []
     },
     {
       "clip": "podcast_test_60s_9x16_noturnos.mp4",
@@ -148,14 +202,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "podcast_test_60s_noturnos_s12.mp4",
@@ -163,14 +225,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "podcast_test_60s_noturnos_s13.mp4",
@@ -178,14 +248,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "podcast_test_60s_turnos_s12.mp4",
@@ -193,14 +271,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "podcast_test_60s_turnos_s13.mp4",
@@ -208,14 +294,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "prueba2personasenmedio_clip1_corto.mp4",
@@ -230,7 +324,11 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "prueba2personasenmedio_clip1_corto_9x16.mp4",
@@ -245,7 +343,11 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "pruebaedicionvideoyo_clip1_corto.mp4",
@@ -260,7 +362,13 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "pruebaedicionvideoyo_clip1_corto_9x16.mp4",
@@ -268,15 +376,21 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "dato_destacado",
         "cierre"
       ],
+      "bandas": [
+        "centro",
+        "superior"
+      ],
       "omisiones": {
-        "dato_destacado": "sin_separacion_minima"
-      }
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "pruebaedicionvideoyo_clip1_corto_9x16_punch.mp4",
@@ -284,14 +398,22 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "pruebaparaedicion_clip1_corto.mp4",
@@ -306,7 +428,13 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "pruebaparaedicion_clip1_corto_9x16.mp4",
@@ -321,7 +449,13 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "pruebaparaedicion_clip2_corto.mp4",
@@ -329,15 +463,20 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
+      ],
+      "bandas": [
+        "centro"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     },
     {
       "clip": "pruebaparaedicion_clip2_corto_9x16.mp4",
@@ -345,15 +484,20 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
+      ],
+      "bandas": [
+        "centro"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip1_corto.mp4",
@@ -368,7 +512,11 @@
         "dato_destacado",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip1_corto_9x16.mp4",
@@ -376,15 +524,19 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 2,
+      "n_piezas": 3,
       "piezas": [
         "hook",
-        "lower_third"
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
       ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip1_corto_9x16_s12.mp4",
@@ -392,14 +544,21 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "videolargo_clip1_corto_9x16_s13.mp4",
@@ -407,14 +566,21 @@
       "orientacion": "vertical",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "videolargo_clip1_largo.mp4",
@@ -422,14 +588,21 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 4,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "dato_destacado",
+        "titulo_seccion",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip1_largo_9x16.mp4",
@@ -437,14 +610,21 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "bottom",
-      "n_piezas": 4,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "dato_destacado",
+        "titulo_seccion",
         "cierre"
       ],
-      "omisiones": {}
+      "bandas": [
+        "superior"
+      ],
+      "omisiones": {},
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip2_corto.mp4",
@@ -458,9 +638,14 @@
         "lower_third",
         "cierre"
       ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip2_corto_9x16.mp4",
@@ -468,14 +653,22 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "videolargo_clip2_largo.mp4",
@@ -483,15 +676,24 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 8,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
+      ],
+      "bandas": [
+        "centro"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip2_largo_9x16.mp4",
@@ -499,14 +701,26 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": null,
-      "n_piezas": 0,
-      "piezas": [],
+      "n_piezas": 8,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
       "omisiones": {
-        "cierre": "carril_ocupado_por_la_cara",
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "hook": "carril_ocupado_por_la_cara",
-        "lower_third": "carril_ocupado_por_la_cara"
-      }
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ]
     },
     {
       "clip": "videolargo_clip3_largo.mp4",
@@ -514,15 +728,23 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
+      ],
+      "bandas": [
+        "centro"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     },
     {
       "clip": "videolargo_clip3_largo_9x16.mp4",
@@ -530,15 +752,24 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
+      ],
+      "bandas": [
+        "centro",
+        "superior"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
-      }
+      },
+      "incidencias": []
     }
   ]
 }

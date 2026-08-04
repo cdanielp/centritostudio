@@ -107,13 +107,14 @@ def medir() -> list[dict]:
             "zona_cara": zona_cara(tray, dur_s),
             "n_piezas": len(plan.piezas),
             "piezas": [p.plantilla for p in plan.piezas],
+            "bandas": sorted({p.banda for p in plan.piezas}),
             "omisiones": {o.plantilla: o.motivo for o in plan.omisiones},
+            "incidencias": list(plan.incidencias),
         })
     return filas
 
 
 MOTIVO_ETIQUETA = {
-    "carril_ocupado_por_la_cara": "sin carril (cara)",
     "no_cabe_en_el_clip": "no cabe por tiempo",
     "sin_separacion_minima": "no cabe por tiempo",
     "clip_demasiado_corto": "no cabe por tiempo",
@@ -126,16 +127,11 @@ MOTIVO_ETIQUETA = {
 def _motivo_de_cero(fila: dict) -> str:
     """Por que ese clip se quedo sin NINGUNA pieza, en una sola etiqueta."""
     motivos = set(fila["omisiones"].values())
-    if "carril_ocupado_por_la_cara" in motivos:
-        zona = fila["zona_cara"]
-        if zona == "center":
-            return "cara centrada"
-        if zona == "bottom":
-            return "cara abajo"
-        return "sin carril (sin dato de cara)"
     for clave in ("no_cabe_en_el_clip", "sin_separacion_minima", "clip_demasiado_corto"):
         if clave in motivos:
             return "no cabe por tiempo"
+    if "sin_titulo_del_clipper" in motivos or "sin_nombre_configurado" in motivos:
+        return "sin texto configurado"
     return "otro"
 
 
@@ -173,6 +169,24 @@ def informe(filas: list[dict]) -> str:
     lineas.append(
         f"HORIZONTALES EN CERO: {len(h_cero)} de {len(horizontales)} ({pct_h:.1f}%)"
     )
+
+    sin_dato = [f for f in verticales if "sin_dato_de_cara" in (f.get("incidencias") or [])]
+    lineas.append("")
+    lineas.append(
+        f"VERTICALES SIN DATO DE CARA: {len(sin_dato)} de {len(verticales)}. Colocan en el "
+        f"carril nativo (54-68%), el aprobado en el gate visual de HF-2 por no pisar caras."
+    )
+    reparto_banda = Counter(b for f in filas for b in (f.get("bandas") or []))
+    lineas.append(
+        f"CLIPS POR BANDA USADA: centro={reparto_banda.get('centro', 0)} "
+        f"superior={reparto_banda.get('superior', 0)}"
+    )
+    piezas = Counter(p for f in filas for p in (f.get("piezas") or []))
+    lineas.append("")
+    lineas.append("| pieza | veces colocada |")
+    lineas.append("|---|---|")
+    for nombre, c in sorted(piezas.items()):
+        lineas.append(f"| {nombre} | {c} |")
     return "\n".join(lineas)
 
 

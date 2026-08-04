@@ -103,14 +103,21 @@ BANDA_ARRIBA = "superior"
 # nativo a la banda superior. Es negativo: la pieza se compone desplazada hacia arriba.
 DESPLAZAMIENTO_SUPERIOR = BANDA_SUPERIOR[0] - CARRIL_VERTICAL[0]
 
-# Buckets de `cve.zona_cara_en_rango` y la banda que dejan libre en 9:16. None (CSV legacy,
-# sin deteccion viva) NO aparece aqui a proposito: sin dato de la cara no se puede afirmar que
-# ningun letrero la tape, asi que se omite la pieza.
+# Buckets de `cve.zona_cara_en_rango` y la banda que dejan libre en 9:16.
 BANDA_POR_ZONA_CARA = {
     "top": BANDA_CENTRO,  # cara arriba: el carril nativo esta despejado
     "center": BANDA_ARRIBA,
     "bottom": BANDA_ARRIBA,
 }
+
+# SIN dato de cara (CSV ausente, legacy o sin deteccion viva) la pieza va al carril nativo, que
+# es el que K aprobo en el gate visual de HF-2 justamente por no pisar caras. Antes se omitia,
+# y eso contradecia el fail-open de toda la capa: un dato que falta apagaba la funcion entera en
+# vez de degradarla. Ademas dejaba 8 clips derivados en cero PARA SIEMPRE, porque no tienen
+# fuente 16:9 y nunca van a tener trayectoria. La falta del dato se registra como INCIDENCIA
+# del plan, no como fallo de la pieza.
+BANDA_SIN_DATO = BANDA_CENTRO
+INCIDENCIA_SIN_DATO_DE_CARA = "sin_dato_de_cara"
 
 ORIENTACIONES = ("vertical", "horizontal")
 
@@ -119,7 +126,6 @@ _CIFRA = re.compile(r"[$€]?\s?\d+(?:[.,]\d+)*\s?%?")
 
 MOTIVO_FUERA_DE_CLIP = "no_cabe_en_el_clip"
 MOTIVO_SIN_AIRE = "sin_separacion_minima"
-MOTIVO_CARA = "carril_ocupado_por_la_cara"
 MOTIVO_SIN_CIFRA = "ningun_tramo_trae_cifra"
 MOTIVO_CLIP_CORTO = "clip_demasiado_corto"
 MOTIVO_SIN_NOMBRE = "sin_nombre_configurado"
@@ -168,6 +174,9 @@ class PlanMotion:
     orientacion: str
     piezas: tuple[Pieza, ...] = ()
     omisiones: tuple[Omision, ...] = ()
+    # Cosas que degradaron el plan sin impedirlo. Una incidencia NO es una omision: la pieza se
+    # coloco igual, pero conviene saber con que informacion se decidio donde.
+    incidencias: tuple[str, ...] = ()
 
     @property
     def vacio(self) -> bool:
@@ -190,6 +199,7 @@ class PlanMotion:
                 {"plantilla": o.plantilla, "motivo": o.motivo, "detalle": o.detalle}
                 for o in self.omisiones
             ],
+            "incidencias": list(self.incidencias),
         }
 
 
@@ -332,21 +342,27 @@ def _hay_aire(t0: int, t1: int, colocadas: list[Pieza]) -> bool:
     )
 
 
-def _banda_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None) -> str | None:
-    """Banda donde cabe la pieza en esa ventana, o None si no cabe en ninguna.
+def zona_cara(tray_csv: Path | None, t0_ms: int, t1_ms: int) -> str | None:
+    """Bucket de la cara en esa ventana, o None si no hay dato. Fail-open, ya existia en cve."""
+    if not tray_csv:
+        return None
+    import cve  # noqa: PLC0415 (import perezoso: el planificador no arrastra el motor de captions)
+
+    return cve.zona_cara_en_rango(tray_csv, t0_ms / 1000.0, t1_ms / 1000.0)
+
+
+def _banda_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None) -> str:
+    """Banda donde va la pieza en esa ventana. SIEMPRE devuelve una: nunca omite.
 
     Solo se consulta la cara en 9:16: ahi las cinco piezas comparten un carril estrecho y una
-    cara centrada o baja se lo come. Con la cara en `center` o `bottom` la pieza sube a la banda
-    superior en vez de omitirse, que es lo que hacia antes. En 16:9 las bandas del catalogo son
-    disjuntas (lower_third abajo a la izquierda, el resto centradas arriba) y no compiten con la
-    cara, asi que la pieza se queda donde la dibuja su HTML.
+    cara centrada o baja se lo come, asi que la pieza sube a la banda superior. Sin dato de cara
+    se usa el carril nativo, que es el aprobado en el gate visual de HF-2. En 16:9 las bandas del
+    catalogo son disjuntas (lower_third abajo a la izquierda, el resto centradas arriba) y no
+    compiten con la cara, asi que la pieza se queda donde la dibuja su HTML.
     """
     if orientacion != "vertical":
         return BANDA_CENTRO
-    import cve  # noqa: PLC0415 (import perezoso: el planificador no arrastra el motor de captions)
-
-    zona = cve.zona_cara_en_rango(tray_csv, t0_ms / 1000.0, t1_ms / 1000.0) if tray_csv else None
-    return BANDA_POR_ZONA_CARA.get(zona)
+    return BANDA_POR_ZONA_CARA.get(zona_cara(tray_csv, t0_ms, t1_ms), BANDA_SIN_DATO)
 
 
 def _colocar(
@@ -366,9 +382,6 @@ def _colocar(
                 motivo = MOTIVO_SIN_AIRE
                 continue
             banda = _banda_libre(orientacion, t0, t1, tray_csv)
-            if banda is None:
-                motivo = MOTIVO_CARA
-                continue
             return Pieza(cand.plantilla, t0, t1, dict(cand.texto), banda), ""
         if hasta + dur > duracion_ms and motivo == MOTIVO_FUERA_DE_CLIP:
             motivo = MOTIVO_FUERA_DE_CLIP
@@ -509,6 +522,11 @@ def planificar(
     lista_tramos = list(tramos or [])
     props, omisiones = _candidatas(duracion_ms, lista_tramos, textos)
     colocadas: list[Pieza] = []
+    incidencias: list[str] = []
+    # Se consulta UNA vez sobre el clip entero: si no hay dato de cara en ningun momento, no lo
+    # va a haber por ventana, y repetir la lectura del CSV por pieza solo costaria tiempo.
+    if orientacion == "vertical" and zona_cara(tray_csv, 0, duracion_ms) is None:
+        incidencias.append(INCIDENCIA_SIN_DATO_DE_CARA)
 
     for cand in props:
         pieza, motivo = _colocar(cand, duracion_ms, orientacion, tray_csv, colocadas)
@@ -520,11 +538,13 @@ def planificar(
     _rellenar_huecos(colocadas, omisiones, duracion_ms, orientacion, tray_csv, lista_tramos)
     colocadas.sort(key=lambda p: p.t0_ms)
     omisiones.sort(key=lambda o: (o.plantilla, o.motivo))
-    return PlanMotion(orientacion, tuple(colocadas), tuple(omisiones))
+    return PlanMotion(orientacion, tuple(colocadas), tuple(omisiones), tuple(incidencias))
 
 
 __all__ = [
     "BANDA_ARRIBA",
+    "BANDA_SIN_DATO",
+    "INCIDENCIA_SIN_DATO_DE_CARA",
     "BANDA_CENTRO",
     "BANDA_SUPERIOR",
     "CARRIL_VERTICAL",
