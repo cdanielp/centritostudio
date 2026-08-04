@@ -90,7 +90,7 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2777 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2801 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"
@@ -103,8 +103,11 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   y sin halos. WebM VP9 descartado: declara `yuv420p` y pierde el alfa en silencio.
 > - **HF-1 (contrato de datos): PR abierto, sin mergear.** Paquete `hyperframes/` **HUÉRFANO**
 >   (ningún módulo del pipeline lo importa) con el contrato de pieza, el perfil de capacidad,
->   la caché por hash y el invocador fail-open. Decisión **D50**. Byte-identidad de la ruta
->   clásica verificada: mismo sha256 antes y después de la rama, 0 diferencias.
+>   la caché por hash y el invocador fail-open. Decisión **D50** y addenda **D50.1 a D50.5**.
+>   Byte-identidad de la ruta clásica verificada: mismo sha256 antes y después, 0 diferencias.
+> - **Gate nuevo para HyperFrames (D50.3 y D50.5):** ningún PR de HF se mergea sin correr a
+>   mano los tests `hf_real` (excluidos del CI), y cada plantilla nueva de HF-2 debe pasar el
+>   canario de influencia. Encontraron dos fallos que devolvían código 0 con todo en orden.
 > - **Baseline de suite:** subió `2502 -> 2748`. El salto incluye los +130 de HF-1 y también
 >   S39/S40/S41, que habían movido la suite real sin subir la constante `BASELINE_SUITE` (el
 >   gate compara la constante contra los tres documentos, no contra la suite real, así que

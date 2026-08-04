@@ -133,3 +133,56 @@ def test_render_real_produce_mov_con_alfa(tmp_path):
     assert v["titulo"] == TITULO
     assert v["subtitulo"] == SUBTITULO
     assert "texto" not in v, "los slots deben ir PLANOS o la plantilla pinta sus defaults"
+
+
+@pytest.mark.skipif(shutil.which("npx") is None, reason="npx no esta instalado")
+def test_canario_el_texto_influye_en_la_salida(tmp_path):
+    """CANARIO DE INFLUENCIA: la misma plantilla con distinto texto debe dar otro MOV.
+
+    Por que esto vale como prueba: HF-0 midio que el render es DETERMINISTA dentro del
+    entorno fijado (mismo contrato, mismo sha256, tres corridas). Ese determinismo es lo
+    que vuelve valida la inversa: si cambia la entrada y el sha NO cambia, la entrada no
+    llego a la plantilla. Sin determinismo, dos sha distintos no probarian nada.
+
+    NO fija pixeles ni un sha concreto: solo afirma que la entrada influye en la salida.
+    Es la unica verificacion AUTOMATICA que habria cazado el bug de variables anidadas de
+    D50.1, donde el render devolvia codigo 0, pix_fmt y duracion correctos, y la pieza
+    salia con el texto por defecto de la plantilla.
+
+    Gate obligatorio de cada plantilla nueva de HF-2.
+    """
+    proyecto = tmp_path / "proyecto"
+    proyecto.mkdir()
+    (proyecto / "index.html").write_text(INDEX_MINIMO, encoding="utf-8")
+    catalogo = Catalogo(
+        [
+            Plantilla(
+                nombre="minima",
+                version="1.0.0",
+                slots_texto=("titulo", "subtitulo"),
+                proyecto=str(proyecto),
+            )
+        ]
+    )
+
+    def render(titulo: str):
+        pieza = dict(PIEZA, texto={"titulo": titulo, "subtitulo": SUBTITULO})
+        r = pedir_pieza(
+            pieza,
+            destino=(1920, 1080),
+            catalogo=catalogo,
+            raiz_cache=tmp_path / "cache",
+            timeout_s=300,
+        )
+        assert r.razon_fallo is None, f"el render real fallo: {r.razon_fallo} {r.detalle}"
+        assert r.desde_cache is False, "cada variante debe renderizarse de verdad"
+        return r
+
+    uno = render(TITULO)
+    otro = render("Un titulo completamente distinto")
+
+    assert uno.hash != otro.hash, "dos contratos distintos no pueden compartir clave de cache"
+    assert uno.sha256 != otro.sha256, (
+        "el texto no llego a la plantilla: cambiar un slot no cambio el MOV, "
+        "asi que la plantilla esta pintando su valor por defecto"
+    )

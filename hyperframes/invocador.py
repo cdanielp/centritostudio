@@ -32,20 +32,6 @@ TIMEOUT_DEFAULT_S = 180  # HF-0: un overlay de 6 s tardo 14.9 s en esta maquina
 TOLERANCIA_MS = 120  # un MOV real no cae al milisegundo exacto
 NOMBRE_VARIABLES = "variables.json"
 
-# Claves PLANAS que la pieza aporta ademas de sus slots de texto. Un slot de texto que se
-# llame igual que una de estas pisaria el valor real al aplanar, asi que el contrato las
-# reserva (ver `contrato.validar_slots`).
-CLAVES_RESERVADAS = (
-    "duracion_ms",
-    "fps",
-    "marca_primario",
-    "marca_secundario",
-    "marca_texto",
-    "semilla",
-    "tamano_alto",
-    "tamano_ancho",
-)
-
 
 @dataclass(frozen=True)
 class Ejecucion:
@@ -99,6 +85,18 @@ def variables_de(dato: dict) -> dict:
         "tamano_alto": tamano.get("alto"),
         "semilla": dato.get("semilla"),
     }
+
+
+def claves_reservadas() -> tuple[str, ...]:
+    """Claves del sistema en el nivel raiz de las variables, DERIVADAS del propio aplanado.
+
+    Se calculan aplanando una pieza SIN slots de texto: lo que queda son exactamente las
+    claves que aporta el sistema. Derivarlas en vez de escribirlas a mano es lo que hace que
+    un campo nuevo en `variables_de` quede reservado solo, sin que nadie tenga que acordarse
+    de una segunda lista. Un hueco aqui es un slot que la plantilla nunca recibe: en el
+    aplanado gana la clave del sistema, y el texto del slot desaparece sin un solo aviso.
+    """
+    return tuple(sorted(variables_de({})))
 
 
 def variables_json(dato: dict) -> str:

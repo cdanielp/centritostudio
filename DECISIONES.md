@@ -2165,3 +2165,32 @@ Tres cosas quedan escritas para no perderlas. Ninguna se implementa en HF-1.
    `render` rechaza `--non-interactive`, y el frame que produce descubrio el bug de variables
    anidadas de D50.1. Los dobles no vieron ninguna de las dos, y no podian: ambos fallos viven
    exactamente en la frontera que los dobles sustituyen.
+
+### Addendum D50.5 - Reserva derivada y canario de influencia
+
+**La reserva se deriva, no se escribe.** Las claves del sistema que el aplanado pone en el
+nivel raiz (`marca_primario`, `marca_secundario`, `marca_texto`, `duracion_ms`, `fps`,
+`tamano_ancho`, `tamano_alto`, `semilla`) salen de `claves_reservadas()`, que aplana una pieza
+SIN slots y devuelve lo que queda. Antes eran una tupla literal: correcta el dia que se
+escribio y condenada a quedarse atras en cuanto el contrato crezca, porque quien anada un campo
+a `variables_de` no tiene por que acordarse de una segunda lista. Ahora un campo nuevo queda
+reservado solo, y hay un test que lo prueba anadiendo una clave ficticia al aplanado.
+
+**Direccion real de la colision (medida, corrige lo que D50.1 daba por supuesto).** En el
+aplanado los slots van PRIMERO, asi que gana la clave del sistema: un slot llamado `fps` no
+corrompe el fps real, sino que DESAPARECE, y la plantilla pinta `30` donde esperaba una frase.
+El efecto es el mismo (fallo silencioso con codigo 0) pero el sentido es el contrario al que se
+asumio al escribir el guard. Queda fijado con un test que afirma quien gana.
+
+**Canario de influencia: gate obligatorio de cada plantilla nueva de HF-2.** Renderiza la misma
+plantilla dos veces cambiando solo el texto de un slot y exige sha256 DISTINTO. No fija pixeles
+ni un sha concreto: solo afirma que la entrada influye en la salida.
+
+Lo que lo vuelve valido es el determinismo medido en HF-0 (mismo contrato, mismo sha256, tres
+corridas dentro del entorno fijado). Sin ese determinismo, dos sha distintos no probarian nada.
+Con el, dos sha IGUALES prueban que la entrada no llego.
+
+Se verifico que el canario canta: reintroduciendo el aplanado anidado de D50.1 solo en memoria,
+dos titulos completamente distintos produjeron el MISMO sha256 y ambos renders devolvieron
+exito. Es la unica verificacion AUTOMATICA que habria cazado aquel bug; ni el returncode, ni
+`pix_fmt`, ni el fps, ni la duracion, ni los dobles lo veian.

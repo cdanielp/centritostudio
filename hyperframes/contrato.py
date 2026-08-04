@@ -191,21 +191,23 @@ def validar_slots(dato: dict, slots_declarados: tuple[str, ...]) -> None:
     """Comprueba que `texto` traiga exactamente los slots que declara la plantilla.
 
     Tambien rechaza un slot que colisione con una clave reservada: los slots suben al nivel
-    raiz de las variables, asi que un slot llamado `fps` pisaria el fps real en silencio.
+    raiz de las variables y ahi gana la clave del sistema, asi que un slot llamado `fps`
+    jamas llegaria a la plantilla y esta pintaria `30` donde esperaba una frase.
     """
-    from .invocador import CLAVES_RESERVADAS  # noqa: PLC0415
+    from .invocador import claves_reservadas  # noqa: PLC0415
 
+    reservadas = claves_reservadas()
     recibidos = set(dato.get("texto") or {})
     esperados = set(slots_declarados)
     faltan = sorted(esperados - recibidos)
     sobran = sorted(recibidos - esperados)
     if faltan or sobran:
         _falla(f"los slots de texto no cuadran con la plantilla: faltan {faltan}, sobran {sobran}")
-    chocan = sorted(recibidos & set(CLAVES_RESERVADAS))
+    chocan = sorted(recibidos & set(reservadas))
     if chocan:
         _falla(
             f"estos slots de texto chocan con claves reservadas de la pieza: {', '.join(chocan)}. "
-            f"Reservadas: {', '.join(CLAVES_RESERVADAS)}."
+            f"Reservadas: {', '.join(reservadas)}."
         )
 
 
