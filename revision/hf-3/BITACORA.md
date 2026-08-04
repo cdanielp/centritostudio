@@ -38,3 +38,18 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   1. Dos hallazgos medidos, no inventados: (a) entre 6000 y 6700 ms el `cierre` NO cabe detras
   del `hook` con los 500 ms de aire, y como tiene menos prioridad se omite entero; (b) por
   encima de 12000 ms las tres piezas base nunca compiten entre si (barrido, no de memoria).
+- **12:45 - BLOQUE 4 OK (las demos).** Tres videos en `<LAB>\demo\`, cada uno con su hoja de
+  contacto de 7 frames apuntada a las piezas (una hoja a intervalos regulares se saltaba justo
+  los letreros): `01_AUTO_VERTICAL.mp4` (3 piezas, por `auto_v2.procesar_clip_v2`, la misma
+  funcion que `jobs.run_auto` llama por clip), `02_AUTO_HORIZONTAL.mp4` (4 piezas, por
+  `jobs_render.run_render`, el worker del Studio) y `03_SIN_CAPA.mp4` (el mismo clip con la
+  capa apagada). Cache borrada antes de renderizar (trampa T6). **INVARIANTE I1 PROBADO**:
+  `<LAB>\smoke_i1.py` renderiza el mismo video con el arbol en `main` y con esta rama y la capa
+  apagada, y los dos MP4 dan el MISMO sha256 (`a661ceb7...`, 133593964 bytes). Se prueba por la
+  ruta de render y NO por Auto: Auto llama al brain (DeepSeek) por clip y un LLM devuelve
+  keywords distintas entre corridas, asi que por ahi dos renders del mismo clip no son byte
+  identicos ni antes ni despues de HF-3. Hallazgo de integracion cerrado en el camino: Auto v2
+  no le pedia `tray_dir` al reframe, o sea que el CSV de la cara no existia nunca y la capa
+  habria omitido TODAS las piezas en 9:16 sin que nada fallara. Ahora se pide, y solo con la
+  capa encendida. Ademas se expuso la capa en el worker de render y en la pestana de render del
+  Studio, que es lo que hace posible la demo horizontal.

@@ -198,8 +198,16 @@ def procesar_clip_v2(
 
     stem = clip["archivo"].replace(".mp4", "")
     stem_9x16, final_path = _final_path(clip, paquete_dir)
+    # `tray_dir` SOLO con la capa de letreros encendida. El reframe escribe entonces
+    # `trayectoria_{stem}.csv` junto al clip 9:16, que es de donde el planificador saca la zona
+    # de la cara. Apagada no se pide, y el paso queda exactamente como estaba: sin el, la capa
+    # veria siempre "sin dato de cara", trataria el carril como ocupado y no colocaria NUNCA una
+    # pieza en 9:16, en silencio y sin que nada fallara.
     rf = reframe.reframe_clip(
-        clips_dir / clip["archivo"], clips_dir / f"{stem_9x16}.mp4", tracker="escenas"
+        clips_dir / clip["archivo"],
+        clips_dir / f"{stem_9x16}.mp4",
+        tracker="escenas",
+        **({"tray_dir": clips_dir} if config.motion_enabled else {}),
     )
     groups, brain_data = _grupos_y_brain(stem, stem_9x16, transcripts)
     groups_captions = core.apply_brain(groups, brain_data) if brain_data else groups

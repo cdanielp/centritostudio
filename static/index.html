@@ -437,6 +437,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
     <div id="render-srt-incompat" class="srt-incompat" hidden>
       Con SRT, los cues definen la agrupación y el texto oficial. Énfasis IA y Caption QA no están disponibles.
     </div>
+    <div class="emphasis-row">
+      <input type="checkbox" id="render-motion-enabled" onchange="updateRenderMotionUI()">
+      <label for="render-motion-enabled">Letreros animados</label>
+    </div>
+    <div class="srt-hint" style="margin:-4px 0 10px 26px">
+      Hook, lower third, dato destacado y cierre del Motor B, colocados solos según la duración.
+      Capa aditiva: si falla, el video sale igual pero sin letreros.
+    </div>
+    <div id="render-motion-textos" hidden style="margin:0 0 10px 26px">
+      <label class="auto-preset"><span>Título (obligatorio)</span><input type="text" id="render-motion-titulo" maxlength="120" placeholder="El titular del hook y del cierre"></label>
+      <label class="auto-preset"><span>Nombre (lower third)</span><input type="text" id="render-motion-nombre" maxlength="120" placeholder="Vacío omite el lower third"></label>
+      <label class="auto-preset"><span>Rol</span><input type="text" id="render-motion-rol" maxlength="120" placeholder="Ej. Fundador"></label>
+      <label class="auto-preset"><span>Llamada a la acción</span><input type="text" id="render-motion-cta" maxlength="120" placeholder="Sigue para más"></label>
+    </div>
     <button class="btn" onclick="startRender()" id="render-btn" data-cap="render">Renderizar</button>
     <div id="render-status"></div>
   </div>
@@ -1909,6 +1923,16 @@ async function startRender() {
     }
   }
   if (document.getElementById('use-emojis').checked) params.append('use_emojis', 'true');
+  // Los textos solo viajan con la casilla marcada: el backend devuelve 400 ante un texto
+  // suelto, para que nadie reciba un video sin letreros y sin explicacion.
+  if (document.getElementById('render-motion-enabled')?.checked) {
+    params.append('motion_enabled', 'true');
+    [['titulo','motion_titulo'],['nombre','motion_nombre'],['rol','motion_rol'],['cta','motion_cta']]
+      .forEach(([id, key]) => {
+        const v = (document.getElementById('render-motion-' + id)?.value || '').trim();
+        if (v) params.append(key, v);
+      });
+  }
 
   const res = await fetch(`/api/videos/${name}/render?${params}`, {method:'POST'});
   if (!res.ok) {
@@ -1956,6 +1980,11 @@ async function startRender() {
 
 // Reintento explícito del render sin keywords IA (el usuario decide saltarse el brain)
 let renderSinBrain = false;
+function updateRenderMotionUI() {
+  const on = document.getElementById('render-motion-enabled')?.checked ?? false;
+  const box = document.getElementById('render-motion-textos');
+  if (box) box.hidden = !on;
+}
 function startRenderForzado() { renderSinBrain = true; startRender(); }
 
 // Analiza con IA desde la pestaña Render y, al terminar, relanza el render solo.

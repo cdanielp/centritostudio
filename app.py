@@ -820,9 +820,17 @@ def start_render(
     srt_offset_ms: int = 0,
     srt_alineado_parcial: bool = False,
     srt_min_coverage: float | None = None,
+    motion_enabled: bool = False,
+    motion_titulo: str | None = None,
+    motion_nombre: str | None = None,
+    motion_rol: str | None = None,
+    motion_cta: str | None = None,
 ):
     _validar_name(name)
     _validar_params_render(caption_source, caption_qa, densidad, position)
+    motion_opts = _opciones_motion(
+        motion_enabled, motion_titulo, motion_nombre, motion_rol, motion_cta
+    )
     _validar_params_srt(caption_source, srt_offset_ms, srt_alineado_parcial, srt_min_coverage)
     mp4 = INPUT_DIR / f"{name}.mp4"
     grp_path = TRANSCRIPTS / f"{name}_groups.json"
@@ -876,6 +884,7 @@ def start_render(
             "avoid_faces": avoid_faces,
             "qa_mode": caption_qa,
             "qa_guion": guion,
+            "motion_opts": motion_opts,
         },
         daemon=True,
     ).start()
@@ -1117,6 +1126,49 @@ def start_auto(
     except Exception:
         raise HTTPException(500, "No se pudo iniciar el Modo Automatico") from None
     return {"job_id": jid}
+
+
+def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
+    """Parametros publicos del render -> `motion_capa.OpcionesMotion`. Default OFF.
+
+    Un texto sin la casilla es 400 y no un render silencioso sin letreros: quien escribe el
+    titulo espera verlo en pantalla. Sin `motion_titulo` el planificador no coloca hook ni
+    cierre, asi que se exige explicitamente en vez de devolver un video vacio de letreros.
+    """
+    import motion_capa  # noqa: PLC0415
+
+    sueltos = sorted(
+        clave
+        for clave, valor in (
+            ("motion_titulo", titulo),
+            ("motion_nombre", nombre),
+            ("motion_rol", rol),
+            ("motion_cta", cta),
+        )
+        if valor is not None
+    )
+    if not enabled:
+        if sueltos:
+            raise HTTPException(400, f"{', '.join(sueltos)} exige motion_enabled=true.")
+        return motion_capa.OpcionesMotion()
+    if not (titulo or "").strip():
+        raise HTTPException(400, "motion_titulo es obligatorio con motion_enabled=true.")
+    campos = (
+        ("motion_titulo", titulo),
+        ("motion_nombre", nombre),
+        ("motion_rol", rol),
+        ("motion_cta", cta),
+    )
+    for clave, valor in campos:
+        if valor is not None and (len(valor) > 120 or len(valor.splitlines()) > 1):
+            raise HTTPException(400, f"{clave} debe ser una linea de 120 caracteres o menos.")
+    return motion_capa.OpcionesMotion(
+        enabled=True,
+        titulo=titulo or "",
+        nombre=nombre or "",
+        rol=rol or "",
+        cta=cta if cta is not None else "Sigue para mas",
+    )
 
 
 def _validar_params_motion(motion: dict) -> None:

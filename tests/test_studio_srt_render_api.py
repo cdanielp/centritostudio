@@ -124,6 +124,7 @@ def test_default_es_transcript(api):
     )
     assert "srt_selection" not in t.kwargs
     # F6 (PASO F): controles CVE aditivos; siguen sin srt_selection.
+    # HF-3: `motion_opts` viaja siempre, y por default trae la capa de letreros APAGADA.
     assert set(t.kwargs) == {
         "preset",
         "intensidad",
@@ -132,7 +133,9 @@ def test_default_es_transcript(api):
         "avoid_faces",
         "qa_mode",
         "qa_guion",
+        "motion_opts",
     }
+    assert t.kwargs["motion_opts"].enabled is False
 
 
 def test_transcript_no_consulta_seleccion_srt(api, monkeypatch):

@@ -77,16 +77,20 @@ def _rutas_render(
     densidad: str | None = None,
     position: str | None = None,
     avoid_faces: bool | None = None,
+    motion: bool = False,
 ) -> tuple[Path, Path]:
-    """(ass, mp4) de salida; preset/pop/enfasis/emojis entran al sufijo (no pisar variantes).
+    """(ass, mp4) de salida; preset/pop/enfasis/emojis/letreros entran al sufijo.
 
     Toda dimension CVE que cambia la salida (densidad/position/avoid_faces) entra al tag
     via cve.tag_variante (fuente unica, misma que la CLI) para que variantes distintas no
     se sobreescriban entre si (MP4/ASS/sidecar). Defaults -> naming historico.
-    """
-    if plan:
-        import cve  # noqa: PLC0415
 
+    La capa de letreros nombra el MP4 pero NO el ASS: los captions salen identicos lleve o no
+    lleve letreros, asi que un ASS por variante de motion serian dos archivos iguales.
+    """
+    import cve  # noqa: PLC0415
+
+    if plan:
         base_tag = cve.tag_variante(plan.preset, intensidad, densidad, position, avoid_faces)
     else:
         base_tag = f"_{style}" + (f"_{pop}" if pop else "")
@@ -95,7 +99,46 @@ def _rutas_render(
         suffix += "_enfasis"
     if use_emojis:
         suffix += "_emojis"
+    if motion:
+        suffix += cve.TOKEN_MOTION
     return OUTPUT_DIR / f"{name}{base_tag}.ass", OUTPUT_DIR / f"{name}{suffix}.mp4"
+
+
+def _motion_activo(motion_opts) -> bool:
+    """True solo si la capa de letreros viene encendida de verdad."""
+    return bool(motion_opts is not None and getattr(motion_opts, "enabled", False))
+
+
+def _clips_de_motion(jid: str, motion_opts, groups, mp4: Path, w: int, h: int, info: dict) -> list:
+    """Letreros del Motor B para el worker de render. Apagada devuelve lista vacia y no importa
+    nada, de modo que la ruta historica sigue siendo la de siempre."""
+    if not _motion_activo(motion_opts):
+        return []
+    import motion_capa  # noqa: PLC0415
+    import tray_resolve  # noqa: PLC0415
+
+    update_job(jid, progress=44, message="Generando letreros (HyperFrames)...")
+    raiz = Path(__file__).resolve().parent
+    return list(
+        motion_capa.clips_de_motion(
+            opciones=motion_opts,
+            ancho=w,
+            alto=h,
+            fps=info.get("fps") or 30.0,
+            duracion_s=float(info.get("duration") or 0.0),
+            raiz_cache=raiz / "output" / ".piezas",
+            root=raiz,
+            tramos=motion_capa.tramos_de_groups(groups),
+            tray_csv=tray_resolve.resolver_tray_csv(mp4, TRANSCRIPTS),
+        ).clips
+    )
+
+
+def _mensaje_motion(motion_opts, clips: list) -> str | None:
+    """Resumen para el reporte del Studio. None con la capa apagada (reporte historico)."""
+    if not _motion_activo(motion_opts):
+        return None
+    return f"{len(clips)} letrero(s) compuestos" if clips else "Sin letreros (ver log del job)"
 
 
 def _aplicar_qa(
@@ -151,6 +194,7 @@ def run_render(
     srt_offset_ms: int = 0,
     srt_modo_parcial: bool = False,
     srt_min_coverage: float | None = None,
+    motion_opts=None,
 ) -> None:
     """Contrato publico del worker de render. Sin `srt_selection` = ruta transcript historica
     EXACTA (byte-identica); con `srt_selection` (S36-C2A1) = ruta SRT como texto oficial.
@@ -192,6 +236,7 @@ def run_render(
         densidad=densidad,
         position=position,
         avoid_faces=avoid_faces,
+        motion_opts=motion_opts,
     )
 
 
@@ -213,6 +258,7 @@ def _run_render_transcript(
     densidad: str | None = None,
     position: str | None = None,
     avoid_faces: bool | None = None,
+    motion_opts=None,
 ) -> None:
     """Worker: genera ASS y quema el video. Con `preset` (CVE) manda el plan del
     engine: style/pop/use_emphasis se ignoran (mismo contrato que la CLI).
@@ -279,10 +325,13 @@ def _run_render_transcript(
             densidad=densidad,
             position=position,
             avoid_faces=avoid_faces,
+            motion=_motion_activo(motion_opts),
         )
 
         update_job(jid, progress=35, message="Generando subtitulos ASS...")
         core.build_ass(groups, w, h, style_cfg, ass_path)
+
+        motion_clips = _clips_de_motion(jid, motion_opts, groups, mp4, w, h, info)
 
         if use_emojis:
             import assets_comfy as ac  # noqa: PLC0415
@@ -293,12 +342,20 @@ def _run_render_transcript(
             overlays = ac.resolver_overlays(groups_path, brain_path)
             n_ov = len(overlays)
             update_job(jid, progress=52, message=f"Quemando con FFmpeg + {n_ov} overlay(s)...")
-            elapsed = core.burn_video_with_emojis(mp4, ass_path, out_path, overlays, style_cfg)
+            elapsed = core.burn_video_with_emojis(
+                mp4, ass_path, out_path, overlays, style_cfg, clips=motion_clips
+            )
             emojis_result = (
                 f"{n_ov} overlays aplicados"
                 if n_ov
                 else "Sin overlays (ComfyUI apagado o sin keywords)"
             )
+        elif motion_clips:
+            update_job(jid, progress=50, message="Quemando con FFmpeg + letreros...")
+            elapsed = core.burn_video_with_emojis(
+                mp4, ass_path, out_path, [], style_cfg, clips=motion_clips
+            )
+            emojis_result = None
         else:
             update_job(jid, progress=50, message="Quemando con FFmpeg...")
             elapsed = core.burn_video(mp4, ass_path, out_path)
@@ -321,6 +378,7 @@ def _run_render_transcript(
                 "emojis_msg": emojis_result,
                 "preset_msg": preset_msg,
                 "qa_msg": qa_msg,
+                "motion_msg": _mensaje_motion(motion_opts, motion_clips),
             },
         )
     except Exception as exc:
