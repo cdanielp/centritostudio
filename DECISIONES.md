@@ -2009,3 +2009,188 @@ que hay que teclear (`--srt-offset`). Ambas cosas con test.
 Byte-identidad de la ruta clasica probada con el arnes de S39/S40 (0 diferencias, 90 combinaciones
 x 2 corpus). Smoke real de la CLI y capturas del Studio con backend real. Detalle:
 `revision/s41-exponer-modo-parcial/EVIDENCIA.md`.
+
+---
+
+## D50 - HF-1: contrato de datos entre Centrito y HyperFrames
+
+**Contexto.** HF-0 demostro que HyperFrames puede producir un overlay con alfa que la ruta de
+clips existente compone limpio (MOV ProRes 4444, `yuva444p12le`, sin halos, captions encima).
+Lo que faltaba no era capacidad de render sino una FRONTERA: algo que permita a un cliente
+pedir una pieza de motion graphics sin saber que debajo hay un navegador, un CLI de node y un
+formato de video. HF-1 construye esa frontera y nada mas.
+
+**Decision.** Un paquete `hyperframes/` HUERFANO: ningun modulo del pipeline lo importa. Cero
+cambios de comportamiento (byte-identidad de la ruta clasica verificada, 0 diferencias). Se
+cablea en HF-3; hasta entonces existe pero no corre en produccion.
+
+1. **Contrato de pieza versionado.** Un JSON estricto (`contrato: 1`) con nombres de campo en
+   espanol, para que los paquetes de HF-2 se lean sin diccionario. Estricto quiere decir que un
+   campo desconocido es ERROR: un typo tiene que doler al construir el catalogo, no producir una
+   pieza con ese dato vacio en silencio.
+2. **El esquema y el perfil de capacidad son capas SEPARADAS.** El esquema admite `posicion.modo
+   = caja` y `fit = cover|contain` porque son parte del contrato que HF-3 acabara soportando; el
+   perfil de capacidad los RECHAZA hoy porque `clip_overlay.py` no puede consumirlos. Separarlos
+   evita tener que versionar el contrato el dia que HF-3 desbloquee la caja.
+3. **El perfil vive en UNA constante** (`capacidad.PERFIL_RUTA_CLIPS`), no disperso en ifs, y
+   cada rechazo nombra el campo, el valor y la LINEA que impone el limite
+   (`clip_overlay.py:20/73/124/144`). HF-3 lee el mensaje y sabe que abrir, sin ir a buscarlo.
+4. **La clave de cache incluye las cuatro versiones del entorno** (hyperframes, node, chromium,
+   ffmpeg), leidas en tiempo de ejecucion. Si no se pueden leer es fallo con razon, NUNCA un
+   default inventado: un default falso serviria una pieza renderizada con otro Chrome como si
+   fuera la buena. Las partes del hash van dentro de un objeto JSON en vez de concatenarse a
+   pelo, porque una concatenacion plana dejaria que mover un caracter entre dos versiones
+   produjera la misma clave.
+5. **Fail-open con vocabulario cerrado.** `pedir_pieza` NUNCA lanza al llamador: devuelve
+   `ruta_mov=None` y una `razon_fallo` de una lista de nueve. Es la regla de oro 8 del repo
+   (fail-open del cerebro) aplicada al Motor B: un motion graphic que no sale no puede tumbar un
+   paquete de clips que por lo demas esta bien. La validacion explicita SI lanza, para que HF-2
+   vea el error al construir el catalogo.
+6. **Solo MOV ProRes 4444.** WebM VP9 no se ofrece ni como opcion: HF-0 midio que declara
+   `yuv420p` y que sin `-c:v libvpx-vp9` explicito FFmpeg pierde el alfa en silencio. Pesa 166x
+   menos, y esa es exactamente la razon por la que conviene cerrarle la puerta por contrato en
+   vez de dejarlo como tentacion.
+7. **Cualquier desvio de la salida descarta el archivo.** Se verifica con ffprobe pix_fmt, fps,
+   tamano y duracion (tolerancia 120 ms). Mas vale no tener pieza que tener una sin alfa: esa se
+   compondria como un rectangulo opaco tapando el video.
+8. **`consumo_sugerido` viaja en el resultado** (`fade=False`, `fit="cover"`, `mute=True`) para
+   que HF-3 no redescubra los ajustes de invocacion de HF-0. `fade=False` porque la plantilla ya
+   trae su animacion de entrada y salida, y el fade de 0.20 s de la ruta de clips se sumaria
+   encima produciendo doble entrada.
+9. **Sin GC ni limite de tamano de cache**, solo `tamano_ocupado()` que reporta. Decidir cuando
+   borrar exige saber que piezas siguen referenciadas por un paquete, y eso no existe hasta HF-3.
+
+**Publicacion atomica: por que NO se reuso `media_integrity.ruta_temporal`.** Ese helper fuerza
+`.mp4` en el temporal (documentado en su docstring: FFmpeg elige el muxer por la extension), y
+HyperFrames tambien. Reutilizarlo produciria un MP4 sin alfa. `almacen.temporal` replica el mismo
+contrato (temporal unico en subdir privado del mismo volumen, borrado ante fallo, `os.replace`)
+con sufijo `.mov`. El sidecar SI usa `atomic_io.atomic_write_json`, que es la fuente unica del
+repo, y `pieza_id` se valida con `path_safety.is_safe_basename`.
+
+**Lock por hash.** `mkdir` atomico, con reclamo de locks rancios (>900 s). Sin el reclamo, un
+hard-kill dejaria esa pieza bloqueada para siempre y ninguna corrida futura podria regenerarla.
+
+**Medido durante la implementacion (no estaba en HF-0).**
+- `hyperframes doctor --json` devuelve `ok: false` cuando faltan Docker o whisper-cpp, que no
+  hacen falta para renderizar. Gatear en ese `ok` global, como sugiere la doc de la CLI, seria un
+  falso negativo permanente. Se gatea en los cuatro checks concretos.
+- `shutil.which("npx")` devuelve `npx.CMD` en Windows, y `subprocess` con el literal `"npx"`
+  falla con WinError 2 porque CreateProcess no aplica PATHEXT. El binario se resuelve una vez.
+- `hyperframes render` RECHAZA `--non-interactive` con "Unknown flag" (es un flag de `init`); el
+  modo no interactivo se auto-detecta por non-TTY.
+- `cache_corrupta` es INOBSERVABLE cuando falta el binario: la clave de cache incluye las
+  versiones del entorno, que se leen con ese binario, asi que sin binario no hay hash que
+  consultar. Es consecuencia directa del punto 4 y esta fijado con un test.
+
+**Verificacion.** Suite `2748 passed, 4 skipped` (+130); ruff, formato y `check.bat` verdes. La
+suite corre entera SIN HyperFrames instalado y sin renderizar: el CLI y ffprobe entran por un
+`Adaptador` inyectable. El unico test que renderiza de verdad va marcado `@pytest.mark.hf_real`
+y esta excluido por default (`addopts = -m "not hf_real"`); corrido a mano produce un MOV
+`yuva444p12le` real en 16.7 s. Byte-identidad de la ruta clasica: mismo sha256 antes y despues
+de la rama. Ningun test fija pixeles ni sha256 de video como asercion de correccion.
+
+### Addendum D50.1 - Las variables van PLANAS, y por archivo
+
+**Lo que estaba roto.** El invocador enviaba las variables anidadas
+(`{"texto":{"titulo":...},"marca":{...}}`). Las variables de HyperFrames son PLANAS por `id` y
+de tipo string/number/color/boolean/enum: no existe el tipo objeto. Una plantilla que declara
+`titulo` NUNCA recibia su valor, pintaba su default, y **el render devolvia codigo 0** con
+`pix_fmt`, fps, tamano y duracion correctos. Ninguna verificacion automatica podia verlo.
+
+Se detecto extrayendo un frame del MOV y MIRANDOLO: la pieza decia `SIN-VARIABLE-titulo`. Es el
+precedente mas claro de la regla de oro 7 del proyecto (verificacion visual obligatoria) fuera
+del Motor A: en el Motor B, "returncode 0" no significa que la pieza diga lo que debe decir.
+
+**Decision.**
+1. Los slots de texto suben al nivel raiz por su propio `id`; la marca y el tamano se aplanan
+   con prefijo (`marca_primario`, `tamano_ancho`). Contrato de variables que HF-2 declara en
+   `data-composition-variables`: los slots declarados, mas `marca_primario`, `marca_secundario`,
+   `marca_texto`, `duracion_ms`, `fps`, `tamano_ancho`, `tamano_alto`, `semilla`.
+2. Un slot de texto que choque con una de esas claves reservadas es `contrato_invalido`: al
+   aplanar pisaria el valor real en silencio, que es la misma clase de fallo que este addendum
+   arregla.
+3. Las variables viajan por `--variables-file` con UTF-8 explicito, no por `--variables`. El
+   transporte por argumento SI funcionaba (se midio: Python usa CreateProcessW en UTF-16 y los
+   acentos, la enie y las comillas escapadas sobreviven intactas incluso pasando por
+   `npx.CMD`), pero el archivo elimina el escapado de comillas a traves de `cmd.exe` y el techo
+   de 32767 caracteres de la linea de comandos de Windows, que un contrato con textos largos
+   puede alcanzar. El archivo se escribe junto al temporal y se borra siempre, tambien si el
+   render falla.
+
+**Verificacion.** Render real con `Configuración básica de ComfyUI` y
+`año 2026 · ñ á é í ó ú ü ¿? ¡! "comillas"`: frame extraido e inspeccionado, texto correcto y
+las diez claves planas presentes. Tests permanentes en `tests/test_hf_variables.py` que fijan
+los BYTES del archivo (`c3b3` para la o acentuada, no `f3` de cp1252), el aplanado, las claves
+reservadas y el borrado del archivo temporal.
+
+### Addendum D50.2 - Umbral de lock rancio derivado del timeout
+
+Eran 900 s constantes contra un timeout de 180 s. El default no era el problema: el problema
+era el acoplamiento invisible. Subir `timeout_s` a 20 minutos dejaba el umbral en 900 s, asi que
+una corrida lenta pero VIVA veia su lock reclamado por otra y las dos renderizaban la misma
+pieza a la vez. Ahora el umbral es `max(timeout * 3, 300 s)` y `pedir_pieza` propaga su propio
+timeout al lock, con un test que fija la invariante que importa: el umbral SIEMPRE es mayor que
+el timeout, para cualquier valor.
+
+### Addendum D50.3 - `check.bat` corre ruff SIN cache
+
+`ruff check .` daba VERDE en local sobre lint que el CI rechazaba. Causa: los tests de HF-1 se
+escribieron ANTES que el paquete `hyperframes/`, asi que ruff cacheo la clasificacion de ese
+import como third-party y siguio aplicando el orden viejo; el CI, que siempre arranca con cache
+frio, lo clasifico como first-party y exigio un bloque de imports separado (I001 en 4 archivos).
+`ruff check . --no-cache` reproduce el CI exactamente. `check.bat` pasa a usar `--no-cache`:
+el coste es de segundos y el falso verde cuesta un ciclo de CI entero.
+
+Generaliza a cualquier paquete NUEVO del repo, no solo a este.
+
+### Addendum D50.4 - Deuda anotada, no implementada
+
+Tres cosas quedan escritas para no perderlas. Ninguna se implementa en HF-1.
+
+1. **Dos implementaciones de publicacion atomica que pueden divergir.** `hyperframes/almacen.py`
+   replica el contrato de `media_integrity.ruta_temporal` (temporal unico en subdir privado del
+   mismo volumen, verificacion, `os.replace`, borrado ante fallo) con extension `.mov`, porque
+   el original fuerza `.mp4` y HyperFrames elige el muxer por la extension. Son dos copias del
+   mismo contrato H1 y pueden separarse con el tiempo. **Unificar en HF-3 parametrizando el
+   sufijo en `media_integrity.ruta_temporal`**, que ademas es donde ya habra que tocar la ruta
+   de clips.
+2. **`BASELINE_SUITE` puede estar verde y mentir.** El gate de `smoke_h4_docs.py` compara la
+   constante contra ESTADO.md, README.md y MATRIZ_READINESS.md, es decir COHERENCIA INTERNA
+   entre documentos, nunca contra la suite real. Por eso llevaba desactualizada desde S39
+   (decia 2502 con la suite en 2618) sin que ningun gate protestara. Arreglarlo pide que el
+   smoke ejecute pytest y compare, o que el CI publique el numero. **Tarea aparte, fuera de
+   HF-1.**
+3. **Regla de gate para HyperFrames: ningun PR de HF se mergea sin correr `hf_real` a mano**,
+   aunque este excluido del CI. Justificacion empirica, no teorica: `hf_real` encontro que
+   `render` rechaza `--non-interactive`, y el frame que produce descubrio el bug de variables
+   anidadas de D50.1. Los dobles no vieron ninguna de las dos, y no podian: ambos fallos viven
+   exactamente en la frontera que los dobles sustituyen.
+
+### Addendum D50.5 - Reserva derivada y canario de influencia
+
+**La reserva se deriva, no se escribe.** Las claves del sistema que el aplanado pone en el
+nivel raiz (`marca_primario`, `marca_secundario`, `marca_texto`, `duracion_ms`, `fps`,
+`tamano_ancho`, `tamano_alto`, `semilla`) salen de `claves_reservadas()`, que aplana una pieza
+SIN slots y devuelve lo que queda. Antes eran una tupla literal: correcta el dia que se
+escribio y condenada a quedarse atras en cuanto el contrato crezca, porque quien anada un campo
+a `variables_de` no tiene por que acordarse de una segunda lista. Ahora un campo nuevo queda
+reservado solo, y hay un test que lo prueba anadiendo una clave ficticia al aplanado.
+
+**Direccion real de la colision (medida, corrige lo que D50.1 daba por supuesto).** En el
+aplanado los slots van PRIMERO, asi que gana la clave del sistema: un slot llamado `fps` no
+corrompe el fps real, sino que DESAPARECE, y la plantilla pinta `30` donde esperaba una frase.
+El efecto es el mismo (fallo silencioso con codigo 0) pero el sentido es el contrario al que se
+asumio al escribir el guard. Queda fijado con un test que afirma quien gana.
+
+**Canario de influencia: gate obligatorio de cada plantilla nueva de HF-2.** Renderiza la misma
+plantilla dos veces cambiando solo el texto de un slot y exige sha256 DISTINTO. No fija pixeles
+ni un sha concreto: solo afirma que la entrada influye en la salida.
+
+Lo que lo vuelve valido es el determinismo medido en HF-0 (mismo contrato, mismo sha256, tres
+corridas dentro del entorno fijado). Sin ese determinismo, dos sha distintos no probarian nada.
+Con el, dos sha IGUALES prueban que la entrada no llego.
+
+Se verifico que el canario canta: reintroduciendo el aplanado anidado de D50.1 solo en memoria,
+dos titulos completamente distintos produjeron el MISMO sha256 y ambos renders devolvieron
+exito. Es la unica verificacion AUTOMATICA que habria cazado aquel bug; ni el returncode, ni
+`pix_fmt`, ni el fps, ni la duracion, ni los dobles lo veian.

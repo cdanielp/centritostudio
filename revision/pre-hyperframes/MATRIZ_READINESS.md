@@ -4,7 +4,7 @@ Base actual `3cbac46` (merge PR #29, cierre H4). **H1 CERRADO EN MAIN — merge 
 CERRADO EN MAIN — merge `5779a77`. H3 CERRADO EN MAIN — merge `b59989f`. GPU/NVENC CERRADO EN MAIN —
 merge `cdcea7a`. H4 CERRADO EN MAIN — merge `3cbac46`.** **H5 (CI remoto ligero) en curso en este
 PR, pendiente de merge. HyperFrames no iniciada; gate final pendiente.** Baseline de suite (base
-antes de tests H5): `2502 passed, 4 skipped` (4 skips = los cuatro históricos de symlink; H5 no
+antes de tests H5): `2801 passed, 4 skipped` (4 skips = los cuatro históricos de symlink; H5 no
 añade tests a la suite). Detalle y evidencia en `AUDITORIA.md` / `H1_EVIDENCIA.md` /
 `H2_EVIDENCIA.md` / `H3_EVIDENCIA.md` / `NVENC_EVIDENCIA.md` / `H4_EVIDENCIA.md` / `H5_EVIDENCIA.md`.
 Plan en `PLAN_DE_PR.md`.

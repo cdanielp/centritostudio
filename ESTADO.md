@@ -90,8 +90,30 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2502 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2801 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
+
+> **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"
+> quedan MATIZADAS, no borradas: el pipeline sigue sin usar HyperFrames y el Motor B sigue sin
+> estar cableado, pero ya existen dos piezas fuera de esa ruta.
+>
+> - **HF-0 (prueba de humo): VIABLE.** Vivió en un laboratorio fuera del repo; cero cambios en
+>   Centrito. Ruta de alfa: **MOV ProRes 4444 (`yuva444p12le`)**. La ruta de
+>   clips existente compone una capa transparente sin cambios de código, con los captions encima
+>   y sin halos. WebM VP9 descartado: declara `yuv420p` y pierde el alfa en silencio.
+> - **HF-1 (contrato de datos): PR abierto, sin mergear.** Paquete `hyperframes/` **HUÉRFANO**
+>   (ningún módulo del pipeline lo importa) con el contrato de pieza, el perfil de capacidad,
+>   la caché por hash y el invocador fail-open. Decisión **D50** y addenda **D50.1 a D50.5**.
+>   Byte-identidad de la ruta clásica verificada: mismo sha256 antes y después, 0 diferencias.
+> - **Gate nuevo para HyperFrames (D50.3 y D50.5):** ningún PR de HF se mergea sin correr a
+>   mano los tests `hf_real` (excluidos del CI), y cada plantilla nueva de HF-2 debe pasar el
+>   canario de influencia. Encontraron dos fallos que devolvían código 0 con todo en orden.
+> - **Baseline de suite:** subió `2502 -> 2748`. El salto incluye los +130 de HF-1 y también
+>   S39/S40/S41, que habían movido la suite real sin subir la constante `BASELINE_SUITE` (el
+>   gate compara la constante contra los tres documentos, no contra la suite real, así que
+>   seguía verde estando desactualizada). Corregido en esta rama.
+> - **Sigue pendiente:** HF-2 (catálogo de plantillas) y HF-3 (cableado en Auto v2 y Studio).
+>   Lo que HF-3 tendrá que desbloquear está nombrado con archivo y línea en D50.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6

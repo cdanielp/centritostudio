@@ -16,7 +16,10 @@ echo [1/5] entorno (Python/venv/ffmpeg/ffprobe/modelos/imports)...
 if errorlevel 1 (echo [X] Entorno local incompleto - ver docs\ENTORNO.md & exit /b 1)
 
 echo [2/5] ruff check...
-"%PY%" -m ruff check .
+REM --no-cache a proposito (HF-1): con cache, ruff reutiliza la clasificacion first-party
+REM /third-party de una corrida anterior y da VERDE sobre lint que el CI (siempre limpio)
+REM rechaza. Paso de segundos a ~1s; el falso verde cuesta mucho mas.
+"%PY%" -m ruff check . --no-cache
 if errorlevel 1 (echo [X] Lint fallo & exit /b 1)
 
 echo [3/5] ruff format --check...
