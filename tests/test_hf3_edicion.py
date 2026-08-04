@@ -272,3 +272,74 @@ def test_con_la_capa_apagada_el_sidecar_es_irrelevante(tmp_path):
     )
     assert r.clips == ()
     assert r.informe == {"enabled": False}
+
+
+# ── Re-render incremental (1.7) ──────────────────────────────────────────────
+
+
+def test_editar_una_pieza_solo_invalida_esa_pieza_en_la_cache():
+    """La clave de cache es el hash del CONTRATO, asi que una pieza intacta sigue siendo un hit.
+
+    Es lo que hace barato corregir: K cambia un texto y solo se re-renderiza ese letrero, no
+    los cinco. Aqui se comprueba sobre las claves, sin renderizar nada.
+    """
+    from hyperframes.contrato import calcular_hash
+
+    entorno = {"hyperframes": "0.7.90", "node": "v24", "chromium": "152", "ffmpeg": "8.0"}
+    plan = _validar(
+        _plan(
+            _pieza("hook", 0),
+            _pieza("lower_third", 9000, {"nombre": "N", "rol": "R"}),
+            _pieza("cierre", 50000, {"titulo": "T", "cta": "C"}),
+        )
+    ).plan
+
+    def claves(p):
+        return {
+            pieza.plantilla: calcular_hash(
+                motion_capa.contrato_de_pieza(
+                    pieza, version="1.0.0", ancho=1080, alto=1920, fps=30,
+                    marca=motion_capa.MARCA,
+                ),
+                entorno,
+            )
+            for pieza in p.piezas
+        }
+
+    antes = claves(plan)
+    tocado = mp.PlanMotion(
+        plan.orientacion,
+        tuple(
+            mp.Pieza(p.plantilla, p.t0_ms, p.t1_ms, {**p.texto, "rol": "Otro rol"}, p.banda)
+            if p.plantilla == "lower_third"
+            else p
+            for p in plan.piezas
+        ),
+    )
+    despues = claves(tocado)
+
+    assert despues["lower_third"] != antes["lower_third"], "la pieza editada debe re-renderizarse"
+    assert despues["hook"] == antes["hook"], "el hook no se toco: tiene que salir de cache"
+    assert despues["cierre"] == antes["cierre"], "el cierre no se toco: tiene que salir de cache"
+
+
+def test_mover_una_pieza_en_el_tiempo_no_invalida_su_render():
+    """El MOV no depende de donde se compone: mover una pieza no la vuelve a renderizar.
+
+    El instante vive en el `ClipOverlay`, no en el contrato, salvo por el `pieza_id`, que no
+    entra en lo que se pinta. Es una propiedad util: reordenar el clip es gratis.
+    """
+    from hyperframes.contrato import calcular_hash
+
+    entorno = {"hyperframes": "0.7.90"}
+    original = _validar(_plan(_pieza("hook", 0))).plan.piezas[0]
+    movida = mp.Pieza(original.plantilla, 20000, 22500, dict(original.texto), original.banda)
+
+    def clave(pieza):
+        dato = motion_capa.contrato_de_pieza(
+            pieza, version="1.0.0", ancho=1080, alto=1920, fps=30, marca=motion_capa.MARCA
+        )
+        dato.pop("pieza_id")  # identificador de archivo, no influye en los pixeles
+        return calcular_hash(dato, entorno)
+
+    assert clave(original) == clave(movida)
