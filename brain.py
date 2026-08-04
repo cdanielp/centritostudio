@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -133,10 +134,71 @@ def _enrich_kw_ts(grupos: list[dict], grp_items: list[dict]) -> None:
                 item["kw_ts"] = round(float(g_words[kw_within]["start"]), 3)
 
 
-def analizar_grupos(grupos: list[dict], contexto: str = "", video_name: str = "") -> dict:
-    """Analiza grupos y persiste brain.json con keywords y emojis sugeridos."""
+SCHEMA_CACHE = 1  # sube si cambia la FORMA del sidecar, para invalidar los viejos de golpe
+
+
+def hash_de_grupos(grupos: list[dict]) -> str:
+    """sha256 del TEXTO de los grupos, que es lo unico que ve el LLM.
+
+    Solo entra el texto y el id: los tiempos no viajan en el prompt, asi que un cambio de
+    milisegundos no puede cambiar la respuesta y no debe invalidar la cache.
+    """
+    partes = [
+        f"{g.get('id')}:{' '.join(w.get('text', '') for w in g.get('words', []))}" for g in grupos
+    ]
+    payload = json.dumps(
+        {"schema": SCHEMA_CACHE, "grupos": partes}, ensure_ascii=False, separators=(",", ":")
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sidecar_reutilizable(video_name: str, huella: str) -> dict | None:
+    """Sidecar previo si lo genero EXACTAMENTE esta transcripcion, o None.
+
+    Sin la huella no se puede reutilizar: un sidecar de otro corte del mismo video traeria
+    keywords que no corresponden a estos grupos y el enfasis caeria en palabras que ya no estan.
+    Cualquier problema de lectura devuelve None y se vuelve a llamar al LLM (fail-closed).
+    """
+    if not video_name:
+        return None
+    ruta = TRANSCRIPTS / f"{video_name}.brain.json"
+    if not ruta.is_file():
+        return None
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(datos, dict) or datos.get("grupos_hash") != huella:
+        return None
+    if not isinstance(datos.get("groups"), list):
+        return None
+    return datos
+
+
+def analizar_grupos(
+    grupos: list[dict], contexto: str = "", video_name: str = "", *, forzar: bool = False
+) -> dict:
+    """Analiza grupos y persiste brain.json con keywords y emojis sugeridos.
+
+    REUTILIZA el sidecar de una corrida anterior cuando la transcripcion es la misma (misma
+    `grupos_hash`). Antes se llamaba al LLM en cada corrida aunque el sidecar ya estuviera en
+    disco: eso gastaba una llamada por re-render y, como un LLM no devuelve lo mismo dos veces,
+    hacia que el mismo clip saliera distinto en cada pasada. `forzar=True` salta la cache.
+    """
     if not grupos:
         return {"groups": []}
+
+    huella = hash_de_grupos(grupos)
+    if not forzar:
+        previo = _sidecar_reutilizable(video_name, huella)
+        if previo is not None:
+            # Los `kw_ts` se recalculan SIEMPRE contra los grupos de ahora. La huella solo cubre
+            # el texto, que es lo unico que ve el LLM; si la misma frase viene con tiempos
+            # distintos, el indice de palabra sigue valiendo pero el timestamp no.
+            _enrich_kw_ts(grupos, previo.get("groups", []))
+            kws = sum(1 for g in previo.get("groups", []) if g.get("kw") is not None)
+            print(f"[brain] cache HIT {video_name}.brain.json | kw={kws} | sin llamada al LLM")
+            return previo
 
     max_e = max(1, len(grupos) * 30 // 100)
     txt = "\n".join(f"[{g['id']}]: {' '.join(w['text'] for w in g['words'])}" for g in grupos)
@@ -182,6 +244,7 @@ def analizar_grupos(grupos: list[dict], contexto: str = "", video_name: str = ""
         "provider": PROVIDER,
         "latency_s": latency,
         "tokens": usage,
+        "grupos_hash": huella,
         "groups": grp_items,
     }
     if video_name:

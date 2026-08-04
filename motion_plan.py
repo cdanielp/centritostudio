@@ -330,8 +330,27 @@ def _es_verbo_probable(palabra: str) -> bool:
     if len(t) < 4 or t in ("entonces",):
         return False
     return t.endswith(
-        ("ar", "er", "ir", "o", "as", "es", "a", "e", "an", "en", "amos", "emos", "imos",
-         "aba", "ia", "io", "ue", "ara", "era")
+        (
+            "ar",
+            "er",
+            "ir",
+            "o",
+            "as",
+            "es",
+            "a",
+            "e",
+            "an",
+            "en",
+            "amos",
+            "emos",
+            "imos",
+            "aba",
+            "ia",
+            "io",
+            "ue",
+            "ara",
+            "era",
+        )
     )
 
 
@@ -559,9 +578,7 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
         if cola_t0 is not None:
             reservados.add(cola_t0)
         props.append(
-            _Candidata(
-                "cierre", ((t0_cierre, t0_cierre),), {"titulo": t.cta, "cta": cola}, cola_t0
-            )
+            _Candidata("cierre", ((t0_cierre, t0_cierre),), {"titulo": t.cta, "cta": cola}, cola_t0)
         )
     else:
         fuera.append(Omision("cierre", MOTIVO_CLIP_CORTO))

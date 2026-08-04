@@ -783,8 +783,10 @@ def test_si_el_cierre_se_queda_sin_tramo_su_secundario_va_vacio():
 
 def test_las_pausas_se_miden_sobre_todos_los_tramos_no_solo_los_libres():
     """Quitar de la lista los ya usados inventaba pausas donde solo habia un tramo apartado."""
-    tramos = [mp.Tramo(t, t + 2400, f"frase numero {i} del clip") for t, i in
-              ((0, 0), (2500, 1), (5000, 2))]
+    tramos = [
+        mp.Tramo(t, t + 2400, f"frase numero {i} del clip")
+        for t, i in ((0, 0), (2500, 1), (5000, 2))
+    ]
     sin_usar = mp._tramo_relevante(tramos, 0, 90000, set())
     con_usado = mp._tramo_relevante(tramos, 0, 90000, {2500})
     assert sin_usar is not None and con_usado is not None
@@ -816,7 +818,7 @@ def test_limpiar_muletillas(crudo, esperado):
 
 
 def test_entonces_con_verbo_detras_abre_oracion_y_se_conserva():
-    """"entonces bajo la desercion" no es relleno: el `entonces` es la unica excepcion."""
+    """ "entonces bajo la desercion" no es relleno: el `entonces` es la unica excepcion."""
     assert mp.limpiar_muletillas("entonces bajo la desercion escolar") == (
         "entonces bajo la desercion escolar"
     )

@@ -40,6 +40,7 @@ tests/test_h2_paquete_marker.py
 tests/test_h3_check_bat.py
 tests/test_h3_launcher.py
 tests/test_h3_preflight.py
+tests/test_brain_cache.py
 tests/test_hf2_catalogo.py
 tests/test_hf3_clip_overlay.py
 tests/test_hf3_deudas.py
