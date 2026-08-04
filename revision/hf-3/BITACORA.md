@@ -31,3 +31,10 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   De paso, defecto encontrado y arreglado: un kicker vacio pintaba una pastilla de color sin
   texto; `hook` sube a 1.0.2 (regla D51.1: la version es lo que invalida la cache).
   Suite `2897 passed / 4 skipped`, `ruff check . --no-cache` limpio.
+- **12:35 - BLOQUE 3 OK (el planificador).** `motion_plan.py`: puro, determinista, sin IA, sin
+  red, sin reloj y sin aleatoriedad. Recibe duracion, titulo del clipper, tramos del SRT,
+  orientacion y el CSV de trayectoria, y devuelve piezas con sus tiempos mas las omisiones con
+  su motivo. 47 tests, ninguno renderiza. Cableado en Auto v2 detras del mismo flag del bloque
+  1. Dos hallazgos medidos, no inventados: (a) entre 6000 y 6700 ms el `cierre` NO cabe detras
+  del `hook` con los 500 ms de aire, y como tiene menos prioridad se omite entero; (b) por
+  encima de 12000 ms las tres piezas base nunca compiten entre si (barrido, no de memoria).
