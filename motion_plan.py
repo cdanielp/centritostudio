@@ -114,6 +114,30 @@ PREPOSICIONES = frozenset(
     }
 )
 ARRANQUE_PROHIBIDO = CONJUNCIONES | PREPOSICIONES
+
+# ── Muletillas (ESPECIFICO DE ESPANOL) ───────────────────────────────────────
+# El habla espontanea las mete cada pocas palabras y hoy acaban en pantalla ("yo pues este
+# tengo 26 anos"). Se limpian ANTES de medir longitud, para que el hueco que dejan lo ocupe
+# texto con contenido en vez de perderse contra el tope de caracteres.
+#
+# Lista en TOKENS ya normalizados (sin tildes, en minusculas). Las de varias palabras van
+# primero en la limpieza, porque "o sea" tiene que morir entero antes de que "sea" se salve.
+MULETILLAS_COMPUESTAS = (
+    ("ya", "sabes"),
+    ("la", "verdad"),
+    ("como", "que"),
+    ("o", "sea"),
+)
+MULETILLAS_SIMPLES = frozenset(
+    {"pues", "este", "osea", "digamos", "entonces", "bueno", "mira", "eh", "mmm"}
+)
+# `no` va aparte porque NO se puede quitar del arranque: "no sabemos que paso" sin el `no` dice
+# exactamente lo contrario. Solo cuenta como muletilla la coletilla `¿no?`, que va aislada entre
+# signos ("...los traslados, no, son carisimos").
+MULETILLAS_SOLO_AISLADAS = frozenset({"no"})
+# `entonces` es la unica que abre oracion de verdad: con un verbo detras se conserva
+# ("entonces bajo la desercion"), y si no, es relleno.
+MULETILLAS_CON_EXCEPCION_DE_VERBO = frozenset({"entonces"})
 # Los articulos SI pueden abrir un letrero ("La desercion escolar subio") pero NO cerrarlo:
 # "las que de la" deja la frase colgando igual que una preposicion.
 ARTICULOS = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
@@ -287,6 +311,119 @@ class _Candidata:
     tramo_t0: int | None = None
 
 
+def _norma(palabra: str) -> str:
+    """Token normalizado (minusculas, sin tildes ni puntuacion) para comparar contra los sets."""
+    import stopwords_es as sw  # noqa: PLC0415 (modulo hoja, solo stdlib)
+
+    return sw.normalizar(palabra)
+
+
+def _es_verbo_probable(palabra: str) -> bool:
+    """Heuristica de verbo conjugado en espanol: sin diccionario y sin dependencias.
+
+    Solo se usa para decidir si un `entonces` inicial abre una oracion de verdad. Se conforma
+    con las terminaciones mas frecuentes de presente, pasado e imperfecto porque el coste de
+    equivocarse es minusculo: como mucho se conserva una muletilla o se quita una palabra que
+    tampoco aportaba.
+    """
+    t = _norma(palabra)
+    if len(t) < 4 or t in ("entonces",):
+        return False
+    return t.endswith(
+        ("ar", "er", "ir", "o", "as", "es", "a", "e", "an", "en", "amos", "emos", "imos",
+         "aba", "ia", "io", "ue", "ara", "era")
+    )
+
+
+def limpiar_muletillas(texto: str) -> str:
+    """Quita las muletillas del habla espontanea. ESPECIFICO DE ESPANOL. PURO.
+
+    Se quitan en dos sitios y solo en esos dos:
+
+    1. Al PRINCIPIO del fragmento, en cadena ("pues este bueno, tengo 26" -> "tengo 26").
+    2. En RACHA de dos o mas seguidas en cualquier posicion ("yo pues este tengo 26" -> "yo
+       tengo 26"). Una suelta puede cargar sentido; dos seguidas no.
+    3. Como interjeccion AISLADA en medio, o sea rodeada de comas ("subio, pues, un 42%").
+
+    Las que tambien significan algo se respetan cuando hacen su trabajo: un `entonces` inicial
+    seguido de verbo abre oracion y se conserva ("entonces bajo la desercion"), y `no` jamas se
+    quita del arranque, porque "no sabemos que paso" sin el dice lo contrario.
+    """
+    palabras = _palabras(texto)
+    if not palabras:
+        return ""
+    palabras = _quitar_muletillas_compuestas(palabras)
+    palabras = _quitar_muletillas_iniciales(palabras)
+    palabras = _quitar_rachas_de_muletillas(palabras)
+    palabras = _quitar_muletillas_aisladas(palabras)
+    return " ".join(palabras).strip()
+
+
+def _quitar_muletillas_compuestas(palabras: list[str]) -> list[str]:
+    """Las de varias palabras van primero: "o sea" muere entero antes de que "sea" se salve."""
+    salida = list(palabras)
+    for compuesta in MULETILLAS_COMPUESTAS:
+        i = 0
+        while i + len(compuesta) <= len(salida):
+            ventana = tuple(_norma(w) for w in salida[i : i + len(compuesta)])
+            if ventana == compuesta:
+                del salida[i : i + len(compuesta)]
+            else:
+                i += 1
+    return salida
+
+
+def _quitar_muletillas_iniciales(palabras: list[str]) -> list[str]:
+    """Quita muletillas del arranque, en cadena, mientras quede algo detras."""
+    salida = list(palabras)
+    while len(salida) > 1:
+        cabeza = _norma(salida[0])
+        if cabeza not in MULETILLAS_SIMPLES:
+            break
+        # `entonces` inicial con verbo detras abre oracion de verdad: se conserva.
+        if cabeza in MULETILLAS_CON_EXCEPCION_DE_VERBO and _es_verbo_probable(salida[1]):
+            break
+        salida.pop(0)
+    return salida
+
+
+def _quitar_muletillas_aisladas(palabras: list[str]) -> list[str]:
+    """Quita la muletilla que va entre comas en medio de la frase, nunca la que carga sentido."""
+    rellenables = MULETILLAS_SIMPLES | MULETILLAS_SOLO_AISLADAS
+    salida: list[str] = []
+    for i, palabra in enumerate(palabras):
+        aislada = (
+            0 < i < len(palabras) - 1
+            and _norma(palabra) in rellenables
+            and palabras[i - 1].endswith(tuple(PUNTUACION_CLAUSULA))
+            and palabra.endswith(tuple(PUNTUACION_CLAUSULA))
+        )
+        if not aislada:
+            salida.append(palabra)
+    return salida
+
+
+def _quitar_rachas_de_muletillas(palabras: list[str]) -> list[str]:
+    """Quita DOS o mas muletillas seguidas en cualquier posicion.
+
+    Una muletilla suelta en medio puede estar cargando sentido, pero dos seguidas no: "yo pues
+    este tengo 26 anos" es el caso literal que aparecio en la demo 08. Se exige racha de dos
+    para no tocar los usos legitimos, que siempre van solos.
+    """
+    salida: list[str] = []
+    i = 0
+    while i < len(palabras):
+        fin = i
+        while fin < len(palabras) and _norma(palabras[fin]) in MULETILLAS_SIMPLES:
+            fin += 1
+        if fin - i >= 2:
+            i = fin
+            continue
+        salida.append(palabras[i])
+        i += 1
+    return salida
+
+
 def puntos_informativos(texto: str) -> float:
     """Cuanta informacion carga un texto, en puntos absolutos. PURO y sin dependencias.
 
@@ -454,7 +591,7 @@ def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS
     por conjuncion ni preposicion, y si nada de eso da un fragmento de tamano razonable se
     devuelve vacio para que la pieza se omita. Calidad por encima de cobertura.
     """
-    limpio = " ".join((texto or "").split())
+    limpio = limpiar_muletillas(" ".join((texto or "").split()))
     if not limpio:
         return ""
     for candidato in _candidatos_de_clausula(limpio, maximo):
@@ -857,6 +994,10 @@ def planificar(
 
 __all__ = [
     "ARRANQUE_PROHIBIDO",
+    "MULETILLAS_SOLO_AISLADAS",
+    "MULETILLAS_COMPUESTAS",
+    "MULETILLAS_SIMPLES",
+    "limpiar_muletillas",
     "MAX_PIEZAS_POR_MINUTO",
     "MOTIVO_TECHO_DENSIDAD",
     "PIEZAS_OPCIONALES",

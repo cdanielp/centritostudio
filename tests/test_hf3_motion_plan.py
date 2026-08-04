@@ -792,3 +792,67 @@ def test_las_pausas_se_miden_sobre_todos_los_tramos_no_solo_los_libres():
     assert sin_usar is not None and con_usado is not None
     # Apartar el tramo 2500 no puede convertir al 5000 en un cambio de tema.
     assert con_usado.t0_ms != 5000 or sin_usar.t0_ms == 5000
+
+
+# ── Muletillas (punto 3) ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("crudo", "esperado"),
+    [
+        # Racha de dos en medio: el caso literal de la demo 08.
+        ("yo pues este tengo 26 anos", "yo tengo 26 anos"),
+        # Compuesta al arranque.
+        ("o sea, la desercion escolar subio", "la desercion escolar subio"),
+        # Cadena al arranque.
+        ("pues bueno, dandole la bienvenida", "dandole la bienvenida"),
+        ("este, mira, los traslados cuestan", "los traslados cuestan"),
+        # Aislada entre comas en medio.
+        ("subio, pues, un 42% el costo", "subio, un 42% el costo"),
+        ("la verdad es que no sabemos", "es que no sabemos"),
+        ("como que se complica todo", "se complica todo"),
+    ],
+)
+def test_limpiar_muletillas(crudo, esperado):
+    assert mp.limpiar_muletillas(crudo) == esperado
+
+
+def test_entonces_con_verbo_detras_abre_oracion_y_se_conserva():
+    """"entonces bajo la desercion" no es relleno: el `entonces` es la unica excepcion."""
+    assert mp.limpiar_muletillas("entonces bajo la desercion escolar") == (
+        "entonces bajo la desercion escolar"
+    )
+    # Sin verbo detras, es relleno y cae.
+    assert mp.limpiar_muletillas("bueno pues entonces vamos") == "entonces vamos"
+
+
+def test_el_no_jamas_se_quita_del_arranque():
+    """Quitarlo invierte el significado, que es el peor fallo posible en un letrero."""
+    assert mp.limpiar_muletillas("no sabemos que paso") == "no sabemos que paso"
+    assert mp.limpiar_muletillas("no bajo la desercion") == "no bajo la desercion"
+    # Como coletilla aislada entre comas si es muletilla.
+    assert mp.limpiar_muletillas("entonces, no, los traslados") == "no, los traslados"
+
+
+def test_una_muletilla_suelta_en_medio_se_respeta():
+    """Una sola puede cargar sentido; la racha de dos es lo que delata al relleno."""
+    assert mp.limpiar_muletillas("el costo pues subio mucho") == "el costo pues subio mucho"
+
+
+def test_la_limpieza_corre_antes_de_medir_la_longitud():
+    """Es el punto entero: el hueco que deja la muletilla lo ocupa texto con contenido."""
+    crudo = "pues este o sea los traslados cuestan mucho dinero cada mes"
+    assert mp.condensar_clausula(crudo, mp.TITULO_SECCION_MAX_CHARS) == (
+        "los traslados cuestan mucho dinero cada mes"
+    )
+
+
+def test_un_texto_de_solo_muletillas_no_da_titulo():
+    assert mp.limpiar_muletillas("pues este bueno") == "bueno"
+    assert mp.condensar_clausula("pues este o sea bueno", mp.TITULO_SECCION_MAX_CHARS) == ""
+
+
+def test_la_lista_de_muletillas_esta_en_constantes_y_es_de_espanol():
+    assert "digamos" in mp.MULETILLAS_SIMPLES
+    assert ("o", "sea") in mp.MULETILLAS_COMPUESTAS
+    assert mp.MULETILLAS_SOLO_AISLADAS == frozenset({"no"})
