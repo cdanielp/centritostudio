@@ -389,8 +389,8 @@ def test_los_textos_llegan_a_los_slots_que_declara_cada_plantilla():
     assert slots["lower_third"] == {"nombre", "rol"}
     assert slots["cierre"] == {"titulo", "cta"}
     assert plan.piezas[0].texto["titulo"] == TEXTOS.titulo
-    # El cierre YA NO repite el titulo del hook: manda la CTA.
-    assert plan.piezas[-1].texto["titulo"] == TEXTOS.cta
+    # Reparto de la plantilla: el titulo va grande y la CTA corta en la pastilla.
+    assert plan.piezas[-1].texto["cta"] == TEXTOS.cta
 
 
 # ── Pureza y determinismo ────────────────────────────────────────────────────
@@ -447,23 +447,27 @@ def test_las_restricciones_espaciales_son_las_medidas_en_hf2():
 
 def test_el_cierre_no_repite_el_titulo_del_hook():
     """Con el hook y el cierre diciendo lo mismo, el ultimo letrero no aportaba nada."""
-    plan = _plan(20000)
+    plan = _plan(20000, tramos=_tramos((15000, "los traslados cuestan mucho dinero")))
     hook = next(p for p in plan.piezas if p.plantilla == "hook")
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
     assert cierre.texto["titulo"] != hook.texto["titulo"]
-    assert cierre.texto["titulo"] == TEXTOS.cta
+    assert cierre.texto["cta"] == TEXTOS.cta
 
 
-def test_el_secundario_del_cierre_sale_de_lo_ultimo_que_se_dice():
+def test_el_titulo_del_cierre_sale_de_lo_ultimo_que_se_dice():
+    """Reparto de la plantilla: titulo grande, CTA corta en la pastilla."""
     plan = _plan(20000, tramos=_tramos((2000, "empieza"), (15000, "y aqui termina la idea")))
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
     # La "y" inicial se cae: un letrero no arranca colgando de la frase anterior.
-    assert cierre.texto["cta"] == "aqui termina la idea"
+    assert cierre.texto["titulo"] == "aqui termina la idea"
+    assert cierre.texto["cta"] == TEXTOS.cta
 
 
-def test_sin_tramos_el_secundario_del_cierre_va_vacio_y_no_se_inventa():
+def test_sin_tramos_el_cierre_lleva_solo_la_pastilla():
+    """Titulo vacio: la plantilla esconde la linea y encoge la placa."""
     cierre = next(p for p in _plan(20000).piezas if p.plantilla == "cierre")
-    assert cierre.texto["cta"] == ""
+    assert cierre.texto["titulo"] == ""
+    assert cierre.texto["cta"] == TEXTOS.cta
 
 
 def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
@@ -670,7 +674,7 @@ def test_si_el_tramo_preferido_no_es_titulable_se_prueba_el_siguiente():
     assert mp.condensar_clausula(secciones[0].texto["titulo"], mp.TITULO_SECCION_MAX_CHARS)
 
 
-def test_el_secundario_del_cierre_usa_la_misma_guarda():
+def test_el_titulo_del_cierre_usa_la_misma_guarda():
     """Si el ultimo tramo no da clausula limpia, se busca hacia atras; si no, va vacio."""
     plan = _plan(
         20000,
@@ -680,13 +684,14 @@ def test_el_secundario_del_cierre_usa_la_misma_guarda():
         ],
     )
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
-    assert cierre.texto["cta"] == "Los traslados cuestan dinero"
+    assert cierre.texto["titulo"] == "Los traslados cuestan dinero"
 
 
-def test_el_secundario_del_cierre_va_vacio_si_nada_es_titulable():
+def test_el_titulo_del_cierre_va_vacio_si_nada_es_titulable():
     plan = _plan(20000, tramos=[mp.Tramo(2000, 5000, "de la que con y")])
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
-    assert cierre.texto["cta"] == ""
+    assert cierre.texto["titulo"] == ""
+    assert cierre.texto["cta"] == TEXTOS.cta
 
 
 def test_la_etiqueta_del_dato_tambien_pasa_por_la_guarda():
@@ -804,7 +809,7 @@ def test_el_caso_de_la_demo_08_el_cierre_ya_no_repite_la_ultima_seccion():
     assert secciones
     for s in secciones:
         assert s.tramo_t0 != cierre.tramo_t0
-        assert s.texto["titulo"] != cierre.texto["cta"]
+        assert s.texto["titulo"] != cierre.texto["titulo"]
 
 
 def test_el_dato_se_queda_con_el_tramo_de_la_cifra_antes_que_el_cierre():
@@ -820,11 +825,12 @@ def test_el_dato_se_queda_con_el_tramo_de_la_cifra_antes_que_el_cierre():
     assert cierre.tramo_t0 != 9000
 
 
-def test_si_el_cierre_se_queda_sin_tramo_su_secundario_va_vacio():
+def test_si_el_cierre_se_queda_sin_tramo_lleva_solo_la_pastilla():
     """Un solo tramo con cifra: se lo lleva el dato y el cierre no tiene de donde sacar texto."""
     plan = _plan(90000, tramos=[mp.Tramo(9000, 12000, "el costo subio un 42% este ano")])
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
-    assert cierre.texto["cta"] == ""
+    assert cierre.texto["titulo"] == ""
+    assert cierre.texto["cta"] == TEXTOS.cta
     assert cierre.tramo_t0 is None
 
 

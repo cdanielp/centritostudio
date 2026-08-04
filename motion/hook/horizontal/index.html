@@ -67,6 +67,14 @@
         border-radius: calc(var(--u) * 0.8);
         margin-bottom: calc(var(--u) * 2.2);
       }
+      /* Filete de acento: el kicker sin texto. Mismo papel que la barra del lower_third. */
+      #kicker.filete {
+        width: calc(var(--u) * 9);
+        height: calc(var(--u) * 0.9);
+        padding: 0;
+        border-radius: calc(var(--u) * 0.45);
+        margin-bottom: calc(var(--u) * 2.2);
+      }
       #titulo {
         color: var(--texto);
         font-weight: 880;
@@ -124,7 +132,13 @@
       elKicker.textContent = String(v.kicker);
       /* Un kicker vacio pintaba una pastilla de color sin texto dentro. Se oculta en vez
          de dejarla: el contrato exige el slot, pero no exige que siempre traiga frase. */
-      if (!String(v.kicker).trim()) { elKicker.style.display = "none"; }
+      if (!String(v.kicker).trim()) {
+        /* El kicker era el UNICO sitio donde el hook pintaba el acento de marca: sin el,
+           el rojo desaparecia del clip entero. En vez de esconderlo, la pastilla se
+           convierte en un filete, el mismo recurso que ya usa la barra del lower_third. */
+        elKicker.textContent = "";
+        elKicker.className = "filete";
+      }
       document.getElementById("titulo").textContent = String(v.titulo);
 
       /* Tiempos adaptativos: entrada acotada por la duracion, salida mas rapida. */

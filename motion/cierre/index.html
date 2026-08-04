@@ -115,7 +115,14 @@
       css.setProperty("--secundario", v.marca_secundario);
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
-      document.getElementById("titulo").textContent = String(v.titulo);
+      var elTitulo = document.getElementById("titulo");
+      elTitulo.textContent = String(v.titulo);
+      /* Sin titulo, la placa se queda solo con la pastilla de la CTA: se esconde la linea
+         y se encoge el relleno vertical para que no quede un hueco en blanco arriba. */
+      if (!String(v.titulo).trim()) {
+        elTitulo.style.display = "none";
+        document.getElementById("placa").style.padding = "calc(var(--u) * 2.4) calc(var(--u) * 3)";
+      }
       var elCta = document.getElementById("cta");
       elCta.textContent = String(v.cta);
       /* La pastilla es un acento, no un hueco: sin texto secundario se esconde en vez de

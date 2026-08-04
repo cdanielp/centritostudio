@@ -1,7 +1,7 @@
 [
   {
     "nombre": "hook",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "slots_texto": [
       "kicker",
       "titulo"
@@ -48,7 +48,7 @@
   },
   {
     "nombre": "cierre",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "slots_texto": [
       "titulo",
       "cta"

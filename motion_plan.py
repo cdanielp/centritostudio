@@ -649,11 +649,22 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
         # secundario sale de lo ultimo que se dice en el clip: asi el letrero final comenta el
         # video en vez de volver a anunciarlo. Sin tramo libre, el secundario va vacio y la
         # plantilla esconde esa linea.
-        cola, cola_t0 = _cola_hablada(tramos, t0_cierre, reservados)
+        # Reparto ORIGINAL de la plantilla: el titulo va grande y la CTA corta en la pastilla.
+        # La pastilla es un acento de dos palabras; meter ahi el fragmento hablado lo dejaba
+        # ilegible. Lo unico que se conserva del intento anterior es que el titulo del cierre no
+        # puede repetir el del hook: para eso sale de lo ultimo que se habla.
+        titulo_cierre, cola_t0 = _cola_hablada(
+            tramos, t0_cierre, reservados, TITULO_SECCION_MAX_CHARS
+        )
         if cola_t0 is not None:
             reservados.add(cola_t0)
         props.append(
-            _Candidata("cierre", ((t0_cierre, t0_cierre),), {"titulo": t.cta, "cta": cola}, cola_t0)
+            _Candidata(
+                "cierre",
+                ((t0_cierre, t0_cierre),),
+                {"titulo": titulo_cierre, "cta": t.cta},
+                cola_t0,
+            )
         )
     else:
         fuera.append(Omision("cierre", MOTIVO_CLIP_CORTO))
@@ -753,7 +764,10 @@ def _condensar(texto: str, maximo: int = TITULO_SECCION_MAX_CHARS) -> str:
 
 
 def _cola_hablada(
-    tramos: list[Tramo], desde_ms: int, usados: set[int] | None = None
+    tramos: list[Tramo],
+    desde_ms: int,
+    usados: set[int] | None = None,
+    maximo: int = TITULO_SECCION_MAX_CHARS,
 ) -> tuple[str, int | None]:
     """Ultimo tramo con texto que empieza antes de `desde_ms`, condensado a etiqueta corta.
 
@@ -769,7 +783,7 @@ def _cola_hablada(
     # Del mas cercano al cierre hacia atras: el primero que de una clausula limpia gana. Sin
     # ninguno, cadena vacia y la plantilla esconde la pastilla en vez de pintar media frase.
     for tramo in reversed(previos):
-        etiqueta = condensar_clausula(tramo.texto, CIERRE_SECUNDARIO_MAX_CHARS)
+        etiqueta = condensar_clausula(tramo.texto, maximo)
         if etiqueta:
             return etiqueta, tramo.t0_ms
     return "", None
