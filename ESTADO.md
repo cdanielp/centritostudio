@@ -198,22 +198,34 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   `--no-cache`, formato, `check.bat` y gate de docs verdes (números en la bitácora del
 >   cierre).
 
-> **ADDENDUM DE DETERMINISMO HF-2 (2026-08-04).** Dos PRs APILADOS y ABIERTOS, ninguno
-> mergeado, que corrigen una conclusión de HF-0 y cierran un agujero que HF-2 no vio.
+> **ADDENDUM DE DETERMINISMO HF-2 (2026-08-04).** Dos PRs apilados, los dos **MERGEADOS en
+> `main`** en el orden obligatorio, que corrigen una conclusión de HF-0 y cierran un agujero
+> que HF-2 no vio.
 >
-> - **PR #43 (`docs/hf2-auditoria-determinismo`), ABIERTO sobre `main` `ff016a9`.** Auditoría
+> - **PR #43 MERGEADO** vía merge commit `44409df307a18cb26ea13cd89cb723372819eea1` (2 padres:
+>   `ff016a9` + `24cab59`). Rama `docs/hf2-auditoria-determinismo` **conservada**.
+> - **PR #44 MERGEADO** vía merge commit `92fee42fe6870e69c8bf1c377a98807cdf045702` (2 padres:
+>   `44409df` + `915ae6a`). Rama `fix/hf2-render-reproducible` **conservada**. `main` = `92fee42`.
+> - **Verificado sobre `main` ya mergeado:** suite `2840 passed, 4 skipped, 17 deselected`
+>   (baseline anterior 2839; el +1 es el test de CI que vigila el flag); `ruff check .
+>   --no-cache` limpio; `17 passed` en la corrida manual de los `hf_real` (D50.4). Quality
+>   Gate de Actions verde en los dos PRs.
+> - **Gate de privacidad:** el informe traía rutas absolutas de la máquina y la regla
+>   `ruta-personal` de `revision/pre-hyperframes/smoke_h4_docs.py` bloqueó los dos PRs. Se
+>   redactaron los prefijos a `<REPO>` y `<LAB>`, declarado en la metodología del propio
+>   informe. Conteos, comandos y sha256 quedaron intactos.
+>
+> - **PR #43 (`docs/hf2-auditoria-determinismo`).** Auditoría
 >   de determinismo del catálogo, solo lectura y medición:
 >   `revision/hf-2/AUDITORIA_DETERMINISMO.md`. Bloques A a D. Halló que **dos renders del
 >   mismo contrato daban sha256 distinto en 9 de 10 configuraciones**; refutó la sospecha
 >   sobre `duracion_ms` (gobierna, desvío 0 ms en 4 de 4); y estableció que el CLI no emite
 >   ningún campo `sha` en ningún modo.
-> - **PR #44 (`fix/hf2-render-reproducible`), ABIERTO, apilado sobre la rama de #43.**
+> - **PR #44 (`fix/hf2-render-reproducible`), apilado sobre la rama de #43.**
 >   Reparación: **D52**. `hyperframes/invocador.py` fija `WORKERS = "1"`; par de gates
 >   `hf_real` sobre las 5 plantillas (reproducibilidad NUEVO + canario de D50.5 RE-ARMADO con
 >   premisa propia); test de CI que vigila el flag. Cero cambios bajo `motion/`; la clave de
 >   caché NO se tocó.
-> - **Orden de merge obligatorio:** primero #43, después #44. #44 contiene los commits de #43
->   por estar apilado.
 > - **Corrección de HF-0 (D52).** El "3/3 renders byte-idénticos" de HF-0 es cierto para SU
 >   composición (se rehízo: mismo sha que entonces, 10 de 10 veces, con 6 workers), pero la
 >   generalización *"el render es reproducible al hash"* es FALSA. Lo que expone al fallo es
@@ -226,8 +238,8 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   contenido de plantilla que la clave de caché actual no ve (medido: editar una propiedad
 >   CSS cambia el MOV y deja la clave idéntica). Es una fisura real de D51.1; adoptarlo exige
 >   rediseño del almacén y se decide aparte.
-> - **Verificado en la rama de #44:** ver los conteos exactos de pytest, `ruff check .
->   --no-cache` y la corrida manual de los `hf_real` en el cuerpo del PR.
+> - **Siguiente:** HF-3 (cableado) sigue SIN INICIAR. Su punto de arranque, ya con el
+>   addendum de determinismo incorporado, vive en `revision/hf-3/ARRANQUE_HF3.md`.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
