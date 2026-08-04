@@ -165,9 +165,14 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 > - **Ronda 2 de K (D51.2):** CTA del cierre sin nombre de plataforma externa (test lo fija);
 >   en 9:16 las piezas centradas bajan a la franja 50-70% para no tapar la cara del reframe
 >   (media query portrait, gemelos intactos como derivación pura); placa y texto entran
->   juntos; defaults y sheets con la marca real #FF5A2B/#111111/#FFFFFF confirmada por K.
+>   juntos; defaults y sheets con la paleta PROVISIONAL #FF5A2B/#111111/#FFFFFF (sale del
+>   fixture de HF-1, NO es marca verificada; pendiente de los hex reales de K, ver D51.3).
 >   Versiones 1.0.1 (y lower_third 1.0.2). Pregunta abierta en D51.2: derivar la posición de
 >   `face_y` en tiempo de render (HF-3) en vez de fija por plantilla. Baseline `2839`.
+> - **Ronda 3 de K (D51.3):** en 9:16 las cinco piezas comparten la franja 50-70% y nada
+>   impide hoy que dos se pinten encima si sus ventanas de tiempo se cruzan; restricción
+>   anotada para HF-3 (recomendación: prohibir el solapamiento temporal en vertical, no
+>   crear un segundo carril). Paleta marcada como provisional.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6

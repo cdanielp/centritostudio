@@ -2342,11 +2342,11 @@ Segunda ronda de revision de K sobre el PR #41. Cero cambios en `hyperframes/` y
    que su contenedor (kicker con placa, cifra con placa, nombre con panel, etc.) y el stagger
    de 4 frames queda ENTRE los elementos de contenido, no entre contenedor y contenido. Antes
    la caja oscura aparecia ~0.27 s sola.
-4. **Colores de marca reales en defaults y ejemplos.** Primario #FF5A2B (naranja rojizo),
-   secundario #111111, texto #FFFFFF, confirmados por K (en el repo solo existian como
-   fixture de HF-1, no habia paleta declarada). Los 10 contact sheets estan regenerados con
-   ellos; el contraste sobre fondo claro y oscuro se juzgo con la marca real, no con el morado
-   de placeholder.
+4. **Colores de marca en defaults y ejemplos: PROVISIONALES (ver D51.3).** Primario #FF5A2B
+   (naranja rojizo), secundario #111111, texto #FFFFFF. En el repo solo existian como fixture
+   de los tests de HF-1; no hay paleta de marca declarada en ningun documento. Los 10 contact
+   sheets estan regenerados con ellos para juzgar contraste con un naranja rojizo realista,
+   pero NO son paleta oficial: quedan pendientes de los valores reales que entregue K.
 
 **Versiones.** El layout vertical y los timelines cambiaron: hook, titulo_seccion,
 dato_destacado y cierre suben a 1.0.1; lower_third (que ya iba en 1.0.1 por D51.1) sube a
@@ -2356,3 +2356,36 @@ dato_destacado y cierre suben a 1.0.1; lower_third (que ya iba en 1.0.1 por D51.
 rojo primero). Los 12 `hf_real` re-corridos a mano. Los 10 contact sheets regenerados sobre
 video real y mirados uno por uno: en vertical la cara queda completamente libre en las cinco
 piezas y ninguna placa aparece vacia en el primer frame de entrada.
+
+### Addendum D51.3 - Solapamiento temporal de piezas y procedencia de la paleta
+
+Tercera ronda de revision de K sobre el PR #41. Solo documentacion; cero cambios de codigo,
+plantillas o evidencia.
+
+1. **Las cinco piezas comparten franja en 9:16 y HOY nada impide solaparlas en el tiempo.**
+   Medido: en vertical el lower_third (1.0.2) ocupa contenido y=[60.6, 68.0] con sombra hasta
+   68.6, DENTRO de la franja 54-68 donde viven las otras cuatro. La composicion de la ruta de
+   clips (`core_overlays._tejer_clips` + `clip_overlay.overlay_clip`) encadena N overlays
+   sobre la base, cada uno con su ventana `enable=between(t,t0,t1)`, y NINGUNA validacion
+   comprueba que dos ventanas no se intersecten: si dos piezas coinciden en el tiempo, ambas
+   se pintan y la ultima de la cadena queda encima, sin aviso ni error. No se arregla en HF-2
+   (aqui no hay programador de piezas; el paquete sigue huerfano).
+
+   **RESTRICCION QUE HF-3 DEBE HACER CUMPLIR al programar piezas:** en 9:16, dos piezas no
+   pueden solaparse en el tiempo. **Recomendacion: prohibir el solapamiento temporal**, no
+   mover el lower_third a un carril propio. Razones: (a) en vertical NO existe un segundo
+   carril libre: la unica banda sin cara (20-45%) y sin captions (70-92% con margen) es la
+   franja 50-70%, y partirla en dos sub-carriles obligaria a piezas mas chicas y peor
+   legibilidad; (b) el caso real de choque (hook al arranque + lower_third temprano) se
+   resuelve escalonando, que es lo natural editorialmente; (c) en 16:9 las bandas ya son
+   disjuntas (lower_third abajo-izquierda 55-68%, centradas 15-48%), asi que la restriccion
+   solo necesita ser dura en vertical.
+
+2. **Procedencia de la paleta #FF5A2B/#111111/#FFFFFF: PROVISIONAL, no oficial.** El unico
+   lugar del repo donde existian esos hex era el fixture de los tests de HF-1 (un ejemplo del
+   brief de aquella fase, no una identidad verificada). En la ronda 2 se le pregunto a K por
+   los hex y el dialogo devolvio seleccionada la opcion con ese trio, pero K aclara que no es
+   una paleta de marca verificada. Queda como PLACEHOLDER razonable (naranja rojizo) para
+   juzgar contraste en los sheets, pendiente de que K entregue los valores reales. Cambiarlos
+   luego es barato por diseno: defaults + fallbacks CSS (un test fija que coincidan) +
+   ejemplos, y las piezas ya renderizadas se invalidan subiendo la version (regla D51.1).
