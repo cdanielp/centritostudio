@@ -205,6 +205,9 @@ class Pieza:
     t1_ms: int
     texto: dict[str, str]
     banda: str = BANDA_CENTRO
+    # De que tramo del SRT salio su texto, o None si el texto viene de la configuracion. Es lo
+    # que permite la regla global de no repetir tramo entre piezas.
+    tramo_t0: int | None = None
 
     @property
     def duracion_ms(self) -> int:
@@ -245,6 +248,7 @@ class PlanMotion:
                     "t1_ms": p.t1_ms,
                     "texto": dict(p.texto),
                     "banda": p.banda,
+                    "tramo_t0": p.tramo_t0,
                 }
                 for p in self.piezas
             ],
@@ -280,6 +284,7 @@ class _Candidata:
     plantilla: str
     ventanas: tuple[tuple[int, int], ...]
     texto: dict[str, str]
+    tramo_t0: int | None = None
 
 
 def puntos_informativos(texto: str) -> float:
@@ -329,9 +334,7 @@ def techo_de_piezas(duracion_ms: int) -> int:
     return max(1, math.floor(MAX_PIEZAS_POR_MINUTO * minutos + 0.5))
 
 
-def _aplicar_techo(
-    colocadas: list[Pieza], omisiones: list[Omision], duracion_ms: int
-) -> None:
+def _aplicar_techo(colocadas: list[Pieza], omisiones: list[Omision], duracion_ms: int) -> None:
     """Recorta las piezas OPCIONALES hasta respetar el techo. Muta `colocadas` en sitio.
 
     Las protegidas no se tocan aunque ellas solas ya pasen del techo: sin gancho, sin quien
@@ -366,30 +369,24 @@ def buscar_cifra(texto: str) -> str | None:
 
 
 def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[_Candidata], list]:
-    """Piezas que la regla de duracion propone, en orden de prioridad, y lo ya descartado."""
+    """Piezas que la regla de duracion propone, en orden de prioridad, y lo ya descartado.
+
+    Los tramos del SRT se REPARTEN: ninguna pieza puede usar el mismo que otra, porque dos
+    letreros que dicen lo mismo se leen como un error. El reparto va de la pieza MAS atada a un
+    tramo concreto a la menos atada: `dato_destacado` solo puede usar el tramo donde se dice la
+    cifra, mientras que el `cierre` sirve con cualquier tramo anterior a el. Si el cierre eligiera
+    primero se quedaria con el tramo de la cifra y mataria al dato sin necesidad.
+    """
     fuera: list[Omision] = []
     props: list[_Candidata] = []
+    # Reserva PROVISIONAL durante la construccion. La definitiva se recalcula tras colocar, a
+    # partir de las piezas que de verdad entraron.
+    reservados: set[int] = set()
 
     if t.titulo.strip():
         props.append(_Candidata("hook", ((0, 0),), {"kicker": t.kicker, "titulo": t.titulo}))
     else:
         fuera.append(Omision("hook", MOTIVO_SIN_TITULO))
-
-    if dur_ms >= UMBRAL_CORTO_MS:
-        t0_cierre = dur_ms - MARGEN_FINAL_MS - DURACION_MS["cierre"]
-        # El cierre YA NO repite el titulo del hook. Manda la llamada a la accion, y el texto
-        # secundario sale de lo ultimo que se dice en el clip: asi el letrero final comenta el
-        # video en vez de volver a anunciarlo. Sin tramos, el secundario va vacio y la plantilla
-        # esconde esa linea.
-        props.append(
-            _Candidata(
-                "cierre",
-                ((t0_cierre, t0_cierre),),
-                {"titulo": t.cta, "cta": _cola_hablada(tramos, t0_cierre)},
-            )
-        )
-    else:
-        fuera.append(Omision("cierre", MOTIVO_CLIP_CORTO))
 
     if dur_ms > UMBRAL_LARGO_MS:
         if t.nombre.strip():
@@ -402,16 +399,35 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
             )
         else:
             fuera.append(Omision("lower_third", MOTIVO_SIN_NOMBRE))
-        dato = _candidata_dato(tramos)
+        dato = _candidata_dato(tramos, reservados)
         if dato is None:
             fuera.append(Omision("dato_destacado", MOTIVO_SIN_CIFRA))
         elif isinstance(dato, str):
             fuera.append(Omision("dato_destacado", dato))
         else:
+            if dato.tramo_t0 is not None:
+                reservados.add(dato.tramo_t0)
             props.append(dato)
     else:
         for nombre in ("lower_third", "dato_destacado"):
             fuera.append(Omision(nombre, MOTIVO_CLIP_CORTO))
+
+    if dur_ms >= UMBRAL_CORTO_MS:
+        t0_cierre = dur_ms - MARGEN_FINAL_MS - DURACION_MS["cierre"]
+        # El cierre YA NO repite el titulo del hook. Manda la llamada a la accion, y el texto
+        # secundario sale de lo ultimo que se dice en el clip: asi el letrero final comenta el
+        # video en vez de volver a anunciarlo. Sin tramo libre, el secundario va vacio y la
+        # plantilla esconde esa linea.
+        cola, cola_t0 = _cola_hablada(tramos, t0_cierre, reservados)
+        if cola_t0 is not None:
+            reservados.add(cola_t0)
+        props.append(
+            _Candidata(
+                "cierre", ((t0_cierre, t0_cierre),), {"titulo": t.cta, "cta": cola}, cola_t0
+            )
+        )
+    else:
+        fuera.append(Omision("cierre", MOTIVO_CLIP_CORTO))
 
     props.sort(key=lambda c: PRIORIDAD.index(c.plantilla))
     return props, fuera
@@ -505,27 +521,30 @@ def _condensar(texto: str, maximo: int = TITULO_SECCION_MAX_CHARS) -> str:
     return condensar_clausula(texto, maximo)
 
 
-def _cola_hablada(tramos: list[Tramo], desde_ms: int) -> str:
+def _cola_hablada(
+    tramos: list[Tramo], desde_ms: int, usados: set[int] | None = None
+) -> tuple[str, int | None]:
     """Ultimo tramo con texto que empieza antes de `desde_ms`, condensado a etiqueta corta.
 
     Vacio si no hay ninguno, y entonces la plantilla esconde la pastilla en vez de pintarla en
     blanco. Aqui no se inventa texto: si el clip no dice nada antes del cierre, no hay etiqueta.
     """
+    ocupados = usados or set()
     previos = [
         t
         for t in sorted(tramos, key=lambda x: x.t0_ms)
-        if t.t0_ms <= desde_ms and (t.texto or "").strip()
+        if t.t0_ms <= desde_ms and (t.texto or "").strip() and t.t0_ms not in ocupados
     ]
     # Del mas cercano al cierre hacia atras: el primero que de una clausula limpia gana. Sin
     # ninguno, cadena vacia y la plantilla esconde la pastilla en vez de pintar media frase.
     for tramo in reversed(previos):
         etiqueta = condensar_clausula(tramo.texto, CIERRE_SECUNDARIO_MAX_CHARS)
         if etiqueta:
-            return etiqueta
-    return ""
+            return etiqueta, tramo.t0_ms
+    return "", None
 
 
-def _candidata_dato(tramos: list[Tramo]) -> _Candidata | str | None:
+def _candidata_dato(tramos: list[Tramo], usados: set[int]) -> _Candidata | str | None:
     """`dato_destacado` dentro del tramo donde se dice la cifra, lo antes posible.
 
     K fijo "se coloca al inicio de ese tramo, y si no cabe se omite". El primer intento sigue
@@ -538,7 +557,7 @@ def _candidata_dato(tramos: list[Tramo]) -> _Candidata | str | None:
     con_cifra = [
         (tr, buscar_cifra(tr.texto))
         for tr in sorted(tramos, key=lambda x: x.t0_ms)
-        if buscar_cifra(tr.texto)
+        if buscar_cifra(tr.texto) and tr.t0_ms not in usados
     ]
     if not con_cifra:
         return None
@@ -557,6 +576,7 @@ def _candidata_dato(tramos: list[Tramo]) -> _Candidata | str | None:
         "dato_destacado",
         tuple((int(tr.t0_ms), int(tr.t1_ms)) for tr, _, _ in titulables),
         {"cifra": cifra, "etiqueta": etiqueta},
+        int(tramo.t0_ms),
     )
 
 
@@ -607,7 +627,7 @@ def _colocar(
                 motivo = MOTIVO_SIN_AIRE
                 continue
             banda = _banda_libre(orientacion, t0, t1, tray_csv)
-            return Pieza(cand.plantilla, t0, t1, dict(cand.texto), banda), ""
+            return Pieza(cand.plantilla, t0, t1, dict(cand.texto), banda, cand.tramo_t0), ""
         if hasta + dur > duracion_ms and motivo == MOTIVO_FUERA_DE_CLIP:
             motivo = MOTIVO_FUERA_DE_CLIP
     return None, motivo
@@ -644,7 +664,9 @@ def _huecos(colocadas: list[Pieza], duracion_ms: int) -> list[tuple[int, int]]:
     return [(a, b) for a, b in huecos if b > a]
 
 
-def _tramo_titulable(tramos: list[Tramo], desde: int, hasta: int) -> tuple[Tramo, str] | None:
+def _tramo_titulable(
+    tramos: list[Tramo], desde: int, hasta: int, usados: set[int] | None = None
+) -> tuple[Tramo, str] | None:
     """(tramo, titulo) del primer tramo del hueco que da una clausula limpia, o None.
 
     `_tramo_relevante` elige el tramo por criterio de contenido; aqui se comprueba ademas que
@@ -652,13 +674,14 @@ def _tramo_titulable(tramos: list[Tramo], desde: int, hasta: int) -> tuple[Tramo
     los siguientes del hueco, y si ninguno vale se devuelve None y la pieza no se coloca:
     calidad por encima de cobertura.
     """
-    preferido = _tramo_relevante(tramos, desde, hasta)
+    ocupados = usados or set()
+    preferido = _tramo_relevante(tramos, desde, hasta, ocupados)
     if preferido is None:
         return None
     resto = [
         t
         for t in sorted(tramos, key=lambda x: x.t0_ms)
-        if desde <= t.t0_ms < hasta and t is not preferido
+        if desde <= t.t0_ms < hasta and t is not preferido and t.t0_ms not in ocupados
     ]
     for tramo in (preferido, *resto):
         titulo = condensar_clausula(tramo.texto, TITULO_SECCION_MAX_CHARS)
@@ -667,7 +690,9 @@ def _tramo_titulable(tramos: list[Tramo], desde: int, hasta: int) -> tuple[Tramo
     return None
 
 
-def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | None:
+def _tramo_relevante(
+    tramos: list[Tramo], desde: int, hasta: int, usados: set[int] | None = None
+) -> Tramo | None:
     """Tramo con el que titular ese hueco. Determinista y sin IA.
 
     Se prefiere el primer tramo que arranca tras una PAUSA larga dentro del hueco, porque una
@@ -681,6 +706,9 @@ def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | Non
     ]
     if not dentro:
         return None
+    # Las pausas se miden sobre TODOS los tramos, no sobre los disponibles: quitar de la lista
+    # los ya usados inventaba pausas donde solo habia un tramo apartado, y el relleno se creia
+    # que ahi cambiaba el tema.
     orden_total = sorted(tramos, key=lambda x: x.t0_ms)
     fin_previo = {t.t0_ms: None for t in orden_total}
     for previa, siguiente in zip(orden_total, orden_total[1:], strict=False):
@@ -707,6 +735,7 @@ def _rellenar_huecos(
     tray_csv: Path | None,
     tramos: list[Tramo],
     presupuesto: int,
+    usados: set[int],
 ) -> None:
     """Mete `titulo_seccion` donde el clip pasa demasiado tiempo sin un solo letrero.
 
@@ -734,12 +763,13 @@ def _rellenar_huecos(
         candidatos = [(a, b) for a, b in _huecos(colocadas, duracion_ms) if b - a > HUECO_MAX_MS]
         if not candidatos:
             break
+        # UNA pieza por vuelta, y los huecos se recalculan en cada una. Colocar en varios
+        # huecos con la lista de una sola foto amontonaba los letreros: el segundo se decidia
+        # contra un hueco que el primero ya habia partido.
         candidatos.sort(key=lambda h: h[1] - h[0], reverse=True)  # el hueco mas grande primero
         progreso = False
         for desde, hasta in candidatos:
-            if presupuesto <= 0:
-                break
-            elegido = _tramo_titulable(tramos, desde, hasta)
+            elegido = _tramo_titulable(tramos, desde, hasta, usados)
             if elegido is None:
                 motivo_final = MOTIVO_SIN_TRAMO
                 continue
@@ -748,15 +778,18 @@ def _rellenar_huecos(
                 "titulo_seccion",
                 ((max(tramo.t0_ms, desde), max(hasta - dur, desde)),),
                 {"titulo": titulo},
+                int(tramo.t0_ms),
             )
             pieza, motivo = _colocar(cand, duracion_ms, orientacion, tray_csv, colocadas)
             if pieza is None:
                 motivo_final = motivo
                 continue
             colocadas.append(pieza)
+            usados.add(int(tramo.t0_ms))
             presupuesto -= 1
             colocada_alguna = True
             progreso = True
+            break  # a recalcular huecos con la pieza nueva ya dentro
         if not progreso:
             break
     if not colocada_alguna:
@@ -804,8 +837,18 @@ def planificar(
     # dejaba huecos peores que si no se hubiera rellenado.
     _aplicar_techo(colocadas, omisiones, duracion_ms)
     presupuesto = max(techo_de_piezas(duracion_ms) - len(colocadas), 0)
+    # Reserva DEFINITIVA: se recalcula de las piezas que de verdad entraron, para que un tramo
+    # apartado por una candidata que luego se descarto no quede bloqueado sin motivo.
+    usados = {p.tramo_t0 for p in colocadas if p.tramo_t0 is not None}
     _rellenar_huecos(
-        colocadas, omisiones, duracion_ms, orientacion, tray_csv, lista_tramos, presupuesto
+        colocadas,
+        omisiones,
+        duracion_ms,
+        orientacion,
+        tray_csv,
+        lista_tramos,
+        presupuesto,
+        usados,
     )
     colocadas.sort(key=lambda p: p.t0_ms)
     omisiones.sort(key=lambda o: (o.plantilla, o.motivo))

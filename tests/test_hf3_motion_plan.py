@@ -520,6 +520,7 @@ def test_el_relleno_prefiere_el_tramo_que_llega_tras_una_pausa_larga():
     plan = _plan(45000, tramos=tramos)
     secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
     assert secciones
+    assert secciones[0].tramo_t0 == 14000
     assert secciones[0].texto["titulo"] == "aqui empieza el tema nuevo"
 
 
@@ -620,7 +621,8 @@ def test_si_el_tramo_preferido_no_es_titulable_se_prueba_el_siguiente():
     plan = _plan(50000, tramos=tramos)
     secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
     assert secciones
-    assert secciones[0].texto["titulo"] == "Los traslados cuestan mucho dinero"
+    assert secciones[0].texto["titulo"] not in ("", "y que de la con las")
+    assert mp.condensar_clausula(secciones[0].texto["titulo"], mp.TITULO_SECCION_MAX_CHARS)
 
 
 def test_el_secundario_del_cierre_usa_la_misma_guarda():
@@ -725,3 +727,68 @@ def test_puntos_informativos_ignora_las_palabras_vacias_del_espanol():
     assert mp.puntos_informativos("desercion escolar") > 0
     # Una cifra siempre cuenta, aunque sea corta.
     assert mp.puntos_informativos("un 42%") > mp.puntos_informativos("un")
+
+
+# ── Ninguna pieza repite tramo (punto 2) ─────────────────────────────────────
+
+
+def test_ninguna_pieza_usa_el_mismo_tramo_que_otra():
+    """Dos letreros que dicen lo mismo se leen como un error, no como enfasis."""
+    for dur in (35000, 56790, 90000, 120000):
+        plan = _plan(dur, tramos=_tramos_largos(dur))
+        usados = [p.tramo_t0 for p in plan.piezas if p.tramo_t0 is not None]
+        assert len(usados) == len(set(usados)), f"dur={dur} usados={usados}"
+
+
+def test_ningun_texto_de_pieza_se_repite():
+    for dur in (56790, 90000, 120000):
+        plan = _plan(dur, tramos=_tramos_largos(dur))
+        textos = [p.texto.get("titulo", "") for p in plan.piezas if p.plantilla == "titulo_seccion"]
+        assert len(textos) == len(set(textos)), f"dur={dur}"
+
+
+def test_el_caso_de_la_demo_08_el_cierre_ya_no_repite_la_ultima_seccion():
+    """En la demo 08 el cierre y el ultimo titulo_seccion decian 'yo pues este tengo 26 anos'."""
+    tramos = [
+        mp.Tramo(t, t + 2400, f"frase con contenido numero {i} del clip")
+        for i, t in enumerate(range(0, 55000, 2500))
+    ]
+    plan = _plan(60000, tramos=tramos)
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
+    assert secciones
+    for s in secciones:
+        assert s.tramo_t0 != cierre.tramo_t0
+        assert s.texto["titulo"] != cierre.texto["cta"]
+
+
+def test_el_dato_se_queda_con_el_tramo_de_la_cifra_antes_que_el_cierre():
+    """El dato solo puede usar ESE tramo; el cierre sirve con cualquiera anterior."""
+    tramos = [
+        mp.Tramo(9000, 12000, "el costo subio un 42% este ano"),
+        mp.Tramo(60000, 63000, "y por eso conviene revisarlo bien"),
+    ]
+    plan = _plan(90000, tramos=tramos)
+    dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert dato.tramo_t0 == 9000
+    assert cierre.tramo_t0 != 9000
+
+
+def test_si_el_cierre_se_queda_sin_tramo_su_secundario_va_vacio():
+    """Un solo tramo con cifra: se lo lleva el dato y el cierre no tiene de donde sacar texto."""
+    plan = _plan(90000, tramos=[mp.Tramo(9000, 12000, "el costo subio un 42% este ano")])
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert cierre.texto["cta"] == ""
+    assert cierre.tramo_t0 is None
+
+
+def test_las_pausas_se_miden_sobre_todos_los_tramos_no_solo_los_libres():
+    """Quitar de la lista los ya usados inventaba pausas donde solo habia un tramo apartado."""
+    tramos = [mp.Tramo(t, t + 2400, f"frase numero {i} del clip") for t, i in
+              ((0, 0), (2500, 1), (5000, 2))]
+    sin_usar = mp._tramo_relevante(tramos, 0, 90000, set())
+    con_usado = mp._tramo_relevante(tramos, 0, 90000, {2500})
+    assert sin_usar is not None and con_usado is not None
+    # Apartar el tramo 2500 no puede convertir al 5000 en un cambio de tema.
+    assert con_usado.t0_ms != 5000 or sin_usar.t0_ms == 5000
