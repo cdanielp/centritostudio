@@ -1,5 +1,6 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames NO iniciado
+Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0 y HF-1 en
+`main` (D50), HF-2 y HF-3 no iniciadas
 
 ## v1 — qué la compone
 
@@ -114,6 +115,31 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   seguía verde estando desactualizada). Corregido en esta rama.
 > - **Sigue pendiente:** HF-2 (catálogo de plantillas) y HF-3 (cableado en Auto v2 y Studio).
 >   Lo que HF-3 tendrá que desbloquear está nombrado con archivo y línea en D50.
+
+> **ADDENDUM DE CIERRE HF-1 (2026-08-03).** El addendum de arriba dice "PR abierto, sin
+> mergear". Eso quedó SUPERADO: **HF-1 está CERRADA y MERGEADA en `main`**.
+>
+> - **Merge:** `5c345f6` (merge commit de 2 padres: `9723c25` main anterior + `607fdd9` HEAD de
+>   la rama), PR **#39**, mensaje `Merge pull request #39 from cdanielp/feat/hf1-contrato-piezas`.
+>   Rama `feat/hf1-contrato-piezas` **conservada**, como el resto del historial.
+> - **Verificado en `main` ya mergeado:** suite `2801 passed, 4 skipped, 2 deselected`;
+>   `ruff check . --no-cache` y `ruff format --check` limpios; `check.bat` TODO OK; local y
+>   remoto en el mismo HEAD con árbol limpio.
+> - **Baseline de suite:** el addendum anterior cita `2502 -> 2748`, que era el número a mitad
+>   del PR. El valor final es **`2801 passed, 4 skipped`** (+183 sobre 2618), y es el que llevan
+>   `BASELINE_SUITE`, README.md y MATRIZ_READINESS.md.
+> - **Anomalía registrada, no maquillada:** el primer `gh pr merge` devolvió un `502` del gateway
+>   de GitHub. El merge SÍ se aplicó (el commit está en `main` y es verificable con `git`), pero
+>   la transacción que marca el PR como *merged* no llegó a completarse, así que el PR #39 puede
+>   seguir figurando **abierto** en la interfaz pese a estar mergeado. No se cerró a mano para no
+>   registrarlo como "cerrado sin merge", que sería falso. La verdad está en el grafo de commits.
+>
+> **Corrección de sentido de D50.1** (se anota aquí, el texto original de D50.1 se conserva tal
+> como se escribió). D50.1 dice que un slot de texto llamado como una clave del sistema
+> "pisaría el valor real". Es al revés, y se midió: en el aplanado los slots van PRIMERO, así que
+> gana la clave del sistema. El slot no corrompe el `fps`, **desaparece**, y la plantilla pinta
+> `30` donde esperaba una frase. El efecto es el mismo fallo silencioso con código 0, pero el
+> sentido es el contrario al que se asumió al escribir el guard. Detalle en **D50.5**.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
