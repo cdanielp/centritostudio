@@ -140,6 +140,8 @@ def ver_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> 
     duracion_ms, orientacion, _fps = _meta_del_clip(mp4)
     versiones = motion_capa.versiones_del_catalogo(CATALOGO)
     opciones = textos or motion_capa.OpcionesMotion(enabled=True, titulo=mp4.stem)
+    # `textos_llm` sigue el default del pipeline. Si el Studio mostrara el plan de las reglas
+    # mientras Auto renderiza con los del LLM, K corregiria un texto y veria otro en el video.
     plan, origen = motion_capa.resolver_plan(
         clip_mp4=mp4,
         duracion_ms=duracion_ms,
@@ -148,6 +150,8 @@ def ver_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> 
         tramos=_tramos_del_clip(mp4),
         tray_csv=_tray_del_clip(mp4),
         catalogo=set(versiones),
+        textos_llm=opciones.textos_llm,
+        stem=mp4.stem,
     )
     vista = _vista_de_plan(plan, origen, duracion_ms)
     vista["clip"] = mp4.stem

@@ -234,3 +234,38 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   (7 piezas), sobre los mismos clips que 06/09 y 07 para comparar lado a lado. El primer render
   saco tres titulos flojos ("preparatoria", "primarias totalmente", "te puedas, pues puedas ahi
   jugar") y se cerro la guarda antes de dar la demo por buena.
+
+## Sesion 6: merge de HF-3, edicion desde el Studio y textos por LLM
+
+- **16:21 - BLOQUE 0 OK (merge).** Comprobado a ojo en las hojas 10 y 11 que el cierre lleva el
+  titulo grande con la CTA en la pastilla y que el hook pinta su filete rojo con el kicker
+  vacio. PR #46 contra main, **merge commit `dc6f6d0`** (dos padres, verificado en el remoto).
+  Gate de privacidad 1374 checks / 0 blockers, `hf_real` 17 passed, CI verde. El CI cazo un
+  fallo real de camino: el sello de `motion/` hasheaba los bytes crudos y Git deja LF en Linux
+  y CRLF en Windows, asi que el gate reventaba en el runner sin que nadie hubiera tocado una
+  plantilla. Los archivos de texto se normalizan; los binarios van tal cual.
+- **17:28 - BLOQUE 1 OK (edicion desde el Studio).** Lo mas importante de la sesion. Hasta hoy K
+  solo podia prender y apagar la capa entera.
+  - `motion_edicion.py`: contrato del plan editado. Un sidecar junto al clip que, si existe,
+    MANDA sobre el planificador. Valida ANTES de escribir y devuelve TODOS los problemas de una
+    vez, para que K arregle de una pasada.
+  - `studio_motion.py`: capa delgada entre la interfaz y el planificador.
+  - Cuatro endpoints (`GET`, `PUT`, `DELETE` del plan y `GET` del catalogo) y un editor modal en
+    el Studio: lista de piezas con tiempos y textos, mover, borrar, anadir y volver al automatico.
+  - La duracion de una pieza NO se puede editar: la fija la plantilla y una pieza recortada se
+    corta a media animacion. Mover si, estirar no.
+  - Re-render incremental probado sobre las claves de cache: editar un texto solo invalida esa
+    pieza, y mover una en el tiempo no invalida ninguna.
+- **17:33 - BLOQUE 2 OK (textos por LLM).** Las heuristicas de espanol llegaron hasta donde
+  podian. `motion_textos_llm.py` pide TODOS los textos de un clip en UNA llamada y devuelve JSON
+  estricto. Cache con la misma huella que el brain (texto, tiempos, prompt, modelo, proveedor),
+  asi que la segunda corrida no llama y el clip sigue siendo reproducible. FAIL-OPEN campo a
+  campo: lo que el modelo no traiga o traiga mal cae al respaldo de reglas, que no se toco (sus
+  158 tests siguen verdes). Medido sobre los 34 clips reales: `dato_destacado` pasa de 4 a 7,
+  porque el modelo reconoce "diez y medio por ciento" y la regla exige unidad literal.
+- **17:45 - BLOQUE 3 OK (demos).** Cache borrada antes de renderizar.
+  `<LAB>\demo\12_LLM_VERTICAL.mp4` (plan automatico con textos del LLM) y
+  `<LAB>\demo\13_EDITADO_VERTICAL.mp4` (el mismo con UNA pieza corregida desde el Studio), con
+  sus hojas de 7 frames. Al montar la 13 salio un fallo real: el Studio mostraba el plan de las
+  REGLAS mientras Auto renderiza con los del LLM, o sea que K habria corregido un texto y visto
+  otro en el video. Corregido antes de dar la demo por buena.
