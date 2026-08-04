@@ -5,8 +5,12 @@ venv **limpio** Python 3.12 (solo `requirements-ci.txt`) con la **red bloqueada*
 y, para simular el runner Ubuntu, con **PATH saneado sin FFmpeg ni Node**. Un archivo entra al gate
 (`INCLUIR`) solo si corre **completo, verde y con cero skips** en esas condiciones.
 
-- Suite total del repo: `2410 passed, 4 skipped`.
-- Subconjunto CI: **44 archivos**, **1302 tests**, **0 skips**, sin red/FFmpeg/GPU/modelos/Node.
+- Suite total del repo (al cierre de H5): `2410 passed, 4 skipped`.
+- Subconjunto CI: **54 archivos**, **1523 tests** (runner real de Actions), **0 skips**, sin
+  red/FFmpeg/GPU/modelos/Node. (Antes de D51.1 eran 44 archivos / 1303 tests, que al cierre
+  de H5 eran 1302: los mismos 44 archivos ganaron un test despues. El 2026-08-03, con D51.1,
+  entraron los 10 archivos de HyperFrames con dobles: el CI verde de HF-1 y HF-2 no probaba
+  esa capa hasta entonces. `hf_real` sigue FUERA y es manual por D50.4.)
 - Manifiesto: `ci/pytest-light.txt` · Runner: `ci/run_pytest_light.py`.
 - Portabilidad confirmada por la **ejecución real en Ubuntu** (GitHub Actions), no solo por el
   sondeo Windows: se excluyó `test_studio_srt_runtime` tras fallar en Linux por semántica de
@@ -31,6 +35,7 @@ producción para volver portable ningún test.
 | Procedencia / resume / checkpoints | `test_transcript_provenance`, `test_h2_classic_provenance`, `test_h2_classic_reuse`, `test_h2_paquete_marker` |
 | Arranque / check.bat (contrato) | `test_h3_check_bat` |
 | Contratos puros (CVE / estilos / fx / popups / core / clipper / alpha / paquete) | `test_contrato_core`, `test_contrato_cve`, `test_contrato_styles`, `test_contrato_fx`, `test_contrato_popups`, `test_contrato_clipper`, `test_contrato_alpha`, `test_contrato_paquete_editor`, `test_cve_spans`, `test_cve_avoid_faces`, `test_cve_center`, `test_cve_naming`, `test_cve_presets_json`, `test_estilos`, `test_spans_glow_align`, `test_auto_fx`, `test_depurador`, `test_ui_auto_contract` |
+| HyperFrames por dobles (D50/D51: el CLI real solo lo tocan los `hf_real`, excluidos) | `test_hf_almacen`, `test_hf_capacidad`, `test_hf_contrato`, `test_hf_entorno`, `test_hf_invocador`, `test_hf_lock_rancio`, `test_hf_reservadas`, `test_hf_servicio`, `test_hf_variables`, `test_hf2_catalogo` |
 
 Verificación puntual de la fila TestClient: `test_h1_path_traversal` importa `app` (FastAPI) y usa
 `starlette.testclient.TestClient`; corre **verde con `--disable-socket`**, lo que prueba que NO abre

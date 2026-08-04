@@ -111,6 +111,34 @@ def test_sin_em_dashes_en_catalogo_ejemplos_y_plantillas():
     assert not con_em_dash, f"em dashes prohibidos por el brief en: {con_em_dash}"
 
 
+# Variable del contrato -> custom property CSS que actua de fallback en :root.
+COLORES_MARCA = {
+    "marca_primario": "--primario",
+    "marca_secundario": "--secundario",
+    "marca_texto": "--texto",
+}
+
+
+@pytest.mark.parametrize("nombre", sorted(PIEZAS_ESPERADAS))
+def test_defaults_de_color_css_y_variables_coinciden(nombre):
+    """El default declarado y el fallback CSS viven duplicados a proposito (el JS
+    siempre pisa el CSS); este test impide que un rebrand los deje divergir en silencio."""
+    plantilla = next(p for p in _plantillas() if p.nombre == nombre)
+    html = (RAIZ / plantilla.proyecto / "index.html").read_text(encoding="utf-8")
+    crudo = re.search(r"data-composition-variables='(\[.*?\])'", html, re.DOTALL)
+    assert crudo, f"{nombre}: el proyecto no declara data-composition-variables"
+    declarados = {v["id"]: v["default"] for v in json.loads(crudo.group(1))}
+    raiz_css = re.search(r":root\s*\{(.*?)\}", html, re.DOTALL)
+    assert raiz_css, f"{nombre}: falta el bloque :root con los fallbacks"
+    for var_id, css_var in COLORES_MARCA.items():
+        fallback = re.search(rf"{css_var}:\s*(#[0-9A-Fa-f]{{6}})", raiz_css.group(1))
+        assert fallback, f"{nombre}: falta el fallback CSS de {css_var} en :root"
+        assert fallback.group(1).upper() == str(declarados[var_id]).upper(), (
+            f"{nombre}: {var_id} divergio entre el default declarado "
+            f"({declarados[var_id]}) y el fallback CSS ({fallback.group(1)})"
+        )
+
+
 def gemelo_horizontal(texto: str) -> str:
     """Deriva el gemelo 16:9 del primario 9:16: tres reemplazos y NADA mas.
 

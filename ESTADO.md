@@ -91,7 +91,7 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2833 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2838 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"
@@ -157,7 +157,11 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   80.2%-89.9% de la altura, horizontal 72.5%-89.9%. Zona prohibida de diseño 70%-92%.
 > - **Verificado a mano (regla D50.4):** 12 tests `hf_real` verdes (los 2 de HF-1 + 10 de
 >   HF-2: canario de influencia por plantilla, ambos tamaños, duración natural y mitad).
-> - **Baseline de suite:** `2801 -> 2833` (+32 de HF-2, sin contar los `hf_real` excluidos).
+> - **Baseline de suite:** `2801 -> 2838` (+37 de HF-2, sin contar los `hf_real` excluidos).
+> - **Ronda 1 de K (D51.1):** lower third sube a contenido 68% / sombra <70% (versión
+>   1.0.1, sheets regenerados); el CI ligero ahora corre los 10 archivos de HyperFrames con
+>   dobles (runner real: 1303 -> 1523 tests, 44 -> 54 archivos; `hf_real` sigue manual);
+>   test nuevo de defaults de color en las cinco plantillas.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6

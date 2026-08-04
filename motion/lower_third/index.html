@@ -37,12 +37,14 @@
       }
       #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
       .clip { position: absolute; inset: 0; }
-      /* El borde INFERIOR de la banda queda en el 70% de la altura: por ENCIMA de la
-         zona de captions (70-92% medida en HF-2), nunca dentro ni debajo de ella. */
+      /* El borde INFERIOR del contenido queda en el 68% de la altura y la sombra por
+         encima del 70%: margen real contra la zona de captions (70-92% medida en HF-2
+         con el estilo default; avoid_faces o posiciones alternas la MUEVEN, asi que el
+         margen tiene que sobrevivir a ese caso, no rozarlo). */
       #lt {
         position: absolute;
         left: 5.5%;
-        bottom: 30%;
+        bottom: 32%;
         display: flex;
         align-items: stretch;
         max-width: 82%;
@@ -59,7 +61,7 @@
         border-radius: 0 calc(var(--u) * 1.4) calc(var(--u) * 1.4) 0;
         padding: calc(var(--u) * 2) calc(var(--u) * 3.2);
         margin-left: calc(var(--u) * 0.9);
-        box-shadow: 0 calc(var(--u) * 0.5) calc(var(--u) * 2) var(--sombra);
+        box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);
       }
       #nombre {
         color: var(--texto);

@@ -2,31 +2,45 @@
   {
     "nombre": "hook",
     "version": "1.0.0",
-    "slots_texto": ["kicker", "titulo"],
+    "slots_texto": [
+      "kicker",
+      "titulo"
+    ],
     "proyecto": "motion/hook"
   },
   {
     "nombre": "lower_third",
-    "version": "1.0.0",
-    "slots_texto": ["nombre", "rol"],
+    "version": "1.0.1",
+    "slots_texto": [
+      "nombre",
+      "rol"
+    ],
     "proyecto": "motion/lower_third"
   },
   {
     "nombre": "titulo_seccion",
     "version": "1.0.0",
-    "slots_texto": ["titulo"],
+    "slots_texto": [
+      "titulo"
+    ],
     "proyecto": "motion/titulo_seccion"
   },
   {
     "nombre": "dato_destacado",
     "version": "1.0.0",
-    "slots_texto": ["cifra", "etiqueta"],
+    "slots_texto": [
+      "cifra",
+      "etiqueta"
+    ],
     "proyecto": "motion/dato_destacado"
   },
   {
     "nombre": "cierre",
     "version": "1.0.0",
-    "slots_texto": ["titulo", "cta"],
+    "slots_texto": [
+      "titulo",
+      "cta"
+    ],
     "proyecto": "motion/cierre"
   }
 ]

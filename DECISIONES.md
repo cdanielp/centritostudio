@@ -2207,7 +2207,7 @@ paquete `hyperframes/` intacto (cero cambios, sigue huerfano).
 | pieza | slots | duracion natural | zona (alfa medido, con sombra) |
 |---|---|---|---|
 | hook | kicker, titulo | 2500 ms | y 20-45% centrado |
-| lower_third | nombre, rol | 4500 ms | borde inferior en 70%, x desde 5.5% |
+| lower_third | nombre, rol | 4500 ms | contenido hasta 68%, sombra hasta ~69%, x desde 5.5% |
 | titulo_seccion | titulo | 2000 ms | y 24-39% centrado |
 | dato_destacado | cifra, etiqueta | 3000 ms | y 22-41% centrado |
 | cierre | titulo, cta | 3500 ms | y 25-40% centrado |
@@ -2216,9 +2216,11 @@ paquete `hyperframes/` intacto (cero cambios, sigue huerfano).
    video de color solido en ambos tamanos y se midio el bounding box por diff de pixeles a lo
    largo del render entero (picos de animacion incluidos): vertical 80.2-89.9% de la altura,
    horizontal 72.5-89.9%. La zona prohibida de diseno quedo en 70-92% con margen, y el lower
-   third cierra su CONTENIDO en el 70.0% exacto (su sombra suave llega a ~72%, todavia por
-   encima del 72.5% real). Los frames con captions de los contact sheets confirman que ninguna
-   pieza se pelea con los subtitulos.
+   third cierra su CONTENIDO en el 68.0% con la sombra por encima del 70% (medido por alfa:
+   sombra hasta 68.6% vertical y 69.1% horizontal). OJO: la banda medida corresponde al
+   ESTILO DEFAULT; con `avoid_faces` o posiciones alternas la banda de captions SE MUEVE,
+   asi que el margen tiene que sobrevivir a ese caso, no rozar el limite. Los frames con
+   captions de los contact sheets confirman que ninguna pieza se pelea con los subtitulos.
 2. **Colores de marca por variables; dos estructurales fijos y declarados.** `marca_primario`,
    `marca_secundario` y `marca_texto` entran como CSS custom properties. Los unicos colores
    fijos son estructurales de legibilidad sobre screencast claro u oscuro: la placa
@@ -2276,3 +2278,29 @@ de 7 frames (6 repartidos por la duracion + 1 con captions ASS encima) compuesto
 real de `input/` (tacosjuan 9:16 y clase25 16:9, fondo oscuro y claro), mirados uno por uno.
 La posicion de cada pieza se midio ademas por bounding box del canal alfa: los bloques
 centrados quedan al 50.0% exacto y ninguno invade la banda de captions.
+
+### Addendum D51.1 - Margen real del lower third, HyperFrames en el CI y test de defaults
+
+Tres correcciones de la primera ronda de revision de K sobre el PR #41. Ninguna toca
+`hyperframes/` ni el pipeline.
+
+1. **Margen del lower third.** Cerraba contenido en 70.0% con sombra hasta ~72%, contra una
+   banda que en horizontal empieza en 72.5%: cinco pixeles no son margen, y la banda del
+   estilo default SE MUEVE con `avoid_faces` o posiciones alternas. El contenido sube al 68%
+   (`bottom: 32%`) y la sombra se acorta (`0.3u/1.2u`): medido por alfa, contenido hasta
+   68.0% y sombra hasta 68.6% (v) / 69.1% (h). La plantilla sube a **version 1.0.1**: la
+   clave de cache NO incluye el contenido del proyecto, asi que la version es lo unico que
+   invalida piezas ya renderizadas con el layout viejo.
+2. **El CI ligero ahora cubre la capa HyperFrames.** El gate remoto de H5 no corria NINGUN
+   test de HF-1 ni HF-2, asi que su verde no probaba esa capa. Entran al manifiesto los 10
+   archivos que usan dobles y no requieren HyperFrames instalado (los 9 de HF-1 +
+   test_hf2_catalogo). Runner real de Actions: **1303 -> 1523 tests** (44 -> 54 archivos),
+   cero skips, red bloqueada. `hf_real` queda FUERA y sigue siendo obligatorio a mano
+   (D50.4).
+3. **Test de defaults de color.** Los colores de marca viven duplicados a proposito en cada
+   plantilla (default declarado + fallback CSS de `:root`; el JS siempre pisa el CSS). No se
+   deduplican: un test nuevo exige que coincidan en las cinco plantillas y su mensaje nombra
+   la plantilla y el color que divergio. Verificado en rojo inyectando una divergencia.
+
+Suite `2833 -> 2838` (+5). Los 12 `hf_real` re-corridos a mano tras el cambio de layout;
+los dos contact sheets del lower_third regenerados y mirados.
