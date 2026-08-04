@@ -1,0 +1,22 @@
+{
+  "cierre": {
+    "sello": "cd9704795d555af6ec410402e961be947f3429e3bad9ca7bc8364901ad0a55dc",
+    "version": "1.0.3"
+  },
+  "dato_destacado": {
+    "sello": "2e8afec1f21b249ac67ef3e895cbd266df17caa28339b2a3d7429857c629a959",
+    "version": "1.0.2"
+  },
+  "hook": {
+    "sello": "944685944345783bea4b3b0e1df3aa20da4a49d3e999c4091835e29a98f87bca",
+    "version": "1.0.3"
+  },
+  "lower_third": {
+    "sello": "0a44262aaf5fe1b8186aa75de95d000f6240aced3f80e812ddc2417cdaeb786b",
+    "version": "1.0.3"
+  },
+  "titulo_seccion": {
+    "sello": "d673ef4fb58ab4912faf0b373ac4df81653f2bc099e718f8fdbba61b6c5013ed",
+    "version": "1.0.2"
+  }
+}

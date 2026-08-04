@@ -14,8 +14,8 @@ en overlays es `motion_capa`.
 
 Reglas de colocacion (fijadas por K, no se interpretan):
 
-  clip < 6000 ms          solo `hook`, en t=0
-  clip de 6000 a 12000    `hook` en t=0 y `cierre` terminando 200 ms antes del final
+  clip < 6700 ms          solo `hook`, en t=0 (por debajo de eso el cierre no cabe)
+  clip de 6700 a 12000    `hook` en t=0 y `cierre` terminando 200 ms antes del final
   clip > 12000 ms         ademas `lower_third` empezando en t=3000
   `dato_destacado`        solo si el clip pasa de 12000 ms y algun tramo trae una cifra
   `titulo_seccion`        rellena los huecos de mas de 20 s en clips de mas de 30 s
@@ -47,7 +47,14 @@ DURACION_MS = {
 }
 
 # ── Umbrales temporales ──────────────────────────────────────────────────────
-UMBRAL_CORTO_MS = 6000  # por debajo: solo hook
+# Umbral del `cierre`. NO es 6000: con 6000 el cierre nunca cabia y se omitia siempre, que es
+# justo lo que este numero pretendia evitar. La aritmetica manda:
+#   el hook ocupa            [0, 2500]
+#   el cierre arranca en     dur - MARGEN_FINAL_MS - DURACION_MS["cierre"] = dur - 3700
+#   y necesita               dur - 3700 >= 2500 + SEPARACION_MIN_MS = 3000
+#   luego                    dur >= 6700
+# Por debajo de 6700 las dos reglas se contradicen y cae el cierre, que tiene menos prioridad.
+UMBRAL_CORTO_MS = 6700  # por debajo: solo hook
 UMBRAL_LARGO_MS = 12000  # por encima: entran lower_third y dato_destacado
 LOWER_THIRD_T0_MS = 3000
 MARGEN_FINAL_MS = 200  # el cierre termina esto antes del final del clip
@@ -286,7 +293,8 @@ def _cola_hablada(tramos: list[Tramo], desde_ms: int) -> str:
     blanco. Aqui no se inventa texto: si el clip no dice nada antes del cierre, no hay etiqueta.
     """
     previos = [
-        t for t in sorted(tramos, key=lambda x: x.t0_ms)
+        t
+        for t in sorted(tramos, key=lambda x: x.t0_ms)
         if t.t0_ms <= desde_ms and len(" ".join((t.texto or "").split())) >= TEXTO_MINIMO_CHARS
     ]
     return _condensar(previos[-1].texto, CIERRE_SECUNDARIO_MAX_CHARS) if previos else ""
@@ -303,7 +311,8 @@ def _candidata_dato(tramos: list[Tramo]) -> _Candidata | None:
     despues. Los tramos posteriores con cifra quedan de reserva, en orden temporal.
     """
     con_cifra = [
-        (tr, buscar_cifra(tr.texto)) for tr in sorted(tramos, key=lambda x: x.t0_ms)
+        (tr, buscar_cifra(tr.texto))
+        for tr in sorted(tramos, key=lambda x: x.t0_ms)
         if buscar_cifra(tr.texto)
     ]
     if not con_cifra:
@@ -405,9 +414,9 @@ def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | Non
     hueco, que es el que mas contenido tiene que resumir. Los empates los rompe el tiempo.
     """
     dentro = [
-        t for t in sorted(tramos, key=lambda x: x.t0_ms)
-        if desde <= t.t0_ms < hasta
-        and len(" ".join((t.texto or "").split())) >= TEXTO_MINIMO_CHARS
+        t
+        for t in sorted(tramos, key=lambda x: x.t0_ms)
+        if desde <= t.t0_ms < hasta and len(" ".join((t.texto or "").split())) >= TEXTO_MINIMO_CHARS
     ]
     if not dentro:
         return None
@@ -416,7 +425,8 @@ def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | Non
     for previa, siguiente in zip(orden_total, orden_total[1:], strict=False):
         fin_previo[siguiente.t0_ms] = previa.t1_ms
     tras_pausa = [
-        t for t in dentro
+        t
+        for t in dentro
         if fin_previo.get(t.t0_ms) is not None
         and t.t0_ms - fin_previo[t.t0_ms] >= PAUSA_CAMBIO_TEMA_MS
     ]
@@ -449,9 +459,7 @@ def _rellenar_huecos(
     motivo_final = MOTIVO_SIN_HUECO
     colocada_alguna = False
     while True:
-        candidatos = [
-            (a, b) for a, b in _huecos(colocadas, duracion_ms) if b - a > HUECO_MAX_MS
-        ]
+        candidatos = [(a, b) for a, b in _huecos(colocadas, duracion_ms) if b - a > HUECO_MAX_MS]
         if not candidatos:
             break
         progreso = False

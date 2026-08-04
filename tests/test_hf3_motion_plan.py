@@ -73,17 +73,26 @@ def test_clip_medio_lleva_hook_y_cierre_terminando_200ms_antes(dur):
 
 
 @pytest.mark.parametrize("dur", [6000, 6300, 6699])
-def test_entre_6000_y_6700_el_cierre_no_cabe_detras_del_hook(dur):
-    """Zona muerta REAL de las reglas, medida y no inventada: no es un bug del planificador.
+def test_por_debajo_de_6700_el_cierre_no_cabe_y_el_umbral_lo_dice(dur):
+    """El umbral es 6700 porque es donde la aritmetica lo permite, no 6000 por costumbre.
 
     El hook ocupa 0-2500. El cierre pide 3500 ms terminando 200 ms antes del final, o sea que
-    arranca en dur-3700. Para respetar los 500 ms de aire hace falta dur>=6700. Entre 6000 y
-    6700 las dos reglas se contradicen, y quien cae es el cierre porque tiene menos prioridad
-    que el hook. Se omite entero: nunca se encima ni se le recorta la duracion.
+    arranca en dur-3700, y necesita dur-3700 >= 2500+500. De ahi dur >= 6700. Con el umbral en
+    6000 el cierre se proponia y se omitia SIEMPRE entre 6000 y 6700; ahora ni se propone, y el
+    motivo que se registra es el correcto.
     """
     plan = _plan(dur)
     assert _nombres(plan) == ["hook"]
-    assert _motivos(plan)["cierre"] == mp.MOTIVO_SIN_AIRE
+    assert _motivos(plan)["cierre"] == mp.MOTIVO_CLIP_CORTO
+
+
+def test_el_umbral_del_cierre_es_exactamente_el_que_dicta_la_aritmetica():
+    """Si alguien mueve una duracion o la separacion, este test dice el numero nuevo."""
+    minimo = mp.DURACION_MS["hook"] + mp.SEPARACION_MIN_MS + mp.MARGEN_FINAL_MS
+    minimo += mp.DURACION_MS["cierre"]
+    assert mp.UMBRAL_CORTO_MS == minimo == 6700
+    assert "cierre" in _nombres(_plan(mp.UMBRAL_CORTO_MS))
+    assert "cierre" not in _nombres(_plan(mp.UMBRAL_CORTO_MS - 1))
 
 
 def test_el_umbral_de_12000_pertenece_al_tramo_medio():
@@ -382,8 +391,10 @@ def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
     Antes se omitia entero por `sin_separacion_minima` teniendo hueco 500 ms despues. Ahora la
     ventana llega hasta el final del tramo y la pieza entra sin pisar a nadie.
     """
-    tramos = [mp.Tramo(3700, 7460, "del 2023 al 2024 fue un 10"),
-              mp.Tramo(7460, 10800, "5 % de medias superiores")]
+    tramos = [
+        mp.Tramo(3700, 7460, "del 2023 al 2024 fue un 10"),
+        mp.Tramo(7460, 10800, "5 % de medias superiores"),
+    ]
     plan = _plan(56790, tramos=tramos)
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms >= 8000, "debe arrancar tras el lower_third mas la separacion minima"
@@ -414,9 +425,7 @@ def test_en_clips_largos_no_queda_ningun_hueco_de_mas_de_20s():
         plan = _plan(dur, tramos=_tramos_largos(dur))
         piezas = sorted(plan.piezas, key=lambda p: p.t0_ms)
         bordes = [0, *[t for p in piezas for t in (p.t0_ms, p.t1_ms)], dur]
-        huecos = [
-            bordes[i + 1] - bordes[i] for i in range(0, len(bordes) - 1, 2)
-        ]
+        huecos = [bordes[i + 1] - bordes[i] for i in range(0, len(bordes) - 1, 2)]
         assert max(huecos) <= mp.HUECO_MAX_MS, f"dur={dur} huecos={huecos}"
 
 
