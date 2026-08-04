@@ -139,12 +139,26 @@ def test_los_artefactos_ignorados_no_mueven_el_sello(tmp_path, basura):
     assert ms.sello_de_carpeta(carpeta) == antes
 
 
+def _plantilla_en_bytes(raiz: Path, cuerpo: bytes) -> Path:
+    """Escribe los BYTES tal cual, sin la traduccion de saltos que hace `write_text`.
+
+    Es la unica forma de simular los dos checkouts: el de Linux con LF y el de Windows con
+    CRLF. Con `write_text` el sistema traduce y los dos casos acabarian iguales en disco.
+    """
+    carpeta = raiz / "p"
+    (carpeta / "horizontal").mkdir(parents=True)
+    (carpeta / "index.html").write_bytes(cuerpo)
+    (carpeta / "horizontal" / "index.html").write_bytes(cuerpo)
+    return carpeta
+
+
 def test_el_sello_no_depende_del_final_de_linea(tmp_path):
     """Git deja LF en Linux y CRLF en Windows: sin normalizar, el gate reventaba en el CI
     aunque nadie hubiera tocado una plantilla."""
-    unix = _plantilla_falsa(tmp_path / "u", "p", "linea uno\nlinea dos\n")
+    (tmp_path / "u").mkdir()
     (tmp_path / "w").mkdir()
-    windows = _plantilla_falsa(tmp_path / "w", "p", "linea uno\r\nlinea dos\r\n")
+    unix = _plantilla_en_bytes(tmp_path / "u", b"linea uno\nlinea dos\n")
+    windows = _plantilla_en_bytes(tmp_path / "w", b"linea uno\r\nlinea dos\r\n")
     assert ms.sello_de_carpeta(unix) == ms.sello_de_carpeta(windows)
 
 
