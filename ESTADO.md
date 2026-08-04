@@ -1,6 +1,6 @@
 # ESTADO — Centrito Studio
 Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0 y HF-1 en
-`main` (D50), HF-2 y HF-3 no iniciadas
+`main` (D50), HF-2 en PR (D51, gate visual pendiente), HF-3 no iniciada
 
 ## v1 — qué la compone
 
@@ -91,7 +91,7 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2801 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2839 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"
@@ -140,6 +140,39 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 > gana la clave del sistema. El slot no corrompe el `fps`, **desaparece**, y la plantilla pinta
 > `30` donde esperaba una frase. El efecto es el mismo fallo silencioso con código 0, pero el
 > sentido es el contrario al que se asumió al escribir el guard. Detalle en **D50.5**.
+
+> **ADDENDUM HF-2 (2026-08-03).** Catálogo de plantillas en PR (`feat/hf2-catalogo`), **sin
+> mergear**: el gate visual lo da K mirando los contact sheets de `revision/hf-2/`.
+>
+> - **Cinco plantillas** en `motion/` (hook, lower_third, titulo_seccion, dato_destacado,
+>   cierre) + `motion/catalogo.json` con exactamente las cinco entradas y sus cuatro campos.
+>   Decisión **D51**. El paquete `hyperframes/` sigue huérfano y **sin un solo cambio**.
+> - **Hallazgo que contradice el brief:** HyperFrames 0.7.90 fija el lienzo con los
+>   `data-width/height` ESTÁTICOS del HTML; un script no puede cambiarlos y hasta el flag
+>   `--width` de la CLI avisa que no altera el layout. Una plantilla NO puede servir 9:16 y
+>   16:9 desde el mismo proyecto. Salida: gemelo `horizontal/` versionado dentro de cada
+>   pieza, derivación PURA del primario (test lo fija). Cómo expresarlo en el catálogo es
+>   **decisión pendiente de K para HF-3** (detalle y opciones en D51).
+> - **Banda de captions medida** (hormozi default, picos de animación incluidos): vertical
+>   80.2%-89.9% de la altura, horizontal 72.5%-89.9%. Zona prohibida de diseño 70%-92%.
+> - **Verificado a mano (regla D50.4):** 12 tests `hf_real` verdes (los 2 de HF-1 + 10 de
+>   HF-2: canario de influencia por plantilla, ambos tamaños, duración natural y mitad).
+> - **Baseline de suite:** `2801 -> 2838` (+37 de HF-2, sin contar los `hf_real` excluidos).
+> - **Ronda 1 de K (D51.1):** lower third sube a contenido 68% / sombra <70% (versión
+>   1.0.1, sheets regenerados); el CI ligero ahora corre los 10 archivos de HyperFrames con
+>   dobles (runner real: 1303 -> 1523 tests, 44 -> 54 archivos; `hf_real` sigue manual);
+>   test nuevo de defaults de color en las cinco plantillas.
+> - **Ronda 2 de K (D51.2):** CTA del cierre sin nombre de plataforma externa (test lo fija);
+>   en 9:16 las piezas centradas bajan a la franja 50-70% para no tapar la cara del reframe
+>   (media query portrait, gemelos intactos como derivación pura); placa y texto entran
+>   juntos; defaults y sheets con la paleta PROVISIONAL #FF5A2B/#111111/#FFFFFF (sale del
+>   fixture de HF-1, NO es marca verificada; pendiente de los hex reales de K, ver D51.3).
+>   Versiones 1.0.1 (y lower_third 1.0.2). Pregunta abierta en D51.2: derivar la posición de
+>   `face_y` en tiempo de render (HF-3) en vez de fija por plantilla. Baseline `2839`.
+> - **Ronda 3 de K (D51.3):** en 9:16 las cinco piezas comparten la franja 50-70% y nada
+>   impide hoy que dos se pinten encima si sus ventanas de tiempo se cruzan; restricción
+>   anotada para HF-3 (recomendación: prohibir el solapamiento temporal en vertical, no
+>   crear un segundo carril). Paleta marcada como provisional.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es" data-composition-variables='[
+  {"id":"kicker","type":"string","label":"Kicker","default":"SIN-VARIABLE-kicker"},
+  {"id":"titulo","type":"string","label":"Titulo","default":"SIN-VARIABLE-titulo"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF5A2B"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#111111"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
+  {"id":"duracion_ms","type":"number","label":"Duracion ms","default":2500},
+  {"id":"fps","type":"number","label":"FPS","default":30},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},
+  {"id":"semilla","type":"number","label":"Semilla","default":0}
+ ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <title>hook</title>
+    <script src="gsap.min.js"></script>
+    <style>
+      /* Fuente embebida local: Inter variable (SIL OFL 1.1), sin cargas por red. */
+      @font-face {
+        font-family: "Inter";
+        src: url("fonts/InterVariable.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { overflow: hidden; background: transparent; }
+      :root {
+        /* Colores de marca: SIEMPRE por variables del contrato, nunca fijos aqui. */
+        --primario: #FF5A2B;
+        --secundario: #111111;
+        --texto: #FFFFFF;
+        /* Unidades relativas al viewport de la pieza (el script las fija en px). */
+        --u: 10.8px;   /* 1% del lado corto */
+        --vh: 19.2px;  /* 1% de la altura */
+        /* Estructurales de legibilidad (unicos colores fijos permitidos):
+           placa oscura y sombra para que el texto se lea sobre fondo claro u oscuro. */
+        --placa: rgba(8, 8, 15, 0.78);
+        --sombra: rgba(0, 0, 0, 0.45);
+      }
+      #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+      .clip { position: absolute; inset: 0; }
+      /* Horizontal: banda superior 0-64%, centro del bloque en ~32% de la altura,
+         lejos de la zona prohibida de captions (70-92% medida en HF-2). */
+      #zona {
+        position: absolute; left: 0; top: 0; width: 100%; height: 64%;
+        display: grid; place-items: center;
+      }
+      #placa {
+        background: var(--placa);
+        border: 1px solid color-mix(in srgb, var(--secundario) 45%, transparent);
+        border-radius: calc(var(--u) * 2);
+        padding: calc(var(--u) * 3.4) calc(var(--u) * 4.2);
+        max-width: 86%;
+        text-align: center;
+        box-shadow: 0 calc(var(--u) * 0.8) calc(var(--u) * 3) var(--sombra);
+      }
+      #kicker {
+        display: inline-block;
+        background: var(--primario);
+        color: var(--texto);
+        font-weight: 650;
+        font-size: calc(var(--u) * 2.6);
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: calc(var(--u) * 0.8) calc(var(--u) * 2);
+        border-radius: calc(var(--u) * 0.8);
+        margin-bottom: calc(var(--u) * 2.2);
+      }
+      #titulo {
+        color: var(--texto);
+        font-weight: 880;
+        font-size: calc(var(--u) * 8.6);
+        line-height: 1.06;
+        letter-spacing: -0.015em;
+        text-wrap: balance;
+        text-shadow: 0 calc(var(--u) * 0.25) calc(var(--u) * 1) var(--sombra);
+      }
+      /* Vertical 9:16: el reframe deja la cara entre el 20% y el 45% del alto, asi
+         que la pieza baja a la franja 50-70% (contenido hasta 68%, sombra por encima
+         del 70%) y reduce cuerpo para caber sin competir con la cara. */
+      @media (orientation: portrait) {
+        #zona { height: 68%; place-items: end center; }
+        #placa {
+          padding: calc(var(--u) * 2.6) calc(var(--u) * 3.4);
+          box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);
+        }
+        #kicker { font-size: calc(var(--u) * 2.2); margin-bottom: calc(var(--u) * 1.6); }
+        #titulo { font-size: calc(var(--u) * 6.2); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="pieza" class="clip" data-start="0" data-duration="2.5" data-track-index="1">
+        <div id="zona">
+          <div id="placa">
+            <div id="respira">
+              <div id="kicker">?</div>
+              <div id="titulo">?</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var v = window.__hyperframes.getVariables();
+      var W = Number(v.tamano_ancho), H = Number(v.tamano_alto);
+      var FPS = Number(v.fps) || 30, DUR = Number(v.duracion_ms) / 1000;
+      var F = 1 / FPS; /* un frame en segundos: todo timing se deriva de aqui */
+
+      var root = document.getElementById("root");
+      [document.documentElement, document.body, root].forEach(function (el) {
+        el.style.width = W + "px"; el.style.height = H + "px";
+      });
+      var css = document.documentElement.style;
+      css.setProperty("--u", Math.min(W, H) / 100 + "px");
+      css.setProperty("--vh", H / 100 + "px");
+      css.setProperty("--primario", v.marca_primario);
+      css.setProperty("--secundario", v.marca_secundario);
+      css.setProperty("--texto", v.marca_texto);
+      document.getElementById("pieza").setAttribute("data-duration", String(DUR));
+      document.getElementById("kicker").textContent = String(v.kicker);
+      document.getElementById("titulo").textContent = String(v.titulo);
+
+      /* Tiempos adaptativos: entrada acotada por la duracion, salida mas rapida. */
+      var ENTRA = Math.min(14 * F, DUR * 0.28);
+      var SALE = Math.max(6 * F, ENTRA * 0.65);
+      var STAG = 4 * F;
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      /* La placa NUNCA entra vacia: el kicker arranca con ella y el titulo un paso
+         despues (stagger dentro del contenido, no contra el contenedor). */
+      tl.from("#placa", { opacity: 0, y: 34, scale: 0.94, duration: ENTRA, ease: "back.out(1.4)" }, 0);
+      tl.from("#kicker", { opacity: 0, y: -18, duration: ENTRA * 0.8, ease: "power3.out" }, 0);
+      tl.from("#titulo", { opacity: 0, y: 22, duration: ENTRA * 0.9, ease: "power3.out" }, STAG);
+
+      /* Respiracion sinusoidal en un wrapper propio: jamas pisa la escala de la entrada. */
+      var medio = 20 * F, resto = (DUR - SALE) - ENTRA;
+      var reps = Math.floor(resto / medio) - 1;
+      if (reps % 2 === 0) reps -= 1;
+      if (reps >= 1) {
+        tl.to("#respira", { scale: 1.008, duration: medio, ease: "sine.inOut", yoyo: true, repeat: reps }, ENTRA);
+      }
+
+      tl.to("#pieza", { opacity: 0, y: -20, duration: SALE, ease: "power2.in" }, DUR - SALE);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -40,6 +40,16 @@ tests/test_h2_paquete_marker.py
 tests/test_h3_check_bat.py
 tests/test_h3_launcher.py
 tests/test_h3_preflight.py
+tests/test_hf2_catalogo.py
+tests/test_hf_almacen.py
+tests/test_hf_capacidad.py
+tests/test_hf_contrato.py
+tests/test_hf_entorno.py
+tests/test_hf_invocador.py
+tests/test_hf_lock_rancio.py
+tests/test_hf_reservadas.py
+tests/test_hf_servicio.py
+tests/test_hf_variables.py
 tests/test_jobs.py
 tests/test_jobs_render_srt.py
 tests/test_nvenc_encoder.py

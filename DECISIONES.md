@@ -2194,3 +2194,198 @@ Se verifico que el canario canta: reintroduciendo el aplanado anidado de D50.1 s
 dos titulos completamente distintos produjeron el MISMO sha256 y ambos renders devolvieron
 exito. Es la unica verificacion AUTOMATICA que habria cazado aquel bug; ni el returncode, ni
 `pix_fmt`, ni el fps, ni la duracion, ni los dobles lo veian.
+
+## D51 - HF-2: catalogo de plantillas del Motor B
+
+**Contexto.** HF-1 dejo la frontera (contrato, validador, cache, invocador fail-open) y un
+catalogo VACIO. HF-2 lo llena: cinco plantillas de HyperFrames versionadas en el repo, con el
+paquete `hyperframes/` intacto (cero cambios, sigue huerfano).
+
+**Decision.** Carpeta `motion/` con un proyecto autocontenido por pieza y el catalogo que
+`hyperframes/catalogo.py` ya sabe leer:
+
+| pieza | slots | duracion natural | zona vertical 9:16 | zona horizontal 16:9 |
+|---|---|---|---|---|
+| hook | kicker, titulo | 2500 ms | y 54-68% centrado | y 16-48% centrado |
+| lower_third | nombre, rol | 4500 ms | y 61-68%, x desde 5.5% | y 55-68%, x desde 5.5% |
+| titulo_seccion | titulo | 2000 ms | y 58-68% centrado | y 23-39% centrado |
+| dato_destacado | cifra, etiqueta | 3000 ms | y 56-68% centrado | y 15-47% centrado |
+| cierre | titulo, cta | 3500 ms | y 57-68% centrado | y 20-44% centrado |
+
+(Zonas por bounding box del canal alfa del CONTENIDO en el frame de sostenimiento; la sombra
+suave llega como mucho al 68.6% en 9:16 y 69.1% en 16:9, siempre por encima del 70%.)
+
+1. **Banda de captions MEDIDA, no estimada.** Se quemaron captions hormozi (default) sobre
+   video de color solido en ambos tamanos y se midio el bounding box por diff de pixeles a lo
+   largo del render entero (picos de animacion incluidos): vertical 80.2-89.9% de la altura,
+   horizontal 72.5-89.9%. La zona prohibida de diseno quedo en 70-92% con margen, y el lower
+   third cierra su CONTENIDO en el 68.0% con la sombra por encima del 70% (medido por alfa:
+   sombra hasta 68.6% vertical y 69.1% horizontal). OJO: la banda medida corresponde al
+   ESTILO DEFAULT; con `avoid_faces` o posiciones alternas la banda de captions SE MUEVE,
+   asi que el margen tiene que sobrevivir a ese caso, no rozar el limite. Los frames con
+   captions de los contact sheets confirman que ninguna pieza se pelea con los subtitulos.
+2. **Colores de marca por variables; dos estructurales fijos y declarados.** `marca_primario`,
+   `marca_secundario` y `marca_texto` entran como CSS custom properties. Los unicos colores
+   fijos son estructurales de legibilidad sobre screencast claro u oscuro: la placa
+   `rgba(8,8,15,0.78)` y la sombra `rgba(0,0,0,0.45)` (registrados en `motion/LICENCIAS.md`).
+   La legibilidad la resuelve la pieza (placa + sombra), nunca el fondo.
+3. **Fuente y runtime LOCALES.** Inter variable (SIL OFL 1.1, copia de la licencia en
+   `motion/OFL_Inter.txt`) via `@font-face` con ruta relativa, y gsap.min.js 3.14.2 (GSAP
+   Standard License, gratuita) como archivo local. Cero cargas por red; un test rechaza
+   `http(s)://` en los proyectos. El render reproduce sin internet.
+4. **Duracion adaptativa: el timeline ES la duracion.** El root NO declara `data-duration`:
+   cuando falta, el renderer infiere la duracion del timeline GSAP, y el timeline se construye
+   para terminar exactamente en `duracion_ms`. Entrada `min(14 frames, 28% de la duracion)`,
+   salida al 65% de la entrada, stagger de 4 frames, respiracion sinusoidal en un wrapper
+   propio (jamas pisa la propiedad de otra tween) con repeticiones FINITAS derivadas del
+   sostenimiento. Todo timing sale de `fps` y `duracion_ms`; probado a duracion natural y a
+   la mitad en ambos tamanos.
+5. **Slots con defaults `SIN-VARIABLE-*`** (el patron que descubrio D50.1): si el aplanado se
+   rompe, el fallo se VE en el frame. Un test exige que `data-composition-variables` declare
+   exactamente los slots del catalogo mas las claves reservadas de `claves_reservadas()`.
+
+**Hallazgo que contradice el brief (medido, no teorico).** El brief pedia UNA plantilla que
+sirviera 1080x1920 y 1920x1080 con maquetacion relativa. La maquetacion ES relativa, pero
+HyperFrames 0.7.90 fija el lienzo con los `data-width/height` ESTATICOS del index.html:
+
+- Sin atributos estaticos, el render sale SIEMPRE 1080x1920 (default portrait), pidan lo que
+  pidan las variables: la sonda vertical "funciono" por coincidencia y la horizontal salio
+  1080x1920 con returncode 0. `verificar_salida` de HF-1 la descarto (`salida_invalida`),
+  exactamente para lo que se diseno.
+- Un script que reescribe los atributos desde las variables es ignorado; la propia CLI avisa
+  que `--width/--height` no cambian el layout ("The runtime lays out the page at the
+  composition's authored dimensions").
+
+**Salida: gemelo horizontal versionado, catalogo intacto.** Cada pieza lleva
+`horizontal/index.html`, derivacion PURA del primario (cambian el lienzo y las dos rutas de
+assets compartidos por `../`; un test regenera la derivacion y exige igualdad exacta, asi que
+no pueden divergir). El catalogo conserva las CINCO entradas del brief apuntando al primario
+9:16. Los `hf_real` horizontales pasan por `pedir_pieza` con un catalogo ad-hoc
+`proyecto + "/horizontal"`.
+
+**Decision PENDIENTE de K para HF-3:** como expresar la orientacion en la ruta de consumo.
+Opciones: (a) HF-3 adopta la convencion `proyecto + "/horizontal"` cuando el destino es 16:9
+(cero cambios de esquema); (b) campo `proyecto_horizontal` en el catalogo (rompe el "cuatro
+campos exactos" de HF-1); (c) esperar a que HyperFrames soporte lienzo por variables y
+retirar los gemelos. Hasta esa decision, nada del pipeline consume el catalogo (sigue
+huerfano) y las cinco entradas sirven el caso vertical, que es la ruta de clips real.
+
+**Desviacion declarada de la regla 5 de centrito-motion (pila de 5 capas).** Una pieza de
+overlay con alfa NO lleva fondo, grade ni grain propios: esas capas las pone el video base
+sobre el que se compone. La pila aplica al render final, no al overlay.
+
+**Verificacion.** Suite `2833 passed, 4 skipped` (+32). Los 12 `hf_real` corridos a mano
+(regla D50.4): 2 de HF-1 + 10 de HF-2 (canario de influencia POR PLANTILLA de D50.5, ambos
+tamanos, duracion natural y mitad). Evidencia visual en `revision/hf-2/`: 10 contact sheets
+de 7 frames (6 repartidos por la duracion + 1 con captions ASS encima) compuestos sobre video
+real de `input/` (tacosjuan 9:16 y clase25 16:9, fondo oscuro y claro), mirados uno por uno.
+La posicion de cada pieza se midio ademas por bounding box del canal alfa: los bloques
+centrados quedan al 50.0% exacto y ninguno invade la banda de captions.
+
+### Addendum D51.1 - Margen real del lower third, HyperFrames en el CI y test de defaults
+
+Tres correcciones de la primera ronda de revision de K sobre el PR #41. Ninguna toca
+`hyperframes/` ni el pipeline.
+
+1. **Margen del lower third.** Cerraba contenido en 70.0% con sombra hasta ~72%, contra una
+   banda que en horizontal empieza en 72.5%: cinco pixeles no son margen, y la banda del
+   estilo default SE MUEVE con `avoid_faces` o posiciones alternas. El contenido sube al 68%
+   (`bottom: 32%`) y la sombra se acorta (`0.3u/1.2u`): medido por alfa, contenido hasta
+   68.0% y sombra hasta 68.6% (v) / 69.1% (h). La plantilla sube a **version 1.0.1**: la
+   clave de cache NO incluye el contenido del proyecto, asi que la version es lo unico que
+   invalida piezas ya renderizadas con el layout viejo.
+2. **El CI ligero ahora cubre la capa HyperFrames.** El gate remoto de H5 no corria NINGUN
+   test de HF-1 ni HF-2, asi que su verde no probaba esa capa. Entran al manifiesto los 10
+   archivos que usan dobles y no requieren HyperFrames instalado (los 9 de HF-1 +
+   test_hf2_catalogo). Runner real de Actions: **1303 -> 1523 tests** (44 -> 54 archivos),
+   cero skips, red bloqueada. `hf_real` queda FUERA y sigue siendo obligatorio a mano
+   (D50.4).
+3. **Test de defaults de color.** Los colores de marca viven duplicados a proposito en cada
+   plantilla (default declarado + fallback CSS de `:root`; el JS siempre pisa el CSS). No se
+   deduplican: un test nuevo exige que coincidan en las cinco plantillas y su mensaje nombra
+   la plantilla y el color que divergio. Verificado en rojo inyectando una divergencia.
+
+Suite `2833 -> 2838` (+5). Los 12 `hf_real` re-corridos a mano tras el cambio de layout;
+los dos contact sheets del lower_third regenerados y mirados.
+
+### Addendum D51.2 - Las piezas verticales no compiten con la cara, marca real y entrada sin placa vacia
+
+Segunda ronda de revision de K sobre el PR #41. Cero cambios en `hyperframes/` y el pipeline.
+
+1. **Nombre de plataforma externa fuera del catalogo.** El default del slot `cta` de la pieza
+   cierre nombraba la plataforma de la comunidad. Regla del proyecto: ese nombre no aparece en
+   ningun output ni copy. Estaba SOLO en `motion/ejemplos/cierre.json` (verificado con
+   busqueda en todo el repo; tambien aparecia renderizado en los dos contact sheets del
+   cierre, regenerados). Ahora dice "Aprende con la comunidad de Prompt Models Studio" y un
+   test lo fija para todo `motion/` construyendo la palabra sin escribir el literal.
+2. **En 9:16 las piezas centradas tapaban la cara.** El reframe deja la cara entre el 20% y el
+   45% del alto, exactamente donde caian hook, titulo_seccion, dato_destacado y cierre. Ahora
+   en vertical bajan a la franja inferior 50-70% (contenido cerrando en 68%, sombra por encima
+   del 70%), via `@media (orientation: portrait)`: el CSS es identico en primario y gemelo (la
+   derivacion pura no cambia) y la media query es inerte en el lienzo 16:9. Se descarto la
+   franja superior (<20%): un bloque legible necesita 12-15% de alto y arriba pelea con la UI
+   de las plataformas. En horizontal no se movio nada.
+
+   **Donde vive el dato de la cara (investigado para HF-3).** `reframe.py` escribe en el CSV
+   de trayectoria la columna `face_y_asignada` (fraccion 0..1 del alto, por fila de tiempo
+   `t`, junto a `conf_asignada` como senal de deteccion viva). `cve.zona_cara_en_rango(csv,
+   t0, t1)` ya lo consume y devuelve el bucket 'top'/'center'/'bottom' (cortes 0.40/0.60),
+   fail-open a None con CSV legacy. **Por el contrato de HF-1 HOY no puede viajar sin romper
+   algo:** el esquema es estricto (campo desconocido = error) y el perfil v1 solo admite
+   `posicion.modo=cuadro_completo`. La via natural NO es un campo nuevo: el esquema YA admite
+   `posicion.modo=caja` (D50 punto 2 separo esquema y capacidad exactamente para esto); cuando
+   HF-3 desbloquee la caja en `clip_overlay.py:144`, el cliente (Auto) puede calcular la caja
+   desde `zona_cara_en_rango` y la plantilla ni se entera. **Pregunta abierta para K:** si la
+   posicion vertical de las piezas debe derivarse de `face_y` en tiempo de render (HF-3) en
+   vez de ser fija por plantilla, que es lo que queda en HF-2.
+3. **La placa ya no entra vacia.** El primer elemento de contenido arranca en el mismo instante
+   que su contenedor (kicker con placa, cifra con placa, nombre con panel, etc.) y el stagger
+   de 4 frames queda ENTRE los elementos de contenido, no entre contenedor y contenido. Antes
+   la caja oscura aparecia ~0.27 s sola.
+4. **Colores de marca en defaults y ejemplos: PROVISIONALES (ver D51.3).** Primario #FF5A2B
+   (naranja rojizo), secundario #111111, texto #FFFFFF. En el repo solo existian como fixture
+   de los tests de HF-1; no hay paleta de marca declarada en ningun documento. Los 10 contact
+   sheets estan regenerados con ellos para juzgar contraste con un naranja rojizo realista,
+   pero NO son paleta oficial: quedan pendientes de los valores reales que entregue K.
+
+**Versiones.** El layout vertical y los timelines cambiaron: hook, titulo_seccion,
+dato_destacado y cierre suben a 1.0.1; lower_third (que ya iba en 1.0.1 por D51.1) sube a
+1.0.2. Regla de D51.1: el contenido del proyecto no se hashea, la version es lo que invalida.
+
+**Verificacion.** Suite `2839 passed, 4 skipped` (+1: test del nombre prohibido, verificado en
+rojo primero). Los 12 `hf_real` re-corridos a mano. Los 10 contact sheets regenerados sobre
+video real y mirados uno por uno: en vertical la cara queda completamente libre en las cinco
+piezas y ninguna placa aparece vacia en el primer frame de entrada.
+
+### Addendum D51.3 - Solapamiento temporal de piezas y procedencia de la paleta
+
+Tercera ronda de revision de K sobre el PR #41. Solo documentacion; cero cambios de codigo,
+plantillas o evidencia.
+
+1. **Las cinco piezas comparten franja en 9:16 y HOY nada impide solaparlas en el tiempo.**
+   Medido: en vertical el lower_third (1.0.2) ocupa contenido y=[60.6, 68.0] con sombra hasta
+   68.6, DENTRO de la franja 54-68 donde viven las otras cuatro. La composicion de la ruta de
+   clips (`core_overlays._tejer_clips` + `clip_overlay.overlay_clip`) encadena N overlays
+   sobre la base, cada uno con su ventana `enable=between(t,t0,t1)`, y NINGUNA validacion
+   comprueba que dos ventanas no se intersecten: si dos piezas coinciden en el tiempo, ambas
+   se pintan y la ultima de la cadena queda encima, sin aviso ni error. No se arregla en HF-2
+   (aqui no hay programador de piezas; el paquete sigue huerfano).
+
+   **RESTRICCION QUE HF-3 DEBE HACER CUMPLIR al programar piezas:** en 9:16, dos piezas no
+   pueden solaparse en el tiempo. **Recomendacion: prohibir el solapamiento temporal**, no
+   mover el lower_third a un carril propio. Razones: (a) en vertical NO existe un segundo
+   carril libre: la unica banda sin cara (20-45%) y sin captions (70-92% con margen) es la
+   franja 50-70%, y partirla en dos sub-carriles obligaria a piezas mas chicas y peor
+   legibilidad; (b) el caso real de choque (hook al arranque + lower_third temprano) se
+   resuelve escalonando, que es lo natural editorialmente; (c) en 16:9 las bandas ya son
+   disjuntas (lower_third abajo-izquierda 55-68%, centradas 15-48%), asi que la restriccion
+   solo necesita ser dura en vertical.
+
+2. **Procedencia de la paleta #FF5A2B/#111111/#FFFFFF: PROVISIONAL, no oficial.** El unico
+   lugar del repo donde existian esos hex era el fixture de los tests de HF-1 (un ejemplo del
+   brief de aquella fase, no una identidad verificada). En la ronda 2 se le pregunto a K por
+   los hex y el dialogo devolvio seleccionada la opcion con ese trio, pero K aclara que no es
+   una paleta de marca verificada. Queda como PLACEHOLDER razonable (naranja rojizo) para
+   juzgar contraste en los sheets, pendiente de que K entregue los valores reales. Cambiarlos
+   luego es barato por diseno: defaults + fallbacks CSS (un test fija que coincidan) +
+   ejemplos, y las piezas ya renderizadas se invalidan subiendo la version (regla D51.1).
