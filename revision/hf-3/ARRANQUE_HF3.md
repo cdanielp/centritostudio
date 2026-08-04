@@ -80,9 +80,10 @@ hashea, la version es lo que invalida).
 
 ## Addendum de determinismo (2026-08-04, D52). Leer ANTES de tocar la cache o el resume
 
-Dos PRs apilados, ABIERTOS y sin mergear cuando se escribio esto: **#43** (auditoria, rama
-`docs/hf2-auditoria-determinismo`) y **#44** (reparacion, rama `fix/hf2-render-reproducible`,
-apilada sobre la de #43). Orden de merge obligatorio: primero #43, despues #44.
+Dos PRs apilados, los dos **MERGEADOS en `main`** en el orden correcto: **#43** (auditoria,
+rama `docs/hf2-auditoria-determinismo`, merge commit `44409df`) y **#44** (reparacion, rama
+`fix/hf2-render-reproducible`, merge commit `92fee42`). Las dos ramas se conservaron.
+`main` = `92fee42`, suite `2840 passed / 4 skipped`, `17 passed` en los `hf_real` a mano.
 
 Lo que cambia para HF-3:
 
