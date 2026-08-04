@@ -2204,13 +2204,16 @@ paquete `hyperframes/` intacto (cero cambios, sigue huerfano).
 **Decision.** Carpeta `motion/` con un proyecto autocontenido por pieza y el catalogo que
 `hyperframes/catalogo.py` ya sabe leer:
 
-| pieza | slots | duracion natural | zona (alfa medido, con sombra) |
-|---|---|---|---|
-| hook | kicker, titulo | 2500 ms | y 20-45% centrado |
-| lower_third | nombre, rol | 4500 ms | contenido hasta 68%, sombra hasta ~69%, x desde 5.5% |
-| titulo_seccion | titulo | 2000 ms | y 24-39% centrado |
-| dato_destacado | cifra, etiqueta | 3000 ms | y 22-41% centrado |
-| cierre | titulo, cta | 3500 ms | y 25-40% centrado |
+| pieza | slots | duracion natural | zona vertical 9:16 | zona horizontal 16:9 |
+|---|---|---|---|---|
+| hook | kicker, titulo | 2500 ms | y 54-68% centrado | y 16-48% centrado |
+| lower_third | nombre, rol | 4500 ms | y 61-68%, x desde 5.5% | y 55-68%, x desde 5.5% |
+| titulo_seccion | titulo | 2000 ms | y 58-68% centrado | y 23-39% centrado |
+| dato_destacado | cifra, etiqueta | 3000 ms | y 56-68% centrado | y 15-47% centrado |
+| cierre | titulo, cta | 3500 ms | y 57-68% centrado | y 20-44% centrado |
+
+(Zonas por bounding box del canal alfa del CONTENIDO en el frame de sostenimiento; la sombra
+suave llega como mucho al 68.6% en 9:16 y 69.1% en 16:9, siempre por encima del 70%.)
 
 1. **Banda de captions MEDIDA, no estimada.** Se quemaron captions hormozi (default) sobre
    video de color solido en ambos tamanos y se midio el bounding box por diff de pixeles a lo
@@ -2304,3 +2307,52 @@ Tres correcciones de la primera ronda de revision de K sobre el PR #41. Ninguna 
 
 Suite `2833 -> 2838` (+5). Los 12 `hf_real` re-corridos a mano tras el cambio de layout;
 los dos contact sheets del lower_third regenerados y mirados.
+
+### Addendum D51.2 - Las piezas verticales no compiten con la cara, marca real y entrada sin placa vacia
+
+Segunda ronda de revision de K sobre el PR #41. Cero cambios en `hyperframes/` y el pipeline.
+
+1. **Nombre de plataforma externa fuera del catalogo.** El default del slot `cta` de la pieza
+   cierre nombraba la plataforma de la comunidad. Regla del proyecto: ese nombre no aparece en
+   ningun output ni copy. Estaba SOLO en `motion/ejemplos/cierre.json` (verificado con
+   busqueda en todo el repo; tambien aparecia renderizado en los dos contact sheets del
+   cierre, regenerados). Ahora dice "Aprende con la comunidad de Prompt Models Studio" y un
+   test lo fija para todo `motion/` construyendo la palabra sin escribir el literal.
+2. **En 9:16 las piezas centradas tapaban la cara.** El reframe deja la cara entre el 20% y el
+   45% del alto, exactamente donde caian hook, titulo_seccion, dato_destacado y cierre. Ahora
+   en vertical bajan a la franja inferior 50-70% (contenido cerrando en 68%, sombra por encima
+   del 70%), via `@media (orientation: portrait)`: el CSS es identico en primario y gemelo (la
+   derivacion pura no cambia) y la media query es inerte en el lienzo 16:9. Se descarto la
+   franja superior (<20%): un bloque legible necesita 12-15% de alto y arriba pelea con la UI
+   de las plataformas. En horizontal no se movio nada.
+
+   **Donde vive el dato de la cara (investigado para HF-3).** `reframe.py` escribe en el CSV
+   de trayectoria la columna `face_y_asignada` (fraccion 0..1 del alto, por fila de tiempo
+   `t`, junto a `conf_asignada` como senal de deteccion viva). `cve.zona_cara_en_rango(csv,
+   t0, t1)` ya lo consume y devuelve el bucket 'top'/'center'/'bottom' (cortes 0.40/0.60),
+   fail-open a None con CSV legacy. **Por el contrato de HF-1 HOY no puede viajar sin romper
+   algo:** el esquema es estricto (campo desconocido = error) y el perfil v1 solo admite
+   `posicion.modo=cuadro_completo`. La via natural NO es un campo nuevo: el esquema YA admite
+   `posicion.modo=caja` (D50 punto 2 separo esquema y capacidad exactamente para esto); cuando
+   HF-3 desbloquee la caja en `clip_overlay.py:144`, el cliente (Auto) puede calcular la caja
+   desde `zona_cara_en_rango` y la plantilla ni se entera. **Pregunta abierta para K:** si la
+   posicion vertical de las piezas debe derivarse de `face_y` en tiempo de render (HF-3) en
+   vez de ser fija por plantilla, que es lo que queda en HF-2.
+3. **La placa ya no entra vacia.** El primer elemento de contenido arranca en el mismo instante
+   que su contenedor (kicker con placa, cifra con placa, nombre con panel, etc.) y el stagger
+   de 4 frames queda ENTRE los elementos de contenido, no entre contenedor y contenido. Antes
+   la caja oscura aparecia ~0.27 s sola.
+4. **Colores de marca reales en defaults y ejemplos.** Primario #FF5A2B (naranja rojizo),
+   secundario #111111, texto #FFFFFF, confirmados por K (en el repo solo existian como
+   fixture de HF-1, no habia paleta declarada). Los 10 contact sheets estan regenerados con
+   ellos; el contraste sobre fondo claro y oscuro se juzgo con la marca real, no con el morado
+   de placeholder.
+
+**Versiones.** El layout vertical y los timelines cambiaron: hook, titulo_seccion,
+dato_destacado y cierre suben a 1.0.1; lower_third (que ya iba en 1.0.1 por D51.1) sube a
+1.0.2. Regla de D51.1: el contenido del proyecto no se hashea, la version es lo que invalida.
+
+**Verificacion.** Suite `2839 passed, 4 skipped` (+1: test del nombre prohibido, verificado en
+rojo primero). Los 12 `hf_real` re-corridos a mano. Los 10 contact sheets regenerados sobre
+video real y mirados uno por uno: en vertical la cara queda completamente libre en las cinco
+piezas y ninguna placa aparece vacia en el primer frame de entrada.

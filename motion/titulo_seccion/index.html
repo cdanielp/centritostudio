@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="es" data-composition-variables='[
   {"id":"titulo","type":"string","label":"Titulo de seccion","default":"SIN-VARIABLE-titulo"},
-  {"id":"marca_primario","type":"color","label":"Color primario","default":"#7C3AED"},
-  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#0D0D14"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF5A2B"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#111111"},
   {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
   {"id":"duracion_ms","type":"number","label":"Duracion ms","default":2000},
   {"id":"fps","type":"number","label":"FPS","default":30},
@@ -25,8 +25,8 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { overflow: hidden; background: transparent; }
       :root {
-        --primario: #7C3AED;
-        --secundario: #0D0D14;
+        --primario: #FF5A2B;
+        --secundario: #111111;
         --texto: #FFFFFF;
         --u: 10.8px;
         --vh: 19.2px;
@@ -36,7 +36,7 @@
       }
       #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
       .clip { position: absolute; inset: 0; }
-      /* Centro del bloque en ~31% de la altura: fuera de la zona de captions (70-92%). */
+      /* Horizontal: centro del bloque en ~31% de la altura, fuera de captions (70-92%). */
       #zona {
         position: absolute; left: 0; top: 0; width: 100%; height: 62%;
         display: grid; place-items: center;
@@ -66,6 +66,17 @@
         letter-spacing: -0.012em;
         text-wrap: balance;
         text-shadow: 0 calc(var(--u) * 0.2) calc(var(--u) * 0.9) var(--sombra);
+      }
+      /* Vertical 9:16: la cara del reframe vive en 20-45% del alto; la pieza baja a la
+         franja 50-70% (contenido hasta 68%) para no taparla. */
+      @media (orientation: portrait) {
+        #zona { height: 68%; place-items: end center; }
+        #placa {
+          padding: calc(var(--u) * 2.2) calc(var(--u) * 3.2);
+          box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);
+        }
+        #linea { margin-bottom: calc(var(--u) * 1.4); }
+        #titulo { font-size: calc(var(--u) * 5.4); }
       }
     </style>
   </head>
@@ -108,9 +119,10 @@
 
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
+      /* La placa nunca entra vacia: la linea arranca con ella, el titulo un paso despues. */
       tl.from("#placa", { opacity: 0, y: 26, scale: 0.96, duration: ENTRA, ease: "power3.out" }, 0);
-      tl.from("#linea", { scaleX: 0, opacity: 0, duration: ENTRA * 0.9, ease: "power3.out" }, STAG);
-      tl.from("#titulo", { opacity: 0, y: 18, duration: ENTRA * 0.9, ease: "power3.out" }, STAG * 2);
+      tl.from("#linea", { scaleX: 0, opacity: 0, duration: ENTRA * 0.9, ease: "power3.out" }, 0);
+      tl.from("#titulo", { opacity: 0, y: 18, duration: ENTRA * 0.9, ease: "power3.out" }, STAG);
 
       var medio = 18 * F, resto = (DUR - SALE) - ENTRA;
       var reps = Math.floor(resto / medio) - 1;

@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_lower_third",
   "plantilla": {
     "nombre": "lower_third",
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "duracion_ms": 4500,
   "fps": 30,
@@ -16,8 +16,8 @@
     "rol": "Prompt Models Studio"
   },
   "marca": {
-    "primario": "#7C3AED",
-    "secundario": "#0D0D14",
+    "primario": "#FF5A2B",
+    "secundario": "#111111",
     "texto": "#FFFFFF"
   },
   "posicion": {

@@ -91,7 +91,7 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2838 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2839 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"
@@ -162,6 +162,12 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   1.0.1, sheets regenerados); el CI ligero ahora corre los 10 archivos de HyperFrames con
 >   dobles (runner real: 1303 -> 1523 tests, 44 -> 54 archivos; `hf_real` sigue manual);
 >   test nuevo de defaults de color en las cinco plantillas.
+> - **Ronda 2 de K (D51.2):** CTA del cierre sin nombre de plataforma externa (test lo fija);
+>   en 9:16 las piezas centradas bajan a la franja 50-70% para no tapar la cara del reframe
+>   (media query portrait, gemelos intactos como derivación pura); placa y texto entran
+>   juntos; defaults y sheets con la marca real #FF5A2B/#111111/#FFFFFF confirmada por K.
+>   Versiones 1.0.1 (y lower_third 1.0.2). Pregunta abierta en D51.2: derivar la posición de
+>   `face_y` en tiempo de render (HF-3) en vez de fija por plantilla. Baseline `2839`.
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6

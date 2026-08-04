@@ -2,8 +2,8 @@
 <html lang="es" data-composition-variables='[
   {"id":"cifra","type":"string","label":"Cifra","default":"SIN-VARIABLE-cifra"},
   {"id":"etiqueta","type":"string","label":"Etiqueta","default":"SIN-VARIABLE-etiqueta"},
-  {"id":"marca_primario","type":"color","label":"Color primario","default":"#7C3AED"},
-  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#0D0D14"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF5A2B"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#111111"},
   {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
   {"id":"duracion_ms","type":"number","label":"Duracion ms","default":3000},
   {"id":"fps","type":"number","label":"FPS","default":30},
@@ -26,8 +26,8 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { overflow: hidden; background: transparent; }
       :root {
-        --primario: #7C3AED;
-        --secundario: #0D0D14;
+        --primario: #FF5A2B;
+        --secundario: #111111;
         --texto: #FFFFFF;
         --u: 10.8px;
         --vh: 19.2px;
@@ -37,7 +37,7 @@
       }
       #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
       .clip { position: absolute; inset: 0; }
-      /* Centro del bloque en ~31% de la altura: fuera de la zona de captions (70-92%). */
+      /* Horizontal: centro del bloque en ~31% de la altura, fuera de captions (70-92%). */
       #zona {
         position: absolute; left: 0; top: 0; width: 100%; height: 62%;
         display: grid; place-items: center;
@@ -75,6 +75,18 @@
         max-width: calc(var(--u) * 58);
         margin: 0 auto;
         text-wrap: balance;
+      }
+      /* Vertical 9:16: la cara del reframe vive en 20-45% del alto; la pieza baja a la
+         franja 50-70% (contenido hasta 68%) y la cifra reduce cuerpo para caber. */
+      @media (orientation: portrait) {
+        #zona { height: 68%; place-items: end center; }
+        #placa {
+          padding: calc(var(--u) * 2.4) calc(var(--u) * 3.6);
+          box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);
+        }
+        #cifra { font-size: calc(var(--u) * 9); }
+        #subraya { margin: calc(var(--u) * 1.2) auto; }
+        #etiqueta { font-size: calc(var(--u) * 3); }
       }
     </style>
   </head>
@@ -118,10 +130,11 @@
 
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
+      /* La placa nunca entra vacia: la cifra arranca con ella; el resto escalona. */
       tl.from("#placa", { opacity: 0, y: 30, scale: 0.95, duration: ENTRA, ease: "power3.out" }, 0);
-      tl.from("#cifra", { opacity: 0, scale: 0.82, duration: ENTRA, ease: "back.out(1.5)" }, STAG);
-      tl.from("#subraya", { scaleX: 0, opacity: 0, duration: ENTRA * 0.8, ease: "power3.out" }, STAG * 2);
-      tl.from("#etiqueta", { opacity: 0, y: 16, duration: ENTRA * 0.85, ease: "power2.out" }, STAG * 3);
+      tl.from("#cifra", { opacity: 0, scale: 0.82, duration: ENTRA, ease: "back.out(1.5)" }, 0);
+      tl.from("#subraya", { scaleX: 0, opacity: 0, duration: ENTRA * 0.8, ease: "power3.out" }, STAG);
+      tl.from("#etiqueta", { opacity: 0, y: 16, duration: ENTRA * 0.85, ease: "power2.out" }, STAG * 2);
 
       var medio = 20 * F, resto = (DUR - SALE) - ENTRA;
       var reps = Math.floor(resto / medio) - 1;

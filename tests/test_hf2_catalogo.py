@@ -104,6 +104,19 @@ def test_variables_declaradas_cubren_slots_y_sistema(nombre):
     assert ids == esperadas, f"faltan {sorted(esperadas - ids)}, sobran {sorted(ids - esperadas)}"
 
 
+def test_sin_nombres_de_plataformas_externas_en_el_catalogo():
+    """Regla del proyecto: el nombre de la plataforma de la comunidad no aparece en
+    ningun output ni copy. Se construye sin el literal para que este test no sea el
+    unico sitio del repo donde figura."""
+    prohibida = "".join(("s", "k", "o", "o", "l"))
+    rutas = [
+        r for r in (RAIZ / "motion").rglob("*") if r.suffix in (".json", ".html", ".md", ".txt")
+    ]
+    assert len(rutas) >= 16, "el barrido de motion/ quedo vacio; el test ya no protege nada"
+    con_nombre = [r.name for r in rutas if prohibida in r.read_text(encoding="utf-8").lower()]
+    assert not con_nombre, f"nombre de plataforma externa prohibido en: {con_nombre}"
+
+
 def test_sin_em_dashes_en_catalogo_ejemplos_y_plantillas():
     rutas = [RUTA_CATALOGO, *RUTA_EJEMPLOS.glob("*.json")]
     rutas += [RAIZ / p.proyecto / "index.html" for p in _plantillas()]
