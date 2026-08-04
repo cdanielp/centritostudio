@@ -1,7 +1,7 @@
 [
   {
     "nombre": "hook",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "slots_texto": [
       "kicker",
       "titulo"

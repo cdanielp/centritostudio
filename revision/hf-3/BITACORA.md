@@ -22,3 +22,12 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   Modulos nuevos `motion_capa.py` y `motion_plan.py`; el catalogo declara `proyecto` POR
   ORIENTACION (decision 1 del arranque). Con la capa apagada los filtros FFmpeg salen byte
   identicos (test) y el fingerprint de config es el historico (test).
+- **12:22 - BLOQUE 2 OK (las dos deudas de la capa).** 2.1 `semilla` sale de la clave de cache
+  via `contrato.CAMPOS_FUERA_DEL_HASH`, con un test que comprueba contra las DIEZ plantillas
+  reales que ninguna la consume (si algun dia una la lee, ese test truena). 2.2 los cinco
+  gemelos horizontales se regeneraron: sus defaults `tamano_ancho`/`tamano_alto` declaraban
+  1080x1920 dentro de un proyecto 1920x1080. La derivacion del gemelo pasa de TRES reemplazos
+  a CUATRO y hay ademas un test directo que exige que el lienzo coincida en los dos sitios.
+  De paso, defecto encontrado y arreglado: un kicker vacio pintaba una pastilla de color sin
+  texto; `hook` sube a 1.0.2 (regla D51.1: la version es lo que invalida la cache).
+  Suite `2897 passed / 4 skipped`, `ruff check . --no-cache` limpio.

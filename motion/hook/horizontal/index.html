@@ -7,8 +7,8 @@
   {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
   {"id":"duracion_ms","type":"number","label":"Duracion ms","default":2500},
   {"id":"fps","type":"number","label":"FPS","default":30},
-  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
-  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1920},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1080},
   {"id":"semilla","type":"number","label":"Semilla","default":0}
  ]'>
   <head>
@@ -120,7 +120,11 @@
       css.setProperty("--secundario", v.marca_secundario);
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
-      document.getElementById("kicker").textContent = String(v.kicker);
+      var elKicker = document.getElementById("kicker");
+      elKicker.textContent = String(v.kicker);
+      /* Un kicker vacio pintaba una pastilla de color sin texto dentro. Se oculta en vez
+         de dejarla: el contrato exige el slot, pero no exige que siempre traiga frase. */
+      if (!String(v.kicker).trim()) { elKicker.style.display = "none"; }
       document.getElementById("titulo").textContent = String(v.titulo);
 
       /* Tiempos adaptativos: entrada acotada por la duracion, salida mas rapida. */

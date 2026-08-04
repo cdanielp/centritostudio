@@ -120,7 +120,11 @@
       css.setProperty("--secundario", v.marca_secundario);
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
-      document.getElementById("kicker").textContent = String(v.kicker);
+      var elKicker = document.getElementById("kicker");
+      elKicker.textContent = String(v.kicker);
+      /* Un kicker vacio pintaba una pastilla de color sin texto dentro. Se oculta en vez
+         de dejarla: el contrato exige el slot, pero no exige que siempre traiga frase. */
+      if (!String(v.kicker).trim()) { elKicker.style.display = "none"; }
       document.getElementById("titulo").textContent = String(v.titulo);
 
       /* Tiempos adaptativos: entrada acotada por la duracion, salida mas rapida. */

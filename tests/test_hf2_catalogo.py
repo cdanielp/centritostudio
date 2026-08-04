@@ -153,19 +153,33 @@ def test_defaults_de_color_css_y_variables_coinciden(nombre):
 
 
 def gemelo_horizontal(texto: str) -> str:
-    """Deriva el gemelo 16:9 del primario 9:16: tres reemplazos y NADA mas.
+    """Deriva el gemelo 16:9 del primario 9:16: CUATRO reemplazos y NADA mas.
 
     HyperFrames 0.7.90 fija el lienzo con los data-width/height ESTATICOS del HTML
     (medido en HF-2: un script que los reescribe desde las variables es ignorado y
     hasta el flag --width de la CLI avisa que no puede cambiarlos). Un proyecto es
     un solo tamano, asi que cada pieza versiona un gemelo horizontal que comparte
     fuente y gsap por ruta relativa al padre.
+
+    El CUARTO reemplazo (HF-3 bloque 2.2) son los defaults de `tamano_ancho` y
+    `tamano_alto` del bloque de variables, que en los cinco gemelos declaraban
+    1080x1920 dentro de un proyecto 1920x1080. La derivacion de HF-2 solo miraba
+    tres sitios y por eso la contradiccion nunca truena: son DEFAULTS, y el contrato
+    de pieza siempre manda los valores buenos. Pero es exactamente la forma del
+    fallo silencioso que ya costo una sesion aqui (un lienzo que se declara en dos
+    sitios y no coincide), y quien abriera el gemelo a mano leeria 1080x1920.
     """
     t = texto.replace(
         'data-width="1080" data-height="1920"', 'data-width="1920" data-height="1080"'
     )
     t = t.replace('src="gsap.min.js"', 'src="../gsap.min.js"')
-    return t.replace('url("fonts/InterVariable.woff2")', 'url("../fonts/InterVariable.woff2")')
+    t = t.replace('url("fonts/InterVariable.woff2")', 'url("../fonts/InterVariable.woff2")')
+    return t.replace(
+        '{"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},\n'
+        '  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},',
+        '{"id":"tamano_ancho","type":"number","label":"Ancho","default":1920},\n'
+        '  {"id":"tamano_alto","type":"number","label":"Alto","default":1080},',
+    )
 
 
 @pytest.mark.parametrize("nombre", sorted(PIEZAS_ESPERADAS))
@@ -177,5 +191,20 @@ def test_gemelo_horizontal_es_derivacion_pura_del_primario(nombre):
     assert 'data-width="1080" data-height="1920"' in primario, "el primario es 9:16"
     assert gemelo == gemelo_horizontal(primario), (
         f"{nombre}: el gemelo horizontal divergio del primario; regenera con la "
-        "derivacion pura (solo cambian el lienzo y las dos rutas de assets)"
+        "derivacion pura (solo cambian el lienzo, sus defaults y las dos rutas de assets)"
     )
+
+
+@pytest.mark.parametrize("nombre", sorted(PIEZAS_ESPERADAS))
+def test_el_gemelo_declara_su_lienzo_igual_en_los_dos_sitios(nombre):
+    """El lienzo se declara dos veces (root estatico y defaults de variables) y deben coincidir.
+
+    Es la comprobacion directa de la deuda 2.2, independiente de la derivacion: aunque alguien
+    regenerara el gemelo con otra herramienta, esto sigue exigiendo que no se contradiga.
+    """
+    plantilla = next(p for p in _plantillas() if p.nombre == nombre)
+    gemelo = (RAIZ / plantilla.proyecto / "horizontal" / "index.html").read_text(encoding="utf-8")
+    assert 'data-width="1920" data-height="1080"' in gemelo
+    assert '{"id":"tamano_ancho","type":"number","label":"Ancho","default":1920}' in gemelo
+    assert '{"id":"tamano_alto","type":"number","label":"Alto","default":1080}' in gemelo
+    assert 'data-width="1080" data-height="1920"' not in gemelo
