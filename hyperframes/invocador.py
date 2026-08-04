@@ -30,7 +30,21 @@ CALIDAD = "high"
 PIX_FMT_ESPERADO = "yuva444p12le"
 TIMEOUT_DEFAULT_S = 180  # HF-0: un overlay de 6 s tardo 14.9 s en esta maquina
 TOLERANCIA_MS = 120  # un MOV real no cae al milisegundo exacto
-CAMPOS_VARIABLES = ("duracion_ms", "fps", "marca", "semilla", "tamano", "texto")
+NOMBRE_VARIABLES = "variables.json"
+
+# Claves PLANAS que la pieza aporta ademas de sus slots de texto. Un slot de texto que se
+# llame igual que una de estas pisaria el valor real al aplanar, asi que el contrato las
+# reserva (ver `contrato.validar_slots`).
+CLAVES_RESERVADAS = (
+    "duracion_ms",
+    "fps",
+    "marca_primario",
+    "marca_secundario",
+    "marca_texto",
+    "semilla",
+    "tamano_alto",
+    "tamano_ancho",
+)
 
 
 @dataclass(frozen=True)
@@ -63,13 +77,55 @@ class Adaptador:
     localizar: Callable[[str], str | None]
 
 
+def variables_de(dato: dict) -> dict:
+    """Variables PLANAS para la plantilla, tal como HyperFrames las declara y las resuelve.
+
+    Las variables de HyperFrames son planas por `id` y de tipo string/number/color/boolean/
+    enum: no existe el tipo objeto. Enviar `{"texto": {"titulo": ...}}` hacia una plantilla
+    que declara `titulo` NO falla, pero la plantilla pinta su valor por defecto y el render
+    devuelve codigo 0. Se midio extrayendo un frame; ninguna verificacion automatica lo veia.
+    Por eso los slots de texto suben al nivel raiz por su propio id.
+    """
+    marca = dato.get("marca") or {}
+    tamano = dato.get("tamano") or {}
+    return {
+        **(dato.get("texto") or {}),
+        "marca_primario": marca.get("primario"),
+        "marca_secundario": marca.get("secundario"),
+        "marca_texto": marca.get("texto"),
+        "duracion_ms": dato.get("duracion_ms"),
+        "fps": dato.get("fps"),
+        "tamano_ancho": tamano.get("ancho"),
+        "tamano_alto": tamano.get("alto"),
+        "semilla": dato.get("semilla"),
+    }
+
+
 def variables_json(dato: dict) -> str:
-    """JSON canonico con lo que la plantilla necesita para pintarse (`--variables`)."""
-    return ct.canonicalizar({campo: dato[campo] for campo in CAMPOS_VARIABLES if campo in dato})
+    """JSON canonico de las variables planas."""
+    return ct.canonicalizar(variables_de(dato))
+
+
+def escribir_variables(dato: dict, destino: Path) -> Path:
+    """Escribe las variables en UTF-8 explicito para `--variables-file`.
+
+    Por archivo y no por `--variables`: evita el escapado de comillas dobles a traves de
+    `cmd.exe` (el binario resuelto es `npx.CMD`) y el techo de 32767 caracteres de la linea
+    de comandos de Windows, que un contrato con textos largos puede alcanzar.
+    """
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(variables_json(dato), encoding="utf-8", newline="")
+    return destino
 
 
 def construir_comando(
-    dato: dict, plantilla: Plantilla, salida: Path | str, *, binario: str = BINARIO_DEFAULT
+    dato: dict,
+    plantilla: Plantilla,
+    salida: Path | str,
+    variables: Path | str,
+    *,
+    binario: str = BINARIO_DEFAULT,
 ) -> list[str]:
     """Comando completo del CLI para renderizar la pieza a `salida`.
 
@@ -90,8 +146,8 @@ def construir_comando(
         str(dato["fps"]),
         "--output",
         str(salida),
-        "--variables",
-        variables_json(dato),
+        "--variables-file",
+        str(variables),
         "--no-best-effort",
     ]
 
@@ -133,9 +189,15 @@ def renderizar(
     que se compondria como un rectangulo opaco tapando el video.
     """
     salida = Path(salida)
-    comando = construir_comando(dato, plantilla, salida, binario=binario)
+    # Junto al temporal, NO en la carpeta publicada: la cache solo guarda MOV y sidecar.
+    variables = salida.with_name(f"{salida.stem}-{NOMBRE_VARIABLES}")
+    escribir_variables(dato, variables)
+    comando = construir_comando(dato, plantilla, salida, variables, binario=binario)
     arranque = time.perf_counter()
-    ejecucion = adaptador.ejecutar(comando, timeout_s)
+    try:
+        ejecucion = adaptador.ejecutar(comando, timeout_s)
+    finally:
+        _descartar(variables)
     segundos = time.perf_counter() - arranque
 
     if ejecucion.expiro:

@@ -21,8 +21,18 @@ from hyperframes.catalogo import Catalogo, Plantilla
 
 pytestmark = pytest.mark.hf_real
 
+# El texto ejercita el riesgo de encoding a proposito: acentos, enie, dieresis, signos de
+# apertura, punto medio y comillas dobles (que ademas prueban el escapado JSON).
+TITULO = "Configuración básica de ComfyUI"
+SUBTITULO = 'año 2026 · ñ á é í ó ú ü ¿? ¡! "comillas"'
+
+# La plantilla declara sus variables PLANAS y con defaults distintos del valor real: si el
+# mapeo se rompe otra vez, la pieza pinta "SIN-VARIABLE-*" en vez del texto y se ve en el frame.
 INDEX_MINIMO = """<!doctype html>
-<html lang="es">
+<html lang="es" data-composition-variables='[
+  {"id":"titulo","type":"string","label":"Titulo","default":"SIN-VARIABLE-titulo"},
+  {"id":"subtitulo","type":"string","label":"Subtitulo","default":"SIN-VARIABLE-subtitulo"}
+ ]'>
   <head>
     <meta charset="UTF-8" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
@@ -30,17 +40,23 @@ INDEX_MINIMO = """<!doctype html>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
       #tarjeta { position: absolute; left: 120px; bottom: 110px; background: #fff;
-                 padding: 24px 40px; border-radius: 16px; font-size: 52px; color: #111; }
+                 padding: 24px 40px; border-radius: 16px; color: #111; }
+      #t { font-size: 52px; }
+      #s { font-size: 32px; color: #444; }
     </style>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="2"
          data-width="1920" data-height="1080">
       <div id="tarjeta" class="clip" data-start="0" data-duration="2" data-track-index="1">
-        Pieza de prueba HF-1
+        <div id="t">?</div>
+        <div id="s">?</div>
       </div>
     </div>
     <script>
+      var v = window.__hyperframes.getVariables();
+      document.getElementById("t").textContent = String(v.titulo);
+      document.getElementById("s").textContent = String(v.subtitulo);
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
       tl.from("#tarjeta", { opacity: 0, y: 30, duration: 0.6 }, 0);
@@ -57,7 +73,7 @@ PIEZA = {
     "duracion_ms": 2000,
     "fps": 30,
     "tamano": {"ancho": 1920, "alto": 1080},
-    "texto": {},
+    "texto": {"titulo": TITULO, "subtitulo": SUBTITULO},
     "marca": {"primario": "#FF5A2B", "secundario": "#111111", "texto": "#FFFFFF"},
     "posicion": {"modo": "cuadro_completo"},
     "fit": "nativo",
@@ -73,7 +89,14 @@ def test_render_real_produce_mov_con_alfa(tmp_path):
     (proyecto / "index.html").write_text(INDEX_MINIMO, encoding="utf-8")
 
     catalogo = Catalogo(
-        [Plantilla(nombre="minima", version="1.0.0", slots_texto=(), proyecto=str(proyecto))]
+        [
+            Plantilla(
+                nombre="minima",
+                version="1.0.0",
+                slots_texto=("titulo", "subtitulo"),
+                proyecto=str(proyecto),
+            )
+        ]
     )
     r = pedir_pieza(
         PIEZA,
@@ -100,3 +123,13 @@ def test_render_real_produce_mov_con_alfa(tmp_path):
     )
     assert otra.desde_cache is True
     assert otra.hash == r.hash
+
+    # El texto acentuado llego al archivo de variables tal cual. Que se VEA bien en el
+    # frame es inspeccion humana (queda fuera de la suite: aqui no se fijan pixeles);
+    # esto solo fija que lo que se le entrego a la CLI eran los bytes correctos.
+    from hyperframes.invocador import variables_de
+
+    v = variables_de(PIEZA)
+    assert v["titulo"] == TITULO
+    assert v["subtitulo"] == SUBTITULO
+    assert "texto" not in v, "los slots deben ir PLANOS o la plantilla pinta sus defaults"

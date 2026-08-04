@@ -26,7 +26,8 @@ PLANTILLA = Plantilla(
 
 def test_comando_construido_es_el_esperado(tmp_path):
     salida = tmp_path / "pieza.mov"
-    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, salida, binario="npx")
+    variables = tmp_path / "pieza-variables.json"
+    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, salida, variables, binario="npx")
     assert cmd == [
         "npx",
         "hyperframes",
@@ -40,8 +41,8 @@ def test_comando_construido_es_el_esperado(tmp_path):
         "30",
         "--output",
         str(salida),
-        "--variables",
-        inv.variables_json(PIEZA_OK),
+        "--variables-file",
+        str(variables),
         "--no-best-effort",
     ]
 
@@ -49,16 +50,8 @@ def test_comando_construido_es_el_esperado(tmp_path):
 def test_el_comando_no_lleva_non_interactive():
     """Medido en HF-1: `render` rechaza --non-interactive (es un flag de `init`) con
     'Unknown flag'. El modo no interactivo lo auto-detecta la CLI por non-TTY."""
-    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, "x.mov", binario="npx")
+    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, "x.mov", "v.json", binario="npx")
     assert "--non-interactive" not in cmd
-
-
-def test_variables_llevan_texto_marca_y_semilla_en_json_canonico():
-    crudo = inv.variables_json(PIEZA_OK)
-    assert '"titulo":"Configuracion basica"' in crudo
-    assert '"primario":"#FF5A2B"' in crudo
-    assert '"semilla":0' in crudo
-    assert ", " not in crudo  # canonico compacto, igual que el contrato
 
 
 def test_variables_son_estables_ante_el_orden_de_claves():
@@ -68,14 +61,14 @@ def test_variables_son_estables_ante_el_orden_de_claves():
 
 def test_el_comando_fuerza_mov_y_nunca_webm():
     """HF-0: WebM VP9 declara yuv420p y pierde el alfa en silencio. No se ofrece como opcion."""
-    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, "x.mov", binario="npx")
+    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, "x.mov", "v.json", binario="npx")
     assert "webm" not in cmd
     assert cmd[cmd.index("--format") + 1] == "mov"
 
 
 def test_el_comando_pide_el_fps_del_contrato_no_uno_fijo():
     """HF-0: la cadena de clips fuerza el fps del video base y descartaria frames."""
-    cmd = inv.construir_comando(dict(PIEZA_OK, fps=24), PLANTILLA, "x.mov", binario="npx")
+    cmd = inv.construir_comando(dict(PIEZA_OK, fps=24), PLANTILLA, "x.mov", "v.json", binario="npx")
     assert cmd[cmd.index("--fps") + 1] == "24"
 
 

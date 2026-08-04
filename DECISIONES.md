@@ -2088,3 +2088,80 @@ suite corre entera SIN HyperFrames instalado y sin renderizar: el CLI y ffprobe 
 y esta excluido por default (`addopts = -m "not hf_real"`); corrido a mano produce un MOV
 `yuva444p12le` real en 16.7 s. Byte-identidad de la ruta clasica: mismo sha256 antes y despues
 de la rama. Ningun test fija pixeles ni sha256 de video como asercion de correccion.
+
+### Addendum D50.1 - Las variables van PLANAS, y por archivo
+
+**Lo que estaba roto.** El invocador enviaba las variables anidadas
+(`{"texto":{"titulo":...},"marca":{...}}`). Las variables de HyperFrames son PLANAS por `id` y
+de tipo string/number/color/boolean/enum: no existe el tipo objeto. Una plantilla que declara
+`titulo` NUNCA recibia su valor, pintaba su default, y **el render devolvia codigo 0** con
+`pix_fmt`, fps, tamano y duracion correctos. Ninguna verificacion automatica podia verlo.
+
+Se detecto extrayendo un frame del MOV y MIRANDOLO: la pieza decia `SIN-VARIABLE-titulo`. Es el
+precedente mas claro de la regla de oro 7 del proyecto (verificacion visual obligatoria) fuera
+del Motor A: en el Motor B, "returncode 0" no significa que la pieza diga lo que debe decir.
+
+**Decision.**
+1. Los slots de texto suben al nivel raiz por su propio `id`; la marca y el tamano se aplanan
+   con prefijo (`marca_primario`, `tamano_ancho`). Contrato de variables que HF-2 declara en
+   `data-composition-variables`: los slots declarados, mas `marca_primario`, `marca_secundario`,
+   `marca_texto`, `duracion_ms`, `fps`, `tamano_ancho`, `tamano_alto`, `semilla`.
+2. Un slot de texto que choque con una de esas claves reservadas es `contrato_invalido`: al
+   aplanar pisaria el valor real en silencio, que es la misma clase de fallo que este addendum
+   arregla.
+3. Las variables viajan por `--variables-file` con UTF-8 explicito, no por `--variables`. El
+   transporte por argumento SI funcionaba (se midio: Python usa CreateProcessW en UTF-16 y los
+   acentos, la enie y las comillas escapadas sobreviven intactas incluso pasando por
+   `npx.CMD`), pero el archivo elimina el escapado de comillas a traves de `cmd.exe` y el techo
+   de 32767 caracteres de la linea de comandos de Windows, que un contrato con textos largos
+   puede alcanzar. El archivo se escribe junto al temporal y se borra siempre, tambien si el
+   render falla.
+
+**Verificacion.** Render real con `Configuración básica de ComfyUI` y
+`año 2026 · ñ á é í ó ú ü ¿? ¡! "comillas"`: frame extraido e inspeccionado, texto correcto y
+las diez claves planas presentes. Tests permanentes en `tests/test_hf_variables.py` que fijan
+los BYTES del archivo (`c3b3` para la o acentuada, no `f3` de cp1252), el aplanado, las claves
+reservadas y el borrado del archivo temporal.
+
+### Addendum D50.2 - Umbral de lock rancio derivado del timeout
+
+Eran 900 s constantes contra un timeout de 180 s. El default no era el problema: el problema
+era el acoplamiento invisible. Subir `timeout_s` a 20 minutos dejaba el umbral en 900 s, asi que
+una corrida lenta pero VIVA veia su lock reclamado por otra y las dos renderizaban la misma
+pieza a la vez. Ahora el umbral es `max(timeout * 3, 300 s)` y `pedir_pieza` propaga su propio
+timeout al lock, con un test que fija la invariante que importa: el umbral SIEMPRE es mayor que
+el timeout, para cualquier valor.
+
+### Addendum D50.3 - `check.bat` corre ruff SIN cache
+
+`ruff check .` daba VERDE en local sobre lint que el CI rechazaba. Causa: los tests de HF-1 se
+escribieron ANTES que el paquete `hyperframes/`, asi que ruff cacheo la clasificacion de ese
+import como third-party y siguio aplicando el orden viejo; el CI, que siempre arranca con cache
+frio, lo clasifico como first-party y exigio un bloque de imports separado (I001 en 4 archivos).
+`ruff check . --no-cache` reproduce el CI exactamente. `check.bat` pasa a usar `--no-cache`:
+el coste es de segundos y el falso verde cuesta un ciclo de CI entero.
+
+Generaliza a cualquier paquete NUEVO del repo, no solo a este.
+
+### Addendum D50.4 - Deuda anotada, no implementada
+
+Tres cosas quedan escritas para no perderlas. Ninguna se implementa en HF-1.
+
+1. **Dos implementaciones de publicacion atomica que pueden divergir.** `hyperframes/almacen.py`
+   replica el contrato de `media_integrity.ruta_temporal` (temporal unico en subdir privado del
+   mismo volumen, verificacion, `os.replace`, borrado ante fallo) con extension `.mov`, porque
+   el original fuerza `.mp4` y HyperFrames elige el muxer por la extension. Son dos copias del
+   mismo contrato H1 y pueden separarse con el tiempo. **Unificar en HF-3 parametrizando el
+   sufijo en `media_integrity.ruta_temporal`**, que ademas es donde ya habra que tocar la ruta
+   de clips.
+2. **`BASELINE_SUITE` puede estar verde y mentir.** El gate de `smoke_h4_docs.py` compara la
+   constante contra ESTADO.md, README.md y MATRIZ_READINESS.md, es decir COHERENCIA INTERNA
+   entre documentos, nunca contra la suite real. Por eso llevaba desactualizada desde S39
+   (decia 2502 con la suite en 2618) sin que ningun gate protestara. Arreglarlo pide que el
+   smoke ejecute pytest y compare, o que el CI publique el numero. **Tarea aparte, fuera de
+   HF-1.**
+3. **Regla de gate para HyperFrames: ningun PR de HF se mergea sin correr `hf_real` a mano**,
+   aunque este excluido del CI. Justificacion empirica, no teorica: `hf_real` encontro que
+   `render` rechaza `--non-interactive`, y el frame que produce descubrio el bug de variables
+   anidadas de D50.1. Los dobles no vieron ninguna de las dos, y no podian: ambos fallos viven
+   exactamente en la frontera que los dobles sustituyen.

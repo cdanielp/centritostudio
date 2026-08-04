@@ -90,7 +90,7 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 - v1: **CERRADA** y etiquetada `v1.0.0`
 - HyperFrames: bloqueado hasta gate final; **NO iniciado**
 
-**Baseline de suite:** `2748 passed, 4 skipped` (4 skips históricos de symlink en Windows).
+**Baseline de suite:** `2777 passed, 4 skipped` (4 skips históricos de symlink en Windows).
 `ruff`/formato/`check.bat` verdes; gate remoto (Actions) verde; gate de privacidad 0 blockers.
 
 > **ADDENDUM HF-1 (2026-08-03).** Las líneas de arriba que dicen "HyperFrames: NO iniciado"

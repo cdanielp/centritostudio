@@ -33,7 +33,11 @@ NOMBRE_MOV = "pieza.mov"
 NOMBRE_SIDECAR = "pieza.json"
 TEMP_DIRNAME = ".hf_tmp"
 LOCK_DIRNAME = ".lock"
-LOCK_RANCIO_S = 900  # un lock mas viejo que esto quedo de un proceso muerto
+# El umbral de lock rancio se DERIVA del timeout de render, no es una constante suelta.
+# Con un valor fijo, subir el timeout dejaba el umbral corto y una corrida lenta pero VIVA
+# veia su lock reclamado por otra: las dos renderizaban la misma pieza a la vez.
+FACTOR_RANCIO = 3
+PISO_RANCIO_S = 300  # con timeouts muy cortos, 3x reclamaria procesos que solo van lentos
 _SONDEO_PASO_S = 0.05
 
 
@@ -152,13 +156,28 @@ def _rancio(lock_dir: Path, rancio_s: float) -> bool:
         return False
 
 
+def rancio_para(timeout_s: float) -> float:
+    """Umbral de lock rancio para un timeout de render dado. Siempre MAYOR que el timeout."""
+    return max(float(timeout_s) * FACTOR_RANCIO, float(PISO_RANCIO_S))
+
+
 @contextlib.contextmanager
-def lock(raiz: Path, hash_: str, *, espera_s: float = 0.0, rancio_s: float = LOCK_RANCIO_S):
+def lock(
+    raiz: Path,
+    hash_: str,
+    *,
+    espera_s: float = 0.0,
+    timeout_s: float = 0.0,
+    rancio_s: float | None = None,
+):
     """Lock por hash via `mkdir` atomico. Cede True si lo tomo, False si sigue ocupado.
 
-    Un lock mas viejo que `rancio_s` se reclama: sin eso, un hard-kill dejaria esa pieza
-    bloqueada para siempre y ninguna corrida futura podria regenerarla.
+    Un lock mas viejo que el umbral se reclama: sin eso, un hard-kill dejaria esa pieza
+    bloqueada para siempre y ninguna corrida futura podria regenerarla. El umbral sale de
+    `timeout_s` salvo que se pase `rancio_s` explicito (los tests lo usan para forzarlo).
     """
+    if rancio_s is None:
+        rancio_s = rancio_para(timeout_s)
     lock_dir = _directorio(raiz, hash_) / LOCK_DIRNAME
     lock_dir.parent.mkdir(parents=True, exist_ok=True)
     limite = time.monotonic() + max(espera_s, 0.0)
@@ -200,11 +219,13 @@ def tamano_ocupado(raiz: Path) -> int:
 
 
 __all__ = [
-    "LOCK_RANCIO_S",
+    "FACTOR_RANCIO",
+    "PISO_RANCIO_S",
     "Hit",
     "buscar",
     "lock",
     "publicar",
+    "rancio_para",
     "ruta_pieza",
     "ruta_sidecar",
     "sha256_de",

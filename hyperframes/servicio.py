@@ -165,7 +165,9 @@ def _renderizar_con_lock(
     binario: str,
 ) -> Resultado:
     """Toma el lock del hash y renderiza. Si otro proceso gano la carrera, sirve su resultado."""
-    with almacen.lock(raiz_cache, hash_, espera_s=espera_lock_s) as tomado:
+    # El umbral de rancio sale del MISMO timeout con el que se renderiza: si se desincronizan,
+    # una corrida viva puede ver su lock reclamado por otra.
+    with almacen.lock(raiz_cache, hash_, espera_s=espera_lock_s, timeout_s=timeout_s) as tomado:
         if not tomado:
             return _fallo(
                 Razon.LOCK_OCUPADO,

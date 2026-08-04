@@ -188,13 +188,25 @@ def validar_contrato(dato: object) -> dict:
 
 
 def validar_slots(dato: dict, slots_declarados: tuple[str, ...]) -> None:
-    """Comprueba que `texto` traiga exactamente los slots que declara la plantilla."""
+    """Comprueba que `texto` traiga exactamente los slots que declara la plantilla.
+
+    Tambien rechaza un slot que colisione con una clave reservada: los slots suben al nivel
+    raiz de las variables, asi que un slot llamado `fps` pisaria el fps real en silencio.
+    """
+    from .invocador import CLAVES_RESERVADAS  # noqa: PLC0415
+
     recibidos = set(dato.get("texto") or {})
     esperados = set(slots_declarados)
     faltan = sorted(esperados - recibidos)
     sobran = sorted(recibidos - esperados)
     if faltan or sobran:
         _falla(f"los slots de texto no cuadran con la plantilla: faltan {faltan}, sobran {sobran}")
+    chocan = sorted(recibidos & set(CLAVES_RESERVADAS))
+    if chocan:
+        _falla(
+            f"estos slots de texto chocan con claves reservadas de la pieza: {', '.join(chocan)}. "
+            f"Reservadas: {', '.join(CLAVES_RESERVADAS)}."
+        )
 
 
 def canonicalizar(dato: object) -> str:
