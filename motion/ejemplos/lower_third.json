@@ -1,0 +1,17 @@
+{
+  "contrato": 1,
+  "pieza_id": "ejemplo_lower_third",
+  "plantilla": { "nombre": "lower_third", "version": "1.0.0" },
+  "duracion_ms": 4500,
+  "fps": 30,
+  "tamano": { "ancho": 1080, "alto": 1920 },
+  "texto": {
+    "nombre": "Carlos Daniel Penagos",
+    "rol": "Prompt Models Studio"
+  },
+  "marca": { "primario": "#7C3AED", "secundario": "#0D0D14", "texto": "#FFFFFF" },
+  "posicion": { "modo": "cuadro_completo" },
+  "fit": "nativo",
+  "audio": false,
+  "semilla": 0
+}

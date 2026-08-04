@@ -2194,3 +2194,85 @@ Se verifico que el canario canta: reintroduciendo el aplanado anidado de D50.1 s
 dos titulos completamente distintos produjeron el MISMO sha256 y ambos renders devolvieron
 exito. Es la unica verificacion AUTOMATICA que habria cazado aquel bug; ni el returncode, ni
 `pix_fmt`, ni el fps, ni la duracion, ni los dobles lo veian.
+
+## D51 - HF-2: catalogo de plantillas del Motor B
+
+**Contexto.** HF-1 dejo la frontera (contrato, validador, cache, invocador fail-open) y un
+catalogo VACIO. HF-2 lo llena: cinco plantillas de HyperFrames versionadas en el repo, con el
+paquete `hyperframes/` intacto (cero cambios, sigue huerfano).
+
+**Decision.** Carpeta `motion/` con un proyecto autocontenido por pieza y el catalogo que
+`hyperframes/catalogo.py` ya sabe leer:
+
+| pieza | slots | duracion natural | zona (alfa medido, con sombra) |
+|---|---|---|---|
+| hook | kicker, titulo | 2500 ms | y 20-45% centrado |
+| lower_third | nombre, rol | 4500 ms | borde inferior en 70%, x desde 5.5% |
+| titulo_seccion | titulo | 2000 ms | y 24-39% centrado |
+| dato_destacado | cifra, etiqueta | 3000 ms | y 22-41% centrado |
+| cierre | titulo, cta | 3500 ms | y 25-40% centrado |
+
+1. **Banda de captions MEDIDA, no estimada.** Se quemaron captions hormozi (default) sobre
+   video de color solido en ambos tamanos y se midio el bounding box por diff de pixeles a lo
+   largo del render entero (picos de animacion incluidos): vertical 80.2-89.9% de la altura,
+   horizontal 72.5-89.9%. La zona prohibida de diseno quedo en 70-92% con margen, y el lower
+   third cierra su CONTENIDO en el 70.0% exacto (su sombra suave llega a ~72%, todavia por
+   encima del 72.5% real). Los frames con captions de los contact sheets confirman que ninguna
+   pieza se pelea con los subtitulos.
+2. **Colores de marca por variables; dos estructurales fijos y declarados.** `marca_primario`,
+   `marca_secundario` y `marca_texto` entran como CSS custom properties. Los unicos colores
+   fijos son estructurales de legibilidad sobre screencast claro u oscuro: la placa
+   `rgba(8,8,15,0.78)` y la sombra `rgba(0,0,0,0.45)` (registrados en `motion/LICENCIAS.md`).
+   La legibilidad la resuelve la pieza (placa + sombra), nunca el fondo.
+3. **Fuente y runtime LOCALES.** Inter variable (SIL OFL 1.1, copia de la licencia en
+   `motion/OFL_Inter.txt`) via `@font-face` con ruta relativa, y gsap.min.js 3.14.2 (GSAP
+   Standard License, gratuita) como archivo local. Cero cargas por red; un test rechaza
+   `http(s)://` en los proyectos. El render reproduce sin internet.
+4. **Duracion adaptativa: el timeline ES la duracion.** El root NO declara `data-duration`:
+   cuando falta, el renderer infiere la duracion del timeline GSAP, y el timeline se construye
+   para terminar exactamente en `duracion_ms`. Entrada `min(14 frames, 28% de la duracion)`,
+   salida al 65% de la entrada, stagger de 4 frames, respiracion sinusoidal en un wrapper
+   propio (jamas pisa la propiedad de otra tween) con repeticiones FINITAS derivadas del
+   sostenimiento. Todo timing sale de `fps` y `duracion_ms`; probado a duracion natural y a
+   la mitad en ambos tamanos.
+5. **Slots con defaults `SIN-VARIABLE-*`** (el patron que descubrio D50.1): si el aplanado se
+   rompe, el fallo se VE en el frame. Un test exige que `data-composition-variables` declare
+   exactamente los slots del catalogo mas las claves reservadas de `claves_reservadas()`.
+
+**Hallazgo que contradice el brief (medido, no teorico).** El brief pedia UNA plantilla que
+sirviera 1080x1920 y 1920x1080 con maquetacion relativa. La maquetacion ES relativa, pero
+HyperFrames 0.7.90 fija el lienzo con los `data-width/height` ESTATICOS del index.html:
+
+- Sin atributos estaticos, el render sale SIEMPRE 1080x1920 (default portrait), pidan lo que
+  pidan las variables: la sonda vertical "funciono" por coincidencia y la horizontal salio
+  1080x1920 con returncode 0. `verificar_salida` de HF-1 la descarto (`salida_invalida`),
+  exactamente para lo que se diseno.
+- Un script que reescribe los atributos desde las variables es ignorado; la propia CLI avisa
+  que `--width/--height` no cambian el layout ("The runtime lays out the page at the
+  composition's authored dimensions").
+
+**Salida: gemelo horizontal versionado, catalogo intacto.** Cada pieza lleva
+`horizontal/index.html`, derivacion PURA del primario (cambian el lienzo y las dos rutas de
+assets compartidos por `../`; un test regenera la derivacion y exige igualdad exacta, asi que
+no pueden divergir). El catalogo conserva las CINCO entradas del brief apuntando al primario
+9:16. Los `hf_real` horizontales pasan por `pedir_pieza` con un catalogo ad-hoc
+`proyecto + "/horizontal"`.
+
+**Decision PENDIENTE de K para HF-3:** como expresar la orientacion en la ruta de consumo.
+Opciones: (a) HF-3 adopta la convencion `proyecto + "/horizontal"` cuando el destino es 16:9
+(cero cambios de esquema); (b) campo `proyecto_horizontal` en el catalogo (rompe el "cuatro
+campos exactos" de HF-1); (c) esperar a que HyperFrames soporte lienzo por variables y
+retirar los gemelos. Hasta esa decision, nada del pipeline consume el catalogo (sigue
+huerfano) y las cinco entradas sirven el caso vertical, que es la ruta de clips real.
+
+**Desviacion declarada de la regla 5 de centrito-motion (pila de 5 capas).** Una pieza de
+overlay con alfa NO lleva fondo, grade ni grain propios: esas capas las pone el video base
+sobre el que se compone. La pila aplica al render final, no al overlay.
+
+**Verificacion.** Suite `2833 passed, 4 skipped` (+32). Los 12 `hf_real` corridos a mano
+(regla D50.4): 2 de HF-1 + 10 de HF-2 (canario de influencia POR PLANTILLA de D50.5, ambos
+tamanos, duracion natural y mitad). Evidencia visual en `revision/hf-2/`: 10 contact sheets
+de 7 frames (6 repartidos por la duracion + 1 con captions ASS encima) compuestos sobre video
+real de `input/` (tacosjuan 9:16 y clase25 16:9, fondo oscuro y claro), mirados uno por uno.
+La posicion de cada pieza se midio ademas por bounding box del canal alfa: los bloques
+centrados quedan al 50.0% exacto y ninguno invade la banda de captions.

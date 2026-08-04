@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es" data-composition-variables='[
+  {"id":"titulo","type":"string","label":"Titulo de cierre","default":"SIN-VARIABLE-titulo"},
+  {"id":"cta","type":"string","label":"Llamada a la accion","default":"SIN-VARIABLE-cta"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#7C3AED"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#0D0D14"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
+  {"id":"duracion_ms","type":"number","label":"Duracion ms","default":3500},
+  {"id":"fps","type":"number","label":"FPS","default":30},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},
+  {"id":"semilla","type":"number","label":"Semilla","default":0}
+ ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <title>cierre</title>
+    <script src="gsap.min.js"></script>
+    <style>
+      /* Fuente embebida local: Inter variable (SIL OFL 1.1), sin cargas por red. */
+      @font-face {
+        font-family: "Inter";
+        src: url("fonts/InterVariable.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { overflow: hidden; background: transparent; }
+      :root {
+        --primario: #7C3AED;
+        --secundario: #0D0D14;
+        --texto: #FFFFFF;
+        --u: 10.8px;
+        --vh: 19.2px;
+        /* Estructurales de legibilidad: placa oscura y sombra (unicos colores fijos). */
+        --placa: rgba(8, 8, 15, 0.78);
+        --sombra: rgba(0, 0, 0, 0.45);
+      }
+      #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+      .clip { position: absolute; inset: 0; }
+      /* Centro del bloque en ~32% de la altura: fuera de la zona de captions (70-92%). */
+      #zona {
+        position: absolute; left: 0; top: 0; width: 100%; height: 64%;
+        display: grid; place-items: center;
+      }
+      #placa {
+        background: var(--placa);
+        border: 1px solid color-mix(in srgb, var(--secundario) 45%, transparent);
+        border-radius: calc(var(--u) * 2);
+        padding: calc(var(--u) * 3.4) calc(var(--u) * 4.4);
+        max-width: 84%;
+        text-align: center;
+        box-shadow: 0 calc(var(--u) * 0.8) calc(var(--u) * 3) var(--sombra);
+      }
+      #titulo {
+        color: var(--texto);
+        font-weight: 820;
+        font-size: calc(var(--u) * 6.4);
+        line-height: 1.1;
+        letter-spacing: -0.012em;
+        text-wrap: balance;
+        text-shadow: 0 calc(var(--u) * 0.25) calc(var(--u) * 1) var(--sombra);
+      }
+      #cta {
+        display: inline-block;
+        background: var(--primario);
+        color: var(--texto);
+        font-weight: 640;
+        font-size: calc(var(--u) * 3.1);
+        line-height: 1.2;
+        padding: calc(var(--u) * 1.5) calc(var(--u) * 3.4);
+        border-radius: calc(var(--u) * 5);
+        margin-top: calc(var(--u) * 2.4);
+        box-shadow: 0 calc(var(--u) * 0.4) calc(var(--u) * 1.6) var(--sombra);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="pieza" class="clip" data-start="0" data-duration="3.5" data-track-index="1">
+        <div id="zona">
+          <div id="placa">
+            <div id="respira">
+              <div id="titulo">?</div>
+              <div id="cta">?</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var v = window.__hyperframes.getVariables();
+      var W = Number(v.tamano_ancho), H = Number(v.tamano_alto);
+      var FPS = Number(v.fps) || 30, DUR = Number(v.duracion_ms) / 1000;
+      var F = 1 / FPS;
+
+      var root = document.getElementById("root");
+      [document.documentElement, document.body, root].forEach(function (el) {
+        el.style.width = W + "px"; el.style.height = H + "px";
+      });
+      var css = document.documentElement.style;
+      css.setProperty("--u", Math.min(W, H) / 100 + "px");
+      css.setProperty("--vh", H / 100 + "px");
+      css.setProperty("--primario", v.marca_primario);
+      css.setProperty("--secundario", v.marca_secundario);
+      css.setProperty("--texto", v.marca_texto);
+      document.getElementById("pieza").setAttribute("data-duration", String(DUR));
+      document.getElementById("titulo").textContent = String(v.titulo);
+      document.getElementById("cta").textContent = String(v.cta);
+
+      var ENTRA = Math.min(14 * F, DUR * 0.28);
+      var SALE = Math.max(6 * F, ENTRA * 0.65);
+      var STAG = 4 * F;
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.from("#placa", { opacity: 0, y: 32, scale: 0.95, duration: ENTRA, ease: "power3.out" }, 0);
+      tl.from("#titulo", { opacity: 0, y: 20, duration: ENTRA * 0.9, ease: "power3.out" }, STAG);
+      tl.from("#cta", { opacity: 0, scale: 0.8, duration: ENTRA, ease: "back.out(1.5)" }, STAG * 2);
+
+      /* El pulso del CTA es la respiracion de esta pieza: invita sin gritar. */
+      var medio = 16 * F, resto = (DUR - SALE) - (STAG * 2 + ENTRA);
+      var reps = Math.floor(resto / medio) - 1;
+      if (reps % 2 === 0) reps -= 1;
+      if (reps >= 1) {
+        tl.to("#respira", { scale: 1.012, duration: medio, ease: "sine.inOut", yoyo: true, repeat: reps }, STAG * 2 + ENTRA);
+      }
+
+      tl.to("#pieza", { opacity: 0, y: -18, duration: SALE, ease: "power2.in" }, DUR - SALE);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

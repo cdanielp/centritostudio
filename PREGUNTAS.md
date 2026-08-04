@@ -1178,3 +1178,17 @@ namespace privado (emojis incluidos). (P2-B) `SelectedVideoBinding` captura root
 size/mtime en el endpoint y los workers de render y transcribe revalidan con `verify_selected_video_binding`
 antes de FFmpeg/Whisper → retarget de symlink (dentro/fuera), reemplazo, borrado o cambio de ruta abortan
 sin fallback. Los 4 comentarios P2 de la revisión resueltos.
+
+## HF-2 (2026-08-03) - notas del revisor, no bloqueantes, para decidir en HF-3
+
+1. **Fallback CSS vs default de variables.** Los colores de marca viven dos veces en cada
+   plantilla de `motion/`: como default en `data-composition-variables` y como fallback en
+   `:root`. El JS siempre los pisa, pero nada fija la igualdad entre ambos sitios; un rebrand
+   podria dejarlos divergir en silencio. Opcion: test que los compare, o valores neutros en CSS.
+2. **El CI ligero (Actions) no cubre nada de HyperFrames.** `ci/pytest-light.txt` no incluye
+   test_hf2_catalogo.py (ni los tests de HF-1); consistente con el subconjunto de H5, pero es
+   una decision que K deberia tomar explicitamente.
+3. **Orientacion en el catalogo (decision central, detalle en D51).** El gemelo `horizontal/`
+   existe porque HyperFrames 0.7.90 fija el lienzo con atributos estaticos. HF-3 debe elegir:
+   convencion `proyecto + "/horizontal"`, campo nuevo en el catalogo, o esperar soporte de
+   lienzo por variables y retirar los gemelos.

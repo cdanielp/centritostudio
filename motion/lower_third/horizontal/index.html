@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es" data-composition-variables='[
+  {"id":"nombre","type":"string","label":"Nombre","default":"SIN-VARIABLE-nombre"},
+  {"id":"rol","type":"string","label":"Rol o tema","default":"SIN-VARIABLE-rol"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#7C3AED"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#0D0D14"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
+  {"id":"duracion_ms","type":"number","label":"Duracion ms","default":4500},
+  {"id":"fps","type":"number","label":"FPS","default":30},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},
+  {"id":"semilla","type":"number","label":"Semilla","default":0}
+ ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <title>lower third</title>
+    <script src="../gsap.min.js"></script>
+    <style>
+      /* Fuente embebida local: Inter variable (SIL OFL 1.1), sin cargas por red. */
+      @font-face {
+        font-family: "Inter";
+        src: url("../fonts/InterVariable.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { overflow: hidden; background: transparent; }
+      :root {
+        --primario: #7C3AED;
+        --secundario: #0D0D14;
+        --texto: #FFFFFF;
+        --u: 10.8px;
+        --vh: 19.2px;
+        /* Estructurales de legibilidad: placa oscura y sombra (unicos colores fijos). */
+        --placa: rgba(8, 8, 15, 0.78);
+        --sombra: rgba(0, 0, 0, 0.45);
+      }
+      #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+      .clip { position: absolute; inset: 0; }
+      /* El borde INFERIOR de la banda queda en el 70% de la altura: por ENCIMA de la
+         zona de captions (70-92% medida en HF-2), nunca dentro ni debajo de ella. */
+      #lt {
+        position: absolute;
+        left: 5.5%;
+        bottom: 30%;
+        display: flex;
+        align-items: stretch;
+        max-width: 82%;
+      }
+      #barra {
+        width: calc(var(--u) * 1.3);
+        background: var(--primario);
+        border-radius: calc(var(--u) * 0.4);
+        transform-origin: 50% 100%;
+      }
+      #panel {
+        background: var(--placa);
+        border: 1px solid color-mix(in srgb, var(--secundario) 45%, transparent);
+        border-radius: 0 calc(var(--u) * 1.4) calc(var(--u) * 1.4) 0;
+        padding: calc(var(--u) * 2) calc(var(--u) * 3.2);
+        margin-left: calc(var(--u) * 0.9);
+        box-shadow: 0 calc(var(--u) * 0.5) calc(var(--u) * 2) var(--sombra);
+      }
+      #nombre {
+        color: var(--texto);
+        font-weight: 730;
+        font-size: calc(var(--u) * 4.3);
+        line-height: 1.12;
+        letter-spacing: -0.01em;
+      }
+      #rol {
+        color: color-mix(in srgb, var(--texto) 74%, transparent);
+        font-weight: 470;
+        font-size: calc(var(--u) * 2.9);
+        line-height: 1.2;
+        margin-top: calc(var(--u) * 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+      <div id="pieza" class="clip" data-start="0" data-duration="4.5" data-track-index="1">
+        <div id="lt">
+          <div id="barra"></div>
+          <div id="panel">
+            <div id="respira">
+              <div id="nombre">?</div>
+              <div id="rol">?</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var v = window.__hyperframes.getVariables();
+      var W = Number(v.tamano_ancho), H = Number(v.tamano_alto);
+      var FPS = Number(v.fps) || 30, DUR = Number(v.duracion_ms) / 1000;
+      var F = 1 / FPS;
+
+      var root = document.getElementById("root");
+      [document.documentElement, document.body, root].forEach(function (el) {
+        el.style.width = W + "px"; el.style.height = H + "px";
+      });
+      var css = document.documentElement.style;
+      css.setProperty("--u", Math.min(W, H) / 100 + "px");
+      css.setProperty("--vh", H / 100 + "px");
+      css.setProperty("--primario", v.marca_primario);
+      css.setProperty("--secundario", v.marca_secundario);
+      css.setProperty("--texto", v.marca_texto);
+      document.getElementById("pieza").setAttribute("data-duration", String(DUR));
+      document.getElementById("nombre").textContent = String(v.nombre);
+      document.getElementById("rol").textContent = String(v.rol);
+
+      var ENTRA = Math.min(14 * F, DUR * 0.28);
+      var SALE = Math.max(6 * F, ENTRA * 0.65);
+      var STAG = 4 * F;
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.from("#barra", { scaleY: 0, opacity: 0, duration: ENTRA * 0.8, ease: "power3.out" }, 0);
+      tl.from("#panel", { x: -36, opacity: 0, duration: ENTRA, ease: "power3.out" }, STAG);
+      tl.from("#nombre", { x: -16, opacity: 0, duration: ENTRA * 0.8, ease: "power2.out" }, STAG * 2);
+      tl.from("#rol", { x: -16, opacity: 0, duration: ENTRA * 0.8, ease: "power2.out" }, STAG * 3);
+
+      /* Respiracion sinusoidal en wrapper propio (no pisa la entrada del panel). */
+      var medio = 22 * F, resto = (DUR - SALE) - ENTRA;
+      var reps = Math.floor(resto / medio) - 1;
+      if (reps % 2 === 0) reps -= 1;
+      if (reps >= 1) {
+        tl.to("#respira", { scale: 1.006, duration: medio, ease: "sine.inOut", yoyo: true, repeat: reps }, ENTRA);
+      }
+
+      tl.to("#pieza", { x: -28, opacity: 0, duration: SALE, ease: "power2.in" }, DUR - SALE);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

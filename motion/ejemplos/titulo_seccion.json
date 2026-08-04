@@ -1,0 +1,16 @@
+{
+  "contrato": 1,
+  "pieza_id": "ejemplo_titulo_seccion",
+  "plantilla": { "nombre": "titulo_seccion", "version": "1.0.0" },
+  "duracion_ms": 2000,
+  "fps": 30,
+  "tamano": { "ancho": 1080, "alto": 1920 },
+  "texto": {
+    "titulo": "Paso 2. Conectar los nodos del workflow"
+  },
+  "marca": { "primario": "#7C3AED", "secundario": "#0D0D14", "texto": "#FFFFFF" },
+  "posicion": { "modo": "cuadro_completo" },
+  "fit": "nativo",
+  "audio": false,
+  "semilla": 0
+}

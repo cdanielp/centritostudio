@@ -1,0 +1,17 @@
+{
+  "contrato": 1,
+  "pieza_id": "ejemplo_hook",
+  "plantilla": { "nombre": "hook", "version": "1.0.0" },
+  "duracion_ms": 2500,
+  "fps": 30,
+  "tamano": { "ancho": 1080, "alto": 1920 },
+  "texto": {
+    "kicker": "Tutorial ComfyUI",
+    "titulo": "Entrena tu LoRA de personaje en 20 minutos"
+  },
+  "marca": { "primario": "#7C3AED", "secundario": "#0D0D14", "texto": "#FFFFFF" },
+  "posicion": { "modo": "cuadro_completo" },
+  "fit": "nativo",
+  "audio": false,
+  "semilla": 0
+}

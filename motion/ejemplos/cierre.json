@@ -1,0 +1,17 @@
+{
+  "contrato": 1,
+  "pieza_id": "ejemplo_cierre",
+  "plantilla": { "nombre": "cierre", "version": "1.0.0" },
+  "duracion_ms": 3500,
+  "fps": 30,
+  "tamano": { "ancho": 1080, "alto": 1920 },
+  "texto": {
+    "titulo": "Domina ComfyUI en serio",
+    "cta": "Únete al Skool de Prompt Models Studio"
+  },
+  "marca": { "primario": "#7C3AED", "secundario": "#0D0D14", "texto": "#FFFFFF" },
+  "posicion": { "modo": "cuadro_completo" },
+  "fit": "nativo",
+  "audio": false,
+  "semilla": 0
+}

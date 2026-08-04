@@ -67,7 +67,8 @@ FORBIDDEN_FIGURES = [
 # Baseline vigente de la suite. UN solo sitio: subirlo aqui y en los tres documentos.
 # 2026-08-03: 2410 -> 2502 (D45 SRT +76, D46 procedencia +16).
 # 2026-08-03: 2502 -> 2801 (S39 +36, S40 +23, S41 +57, D50 HF-1 contrato de piezas +183).
-BASELINE_SUITE = "2801 passed"
+# 2026-08-03: 2801 -> 2833 (D51 HF-2 catalogo de plantillas +32).
+BASELINE_SUITE = "2833 passed"
 BASELINE_SKIPS = "4 skipped"
 H3_PENDING_MARKERS = ["PENDIENTE MERGE", "H3 pendiente", "H3 no iniciad", "H3 sin iniciar"]
 NVENC_OPEN_RX = re.compile(r"NVENC[^\n]{0,80}(PR abierto|abierto y no mergeado)", re.IGNORECASE)

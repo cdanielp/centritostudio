@@ -1,0 +1,17 @@
+{
+  "contrato": 1,
+  "pieza_id": "ejemplo_dato_destacado",
+  "plantilla": { "nombre": "dato_destacado", "version": "1.0.0" },
+  "duracion_ms": 3000,
+  "fps": 30,
+  "tamano": { "ancho": 1080, "alto": 1920 },
+  "texto": {
+    "cifra": "87%",
+    "etiqueta": "menos tiempo de render al activar NVENC"
+  },
+  "marca": { "primario": "#7C3AED", "secundario": "#0D0D14", "texto": "#FFFFFF" },
+  "posicion": { "modo": "cuadro_completo" },
+  "fit": "nativo",
+  "audio": false,
+  "semilla": 0
+}
