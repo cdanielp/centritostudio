@@ -80,3 +80,50 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   proposito, o sea que ninguna se sirve de cache): es exactamente el fallo raro por frame que
   ya documento el addendum D52.4, donde `titulo_seccion` fallo una de seis. Queda anotado en
   DEUDAS porque desmiente que "el render ya es reproducible" sea cierto sin matices.
+
+
+## Sesion 2: paleta real de marca, carril vertical y coherencia de textos
+
+- **14:08 - PASO 1 OK (paleta oficial).** Sustituye a la provisional, que era inventada. Texto
+  `#F5F5F7`, gris separador `#2A2A35`, y UN acento por pieza: rojo `#FF3D3D` en `hook` y
+  `cierre` (donde el video gana o pierde al espectador), cyan `#06B6D4` en `dato_destacado`
+  (exclusivo de cifras), violeta `#6C3AED` en `lower_third` y `titulo_seccion` (lo que es
+  literalmente una etiqueta). Nunca los tres en la misma pieza. Aplicada en las diez plantillas
+  (el default declarado Y el fallback CSS, que un test de D51.1 exige que coincidan) y en
+  `motion_capa.MARCA` mas `ACENTO_POR_PLANTILLA`. El fondo de marca `#0A0A0F` NO viaja en el
+  contrato: ya es la placa estructural `rgba(8, 8, 15, 0.78)`, que no se toco. Las cinco
+  plantillas suben de version, que es lo unico que invalida la cache.
+- **14:13 - PASO 2 OK (la medicion que manda).** `revision/hf-3/medir_carril.py` pasa los 34
+  clips reales del proyecto por el planificador sin renderizar nada. La primera pasada dio 19
+  ceros y los 19 eran por falta del CSV de trayectoria: se estaba midiendo la ausencia del dato
+  y no la regla. `revision/hf-3/generar_trayectorias.py` genero las 11 que faltaban de forma no
+  destructiva (el MP4 reencuadrado va a un temporal y se descarta; lo unico que queda es el
+  CSV). Con el dato real, los verticales en cero eran 61.9%.
+- **14:17 - PASO 3 OK (banda superior).** Con la cara en `center` o `bottom`, la pieza sube a la
+  banda 20-35% del alto en vez de omitirse. CONFIRMADO CON RENDER REAL
+  (`revision/hf-3/confirmar_banda.py`): el `hook`, que es la pieza mas alta, ocupa nativamente
+  60.9-68.6% del alto y tras el desplazamiento de -653 px cae en 26.9-34.6%. No pisa la zona
+  segura de UI de TikTok (10% superior) ni la franja de captions (70-92%), y queda por encima
+  del borde de una cara centrada. Verticales en cero: 61.9% -> 47.6%. Los que siguen en cero
+  son los 10 que no tienen dato de cara, no los que la tienen mal colocada.
+- **14:22 - PASO 4 OK (coherencia de textos).** El `cierre` deja de repetir el titulo del hook:
+  manda la llamada a la accion y el secundario sale de lo ultimo que se habla. `titulo_seccion`
+  entra en juego para rellenar huecos de mas de 20 s en clips de mas de 30 s, titulando el
+  tramo donde el hablante cambia de tema (detectado por PAUSA entre tramos, sin IA).
+  `dato_destacado` se coloca en una VENTANA dentro de su tramo y no clavado al milisegundo de
+  inicio: ahi es donde se perdia en el clip de 56.8 s que tenia dos cifras habladas, las dos
+  dentro del `lower_third`. Guarda de sustancia minima para no titular con esquirlas como
+  "futuro,". Todo determinista y probado sin renderizar.
+- **14:25 - PASO 5 OK (tres deudas chicas).** 5.1 el umbral del `cierre` pasa de 6000 a 6700 ms,
+  que es donde la aritmetica lo permite, con el calculo escrito en el propio comentario.
+  5.2 `test_render_reproducible_por_plantilla` escribe a disco, ANTES de fallar, cuantos frames
+  difieren sobre el total, el delta medio y el maximo sobre 255 y los indices afectados; luego
+  reintenta UNA vez y, si el reintento pasa, el test pasa pero el informe se queda escrito.
+  5.3 gate nuevo en el CI (`motion_sello.py` + `tests/test_hf3_sello_motion.py`): sella el
+  contenido de cada carpeta de `motion/` en `motion/versiones.lock.json` y falla si el
+  contenido cambio sin subir la version. Probado a mano editando una plantilla sin tocar su
+  version: truena con el mensaje que dice que archivo cambiar.
+- **14:35 - PASO 6 OK (demos nuevas).** Cache borrada antes de renderizar (trampa T6).
+  `<LAB>\demo\06_PALETA_MARCA_VERTICAL.mp4` (7 piezas, antes 3) y
+  `<LAB>\demo\07_PALETA_MARCA_HORIZONTAL.mp4` (6 piezas, antes 4), con sus hojas de contacto de
+  7 frames apuntadas a las piezas. Mismos clips que 01 y 02 para poder comparar lado a lado.
