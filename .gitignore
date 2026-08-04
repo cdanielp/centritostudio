@@ -59,3 +59,4 @@ workflows/
 *.swp
 revision/inventario/frames/pantalla_*
 revision/hf-3/reproducibilidad/
+output/.previsualizaciones/

@@ -276,3 +276,71 @@ def test_si_el_reintento_acierta_se_usa(monkeypatch, tmp_path):
     monkeypatch.setattr(tl, "TRANSCRIPTS", tmp_path)
     salida = tl.pedir_textos_para(HUECOS, DUR, stem="clip", transcripcion=TRANSCRIPCION)
     assert salida == {0: "La desercion escolar"}
+
+
+# ── Previsualizacion (punto 3) ───────────────────────────────────────────────
+
+
+def _pieza_previs(**kw):
+    base = {
+        "plantilla": "titulo_seccion",
+        "t0_ms": 30000,
+        "t1_ms": 32000,
+        "texto": {"titulo": "Los traslados cuestan"},
+        "banda": "centro",
+    }
+    return {**base, **kw}
+
+
+def test_la_clave_de_previsualizacion_cambia_con_lo_que_se_ve():
+    import studio_motion as sm
+
+    base = sm._clave_previsualizacion(_pieza_previs(), 1080, 1920, 30, "1.0.0")
+    for distinto in (
+        _pieza_previs(texto={"titulo": "Otro texto"}),
+        _pieza_previs(t0_ms=31000, t1_ms=33000),  # otro instante, otro fotograma debajo
+        _pieza_previs(banda="superior"),
+        _pieza_previs(plantilla="cierre"),
+    ):
+        assert sm._clave_previsualizacion(distinto, 1080, 1920, 30, "1.0.0") != base
+
+
+def test_la_clave_cambia_con_la_version_de_la_plantilla():
+    """Si la plantilla se edita y sube de version, la vista guardada ya no vale."""
+    import studio_motion as sm
+
+    a = sm._clave_previsualizacion(_pieza_previs(), 1080, 1920, 30, "1.0.0")
+    b = sm._clave_previsualizacion(_pieza_previs(), 1080, 1920, 30, "1.0.1")
+    assert a != b
+
+
+def test_la_clave_es_estable_para_la_misma_pieza():
+    """Es lo que hace que volver a pedir una vista no cueste nada."""
+    import studio_motion as sm
+
+    a = sm._clave_previsualizacion(_pieza_previs(), 1080, 1920, 30, "1.0.0")
+    b = sm._clave_previsualizacion(_pieza_previs(), 1080, 1920, 30, "1.0.0")
+    assert a == b
+
+
+def test_una_pieza_invalida_no_se_previsualiza():
+    """La vista pasa por el MISMO validador que el guardado: no hay puerta trasera."""
+    import studio_motion as sm
+
+    with pytest.raises(sm.StudioMotionError):
+        sm.previsualizar("no_existe_este_clip", _pieza_previs())
+
+
+def test_una_pieza_que_no_es_objeto_se_rechaza():
+    import studio_motion as sm
+
+    with pytest.raises(sm.StudioMotionError, match="objeto"):
+        sm.previsualizar("cualquiera", "no soy un objeto")
+
+
+def test_la_previsualizacion_no_vive_en_el_repo():
+    """Las imagenes son artefactos: van a output/, que esta en .gitignore."""
+    import studio_motion as sm
+
+    assert sm.PREVIS_DIR.name.startswith(".")
+    assert "output" in sm.PREVIS_DIR.parts

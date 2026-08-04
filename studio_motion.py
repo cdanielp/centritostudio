@@ -163,6 +163,124 @@ def ver_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> 
     return vista
 
 
+PREVIS_DIR = ROOT / "output" / ".previsualizaciones"
+PREVIS_ALTO = 420  # suficiente para leer el letrero, pequeno para que viaje rapido al navegador
+TIMEOUT_PREVIS_S = 180
+
+
+def _clave_previsualizacion(pieza: dict, ancho: int, alto: int, fps: int, version: str) -> str:
+    """sha256 de todo lo que cambia la imagen: pieza, tamano, fps y version de plantilla.
+
+    Es la MISMA idea que la clave de cache de las piezas: si K no toco nada, la vista sale de
+    disco y no se renderiza otra vez. Y el instante SI entra, porque el fotograma del video de
+    debajo cambia con el.
+    """
+    import hashlib  # noqa: PLC0415
+
+    payload = json.dumps(
+        {
+            "plantilla": pieza.get("plantilla"),
+            "t0_ms": pieza.get("t0_ms"),
+            "texto": pieza.get("texto"),
+            "banda": pieza.get("banda"),
+            "tamano": [ancho, alto],
+            "fps": fps,
+            "version": version,
+            "alto_previs": PREVIS_ALTO,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def previsualizar(clip: str, pieza: object) -> Path:
+    """PNG del fotograma del video con la pieza compuesta encima, en su instante de entrada.
+
+    Bajo demanda y con cache: la vista de una pieza que no cambio sale de disco. Se compone con
+    los MISMOS modulos que el render (`hyperframes.pedir_pieza` y el desplazamiento de banda de
+    `motion_capa`), asi que lo que K ve aqui es lo que va a salir en el video, no una maqueta.
+    """
+    if not isinstance(pieza, dict):
+        raise StudioMotionError("la pieza debe ser un objeto")
+    mp4 = resolver_clip(clip)
+    duracion_ms, orientacion, fps = _meta_del_clip(mp4)
+    versiones = motion_capa.versiones_del_catalogo(CATALOGO)
+    plantilla = pieza.get("plantilla")
+    if plantilla not in versiones:
+        raise StudioMotionError(f"plantilla '{plantilla}' no esta en el catalogo")
+
+    resultado = me.validar_plan(
+        {"version": me.VERSION_SIDECAR, "piezas": [pieza]},
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        catalogo=set(versiones),
+    )
+    if not resultado.ok:
+        raise StudioMotionError(" | ".join(resultado.problemas))
+    objeto = resultado.plan.piezas[0]
+
+    import core  # noqa: PLC0415
+
+    info = core.get_video_info(mp4)
+    clave = _clave_previsualizacion(pieza, info["width"], info["height"], fps, versiones[plantilla])
+    destino = PREVIS_DIR / f"{clave}.png"
+    if destino.is_file():
+        return destino
+    PREVIS_DIR.mkdir(parents=True, exist_ok=True)
+    return _componer_previsualizacion(mp4, objeto, info, fps, versiones[plantilla], destino)
+
+
+def _componer_previsualizacion(
+    mp4: Path, objeto, info: dict, fps: int, version: str, destino: Path
+) -> Path:
+    """Renderiza la pieza, saca el fotograma del video y los compone. Lanza si algo falla."""
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from hyperframes import pedir_pieza  # noqa: PLC0415
+    from hyperframes.catalogo import Catalogo  # noqa: PLC0415
+
+    ancho, alto = info["width"], info["height"]
+    dato = motion_capa.contrato_de_pieza(
+        objeto, version=version, ancho=ancho, alto=alto, fps=fps, marca=motion_capa.MARCA
+    )
+    catalogo = Catalogo.desde_archivo(CATALOGO, motion_capa.orientacion_de(ancho, alto))
+    r = pedir_pieza(
+        dato,
+        destino=(ancho, alto),
+        catalogo=catalogo,
+        raiz_cache=ROOT / "output" / ".piezas",
+        timeout_s=TIMEOUT_PREVIS_S,
+    )
+    if r.razon_fallo is not None:
+        raise StudioMotionError(f"no se pudo renderizar la pieza: {r.razon_fallo.value}")
+
+    # Instante del fotograma: el MEDIO de la pieza, no su entrada, porque en la entrada la
+    # animacion todavia esta apareciendo y el letrero sale a medias.
+    medio_pieza = objeto.duracion_ms * 0.0006
+    medio_video = min(
+        (objeto.t0_ms + objeto.duracion_ms / 2) / 1000.0, float(info["duration"]) - 0.1
+    )
+    desplazamiento = motion_capa.desplazamiento_de_banda(objeto.banda, alto) or (0, 0)
+    with tempfile.TemporaryDirectory(prefix="hf3_previs_") as tmp:
+        capa = Path(tmp) / "capa.png"
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(r.ruta_mov), "-ss", f"{medio_pieza:.3f}",
+             "-frames:v", "1", "-vf", "format=rgba", "-pix_fmt", "rgba", str(capa)],
+            check=True, timeout=TIMEOUT_PREVIS_S,
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", f"{max(medio_video, 0):.3f}", "-i", str(mp4),
+             "-i", str(capa), "-filter_complex",
+             f"[0:v][1:v]overlay={desplazamiento[0]}:{desplazamiento[1]},scale=-2:{PREVIS_ALTO}",
+             "-frames:v", "1", str(destino)],
+            check=True, timeout=TIMEOUT_PREVIS_S,
+        )
+    return destino
+
+
 def guardar_plan(clip: str, piezas: object) -> dict:
     """Valida y guarda el plan editado. Devuelve la vista nueva o lanza con TODOS los problemas.
 
@@ -197,7 +315,9 @@ __all__ = [
     "StudioMotionError",
     "catalogo_para_ui",
     "descartar_edicion",
+    "PREVIS_DIR",
     "guardar_plan",
+    "previsualizar",
     "resolver_clip",
     "ver_plan",
 ]

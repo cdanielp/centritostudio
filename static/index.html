@@ -787,7 +787,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .me-badge.editado{color:var(--purple);border-color:var(--purple)}
 .me-lista{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .me-pieza{border:var(--border);border-radius:8px;padding:10px;display:grid;
-  grid-template-columns:130px 90px 1fr auto;gap:8px;align-items:start}
+  grid-template-columns:130px 90px 1fr 120px auto;gap:8px;align-items:start}
+.me-previs{display:flex;flex-direction:column;gap:4px;align-items:center}
+.me-previs img{width:110px;border-radius:5px;border:var(--border);display:block}
+.me-previs button{font-size:11px;padding:3px 8px}
+.me-previs .msg{font-size:10px;margin:0;text-align:center}
 .me-pieza b{font-size:12px;font-weight:500}
 .me-pieza input,.me-pieza select,.me-anadir input,.me-anadir select{width:100%;
   background:var(--bg);color:var(--text);border:var(--border);border-radius:6px;
@@ -2532,6 +2536,9 @@ function meRender() {
              oninput="meMover(${i},this.value)" title="Entra en el milisegundo">
         <div class="me-sub">de ${dur} ms</div></div>
       <div class="me-slots">${slots}</div>
+      <div class="me-previs" id="me-previs-${i}">
+        <button class="btn secondary" onclick="previsualizarPieza(${i})">Previsualizar</button>
+      </div>
       <button class="btn secondary" onclick="meBorrar(${i})">Borrar</button>
     </div>`;
   }).join('') || '<div class="msg">Este clip no lleva ningun letrero.</div>';
@@ -2575,6 +2582,32 @@ function anadirPieza() {
   });
   mePlan.piezas.sort((a, b) => a.t0_ms - b.t0_ms);
   meRender();
+}
+
+// La vista se genera BAJO DEMANDA, no al abrir: son varios segundos por pieza la primera vez.
+// El backend cachea por contenido, asi que volver a pedir la misma pieza es instantaneo.
+async function previsualizarPieza(i) {
+  const celda = document.getElementById('me-previs-' + i);
+  if (!celda || !mePlan) return;
+  celda.innerHTML = '<div class="msg">Generando...</div>';
+  try {
+    const res = await fetch(`/api/motion/previsualizar/${encodeURIComponent(mePlan.clip)}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pieza: mePlan.piezas[i]}),
+    });
+    if (!res.ok) {
+      let motivo = 'no disponible';
+      try { motivo = (await res.json()).detail || motivo; } catch (e) { /* respuesta sin JSON */ }
+      throw new Error(motivo);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    celda.innerHTML = `<img src="${url}" alt="Previsualizacion de la pieza ${i + 1}">
+      <button class="btn secondary" onclick="previsualizarPieza(${i})">Actualizar</button>`;
+  } catch (e) {
+    // La previsualizacion es un extra: si falla, el editor sigue sirviendo igual.
+    celda.innerHTML = `<div class="msg err">${escHtml(String(e.message || e))}</div>
+      <button class="btn secondary" onclick="previsualizarPieza(${i})">Reintentar</button>`;
+  }
 }
 
 async function guardarPlanLetreros() {

@@ -1133,6 +1133,24 @@ def motion_descartar_plan(clip: str):
         raise HTTPException(500, "No se pudo descartar la edicion.") from None
 
 
+@app.post("/api/motion/previsualizar/{clip}")
+def motion_previsualizar(clip: str, cuerpo: dict = Body(...)):
+    """PNG del fotograma con la pieza compuesta encima, en su instante.
+
+    Bajo demanda y con cache. Si falla, el editor sigue funcionando sin la vista: por eso el
+    error sale como 400 o 503 con motivo y no como un 500 mudo.
+    """
+    import studio_motion  # noqa: PLC0415
+
+    try:
+        ruta = studio_motion.previsualizar(clip, cuerpo.get("pieza"))
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(503, "No se pudo generar la previsualizacion.") from None
+    return FileResponse(ruta, media_type="image/png")
+
+
 @app.get("/api/motion/catalogo")
 def motion_catalogo():
     """Plantillas disponibles con su duracion fija y sus slots de texto."""
