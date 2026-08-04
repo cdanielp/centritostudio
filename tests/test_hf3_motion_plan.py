@@ -194,7 +194,13 @@ def test_dato_destacado_arranca_al_inicio_del_tramo_con_cifra():
 def test_si_el_primer_tramo_con_cifra_no_cabe_se_prueba_el_siguiente():
     """La regla habla de 'algun tramo': quedarse en el primero la dejaria practicamente muerta,
     porque los primeros segundos casi siempre los ocupa el hook."""
-    plan = _plan(30000, tramos=_tramos((500, "el 10% inicial"), (14000, "y luego 55%")))
+    plan = _plan(
+        30000,
+        tramos=_tramos(
+            (500, "el 10% inicial ya era mucho"),
+            (14000, "luego subio hasta el 55% del total"),
+        ),
+    )
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms == 14000
 
@@ -404,7 +410,8 @@ def test_el_cierre_no_repite_el_titulo_del_hook():
 def test_el_secundario_del_cierre_sale_de_lo_ultimo_que_se_dice():
     plan = _plan(20000, tramos=_tramos((2000, "empieza"), (15000, "y aqui termina la idea")))
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
-    assert cierre.texto["cta"] == "y aqui termina la idea"
+    # La "y" inicial se cae: un letrero no arranca colgando de la frase anterior.
+    assert cierre.texto["cta"] == "aqui termina la idea"
 
 
 def test_sin_tramos_el_secundario_del_cierre_va_vacio_y_no_se_inventa():
@@ -482,7 +489,7 @@ def test_el_relleno_prefiere_el_tramo_que_llega_tras_una_pausa_larga():
     plan = _plan(45000, tramos=tramos)
     secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
     assert secciones
-    assert secciones[0].texto["titulo"] == "y aqui empieza el tema nuevo"
+    assert secciones[0].texto["titulo"] == "aqui empieza el tema nuevo"
 
 
 def test_el_relleno_respeta_la_separacion_y_no_se_encima():
@@ -510,3 +517,102 @@ def test_el_texto_de_seccion_se_condensa_a_una_linea():
     for s in (p for p in plan.piezas if p.plantilla == "titulo_seccion"):
         assert len(s.texto["titulo"]) <= mp.TITULO_SECCION_MAX_CHARS
         assert not s.texto["titulo"].endswith(" ")
+
+
+# ── Titulos que no sean media frase (punto 2) ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("crudo", "esperado"),
+    [
+        # Cabe entero y se lee como una unidad: se deja tal cual.
+        (
+            "La desercion escolar subio, y eso preocupa",
+            "La desercion escolar subio, y eso preocupa",
+        ),
+        # Corte JUSTO ANTES de una conjuncion: la clausula anterior queda entera.
+        ("Es que imaginemonos un Garcia, pues por los traslados", "Es que imaginemonos un Garcia"),
+        # No puede EMPEZAR por preposicion.
+        ("de un Garcia con una vision", "un Garcia con una vision"),
+        # No puede ACABAR colgando de una conjuncion.
+        ("desarrollo y con preparatorias que", "desarrollo y con preparatorias"),
+        # Ni cortando ni recortando sale nada de 12 a 46: se omite.
+        ("con secundarias que tenga todas las condiciones", ""),
+        # Demasiado corto para decir nada.
+        ("Por que?", ""),
+        ("", ""),
+    ],
+)
+def test_condensar_en_limite_de_clausula(crudo, esperado):
+    assert mp.condensar_clausula(crudo, mp.TITULO_SECCION_MAX_CHARS) == esperado
+
+
+def test_el_fragmento_nunca_empieza_ni_acaba_por_palabra_debil():
+    """Barrido: ninguna salida del condensador puede colgar por ninguno de los dos extremos."""
+    frases = [
+        "y con preparatorias que tengan todas las condiciones para el desarrollo",
+        "de un Garcia con una vision de futuro y con bienestar",
+        "porque un dato, la desercion escolar del ciclo del 2023 al 2024",
+        "pues por los traslados, que son larguisimos y muy caros",
+        "sabemos que eres de Garcia, cierto? y pues bueno, dandole la",
+    ]
+    for frase in frases:
+        for maximo in (28, 46):
+            salida = mp.condensar_clausula(frase, maximo)
+            if not salida:
+                continue
+            palabras = salida.split()
+            assert palabras[0].lower() not in mp.ARRANQUE_PROHIBIDO, (frase, maximo, salida)
+            assert palabras[-1].strip(".,;:!?").lower() not in mp.ARRANQUE_PROHIBIDO, (
+                frase, maximo, salida
+            )
+            assert mp.TEXTO_MINIMO_CHARS <= len(salida) <= maximo
+
+
+def test_si_ningun_tramo_del_hueco_es_titulable_no_se_coloca_nada():
+    """Calidad por encima de cobertura: mejor sin letrero que con media frase."""
+    basura = [mp.Tramo(t, t + 2400, "y que con las de la y por el") for t in range(0, 54000, 2500)]
+    plan = _plan(56790, tramos=basura)
+    assert "titulo_seccion" not in _nombres(plan)
+    assert _motivos(plan)["titulo_seccion"] == mp.MOTIVO_SIN_TRAMO
+
+
+def test_si_el_tramo_preferido_no_es_titulable_se_prueba_el_siguiente():
+    tramos = [
+        mp.Tramo(0, 3000, "arranque limpio del clip que dura un rato"),
+        mp.Tramo(9000, 12000, "y que de la con las"),  # tras pausa, pero intitulable
+        mp.Tramo(12100, 20000, "Los traslados cuestan mucho dinero"),
+        mp.Tramo(20100, 45000, "y siguen subiendo cada ano sin parar"),
+    ]
+    plan = _plan(50000, tramos=tramos)
+    secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
+    assert secciones
+    assert secciones[0].texto["titulo"] == "Los traslados cuestan mucho dinero"
+
+
+def test_el_secundario_del_cierre_usa_la_misma_guarda():
+    """Si el ultimo tramo no da clausula limpia, se busca hacia atras; si no, va vacio."""
+    plan = _plan(20000, tramos=[mp.Tramo(2000, 5000, "Los traslados cuestan dinero"),
+                                mp.Tramo(14000, 16000, "de la que con")])
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert cierre.texto["cta"] == "Los traslados cuestan dinero"
+
+
+def test_el_secundario_del_cierre_va_vacio_si_nada_es_titulable():
+    plan = _plan(20000, tramos=[mp.Tramo(2000, 5000, "de la que con y")])
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert cierre.texto["cta"] == ""
+
+
+def test_la_etiqueta_del_dato_tambien_pasa_por_la_guarda():
+    plan = _plan(30000, tramos=_tramos((9000, "y el costo subio un 42% este ano")))
+    dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
+    assert dato.texto["etiqueta"] == "el costo subio un 42% este ano"
+    assert len(dato.texto["etiqueta"]) <= mp.DATO_ETIQUETA_MAX_CHARS
+
+
+def test_si_la_cifra_vive_en_un_tramo_intitulable_el_dato_se_omite_con_su_motivo():
+    """Hay cifra, pero no hay forma de etiquetarla sin partir la frase."""
+    plan = _plan(30000, tramos=_tramos((9000, "con el 42% y de")))
+    assert "dato_destacado" not in _nombres(plan)
+    assert _motivos(plan)["dato_destacado"] == mp.MOTIVO_ETIQUETA_SUCIA

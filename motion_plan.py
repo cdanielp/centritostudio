@@ -78,6 +78,45 @@ CIERRE_SECUNDARIO_MAX_CHARS = 28
 # la frase, no un titulo: como letrero no dice nada y encima queda raro. Se exige un minimo de
 # sustancia y, si el tramo elegido no lo alcanza, se busca otro.
 TEXTO_MINIMO_CHARS = 12
+# La etiqueta del dato acompana a una cifra grande; con mas texto compite con ella.
+DATO_ETIQUETA_MAX_CHARS = 38
+
+# Donde SI se puede cortar una frase sin que suene partida.
+PUNTUACION_CLAUSULA = ".,;:!?"
+# Conjunciones que abren clausula: cortar JUSTO ANTES de una deja la anterior entera.
+CONJUNCIONES = frozenset(
+    {"y", "e", "o", "u", "pero", "porque", "aunque", "que", "cuando", "si", "mientras", "pues"}
+)
+# Ademas de las conjunciones, un fragmento tampoco puede arrancar por preposicion: "de un
+# Garcia con una vision" empieza colgando de la frase anterior.
+PREPOSICIONES = frozenset(
+    {
+        "a",
+        "ante",
+        "bajo",
+        "con",
+        "contra",
+        "de",
+        "desde",
+        "en",
+        "entre",
+        "hacia",
+        "hasta",
+        "para",
+        "por",
+        "segun",
+        "sin",
+        "sobre",
+        "tras",
+        "del",
+        "al",
+    }
+)
+ARRANQUE_PROHIBIDO = CONJUNCIONES | PREPOSICIONES
+# Los articulos SI pueden abrir un letrero ("La desercion escolar subio") pero NO cerrarlo:
+# "las que de la" deja la frase colgando igual que una preposicion.
+ARTICULOS = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
+FINAL_PROHIBIDO = ARRANQUE_PROHIBIDO | ARTICULOS
 
 # Mayor a menor. Cuando dos piezas no pueden convivir, cae la de MENOR prioridad.
 PRIORIDAD = ("hook", "cierre", "lower_third", "dato_destacado")
@@ -127,6 +166,7 @@ _CIFRA = re.compile(r"[$€]?\s?\d+(?:[.,]\d+)*\s?%?")
 MOTIVO_FUERA_DE_CLIP = "no_cabe_en_el_clip"
 MOTIVO_SIN_AIRE = "sin_separacion_minima"
 MOTIVO_SIN_CIFRA = "ningun_tramo_trae_cifra"
+MOTIVO_ETIQUETA_SUCIA = "la_cifra_esta_en_un_tramo_que_no_da_etiqueta_limpia"
 MOTIVO_CLIP_CORTO = "clip_demasiado_corto"
 MOTIVO_SIN_NOMBRE = "sin_nombre_configurado"
 MOTIVO_SIN_TITULO = "sin_titulo_del_clipper"
@@ -277,6 +317,8 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
         dato = _candidata_dato(tramos)
         if dato is None:
             fuera.append(Omision("dato_destacado", MOTIVO_SIN_CIFRA))
+        elif isinstance(dato, str):
+            fuera.append(Omision("dato_destacado", dato))
         else:
             props.append(dato)
     else:
@@ -287,13 +329,92 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
     return props, fuera
 
 
-def _condensar(texto: str, maximo: int = TITULO_SECCION_MAX_CHARS) -> str:
-    """Texto de un tramo listo para una placa de una linea. Puro y sin puntos suspensivos."""
+def _sin_tilde(palabra: str) -> str:
+    """Minusculas y sin diacriticos, para comparar `aunque` con `Aunque` y `si` con `si`."""
+    bajo = palabra.lower()
+    for con, sin in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ü", "u")):
+        bajo = bajo.replace(con, sin)
+    return bajo
+
+
+def _palabras(texto: str) -> list[str]:
+    return [w for w in re.split(r"\s+", " ".join((texto or "").split())) if w]
+
+
+def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS) -> str:
+    """Fragmento de texto que se lee como una frase entera, o "" si no lo hay.
+
+    Cortar por palabras a N caracteres producia letreros como "con secundarias que tenga
+    todas": media oracion, que se lee peor que no poner nada. Aqui el corte solo cae en un
+    LIMITE DE CLAUSULA (puntuacion o antes de una conjuncion), el fragmento no puede EMPEZAR
+    por conjuncion ni preposicion, y si nada de eso da un fragmento de tamano razonable se
+    devuelve vacio para que la pieza se omita. Calidad por encima de cobertura.
+    """
     limpio = " ".join((texto or "").split())
+    if not limpio:
+        return ""
+    for candidato in _candidatos_de_clausula(limpio, maximo):
+        recortado = _quitar_arranque_debil(candidato).rstrip(" " + PUNTUACION_CLAUSULA)
+        if not minimo <= len(recortado) <= maximo:
+            continue
+        if _termina_colgando(recortado):
+            continue
+        return recortado
+    return ""
+
+
+def _termina_colgando(fragmento: str) -> bool:
+    """True si la ultima palabra deja la frase en el aire ("...y con preparatorias que").
+
+    Es el espejo de `_quitar_arranque_debil`: un letrero que ACABA en conjuncion o preposicion
+    se lee tan partido como uno que empieza por ella. Aqui no se recorta, se descarta el
+    candidato entero y se prueba uno mas corto.
+    """
+    palabras = _palabras(fragmento)
+    if not palabras:
+        return True
+    return _sin_tilde(palabras[-1].strip(PUNTUACION_CLAUSULA)) in FINAL_PROHIBIDO
+
+
+def _candidatos_de_clausula(limpio: str, maximo: int) -> list[str]:
+    """Prefijos que terminan en limite de clausula, del mas largo al mas corto.
+
+    El mas largo primero porque un letrero que dice mas es mejor, siempre que quepa y siga
+    siendo una unidad de sentido.
+    """
+    palabras = _palabras(limpio)
+    cortes: list[str] = []
     if len(limpio) <= maximo:
-        return limpio
-    corte = limpio[:maximo].rsplit(" ", 1)[0]
-    return corte or limpio[:maximo]
+        cortes.append(limpio)
+    acumulado: list[str] = []
+    for i, palabra in enumerate(palabras):
+        siguiente = palabras[i + 1] if i + 1 < len(palabras) else None
+        acumulado.append(palabra)
+        parcial = " ".join(acumulado)
+        if len(parcial) > maximo:
+            break
+        termina_en_puntuacion = palabra[-1] in PUNTUACION_CLAUSULA
+        empieza_clausula = (
+            siguiente is not None
+            and _sin_tilde(siguiente.strip(PUNTUACION_CLAUSULA)) in CONJUNCIONES
+        )
+        if termina_en_puntuacion or empieza_clausula:
+            cortes.append(parcial)
+    cortes.sort(key=len, reverse=True)
+    return cortes
+
+
+def _quitar_arranque_debil(fragmento: str) -> str:
+    """Quita conjunciones y preposiciones del principio: un letrero no arranca por 'y' ni 'de'."""
+    palabras = _palabras(fragmento)
+    while palabras and _sin_tilde(palabras[0].strip(PUNTUACION_CLAUSULA)) in ARRANQUE_PROHIBIDO:
+        palabras.pop(0)
+    return " ".join(palabras)
+
+
+def _condensar(texto: str, maximo: int = TITULO_SECCION_MAX_CHARS) -> str:
+    """Compatibilidad: mismo contrato que `condensar_clausula` con el minimo por defecto."""
+    return condensar_clausula(texto, maximo)
 
 
 def _cola_hablada(tramos: list[Tramo], desde_ms: int) -> str:
@@ -305,12 +426,18 @@ def _cola_hablada(tramos: list[Tramo], desde_ms: int) -> str:
     previos = [
         t
         for t in sorted(tramos, key=lambda x: x.t0_ms)
-        if t.t0_ms <= desde_ms and len(" ".join((t.texto or "").split())) >= TEXTO_MINIMO_CHARS
+        if t.t0_ms <= desde_ms and (t.texto or "").strip()
     ]
-    return _condensar(previos[-1].texto, CIERRE_SECUNDARIO_MAX_CHARS) if previos else ""
+    # Del mas cercano al cierre hacia atras: el primero que de una clausula limpia gana. Sin
+    # ninguno, cadena vacia y la plantilla esconde la pastilla en vez de pintar media frase.
+    for tramo in reversed(previos):
+        etiqueta = condensar_clausula(tramo.texto, CIERRE_SECUNDARIO_MAX_CHARS)
+        if etiqueta:
+            return etiqueta
+    return ""
 
 
-def _candidata_dato(tramos: list[Tramo]) -> _Candidata | None:
+def _candidata_dato(tramos: list[Tramo]) -> _Candidata | str | None:
     """`dato_destacado` dentro del tramo donde se dice la cifra, lo antes posible.
 
     K fijo "se coloca al inicio de ese tramo, y si no cabe se omite". El primer intento sigue
@@ -327,11 +454,21 @@ def _candidata_dato(tramos: list[Tramo]) -> _Candidata | None:
     ]
     if not con_cifra:
         return None
-    tramo, cifra = con_cifra[0]
+    # La etiqueta acompana a la cifra y se lee igual que cualquier otro letrero, asi que pasa
+    # por la misma guarda de clausula. Un tramo con cifra pero sin etiqueta limpia no sirve:
+    # se prueba el siguiente, y si ninguno da, no hay dato.
+    titulables = [
+        (tr, cifra, etiqueta)
+        for tr, cifra in con_cifra
+        if (etiqueta := condensar_clausula(tr.texto, DATO_ETIQUETA_MAX_CHARS))
+    ]
+    if not titulables:
+        return MOTIVO_ETIQUETA_SUCIA  # hay cifra, pero ningun tramo se puede etiquetar limpio
+    tramo, cifra, etiqueta = titulables[0]
     return _Candidata(
         "dato_destacado",
-        tuple((int(tr.t0_ms), int(tr.t1_ms)) for tr, _ in con_cifra),
-        {"cifra": cifra, "etiqueta": _condensar(tramo.texto)},
+        tuple((int(tr.t0_ms), int(tr.t1_ms)) for tr, _, _ in titulables),
+        {"cifra": cifra, "etiqueta": etiqueta},
     )
 
 
@@ -419,6 +556,31 @@ def _huecos(colocadas: list[Pieza], duracion_ms: int) -> list[tuple[int, int]]:
     return [(a, b) for a, b in huecos if b > a]
 
 
+def _tramo_titulable(
+    tramos: list[Tramo], desde: int, hasta: int
+) -> tuple[Tramo, str] | None:
+    """(tramo, titulo) del primer tramo del hueco que da una clausula limpia, o None.
+
+    `_tramo_relevante` elige el tramo por criterio de contenido; aqui se comprueba ademas que
+    ese tramo se pueda TITULAR sin partir la frase. Si el preferido no da nada limpio se prueban
+    los siguientes del hueco, y si ninguno vale se devuelve None y la pieza no se coloca:
+    calidad por encima de cobertura.
+    """
+    preferido = _tramo_relevante(tramos, desde, hasta)
+    if preferido is None:
+        return None
+    resto = [
+        t
+        for t in sorted(tramos, key=lambda x: x.t0_ms)
+        if desde <= t.t0_ms < hasta and t is not preferido
+    ]
+    for tramo in (preferido, *resto):
+        titulo = condensar_clausula(tramo.texto, TITULO_SECCION_MAX_CHARS)
+        if titulo:
+            return tramo, titulo
+    return None
+
+
 def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | None:
     """Tramo con el que titular ese hueco. Determinista y sin IA.
 
@@ -477,14 +639,15 @@ def _rellenar_huecos(
             break
         progreso = False
         for desde, hasta in candidatos:
-            tramo = _tramo_relevante(tramos, desde, hasta)
-            if tramo is None:
+            elegido = _tramo_titulable(tramos, desde, hasta)
+            if elegido is None:
                 motivo_final = MOTIVO_SIN_TRAMO
                 continue
+            tramo, titulo = elegido
             cand = _Candidata(
                 "titulo_seccion",
                 ((max(tramo.t0_ms, desde), max(hasta - dur, desde)),),
-                {"titulo": _condensar(tramo.texto)},
+                {"titulo": titulo},
             )
             pieza, motivo = _colocar(cand, duracion_ms, orientacion, tray_csv, colocadas)
             if pieza is None:
@@ -542,7 +705,15 @@ def planificar(
 
 
 __all__ = [
+    "ARRANQUE_PROHIBIDO",
+    "MOTIVO_ETIQUETA_SUCIA",
+    "FINAL_PROHIBIDO",
     "BANDA_ARRIBA",
+    "CIERRE_SECUNDARIO_MAX_CHARS",
+    "DATO_ETIQUETA_MAX_CHARS",
+    "TEXTO_MINIMO_CHARS",
+    "TITULO_SECCION_MAX_CHARS",
+    "condensar_clausula",
     "BANDA_SIN_DATO",
     "INCIDENCIA_SIN_DATO_DE_CARA",
     "BANDA_CENTRO",

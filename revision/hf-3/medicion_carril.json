@@ -23,10 +23,10 @@
     "| pieza | veces colocada |",
     "|---|---|",
     "| cierre | 34 |",
-    "| dato_destacado | 16 |",
+    "| dato_destacado | 15 |",
     "| hook | 34 |",
     "| lower_third | 34 |",
-    "| titulo_seccion | 34 |"
+    "| titulo_seccion | 41 |"
   ],
   "clips": [
     {
@@ -164,7 +164,7 @@
       "piezas": [
         "hook",
         "lower_third",
-        "dato_destacado",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "cierre"
@@ -172,7 +172,9 @@
       "bandas": [
         "centro"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "sin_separacion_minima"
+      },
       "incidencias": []
     },
     {
@@ -676,10 +678,13 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 8,
+      "n_piezas": 11,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -701,10 +706,13 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": null,
-      "n_piezas": 8,
+      "n_piezas": 11,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
