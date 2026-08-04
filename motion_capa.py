@@ -308,13 +308,27 @@ def _clips_de_motion(
                 "desde_cache": r.desde_cache,
             }
         )
-        clips.append(_overlay_de(pieza, r))
+        clips.append(_overlay_de(pieza, r, alto))
 
     print(f"[motion] {len(clips)}/{len(plan.piezas)} piezas compuestas en {orientacion}")
     return ResultadoMotion(tuple(clips), informe)
 
 
-def _overlay_de(pieza: mp.Pieza, resultado) -> ClipOverlay:
+def desplazamiento_de_banda(banda: str, alto: int) -> tuple[int, int] | None:
+    """(x, y) de composicion para la banda pedida, o None si va donde el HTML la dibuja.
+
+    La pieza SIEMPRE se renderiza a cuadro completo con su contenido en el carril nativo; para
+    llevarla a la banda superior no se toca la plantilla, se compone el overlay desplazado hacia
+    arriba. Asi hay UN solo HTML por pieza y no dos que se desincronizan, y el desplazamiento
+    queda donde se puede probar sin renderizar.
+    """
+    if banda != mp.BANDA_ARRIBA:
+        return None
+    y = int(round(mp.DESPLAZAMIENTO_SUPERIOR * int(alto)))
+    return (0, y)
+
+
+def _overlay_de(pieza: mp.Pieza, resultado, alto: int) -> ClipOverlay:
     """Pieza + resultado de HyperFrames -> ClipOverlay con los ajustes medidos en HF-0.
 
     `loop=False` porque la pieza dura exactamente su ventana y repetirla la reiniciaria a media
@@ -333,7 +347,9 @@ def _overlay_de(pieza: mp.Pieza, resultado) -> ClipOverlay:
         behind_text=True,
         fade=bool(consumo.get("fade", False)),
         mute=bool(consumo.get("mute", True)),
-        posicion=None,  # cuadro_completo: la plantilla ya se coloca dentro de su lienzo
+        # cuadro_completo: la plantilla ya se coloca dentro de su lienzo. El unico caso con
+        # posicion explicita es la banda superior, donde el overlay entero sube.
+        posicion=desplazamiento_de_banda(pieza.banda, alto),
     )
 
 
@@ -357,6 +373,7 @@ __all__ = [
     "MARCA",
     "clips_de_motion",
     "contrato_de_pieza",
+    "desplazamiento_de_banda",
     "marca_de",
     "orientacion_de",
     "raiz_cache_de_paquete",

@@ -53,10 +53,33 @@ PRIORIDAD = ("hook", "cierre", "lower_third", "dato_destacado")
 
 # ── Restricciones espaciales (medidas en HF-2, D51; no se vuelven a medir) ───
 ZONA_CAPTIONS = (0.70, 0.92)  # franja prohibida de diseno, en fraccion del alto
-CARRIL_VERTICAL = (0.54, 0.68)  # donde viven las piezas en 9:16; el unico carril libre
-# Buckets de `cve.zona_cara_en_rango` que dejan el carril vertical despejado. `center` y
-# `bottom` lo invaden, y None (CSV legacy o sin deteccion viva) se trata como ocupado.
-ZONAS_CARA_LIBRES = ("top",)
+CARRIL_VERTICAL = (0.54, 0.68)  # donde el HTML de las piezas dibuja su contenido en 9:16
+
+# Segunda banda, POR ENCIMA de la cara. Con la cara en `center` (0.40-0.60) o en `bottom`
+# (>0.60) el carril de 54-68% queda invadido y antes se omitia la pieza entera; medido sobre
+# los clips reales del proyecto, eso dejaba en cero al 61.9% de los verticales.
+#
+# CONFIRMADO CON RENDER REAL (revision/hf-3/confirmar_banda.py, sobre un clip 1080x1920 con la
+# cara en `center`): el hook, que es la pieza mas alta, ocupa nativamente 60.9-68.6% del alto y
+# tras el desplazamiento de -653 px cae en 26.9-34.6%. Queda por debajo del 10% de zona segura
+# de UI de TikTok/Reels, por encima del borde superior de una cara centrada (una cabeza centrada
+# en 0.50 arranca alrededor de 0.35) y muy lejos de la franja de captions (70-92%).
+BANDA_SUPERIOR = (0.20, 0.35)
+BANDA_CENTRO = "centro"
+BANDA_ARRIBA = "superior"
+
+# Cuanto hay que subir la pieza, en fraccion del alto, para llevar su contenido del carril
+# nativo a la banda superior. Es negativo: la pieza se compone desplazada hacia arriba.
+DESPLAZAMIENTO_SUPERIOR = BANDA_SUPERIOR[0] - CARRIL_VERTICAL[0]
+
+# Buckets de `cve.zona_cara_en_rango` y la banda que dejan libre en 9:16. None (CSV legacy,
+# sin deteccion viva) NO aparece aqui a proposito: sin dato de la cara no se puede afirmar que
+# ningun letrero la tape, asi que se omite la pieza.
+BANDA_POR_ZONA_CARA = {
+    "top": BANDA_CENTRO,  # cara arriba: el carril nativo esta despejado
+    "center": BANDA_ARRIBA,
+    "bottom": BANDA_ARRIBA,
+}
 
 ORIENTACIONES = ("vertical", "horizontal")
 
@@ -83,12 +106,13 @@ class Tramo:
 
 @dataclass(frozen=True)
 class Pieza:
-    """Una pieza colocada: que plantilla, en que ventana y con que textos."""
+    """Una pieza colocada: que plantilla, en que ventana, con que textos y en que banda."""
 
     plantilla: str
     t0_ms: int
     t1_ms: int
     texto: dict[str, str]
+    banda: str = BANDA_CENTRO
 
     @property
     def duracion_ms(self) -> int:
@@ -125,6 +149,7 @@ class PlanMotion:
                     "t0_ms": p.t0_ms,
                     "t1_ms": p.t1_ms,
                     "texto": dict(p.texto),
+                    "banda": p.banda,
                 }
                 for p in self.piezas
             ],
@@ -228,19 +253,21 @@ def _hay_aire(t0: int, t1: int, colocadas: list[Pieza]) -> bool:
     )
 
 
-def _zona_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None) -> bool:
-    """True si el carril de las piezas esta despejado en esa ventana.
+def _banda_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None) -> str | None:
+    """Banda donde cabe la pieza en esa ventana, o None si no cabe en ninguna.
 
-    Solo se comprueba en 9:16: ahi las cinco piezas comparten el unico carril libre (54-68% del
-    alto) y una cara centrada o baja se lo come. En 16:9 las bandas del catalogo son disjuntas
-    (lower_third abajo a la izquierda, el resto centradas arriba) y no compiten con la cara.
+    Solo se consulta la cara en 9:16: ahi las cinco piezas comparten un carril estrecho y una
+    cara centrada o baja se lo come. Con la cara en `center` o `bottom` la pieza sube a la banda
+    superior en vez de omitirse, que es lo que hacia antes. En 16:9 las bandas del catalogo son
+    disjuntas (lower_third abajo a la izquierda, el resto centradas arriba) y no compiten con la
+    cara, asi que la pieza se queda donde la dibuja su HTML.
     """
     if orientacion != "vertical":
-        return True
+        return BANDA_CENTRO
     import cve  # noqa: PLC0415 (import perezoso: el planificador no arrastra el motor de captions)
 
     zona = cve.zona_cara_en_rango(tray_csv, t0_ms / 1000.0, t1_ms / 1000.0) if tray_csv else None
-    return zona in ZONAS_CARA_LIBRES
+    return BANDA_POR_ZONA_CARA.get(zona)
 
 
 def planificar(
@@ -277,10 +304,11 @@ def planificar(
             if not _hay_aire(t0, t1, colocadas):
                 motivo = MOTIVO_SIN_AIRE
                 continue
-            if not _zona_libre(orientacion, t0, t1, tray_csv):
+            banda = _banda_libre(orientacion, t0, t1, tray_csv)
+            if banda is None:
                 motivo = MOTIVO_CARA
                 continue
-            colocadas.append(Pieza(cand.plantilla, t0, t1, dict(cand.texto)))
+            colocadas.append(Pieza(cand.plantilla, t0, t1, dict(cand.texto), banda))
             motivo = None
             break
         if motivo is not None:
@@ -292,7 +320,11 @@ def planificar(
 
 
 __all__ = [
+    "BANDA_ARRIBA",
+    "BANDA_CENTRO",
+    "BANDA_SUPERIOR",
     "CARRIL_VERTICAL",
+    "DESPLAZAMIENTO_SUPERIOR",
     "DURACION_MS",
     "MARGEN_FINAL_MS",
     "PRIORIDAD",

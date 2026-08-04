@@ -220,12 +220,41 @@ def test_en_vertical_una_cara_alta_deja_libre_el_carril(tmp_path):
 
 
 @pytest.mark.parametrize("fraccion", [0.50, 0.75])
-def test_en_vertical_una_cara_centrada_o_baja_invade_el_carril(tmp_path, fraccion):
-    """El carril de las piezas es 54-68% del alto: los buckets center y bottom lo cruzan."""
+def test_en_vertical_una_cara_centrada_o_baja_manda_las_piezas_a_la_banda_superior(
+    tmp_path, fraccion
+):
+    """El carril nativo (54-68%) queda invadido por los buckets center y bottom.
+
+    Antes eso omitia la pieza entera y dejaba en cero al 61.9% de los verticales reales. Ahora
+    la pieza sube a la banda superior en vez de desaparecer.
+    """
     plan = _plan(20000, orientacion="vertical", tray_csv=_csv_cara(tmp_path, fraccion))
-    assert plan.piezas == ()
-    for plantilla in ("hook", "lower_third", "cierre"):
-        assert _motivos(plan)[plantilla] == mp.MOTIVO_CARA
+    assert _nombres(plan) == ["hook", "lower_third", "cierre"]
+    assert {p.banda for p in plan.piezas} == {mp.BANDA_ARRIBA}
+
+
+def test_con_la_cara_arriba_las_piezas_se_quedan_en_su_carril_nativo(tmp_path):
+    plan = _plan(20000, orientacion="vertical", tray_csv=_csv_cara(tmp_path, 0.25))
+    assert {p.banda for p in plan.piezas} == {mp.BANDA_CENTRO}
+
+
+def test_la_banda_superior_no_pisa_ni_la_ui_ni_los_captions():
+    """0.20-0.34: por debajo del 10% de UI de TikTok y muy por encima del 70-92% de captions."""
+    arriba, abajo = mp.BANDA_SUPERIOR
+    assert arriba >= 0.10, "invade la zona segura superior de la UI"
+    assert abajo <= mp.ZONA_CAPTIONS[0], "invade la franja de captions"
+    assert abajo <= 0.40, "no queda por encima del borde de una cara centrada"
+    assert mp.DESPLAZAMIENTO_SUPERIOR == pytest.approx(arriba - mp.CARRIL_VERTICAL[0])
+
+
+def test_el_desplazamiento_en_pixeles_sube_la_pieza(tmp_path):
+    import motion_capa as mc
+
+    assert mc.desplazamiento_de_banda(mp.BANDA_CENTRO, 1920) is None
+    x, y = mc.desplazamiento_de_banda(mp.BANDA_ARRIBA, 1920)
+    assert x == 0
+    assert y < 0, "la banda superior se compone desplazando el overlay hacia ARRIBA"
+    assert y == int(round(mp.DESPLAZAMIENTO_SUPERIOR * 1920))
 
 
 def test_en_vertical_sin_csv_la_franja_se_considera_ocupada():

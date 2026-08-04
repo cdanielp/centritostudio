@@ -120,9 +120,7 @@ def test_el_acento_declarado_en_el_html_coincide_con_el_que_manda_centrito():
 
     for plantilla, acento in mc.ACENTO_POR_PLANTILLA.items():
         for sufijo in ("", "horizontal"):
-            html = (RAIZ / "motion" / plantilla / sufijo / "index.html").read_text(
-                encoding="utf-8"
-            )
+            html = (RAIZ / "motion" / plantilla / sufijo / "index.html").read_text(encoding="utf-8")
             declarado = re.search(
                 r'"id":"marca_primario","type":"color","label":"[^"]+","default":"(#[0-9A-Fa-f]{6})"',
                 html,

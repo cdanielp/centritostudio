@@ -1,0 +1,26 @@
+{
+  "clip": "podcast_test_60s_9x16.mp4",
+  "zona_cara": "center",
+  "pieza": "hook",
+  "banda": "superior",
+  "desplazamiento_px": -653,
+  "carril_nativo_medido": [
+    0.6094,
+    0.6859
+  ],
+  "banda_final_medida": [
+    0.2693,
+    0.3458
+  ],
+  "banda_declarada": [
+    0.2,
+    0.34
+  ],
+  "zona_captions": [
+    0.7,
+    0.92
+  ],
+  "pisa_captions": false,
+  "pisa_ui_superior": false,
+  "queda_sobre_cara_centrada": true
+}
