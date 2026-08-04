@@ -53,3 +53,15 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   habria omitido TODAS las piezas en 9:16 sin que nada fallara. Ahora se pide, y solo con la
   capa encendida. Ademas se expuso la capa en el worker de render y en la pestana de render del
   Studio, que es lo que hace posible la demo horizontal.
+- **12:52 - BLOQUE 5 OK (paletas).** Una sola hoja, : las CINCO
+  piezas (filas: hook, lower_third, titulo_seccion, dato_destacado, cierre) en las TRES paletas
+  (columnas), compuestas sobre un fotograma real del video de K. A = el naranja actual
+  ; B = sobria de alto contraste , la que menos compite con el amarillo y el
+  verde de los captions hormozi; C = , el morado que la interfaz del Studio YA usa,
+  sobre su mismo fondo , para que el letrero del video y la app sean el mismo color y
+  no dos morados parecidos. NINGUNA se ha implementado: K elige. Aplicarla es cambiar
+  , los fallbacks CSS de  y subir la version de cada
+  plantilla. Gotcha del arnes: componer la pieza con  de ENTRADA sobre un PNG fijo daba
+  fotogramas en blanco de forma erratica (el still tiene un solo frame y el overlay se quedaba
+  sin base al rebasar el MOV); se extrae el fotograma de la pieza con seek de SALIDA y luego se
+  componen dos imagenes fijas.
