@@ -23,10 +23,9 @@
     "| pieza | veces colocada |",
     "|---|---|",
     "| cierre | 34 |",
-    "| dato_destacado | 2 |",
     "| hook | 34 |",
     "| lower_third | 34 |",
-    "| titulo_seccion | 20 |"
+    "| titulo_seccion | 22 |"
   ],
   "clips": [
     {
@@ -122,14 +121,16 @@
       "piezas": [
         "hook",
         "lower_third",
-        "dato_destacado",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "la_cifra_esta_en_un_tramo_que_no_da_etiqueta_limpia"
+      },
       "incidencias": []
     },
     {
@@ -142,14 +143,16 @@
       "piezas": [
         "hook",
         "lower_third",
-        "dato_destacado",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "la_cifra_esta_en_un_tramo_que_no_da_etiqueta_limpia"
+      },
       "incidencias": []
     },
     {

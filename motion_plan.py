@@ -143,6 +143,58 @@ MULETILLAS_CON_EXCEPCION_DE_VERBO = frozenset({"entonces"})
 ARTICULOS = frozenset({"el", "la", "los", "las", "un", "una", "unos", "unas", "lo"})
 FINAL_PROHIBIDO = ARRANQUE_PROHIBIDO | ARTICULOS
 
+# ── Que un titulo se sostenga solo (ESPECIFICO DE ESPANOL) ───────────────────
+# "secundarias que tenga todas" y "Platicarte. La jefa es este" pasaban todas las guardas
+# anteriores y no significan nada sueltos. Un letrero es una frase, y una frase necesita un
+# VERBO CONJUGADO y no puede ser una subordinada colgando de otra que no se ve.
+RELATIVOS = frozenset(
+    {"que", "quien", "quienes", "cual", "cuales", "donde", "cuando", "cuyo", "cuya", "cuyos",
+     "cuyas", "como"}
+)
+# Terminaciones de verbo CONJUGADO en espanol. `-a` y `-e` entran porque son la tercera persona
+# del singular, que es lo que mas se habla ("cuesta", "sube", "arranca"); `-o` NO, porque choca
+# con demasiados sustantivos masculinos ("desarrollo", "trabajo", "dinero") y las primeras
+# personas frecuentes ya estan en VERBOS_COMUNES. Los infinitivos quedan fuera a proposito:
+# "cuestan mucho dinero" es una frase, "costar mucho dinero" no.
+TERMINACIONES_VERBO = (
+    "a", "e", "as", "es", "an", "en", "amos", "emos", "imos",
+    "aba", "abas", "aban", "ia", "ias", "ian",
+    "aste", "aron", "ieron", "io",
+    "ara", "iera", "ase", "ese",
+    "ando", "endo", "iendo",
+)
+# Formas conjugadas frecuentisimas que las terminaciones no cazan o que `stopwords_es` trata
+# como auxiliares. Se comprueban ANTES que nada: sin ellas, "yo tengo 26 anos" no tenia verbo.
+VERBOS_COMUNES = frozenset(
+    {"es", "son", "esta", "estan", "hay", "tengo", "tiene", "tienen", "va", "van", "fue",
+     "fueron", "era", "eran", "ha", "han", "he", "puede", "pueden", "hace", "hacen", "dice",
+     "dicen", "sube", "subio", "baja", "bajo", "cuesta", "cuestan", "vale", "valen", "quiero",
+     "quiere", "quieren", "sabe", "saben", "se", "vas", "vamos", "estoy", "estamos", "somos",
+     "cayo", "crecio", "llego", "paso", "quedo", "gano", "perdio", "costo", "duro", "salio",
+     "entro", "logro", "termino", "empezo", "aumento", "bajaron", "subieron"}
+)
+# Palabras que TERMINAN como un verbo y no lo son. Sin esta lista, cualquier sintagma nominal
+# con un plural en -as o -es pasaria por frase.
+NO_SON_VERBOS = frozenset(
+    {"para", "cada", "mucha", "muchas", "poca", "pocas", "toda", "todas", "otra", "otras",
+     "misma", "mismas", "distinta", "distintas", "nueva", "nuevas", "buenas", "malas",
+     "carreras", "secundarias", "primarias", "preparatorias", "facultades", "condiciones",
+     "personas", "escuelas", "familias", "actividades", "horas", "dias", "meses", "anos",
+     "veces", "cosas", "casas", "gentes", "partes", "formas", "ideas", "zonas", "areas",
+     "lineas", "puntos", "grados", "pesos", "dolares", "euros", "millones", "traslados",
+     "estudiantes", "alumnos", "chavos", "padres", "madres", "hijos", "jovenes", "mejores",
+     "peores", "mayores", "menores", "grandes", "chicas", "chicos", "medias", "superiores"}
+)
+# Demostrativos: pueden abrir un letrero pero no cerrarlo. "La jefa es este" se queda a medias
+# igual que si acabara en preposicion.
+DEMOSTRATIVOS = frozenset({"este", "esta", "esto", "ese", "esa", "eso", "aquel", "aquella"})
+# Subjuntivos que en el habla solo aparecen colgando de un `que` que se acaba de recortar:
+# "que tenga todas las condiciones" sigue siendo media frase aunque se le quite el `que`.
+SUBJUNTIVO_COLGANDO = frozenset(
+    {"tenga", "tengan", "sea", "sean", "este", "esten", "haya", "hayan", "pueda", "puedan",
+     "vaya", "vayan", "haga", "hagan", "diga", "digan", "quiera", "quieran"}
+)
+
 # Mayor a menor. Cuando dos piezas no pueden convivir, cae la de MENOR prioridad.
 PRIORIDAD = ("hook", "cierre", "lower_third", "dato_destacado")
 
@@ -344,39 +396,60 @@ def _norma(palabra: str) -> str:
 
 
 def _es_verbo_probable(palabra: str) -> bool:
-    """Heuristica de verbo conjugado en espanol: sin diccionario y sin dependencias.
+    """Heuristica de verbo CONJUGADO en espanol: sin diccionario y sin dependencias.
 
-    Solo se usa para decidir si un `entonces` inicial abre una oracion de verdad. Se conforma
-    con las terminaciones mas frecuentes de presente, pasado e imperfecto porque el coste de
-    equivocarse es minusculo: como mucho se conserva una muletilla o se quita una palabra que
-    tampoco aportaba.
+    No es un analizador morfologico y no pretende serlo. Mira las terminaciones mas frecuentes
+    de presente, pasado, imperfecto y gerundio, y descarta a mano el punado de sustantivos y
+    adverbios corrientes que acaban igual. Los infinitivos quedan FUERA a proposito: "cuestan
+    mucho dinero" es una frase, "costar mucho dinero" no.
+
+    El coste de equivocarse esta acotado por diseno: un falso positivo deja pasar un titulo
+    regular, y un falso negativo omite la pieza, que es lo que este proyecto prefiere.
     """
+    import stopwords_es as sw  # noqa: PLC0415 (modulo hoja, solo stdlib)
+
     t = _norma(palabra)
-    if len(t) < 4 or t in ("entonces",):
+    if t in VERBOS_COMUNES:
+        return True
+    if len(t) < 4 or t in NO_SON_VERBOS or t in RELATIVOS or t in DEMOSTRATIVOS:
         return False
-    return t.endswith(
-        (
-            "ar",
-            "er",
-            "ir",
-            "o",
-            "as",
-            "es",
-            "a",
-            "e",
-            "an",
-            "en",
-            "amos",
-            "emos",
-            "imos",
-            "aba",
-            "ia",
-            "io",
-            "ue",
-            "ara",
-            "era",
-        )
-    )
+    if t in sw.STOPWORDS_ES:  # articulos, pronombres, adverbios y conectores no cuentan
+        return False
+    return t.endswith(TERMINACIONES_VERBO)
+
+
+def se_sostiene_solo(fragmento: str) -> bool:
+    """True si el fragmento se lee como una frase entera y no como media.
+
+    Dos condiciones, las dos necesarias:
+
+      1. Tiene al menos un VERBO CONJUGADO. Sin verbo es un sintagma suelto.
+      2. No es una subordinada colgando: no empieza por `que`, `quien`, `cual`, `donde`,
+         `cuando`, `cuyo` ni `como`, porque esas palabras piden una principal que no esta.
+
+    "secundarias que tenga todas" cae por la segunda leida al reves: su unico verbo vive
+    dentro de la subordinada, y sin la principal el letrero no dice nada.
+    """
+    palabras = _palabras(fragmento)
+    if not palabras:
+        return False
+    if _norma(palabras[0]) in RELATIVOS:
+        return False
+    if _norma(palabras[0]) in SUBJUNTIVO_COLGANDO:
+        return False
+    # Un punto en MEDIO significa que el fragmento empalma dos oraciones y al menos una esta
+    # cortada: "Platicarte. La jefa es este" es la mitad de una y la mitad de otra.
+    if any(w.endswith(".") for w in palabras[:-1]):
+        return False
+    # El verbo tiene que estar en la PRINCIPAL. En "secundarias que tenga todas" el unico verbo
+    # vive dentro de la subordinada, y sin la principal el letrero no dice nada.
+    principal = []
+    for palabra in palabras:
+        if _norma(palabra) in RELATIVOS:
+            break
+        principal.append(palabra)
+    return any(_es_verbo_probable(w) for w in principal)
+
 
 
 def limpiar_muletillas(texto: str) -> str:
@@ -704,6 +777,8 @@ def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS
             continue
         if _termina_colgando(recortado):
             continue
+        if not se_sostiene_solo(recortado):
+            continue
         validos.append(recortado)
     if not validos:
         return ""
@@ -724,7 +799,8 @@ def _termina_colgando(fragmento: str) -> bool:
     palabras = _palabras(fragmento)
     if not palabras:
         return True
-    return _sin_tilde(palabras[-1].strip(PUNTUACION_CLAUSULA)) in FINAL_PROHIBIDO
+    ultima = _sin_tilde(palabras[-1].strip(PUNTUACION_CLAUSULA))
+    return ultima in FINAL_PROHIBIDO or ultima in DEMOSTRATIVOS
 
 
 def _candidatos_de_clausula(limpio: str, maximo: int) -> list[str]:
@@ -1102,6 +1178,9 @@ def planificar(
 
 __all__ = [
     "ANO_MAX",
+    "NO_SON_VERBOS",
+    "RELATIVOS",
+    "se_sostiene_solo",
     "ANO_MIN",
     "ARRANQUE_PROHIBIDO",
     "UNIDADES_POSTERIORES",

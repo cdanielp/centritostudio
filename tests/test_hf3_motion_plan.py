@@ -184,11 +184,11 @@ def test_sin_cifra_no_hay_dato_destacado_y_se_dice_por_que():
 
 
 def test_dato_destacado_arranca_al_inicio_del_tramo_con_cifra():
-    plan = _plan(90000, tramos=_tramos((5000, "nada"), (9000, "cayo 42% el costo")))
+    plan = _plan(90000, tramos=_tramos((5000, "nada"), (9000, "el costo cayo un 42%")))
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms == 9000
     assert dato.texto["cifra"] == "42%"
-    assert dato.texto["etiqueta"] == "cayo 42% el costo"
+    assert dato.texto["etiqueta"] == "el costo cayo un 42%"
 
 
 def test_si_el_primer_tramo_con_cifra_no_cabe_se_prueba_el_siguiente():
@@ -477,8 +477,8 @@ def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
     ventana llega hasta el final del tramo y la pieza entra sin pisar a nadie.
     """
     tramos = [
-        mp.Tramo(3700, 7460, "del 2023 al 2024 fue un 10"),
-        mp.Tramo(7460, 10800, "5 % de medias superiores"),
+        mp.Tramo(3700, 7460, "el gasto subio un 10% ese ano"),
+        mp.Tramo(7460, 10800, "y llego al 5% de las medias"),
     ]
     plan = _plan(56790, tramos=tramos)
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
@@ -489,7 +489,7 @@ def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
 
 def test_el_dato_sigue_arrancando_al_inicio_del_tramo_cuando_esta_libre():
     """La regla original manda: la ventana es un plan B, no un desplazamiento por gusto."""
-    plan = _plan(90000, tramos=_tramos((9000, "cayo 42% el costo")))
+    plan = _plan(90000, tramos=_tramos((9000, "el costo cayo un 42%")))
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms == 9000
 
@@ -615,8 +615,8 @@ def test_el_texto_de_seccion_se_condensa_a_una_linea():
         ("Es que imaginemonos un Garcia, pues por los traslados", "Es que imaginemonos un Garcia"),
         # No puede EMPEZAR por preposicion.
         ("de un Garcia con una vision", "un Garcia con una vision"),
-        # No puede ACABAR colgando de una conjuncion.
-        ("desarrollo y con preparatorias que", "desarrollo y con preparatorias"),
+        # No puede ACABAR colgando de una conjuncion, y ademas sin verbo no se sostiene.
+        ("desarrollo y con preparatorias que", ""),
         # Ni cortando ni recortando sale nada de 12 a 46: se omite.
         ("con secundarias que tenga todas las condiciones", ""),
         # Demasiado corto para decir nada.
@@ -964,3 +964,60 @@ def test_a_igualdad_de_densidad_gana_el_mas_corto():
 def test_la_densidad_premia_cifras_y_palabras_largas():
     assert mp.densidad_informativa("subio 42%") > mp.densidad_informativa("subio de la")
     assert mp.puntos_informativos("desercion") > mp.puntos_informativos("subio")
+
+
+# ── El titulo se sostiene solo (punto 3) ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "crudo",
+    [
+        "secundarias que tenga todas",  # el verbo vive dentro de la subordinada
+        "Platicarte. La jefa es este",  # empalma dos oraciones, las dos cortadas
+        "que tenga todas las condiciones",  # arranca por relativo
+        "donde estudian los chavos",  # arranca por relativo
+        "carreras distintas y nuevas",  # sintagma nominal, sin verbo
+        "desarrollo y con preparatorias",  # sin verbo
+        "preparatorias que tengan todo",  # verbo solo en la subordinada
+    ],
+)
+def test_los_fragmentos_que_no_se_sostienen_se_omiten(crudo):
+    assert mp.se_sostiene_solo(crudo) is False
+    assert mp.condensar_clausula(crudo, mp.TITULO_SECCION_MAX_CHARS) == ""
+
+
+@pytest.mark.parametrize(
+    "crudo",
+    [
+        "los traslados cuestan mucho dinero",
+        "La desercion escolar subio",
+        "Estamos aqui en tu podcast La Jefa",
+        "yo tengo 26 anos",
+        "el costo subio un 42%",
+        "los chavos estudian en Garcia",
+    ],
+)
+def test_los_fragmentos_que_se_sostienen_sobreviven(crudo):
+    assert mp.se_sostiene_solo(crudo) is True
+    assert mp.condensar_clausula(crudo, mp.TITULO_SECCION_MAX_CHARS)
+
+
+def test_un_demostrativo_final_deja_la_frase_colgando():
+    """"La jefa es este" tiene verbo y principal, pero acaba en el aire."""
+    assert mp.condensar_clausula("La jefa es este", mp.TITULO_SECCION_MAX_CHARS) == ""
+
+
+def test_el_infinitivo_no_cuenta_como_verbo_conjugado():
+    """"costar mucho dinero" no es una frase; "cuestan mucho dinero" si."""
+    assert mp.se_sostiene_solo("costar mucho dinero") is False
+    assert mp.se_sostiene_solo("cuestan mucho dinero") is True
+
+
+def test_si_ningun_tramo_del_hueco_se_sostiene_la_seccion_se_omite():
+    tramos = [
+        mp.Tramo(t, t + 2400, "secundarias que tenga todas las condiciones")
+        for t in range(0, 54000, 2500)
+    ]
+    plan = _plan(56790, tramos=tramos)
+    assert "titulo_seccion" not in _nombres(plan)
+    assert _motivos(plan)["titulo_seccion"] == mp.MOTIVO_SIN_TRAMO
