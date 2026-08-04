@@ -23,10 +23,10 @@
     "| pieza | veces colocada |",
     "|---|---|",
     "| cierre | 34 |",
-    "| dato_destacado | 2 |",
+    "| dato_destacado | 4 |",
     "| hook | 34 |",
     "| lower_third | 34 |",
-    "| titulo_seccion | 20 |"
+    "| titulo_seccion | 42 |"
   ],
   "clips": [
     {
@@ -35,18 +35,18 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "dato_destacado",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": []
     },
@@ -56,10 +56,11 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "center",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "dato_destacado",
         "cierre"
       ],
       "bandas": [
@@ -67,8 +68,7 @@
         "superior"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": []
     },
@@ -118,11 +118,13 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 5,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
@@ -138,11 +140,13 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 5,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
@@ -158,10 +162,12 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 5,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "cierre"
@@ -356,18 +362,18 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -377,10 +383,11 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
@@ -388,8 +395,7 @@
         "superior"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -410,7 +416,7 @@
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
       },
       "incidencias": [
         "sin_dato_de_cara"
@@ -422,18 +428,18 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -443,18 +449,18 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -464,18 +470,18 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -485,18 +491,18 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 3,
+      "n_piezas": 4,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -647,7 +653,7 @@
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": []
     },
@@ -668,7 +674,7 @@
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra",
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
       },
       "incidencias": [
         "sin_dato_de_cara"
@@ -680,10 +686,13 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 6,
+      "n_piezas": 9,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -703,10 +712,13 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": null,
-      "n_piezas": 6,
+      "n_piezas": 9,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -728,10 +740,12 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 5,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "cierre"
@@ -750,10 +764,12 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 5,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "cierre"

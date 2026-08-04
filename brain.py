@@ -16,6 +16,9 @@ except ImportError:
     pass
 
 PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")
+# Modelo en una constante y no en un literal dentro de la llamada: entra a la huella de la
+# cache, asi que cambiarlo tiene que invalidar los sidecars generados con el anterior.
+MODEL = "deepseek-chat"
 TRANSCRIPTS = Path(__file__).parent / "transcripts"
 
 _SYSTEM = (
@@ -48,7 +51,7 @@ def _call_deepseek(messages: list[dict]) -> tuple[dict, dict]:
         raise ValueError("DEEPSEEK_API_KEY no configurada en .env")
     client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
     resp = client.chat.completions.create(
-        model="deepseek-chat",
+        model=MODEL,
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.3,
@@ -138,16 +141,30 @@ SCHEMA_CACHE = 1  # sube si cambia la FORMA del sidecar, para invalidar los viej
 
 
 def hash_de_grupos(grupos: list[dict]) -> str:
-    """sha256 del TEXTO de los grupos, que es lo unico que ve el LLM.
+    """sha256 de TODO lo que determina la respuesta del LLM.
 
-    Solo entra el texto y el id: los tiempos no viajan en el prompt, asi que un cambio de
-    milisegundos no puede cambiar la respuesta y no debe invalidar la cache.
+    Entra el texto de los grupos y sus ids, el system prompt y el modelo. Los TIEMPOS no: no
+    viajan en el prompt, asi que un cambio de milisegundos no puede cambiar la respuesta y no
+    debe invalidar la cache.
+
+    El prompt y el modelo entran porque sin ellos, editar `_SYSTEM` o cambiar de modelo
+    reutilizaba en silencio un resultado generado con otras instrucciones. Es exactamente el
+    fallo que esta cache venia a evitar, pero al reves.
     """
     partes = [
         f"{g.get('id')}:{' '.join(w.get('text', '') for w in g.get('words', []))}" for g in grupos
     ]
     payload = json.dumps(
-        {"schema": SCHEMA_CACHE, "grupos": partes}, ensure_ascii=False, separators=(",", ":")
+        {
+            "schema": SCHEMA_CACHE,
+            "grupos": partes,
+            "system": _SYSTEM,
+            "prompt": _PROMPT,
+            "modelo": MODEL,
+            "proveedor": PROVIDER,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

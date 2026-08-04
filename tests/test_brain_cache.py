@@ -120,7 +120,7 @@ def test_sin_video_name_no_hay_cache_posible(llm):
     assert len(llm) == 2
 
 
-def test_la_huella_solo_mira_el_texto_y_el_id():
+def test_la_huella_ignora_los_tiempos_pero_mira_el_texto():
     movidos = [
         {
             "id": g["id"],
@@ -148,3 +148,33 @@ def test_auto_pasa_el_flag_al_brain(monkeypatch):
     assert vistos["forzar"] is False
     auto._brain_fail_open(GRUPOS, "clip", forzar=True)
     assert vistos["forzar"] is True
+
+
+def test_editar_el_system_prompt_invalida_la_cache(llm, monkeypatch):
+    """Sin esto, cambiar las instrucciones reutilizaba en silencio el resultado viejo."""
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    monkeypatch.setattr(brain, "_SYSTEM", brain._SYSTEM + " Y ademas se breve.")
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    assert len(llm) == 2
+
+
+def test_cambiar_de_modelo_invalida_la_cache(llm, monkeypatch):
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    monkeypatch.setattr(brain, "MODEL", "otro-modelo")
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    assert len(llm) == 2
+
+
+def test_cambiar_de_proveedor_invalida_la_cache(llm, monkeypatch):
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    monkeypatch.setattr(brain, "PROVIDER", "mock")
+    brain.analizar_grupos(GRUPOS, video_name="clip")
+    assert len(llm) == 2
+
+
+def test_el_modelo_vive_en_una_constante_no_en_un_literal():
+    """Si vuelve a ser un literal dentro de la llamada, deja de entrar a la huella."""
+    import inspect
+
+    assert brain.MODEL == "deepseek-chat"
+    assert 'model="deepseek-chat"' not in inspect.getsource(brain._call_deepseek)

@@ -199,11 +199,11 @@ SUBJUNTIVO_COLGANDO = frozenset(
 PRIORIDAD = ("hook", "cierre", "lower_third", "dato_destacado")
 
 # ── Techo de densidad ────────────────────────────────────────────────────────
-# Piezas por minuto que puede llevar un clip. El relleno de huecos itera hasta que ninguno
-# pasa de HUECO_MAX_MS y eso, en un clip largo con habla continua, produce una pieza cada 20 s
-# ademas de las fijas: se llega a 11 letreros en 77 s, que satura. UN SOLO NUMERO para poder
-# subirlo o bajarlo sin tocar nada mas.
-MAX_PIEZAS_POR_MINUTO = 5
+# Piezas por minuto que puede llevar un clip. UN SOLO NUMERO para poder subirlo o bajarlo sin
+# tocar nada mas. Estuvo en 5 y se subio a 7 tras medirlo: con 5, cualquier clip de menos de
+# 36 s se quedaba solo con las tres piezas fijas, y eso les pasaba a 25 de los 34 clips reales
+# del proyecto.
+MAX_PIEZAS_POR_MINUTO = 7
 # `hook`, `lower_third` y `cierre` son la estructura del clip (gancho, quien habla, que hacer):
 # nunca se recortan aunque el techo quede por debajo. El techo se cobra de las opcionales.
 PIEZAS_PROTEGIDAS = frozenset({"hook", "lower_third", "cierre"})
@@ -604,9 +604,15 @@ def _aplicar_techo(colocadas: list[Pieza], omisiones: list[Omision], duracion_ms
     if len(opcionales) <= permitidas:
         return
     # Peor primero: menos sustancia, y entre iguales la que llega mas tarde.
+    # `dato_destacado` es la pieza de mas impacto visual (una cifra grande) y la mas dificil de
+    # conseguir: pide un tramo con cifra valida. Nunca cae antes que un `titulo_seccion`.
     orden = sorted(
         opcionales,
-        key=lambda p: (puntos_informativos(" ".join(p.texto.values())), -p.t0_ms),
+        key=lambda p: (
+            p.plantilla == "dato_destacado",
+            puntos_informativos(" ".join(p.texto.values())),
+            -p.t0_ms,
+        ),
     )
     sobran = orden[: len(opcionales) - permitidas]
     for pieza in sobran:

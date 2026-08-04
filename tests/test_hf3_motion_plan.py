@@ -499,8 +499,10 @@ def test_el_dato_sigue_arrancando_al_inicio_del_tramo_cuando_esta_libre():
 
 def _tramos_largos(dur_ms, paso=2500):
     """Habla continua de principio a fin, para que el hueco sea de piezas y no de texto."""
+    # La frase lleva VERBO a proposito: desde el punto 3, un tramo sin verbo no es titulable y
+    # el relleno no tendria de donde sacar titulos.
     return [
-        mp.Tramo(t, t + paso - 100, f"frase numero {i} del clip")
+        mp.Tramo(t, t + paso - 100, f"los traslados cuestan mucho numero {i}")
         for i, t in enumerate(range(0, dur_ms - paso, paso))
     ]
 
@@ -531,17 +533,17 @@ def test_el_relleno_gasta_todo_el_presupuesto_y_reduce_el_hueco_maximo():
 
 def test_el_relleno_se_acerca_al_objetivo_de_20s_aunque_no_siempre_llegue():
     """Numeros medidos, no supuestos: se deja escrito cuanto se queda corto y donde."""
-    medido = {56790: 21090, 90000: 20000, 120000: 13000}
+    medido = {56790: 10500, 90000: 20000, 120000: 13000}
     for dur, esperado in medido.items():
         plan = _plan(dur, tramos=_tramos_largos(dur))
         assert max(_huecos_de(plan, dur)) == esperado, f"dur={dur}"
 
 
 def test_cuando_el_techo_no_deja_presupuesto_el_hueco_se_acepta_y_se_dice():
-    dur = 35000
+    """Con el techo en 7, esto ya solo pasa en clips MUY cortos: 26 s da 3, justo las fijas."""
+    dur = 26000
     plan = _plan(dur, tramos=_tramos_largos(dur))
     assert mp.techo_de_piezas(dur) - len(mp.PIEZAS_PROTEGIDAS) <= 0
-    assert max(_huecos_de(plan, dur)) > mp.HUECO_MAX_MS
     assert "titulo_seccion" not in _nombres(plan)
 
 
@@ -550,7 +552,7 @@ def test_el_relleno_usa_titulo_seccion_con_texto_del_tramo_no_del_clip():
     secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
     assert secciones, "el clip largo necesitaba relleno"
     for s in secciones:
-        assert s.texto["titulo"].startswith("frase numero")
+        assert s.texto["titulo"].startswith("los traslados cuestan")
         assert s.texto["titulo"] != TEXTOS.titulo
 
 
@@ -712,28 +714,20 @@ def test_si_la_cifra_vive_en_un_tramo_intitulable_el_dato_se_omite_con_su_motivo
 
 
 def test_el_techo_esta_en_una_sola_constante():
-    assert mp.MAX_PIEZAS_POR_MINUTO == 5
+    assert mp.MAX_PIEZAS_POR_MINUTO == 7
     assert mp.PIEZAS_PROTEGIDAS == frozenset({"hook", "lower_third", "cierre"})
     assert mp.PIEZAS_OPCIONALES == frozenset({"titulo_seccion", "dato_destacado"})
 
 
-@pytest.mark.parametrize(
-    ("dur_ms", "techo"),
-    [(1000, 1), (12000, 1), (24000, 2), (30000, 3), (56790, 5), (60000, 5), (120000, 10)],
-)
-def test_el_techo_se_prorratea_por_duracion(dur_ms, techo):
-    assert mp.techo_de_piezas(dur_ms) == techo
-
-
 def test_el_redondeo_es_al_alza_desde_la_mitad_no_del_banquero():
-    """round(2.5) da 2 en Python: un clip de 30 s daria 2 piezas y nadie lo entenderia."""
-    assert mp.techo_de_piezas(30000) == 3
+    """round(x.5) redondea al par en Python: el techo tiene que subir, no bajar."""
+    assert mp.techo_de_piezas(30000) == 4  # 7 * 0.5 = 3.5 -> 4, no 3
 
 
 def test_ninguna_pieza_protegida_se_recorta_aunque_pasen_del_techo():
-    """En 20 s el techo son 2 piezas y las protegidas son 3: mandan ellas."""
-    plan = _plan(20000, tramos=_tramos_largos(20000))
-    assert mp.techo_de_piezas(20000) == 2
+    """En 17 s el techo son 2 piezas y las protegidas son 3: mandan ellas."""
+    plan = _plan(17000, tramos=_tramos_largos(17000))
+    assert mp.techo_de_piezas(17000) == 2
     assert sorted(_nombres(plan)) == ["cierre", "hook", "lower_third"]
 
 
@@ -761,15 +755,20 @@ def test_al_recortar_cae_primero_la_pieza_de_menor_sustancia():
         fuerte,
     ]
     omisiones: list = []
-    mp._aplicar_techo(colocadas, omisiones, 48000)  # techo 4, protegidas 3 -> solo 1 opcional
+    mp._aplicar_techo(colocadas, omisiones, 34000)  # techo 4, protegidas 3 -> solo 1 opcional
     assert fuerte in colocadas
     assert floja not in colocadas
     assert omisiones[0].motivo == mp.MOTIVO_TECHO_DENSIDAD
 
 
-def test_el_recorte_deja_su_motivo_nunca_desaparece_en_silencio():
-    plan = _plan(35000, tramos=_tramos_largos(35000))
-    assert _motivos(plan).get("titulo_seccion") == mp.MOTIVO_TECHO_DENSIDAD
+def test_el_relleno_sin_presupuesto_deja_su_motivo():
+    """Con el techo en 7 este caso ya no se alcanza desde `planificar` (todo clip de mas de
+    30 s tiene al menos una pieza opcional de presupuesto), asi que se prueba la rama directa.
+    Se deja el test porque bajar el techo la vuelve a hacer alcanzable."""
+    omisiones: list = []
+    mp._rellenar_huecos([], omisiones, 56790, "horizontal", None, _tramos_largos(56790), 0, set())
+    assert omisiones[0].plantilla == "titulo_seccion"
+    assert omisiones[0].motivo == mp.MOTIVO_TECHO_DENSIDAD
 
 
 def test_puntos_informativos_ignora_las_palabras_vacias_del_espanol():
@@ -1031,3 +1030,32 @@ def test_la_etiqueta_del_dato_no_exige_frase_completa():
     """
     assert mp.condensar_clausula("de medias superiores", 38, exigir_frase=False)
     assert mp.condensar_clausula("de medias superiores", 38) == ""
+
+
+def test_el_dato_destacado_nunca_cae_antes_que_un_titulo_seccion():
+    """Es la pieza de mas impacto visual y la mas dificil de conseguir: pide cifra valida."""
+    seccion = mp.Pieza("titulo_seccion", 30000, 32000, {"titulo": "los traslados cuestan mucho"})
+    dato = mp.Pieza("dato_destacado", 40000, 43000, {"cifra": "42%", "etiqueta": "de gasto"})
+    # La seccion tiene MAS puntos informativos que el dato, y aun asi cae ella primero.
+    assert mp.puntos_informativos(" ".join(seccion.texto.values())) > mp.puntos_informativos(
+        " ".join(dato.texto.values())
+    )
+    colocadas = [
+        mp.Pieza("hook", 0, 2500, {}),
+        mp.Pieza("lower_third", 3000, 7500, {}),
+        mp.Pieza("cierre", 50000, 53500, {}),
+        seccion,
+        dato,
+    ]
+    omisiones: list = []
+    mp._aplicar_techo(colocadas, omisiones, 34000)  # techo 4, protegidas 3 -> solo 1 opcional
+    assert dato in colocadas
+    assert seccion not in colocadas
+
+
+@pytest.mark.parametrize(
+    ("dur_ms", "techo"),
+    [(1000, 1), (12000, 1), (26000, 3), (35000, 4), (56790, 7), (60000, 7), (120000, 14)],
+)
+def test_el_techo_nuevo_se_prorratea_por_duracion(dur_ms, techo):
+    assert mp.techo_de_piezas(dur_ms) == techo
