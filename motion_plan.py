@@ -556,9 +556,7 @@ def _huecos(colocadas: list[Pieza], duracion_ms: int) -> list[tuple[int, int]]:
     return [(a, b) for a, b in huecos if b > a]
 
 
-def _tramo_titulable(
-    tramos: list[Tramo], desde: int, hasta: int
-) -> tuple[Tramo, str] | None:
+def _tramo_titulable(tramos: list[Tramo], desde: int, hasta: int) -> tuple[Tramo, str] | None:
     """(tramo, titulo) del primer tramo del hueco que da una clausula limpia, o None.
 
     `_tramo_relevante` elige el tramo por criterio de contenido; aqui se comprueba ademas que

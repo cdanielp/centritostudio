@@ -564,7 +564,9 @@ def test_el_fragmento_nunca_empieza_ni_acaba_por_palabra_debil():
             palabras = salida.split()
             assert palabras[0].lower() not in mp.ARRANQUE_PROHIBIDO, (frase, maximo, salida)
             assert palabras[-1].strip(".,;:!?").lower() not in mp.ARRANQUE_PROHIBIDO, (
-                frase, maximo, salida
+                frase,
+                maximo,
+                salida,
             )
             assert mp.TEXTO_MINIMO_CHARS <= len(salida) <= maximo
 
@@ -592,8 +594,13 @@ def test_si_el_tramo_preferido_no_es_titulable_se_prueba_el_siguiente():
 
 def test_el_secundario_del_cierre_usa_la_misma_guarda():
     """Si el ultimo tramo no da clausula limpia, se busca hacia atras; si no, va vacio."""
-    plan = _plan(20000, tramos=[mp.Tramo(2000, 5000, "Los traslados cuestan dinero"),
-                                mp.Tramo(14000, 16000, "de la que con")])
+    plan = _plan(
+        20000,
+        tramos=[
+            mp.Tramo(2000, 5000, "Los traslados cuestan dinero"),
+            mp.Tramo(14000, 16000, "de la que con"),
+        ],
+    )
     cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
     assert cierre.texto["cta"] == "Los traslados cuestan dinero"
 

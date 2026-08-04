@@ -127,3 +127,34 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   `<LAB>\demo\06_PALETA_MARCA_VERTICAL.mp4` (7 piezas, antes 3) y
   `<LAB>\demo\07_PALETA_MARCA_HORIZONTAL.mp4` (6 piezas, antes 4), con sus hojas de contacto de
   7 frames apuntadas a las piezas. Mismos clips que 01 y 02 para poder comparar lado a lado.
+
+## Sesion 3: cerrar el hueco del vertical y arreglar los titulos cortados
+
+- **14:49 - PASO 1 OK (sin dato de cara deja de ser fail-closed).** Sin trayectoria la pieza se
+  omitia, lo que contradecia el fail-open de toda la capa y dejaba en cero PARA SIEMPRE a 8
+  clips derivados que no tienen fuente 16:9 de la que sacar el dato. Ahora cae al carril nativo
+  (54-68% del alto), el que K aprobo en el gate visual de HF-2 justamente por no pisar caras, y
+  la falta del dato se registra como INCIDENCIA del plan (`sin_dato_de_cara`), no como fallo de
+  la pieza. Con esto desaparece el motivo `carril_ocupado_por_la_cara`: la cara MUEVE la pieza,
+  nunca la borra. Verticales en cero: 47.6% -> 0%.
+- **14:54 - PASO 2 OK (titulos que no sean media frase).** `condensar_clausula` sustituye al
+  corte por palabras. El corte solo cae en limite de clausula (puntuacion o justo antes de una
+  conjuncion), el fragmento no puede EMPEZAR por conjuncion ni preposicion, no puede ACABAR por
+  conjuncion, preposicion ni articulo, y si nada da un fragmento de 12 a 46 caracteres la pieza
+  se OMITE. La misma guarda se aplica al secundario del cierre (28 caracteres) y a la etiqueta
+  del `dato_destacado` (38). Motivo nuevo `MOTIVO_ETIQUETA_SUCIA` para cuando hay cifra pero
+  ningun tramo la puede etiquetar limpio. Los articulos se prohiben SOLO al final: "La
+  desercion escolar subio" es un arranque correcto, "las que de la" no es un final.
+- **14:58 - PASO 3 OK (la pregunta del brain, solo medir).** No se toco nada. `brain.py:161`
+  llama al LLM en todas las corridas y `brain.py:188-190` escribe el sidecar; nadie comprueba
+  si el archivo ya existe antes de llamar. `auto.py:373` (`_brain_fail_open`, que es la fuente
+  unica que usa tambien Auto v2) invoca `analizar_grupos` sin condicion. El sidecar se persiste
+  pero NO se reutiliza como cache entre corridas: quien lo lee (`assets_comfy.resolver_overlays`
+  en `auto_v2.py:218`, `cve.aplicar_preset`) lee el que se acaba de escribir en esa misma
+  corrida. Conclusion: el clip NO es reproducible en la practica.
+- **15:04 - PASO 4 OK (demo del fallback).** Cache borrada antes de renderizar.
+  `<LAB>\demo\08_VERTICAL_FALLBACK.mp4` sobre `podcast_test_60s_9x16_noturnos.mp4`, un clip
+  derivado que antes se quedaba en CERO. 6 piezas colocadas, todas en el carril nativo, con la
+  incidencia `sin_dato_de_cara` registrada. Confirmado en los 7 frames de
+  `08_VERTICAL_FALLBACK_frames.png`: ninguna pieza cae sobre una cara, porque en este material
+  las dos caras viven en la mitad superior del cuadro y el carril esta por debajo.
