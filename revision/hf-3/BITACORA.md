@@ -269,3 +269,42 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   sus hojas de 7 frames. Al montar la 13 salio un fallo real: el Studio mostraba el plan de las
   REGLAS mientras Auto renderiza con los del LLM, o sea que K habria corregido un texto y visto
   otro en el video. Corregido antes de dar la demo por buena.
+
+## Sesion 7: acople del LLM, guarda contra palabras inventadas y previsualizacion
+
+Rama `feat/hf-3-pulido`. Nota de base: el brief decia "rama nueva desde main (ya trae dc6f6d0)",
+pero `main` NO trae el editor ni los textos por LLM; eso vive en `feat/hf-3-integracion`. La
+rama sale de ahi, que si contiene `main`.
+
+- **PASO 1 OK (invertir el orden planificador-LLM + guarda).** El orden estaba al reves: el
+  modelo proponia secciones CON su instante y el planificador descartaba las que no cabian, asi
+  que la mitad de los letreros salia del respaldo de reglas y por eso seguian apareciendo
+  titulos como "futbol americano, basquetas". Ahora el planificador decide primero cuantas
+  piezas van y en que milisegundo, y despues se le pide al modelo un texto PARA CADA UNA, con el
+  fragmento hablado de ese instante delante. Mapeo uno a uno, cero descarte.
+  - Medido sobre los 34 clips reales, pieza a pieza contra el plan de reglas y solo en clips con
+    transcripcion: **72.7% (64/88) -> 96.6% (85/88)**.
+  - Los 3 que faltan caen al respaldo porque el texto no cabia en el limite de la plantilla.
+  - `motion_guarda.py`: contrasta los SUSTANTIVOS del texto generado contra la transcripcion del
+    clip ENTERO, tolerando plural, genero y acentos. Un fallo -> UN reintento pidiendo solo
+    palabras dichas; segundo fallo -> ese campo cae a reglas. Sin listas nuevas: los verbos los
+    descarta el detector que ya existe en `motion_plan` y las palabras vacias `stopwords_es`.
+  - Dos trampas que costaron sangre. La primera version contrastaba contra el fragmento de 6 s y
+    marcaba media frase legitima; la segunda dejaba pasar justo el caso que la motivo, porque un
+    "de" suelto de la transcripcion daba por dicha cualquier palabra que empezara por esas letras
+    y "decepcion" pasaba limpia. Ahora las dos partes de la comparacion tienen que ser largas.
+- **PASO 3 OK (previsualizacion en el editor).** Cada pieza del editor tiene un boton que
+  devuelve la imagen del letrero COMPUESTO sobre el frame real del video en su instante de
+  entrada. Bajo demanda, no al abrir: son ~9 s la primera vez y 0.3 s desde cache, que se
+  indexa por contenido de la pieza + version de la plantilla + tamano del video. Si falla, la
+  celda muestra el motivo y un boton de reintentar; el editor sigue sirviendo igual.
+- **PASO 4 OK (demos y medicion).** Cache borrada antes de renderizar.
+  `<LAB>\demo\14_LLM_COMPLETO.mp4` con su hoja de 7 frames: las 7 piezas llevan texto del
+  modelo. `<LAB>\demo\15_EDITOR.png`: el editor real con la vista de dos piezas ya generada.
+  - La guarda salta en **8 campos de los 34 clips** (7 resueltos con el reintento, 1 caido a
+    reglas). Las incidencias ahora se ESCRIBEN en el sidecar del relleno, no solo se imprimen:
+    sin eso, una corrida con cache no puede decir cuantas palabras invento el modelo.
+  - Hallazgo incomodo del caso que motivo todo esto: el clip dice "desercion escolar" y Whisper
+    transcribio "decepcion". El modelo escribio "desercion", que es lo CORRECTO, y la guarda lo
+    marco como inventado porque su unica verdad es la transcripcion. El reintento devolvio un
+    texto sin la palabra. La guarda funciona; su fuente de verdad es la que falla.

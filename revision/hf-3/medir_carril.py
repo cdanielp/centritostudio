@@ -109,12 +109,12 @@ def medir(usar_llm: bool = False) -> list[dict]:
             tray_csv=tray,
             llm=llm,
         )
-        antes = {i: dict(p.texto) for i, p in enumerate(plan.piezas)}
+        guarda: list[dict] = []
         if usar_llm and tramos:
             plan = motion_capa.rellenar_textos_con_llm(
                 plan, tramos, int(round(dur_s * 1000)), mp4.stem
             )
-        del antes
+            guarda = list(motion_textos_llm.INCIDENCIAS)
         filas.append({
             "clip": mp4.name,
             "dur_s": round(dur_s, 2),
@@ -127,6 +127,7 @@ def medir(usar_llm: bool = False) -> list[dict]:
             "omisiones": {o.plantilla: o.motivo for o in plan.omisiones},
             "incidencias": list(plan.incidencias),
             "textos_llm": llm is not None,
+            "guarda": guarda,
             "textos": {
                 p.plantilla: list(p.texto.values())[0] if p.texto else "" for p in plan.piezas
             },

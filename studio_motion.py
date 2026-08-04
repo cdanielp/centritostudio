@@ -267,16 +267,46 @@ def _componer_previsualizacion(
     with tempfile.TemporaryDirectory(prefix="hf3_previs_") as tmp:
         capa = Path(tmp) / "capa.png"
         subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", str(r.ruta_mov), "-ss", f"{medio_pieza:.3f}",
-             "-frames:v", "1", "-vf", "format=rgba", "-pix_fmt", "rgba", str(capa)],
-            check=True, timeout=TIMEOUT_PREVIS_S,
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                str(r.ruta_mov),
+                "-ss",
+                f"{medio_pieza:.3f}",
+                "-frames:v",
+                "1",
+                "-vf",
+                "format=rgba",
+                "-pix_fmt",
+                "rgba",
+                str(capa),
+            ],
+            check=True,
+            timeout=TIMEOUT_PREVIS_S,
         )
         subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-ss", f"{max(medio_video, 0):.3f}", "-i", str(mp4),
-             "-i", str(capa), "-filter_complex",
-             f"[0:v][1:v]overlay={desplazamiento[0]}:{desplazamiento[1]},scale=-2:{PREVIS_ALTO}",
-             "-frames:v", "1", str(destino)],
-            check=True, timeout=TIMEOUT_PREVIS_S,
+            [
+                "ffmpeg",
+                "-y",
+                "-v",
+                "error",
+                "-ss",
+                f"{max(medio_video, 0):.3f}",
+                "-i",
+                str(mp4),
+                "-i",
+                str(capa),
+                "-filter_complex",
+                f"[0:v][1:v]overlay={desplazamiento[0]}:{desplazamiento[1]},scale=-2:{PREVIS_ALTO}",
+                "-frames:v",
+                "1",
+                str(destino),
+            ],
+            check=True,
+            timeout=TIMEOUT_PREVIS_S,
         )
     return destino
 

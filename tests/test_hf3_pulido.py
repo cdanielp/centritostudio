@@ -116,7 +116,8 @@ def test_el_relleno_pide_texto_para_CADA_pieza_colocada(monkeypatch):
     # Solo se pide texto para las piezas que TIENEN habla alrededor: sin contexto el modelo
     # escribiria a ciegas, y eso es justo lo que se vino a evitar.
     con_contexto = [
-        p for p in plan.piezas
+        p
+        for p in plan.piezas
         if p.plantilla in mc.SLOT_A_RELLENAR and mc.contexto_hablado(TRAMOS, p.t0_ms)
     ]
     assert len(vistos["huecos"]) == len(con_contexto)
@@ -344,3 +345,31 @@ def test_la_previsualizacion_no_vive_en_el_repo():
 
     assert sm.PREVIS_DIR.name.startswith(".")
     assert "output" in sm.PREVIS_DIR.parts
+
+
+# ── Lo que la guarda caza queda escrito, no solo impreso ─────────────────────
+
+
+def test_las_incidencias_de_la_guarda_sobreviven_a_la_cache(tmp_path, monkeypatch):
+    """Una corrida con cache tiene que poder decir cuantas palabras invento el modelo.
+
+    Si la cuenta solo existiera en el log de la primera corrida, no habria forma de medir si la
+    guarda sobra o hace falta sin volver a pagar una llamada por clip.
+    """
+    import motion_textos_llm as mtl
+
+    monkeypatch.setattr(mtl, "TRANSCRIPTS", tmp_path)
+    incidencias = [{"id": 2, "palabras": ["desercion"], "resuelto": "reintento"}]
+    mtl._guardar_relleno("clipx.relleno", "huella-a", {2: "Un titulo"}, incidencias)
+
+    assert mtl.incidencias_guardadas("clipx.relleno") == incidencias
+    assert mtl.incidencias_guardadas("no_existe.relleno") == []
+
+
+def test_un_sidecar_roto_no_tumba_la_lectura_de_incidencias(tmp_path, monkeypatch):
+    import motion_textos_llm as mtl
+
+    monkeypatch.setattr(mtl, "TRANSCRIPTS", tmp_path)
+    mtl.ruta_sidecar("roto.relleno").write_text("{no soy json", encoding="utf-8")
+
+    assert mtl.incidencias_guardadas("roto.relleno") == []

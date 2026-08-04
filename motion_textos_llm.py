@@ -163,6 +163,24 @@ def _sidecar_reutilizable(stem: str, marca: str) -> dict | None:
     return datos.get("textos")
 
 
+# Lo que la guarda cazo en la ULTIMA llamada a `pedir_textos_para`, con cache o sin ella. No es
+# estado del pipeline: es una ventana para medir, y por eso se limpia en cada llamada.
+INCIDENCIAS: list[dict] = []
+
+
+def incidencias_guardadas(sufijo: str) -> list[dict]:
+    """Incidencias escritas en un sidecar de relleno. Cualquier problema -> lista vacia."""
+    ruta = ruta_sidecar(sufijo)
+    if not ruta.is_file():
+        return []
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    guardadas = datos.get("incidencias") if isinstance(datos, dict) else None
+    return [x for x in guardadas if isinstance(x, dict)] if isinstance(guardadas, list) else []
+
+
 # ── Saneado de la respuesta ──────────────────────────────────────────────────
 
 
@@ -393,10 +411,12 @@ def pedir_textos_para(
         return {}
 
     sufijo = f"{stem}.relleno" if stem else ""
+    INCIDENCIAS.clear()
     if not forzar and sufijo:
         previo = _sidecar_reutilizable(sufijo, marca)
         if previo:
             print(f"[motion-llm] cache HIT relleno de {stem} | sin llamada al LLM")
+            INCIDENCIAS.extend(incidencias_guardadas(sufijo))
             return _sanear_relleno(previo, huecos)
 
     try:
@@ -414,10 +434,11 @@ def pedir_textos_para(
 
     textos = _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, huecos)
     textos, incidencias = _filtrar_inventadas(textos, huecos, duracion_ms, transcripcion)
+    INCIDENCIAS.extend(incidencias)
     if incidencias:
         print(f"[motion-llm] guarda: {len(incidencias)} campo(s) con palabras no dichas")
     if textos and sufijo:
-        _guardar_relleno(sufijo, marca, textos)
+        _guardar_relleno(sufijo, marca, textos, incidencias)
     print(f"[motion-llm] relleno: {len(textos)}/{len(huecos)} letreros escritos")
     return textos
 
@@ -516,7 +537,9 @@ def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
     return salida
 
 
-def _guardar_relleno(sufijo: str, marca: str, textos: dict[int, str]) -> None:
+def _guardar_relleno(
+    sufijo: str, marca: str, textos: dict[int, str], incidencias: list[dict]
+) -> None:
     try:
         from atomic_io import atomic_write_json  # noqa: PLC0415
 
@@ -526,6 +549,10 @@ def _guardar_relleno(sufijo: str, marca: str, textos: dict[int, str]) -> None:
                 "schema": SCHEMA_CACHE,
                 "huella": marca,
                 "textos": [{"id": k, "texto": v} for k, v in sorted(textos.items())],
+                # Lo que la guarda caza queda ESCRITO junto al resultado. Si solo se imprimiera,
+                # una corrida con cache no podria decir cuantas palabras invento el modelo, y
+                # esa cuenta es justamente lo que dice si la guarda sobra o hace falta.
+                "incidencias": incidencias,
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -533,12 +560,14 @@ def _guardar_relleno(sufijo: str, marca: str, textos: dict[int, str]) -> None:
 
 
 __all__ = [
+    "INCIDENCIAS",
     "LIMITES",
     "MAX_SECCIONES",
     "SUFIJO_SIDECAR",
     "TextosLLM",
     "huella",
     "huella_relleno",
+    "incidencias_guardadas",
     "pedir_textos",
     "pedir_textos_para",
     "ruta_sidecar",
