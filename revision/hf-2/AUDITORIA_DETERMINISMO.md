@@ -768,3 +768,475 @@ Los renders de medicion viven fuera del repo, en
 | `salida/c/resultado.json` | los 4 renders del bloque C con el `ffprobe` completo |
 | `salida/d/resultado.json`, `salida/d/batch2/` | bloque D: `--json`, `--batch --json`, manifiesto |
 | `salida/e/resultado.json`, `salida/f/resultado.json` | hipotesis de causa raiz (GPU y workers) |
+
+---
+---
+
+# ADDENDUM. Reparacion de la reproducibilidad y re-armado del canario
+
+**Fecha:** 2026-08-04 (mismo dia que la auditoria original, sesion posterior)
+**Rama:** `fix/hf2-render-reproducible`, apilada sobre `docs/hf2-auditoria-determinismo`
+**Decision asociada:** D52
+**Alcance:** este addendum NO reescribe nada de arriba. Corrige dos conclusiones (la de HF-0
+sobre determinismo y la del "IGUAL" de titulo_seccion) y documenta la reparacion.
+
+Arnes de medicion: `C:\CLAUDECODE\hyperframes-lab\auditoria\reparacion.py`, salidas en
+`auditoria/salida_rep/`. Mismo entorno fijado que la auditoria original.
+
+## BLOQUE 0. Reconciliacion con HF-0
+
+### 0.1. Como se midio el determinismo en HF-0
+
+HF-0 no dejo el comando de render en ningun documento. Lo que dejo es el veredicto en
+`C:\CLAUDECODE\hyperframes-lab\INFORME_HF0.md`, linea 20 de la tabla de resultados y su
+paso 6, citado literal:
+
+```
+| ¿sha256 idéntico entre corridas? | **SÍ** — 3/3 renders byte-idénticos |
+```
+
+```
+## Paso 6 — Determinismo
+
+Tres renders del MOV (`overlay_alpha.mov`, `det_A.mov`, `det_B.mov`), el primero separado de los
+otros dos por ~30 minutos y varios comandos intermedios:
+
+3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40 *det_A.mov
+3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40 *det_B.mov
+3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40 *overlay_alpha.mov
+
+Byte-idénticos. En esta máquina, con estas versiones, el render es reproducible al hash.
+```
+
+(Las dos citas conservan los em dashes del documento de HF-0 porque son cita literal.)
+
+Como el comando no quedo registrado, se REHIZO la medicion sobre la misma composicion
+(`C:\CLAUDECODE\hyperframes-lab\overlay`, intacta desde HF-0) con el mismo comando que usa
+produccion. El sha obtenido hoy es el MISMO que HF-0 registro, asi que la reconstruccion es
+fiel y no hay deriva de entorno:
+
+```
+  hf0_run1: rc=0 18.8s sha=3ec305e6d7819d60 traza={'workerCount': 6, 'dedup_reusables': ('134', '180'), 'dedup_reusados': ('29', '30'), 'totalFrames': 180, 'staticDuration': '6', 'compositionHash': ['9eda7559570d8257']}
+  hf0_run2: rc=0 16.5s sha=3ec305e6d7819d60 traza={'workerCount': 6, 'dedup_reusables': ('134', '180'), 'dedup_reusados': ('29', '30'), 'totalFrames': 180, 'staticDuration': '6', 'compositionHash': ['9eda7559570d8257']}
+```
+
+### 0.2. Por que HF-0 dio sha identico
+
+Los numeros de la composicion de HF-0, medidos (no estimados):
+
+| dato | HF-0 (`overlay/`) | hook 9:16 | titulo_seccion 9:16 |
+|---|---|---|---|
+| duracion | 6.0 s | 2.5 s | 2.0 s |
+| frames totales | 180 | 75 | 60 |
+| `staticDuration` declarada en el root | **6** | 0 | 0 |
+| frames deduplicados por estaticos | **134 de 180 (74.4%)** | 8 de 75 (10.7%) | 2 de 60 (3.3%) |
+| frames rasterizados de verdad | **46** | 67 | 58 |
+| workers resueltos por el CLI | **6** | 2 | 2 |
+| flags | los mismos de produccion | los mismos | los mismos |
+
+El dato que manda NO es el numero de workers: HF-0 corrio con SEIS y salio byte identico.
+El dato que manda es cuantos frames se rasterizan de verdad y con cuanto texto en
+movimiento. La composicion de HF-0 anima entre t=0.1 s y t=0.94 s y luego se queda QUIETA
+hasta t=5.5 s (`lt-clean-bar.html`: `clip-path`, `scaleY`, y dos de `y` mas `opacity`, todos
+terminados antes del segundo 1). Por eso 134 de sus 180 frames son identicos entre si y el
+dedup los rinde una sola vez y los copia: un frame copiado no puede diferir. Las cinco
+plantillas de HF-2, en cambio, llevan una respiracion sinusoidal (`#respira`, `scale` de
+1.006 a 1.012) corriendo durante todo el sostenimiento, asi que casi ningun frame se repite
+y casi todos se rasterizan aparte.
+
+Para separar "estructura" de "suerte" se corrio la composicion de HF-0 DIEZ veces con el
+default (HF-0 solo midio tres):
+
+```
+  hf0 r01: rc=0 16.2s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r02: rc=0 15.7s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r03: rc=0 16.0s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r04: rc=0 15.9s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r05: rc=0 15.2s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r06: rc=0 16.4s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r07: rc=0 17.1s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r08: rc=0 16.3s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r09: rc=0 15.8s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  hf0 r10: rc=0 16.0s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
+  >>> HF-0: 10 corridas, 1 sha distinto(s)
+```
+
+10 de 10 identicas. La composicion de HF-0 es genuinamente estable, no fue suerte.
+
+**Correccion formal del resultado de HF-0.** El dato de HF-0 (3 de 3 byte identicos) es
+CIERTO para su composicion y sigue siendolo hoy. Lo que NO es cierto es la generalizacion
+que HF-0 escribio a partir de el: *"En esta maquina, con estas versiones, el render es
+reproducible al hash"*. Eso vale para una composicion mayoritariamente estatica, no para el
+render en general. Con contenido animado durante todo el sostenimiento (las cinco plantillas
+de HF-2) el mismo entorno da sha distinto. HF-0 midio una composicion, no el renderer.
+
+### 0.3. Cual de las 10 configuraciones reprodujo, y por que
+
+`titulo_seccion vertical` fue la unica IGUAL de las diez. **Reprodujo por AZAR, no por
+estructura.** Se comprobo corriendola seis veces con el default en lugar de dos:
+
+```
+  r1: rc=0 8.4s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
+  r2: rc=0 8.3s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
+  r3: rc=0 8.2s workers=2 sha=f30647ce2de925267b311f4b04a6edcad3a4be3d1368f990a9d054514596088d
+  r4: rc=0 8.3s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
+  r5: rc=0 8.2s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
+  r6: rc=0 8.1s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
+  >>> 6 corridas, 2 sha distinto(s)
+```
+
+Cinco iguales y una distinta (`r3`). La configuracion NO es reproducible; el par de corridas
+de la auditoria original cayo del mismo lado.
+
+Que sea la que mas probabilidad tenia de caer asi es coherente con 0.2 y con el mismo
+mecanismo: la diferencia es un evento RARO por frame (3 frames de 75 en hook), asi que la
+probabilidad de que un par de corridas salga identico crece cuando hay menos frames
+rasterizados y menos texto que rasterizar. `titulo_seccion` es la pieza mas corta del
+catalogo (60 frames), la unica de UN solo slot y la de menos caracteres (39). Tiene la
+exposicion mas baja de las cinco, y aun asi falla 1 de cada 6.
+
+### 0.4. Mismo mecanismo para 0.2 y 0.3
+
+Si, el mismo, y se enuncia una sola vez: **lo que expone al fallo es el numero de frames en
+los que el texto se rasteriza de nuevo, no el numero de workers.** HF-0 tiene 46 frames
+rasterizados con el texto quieto y sale identico 10 de 10 incluso con 6 workers.
+`titulo_seccion` tiene 58 frames rasterizados con el texto respirando y falla 1 de 6 con 2
+workers. `hook` tiene 67 y fallo en el par de la auditoria. No hace falta ninguna sintesis
+adicional: es la misma variable, medida en las dos direcciones.
+
+Queda una honestidad pendiente: no se aislo *por que* dos procesos de Chrome rasterizan el
+mismo glifo con delta 1 sobre 255. Se acota el gatillo (captura repartida) y se mide el
+remedio, pero la causa dentro de Chrome no se instrumento. Para el proposito de HF-3 no hace
+falta; si algun dia el remedio deja de funcionar, ese es el hilo.
+
+## BLOQUE 1. Costo de `--workers 1`
+
+Cada configuracion renderizada con el default y con `--workers 1`, cronometrada:
+
+| plantilla | orientacion | frames | dedup | workers auto | segundos default | segundos workers 1 | factor |
+|---|---|---|---|---|---|---|---|
+| cierre | vertical | 105 | 11/105 | 3 | 12.6 | 6.4 | 0.51x |
+| cierre | horizontal | 105 | 11/105 | 3 | 12.8 | 6.5 | 0.51x |
+| dato_destacado | vertical | 90 | 23/90 | 3 | 13.3 | 6.3 | 0.47x |
+| dato_destacado | horizontal | 90 | 23/90 | 3 | 14.1 | 6.5 | 0.46x |
+| hook | vertical | 75 | 8/75 | 2 | 10.9 | 5.2 | 0.48x |
+| hook | horizontal | 75 | 8/75 | 2 | 11.4 | 5.2 | 0.46x |
+| lower_third | vertical | 135 | 21/135 | 4 | 14.8 | 6.8 | 0.46x |
+| lower_third | horizontal | 135 | 21/135 | 4 | 14.8 | 6.9 | 0.47x |
+| titulo_seccion | vertical | 60 | 2/60 | 2 | 8.4 | 4.4 | 0.52x |
+| titulo_seccion | horizontal | 60 | 2/60 | 2 | 8.1 | 4.5 | 0.56x |
+| **TOTAL** | | | | | **121.2** | **58.7** | **0.48x** |
+
+Salida literal del arnes:
+
+```
+=== TABLA 1 ===
+cierre           vertical      12.6    6.4  0.51x
+cierre           horizontal    12.8    6.5  0.51x
+dato_destacado   vertical      13.3    6.3  0.47x
+dato_destacado   horizontal    14.1    6.5  0.46x
+hook             vertical      10.9    5.2  0.48x
+hook             horizontal    11.4    5.2  0.46x
+lower_third      vertical      14.8    6.8  0.46x
+lower_third      horizontal    14.8    6.9  0.47x
+titulo_seccion   vertical       8.4    4.4  0.52x
+titulo_seccion   horizontal     8.1    4.5  0.56x
+TOTAL                         121.2   58.7  0.48x
+```
+
+### 1.3. Veredicto
+
+`--workers 1` no cuesta: **ahorra**. El catalogo entero baja de 121.2 s a 58.7 s (2.07 veces
+mas rapido), porque cada worker extra levanta su propio Chrome (unos 2 s) y estas piezas
+duran de 60 a 135 frames, muy poco para amortizar ese arranque. El paralelismo aqui pagaba
+arranque de navegador para casi nada de captura.
+
+## BLOQUE 2. `--workers 1` es SUFICIENTE, no solo necesario
+
+### 2.1. Eleccion de la plantilla, con numeros
+
+Ninguna plantilla maximiza a la vez frames y texto, asi que se corrieron las dos candidatas
+para que la conclusion no dependa de cual se elija:
+
+| plantilla | frames | caracteres del ejemplo | slots | frames x caracteres |
+|---|---|---|---|---|
+| cierre | 105 | **71** | 2 | **7455** (el mayor) |
+| lower_third | **135** (el mayor) | 41 | 2 | 5535 |
+| hook | 75 | 58 | 2 | 4350 |
+| dato_destacado | 90 | 42 | 2 | 3780 |
+| titulo_seccion | 60 | 39 | 1 | 2340 |
+
+`cierre` es la principal: mas texto (71 caracteres) y el producto de frames por caracteres
+mas alto del catalogo (7455), que es la superficie real de rasterizacion de texto.
+`lower_third` es la de control: mas frames (135).
+
+### 2.2, 2.3 y 2.5. Diez corridas por plantilla y orientacion
+
+| plantilla | orientacion | corridas | sha256 unico | sha distintos | veredicto |
+|---|---|---|---|---|---|
+| cierre | vertical | 10 | `51586fe8eeacc837df2f469b8beb856bbc457374a7164d95c648e965c43c1a4a` | 1 | **10/10 IGUALES** |
+| cierre | horizontal | 10 | `74d370c7c4d2d9fe73d048d25bb855ff634fa33e49c836fa523234f31bf4ebee` | 1 | **10/10 IGUALES** |
+| lower_third | vertical | 10 | `c3184336bdb69715a8e42e811a23fb7ce2f1eb58972ea654ec59644bfa7c60b9` | 1 | **10/10 IGUALES** |
+| lower_third | horizontal | 10 | `8da71a9a7b63a0d609c990320a263fc5f00a2f6c5c5466ae35036424f59c4d67` | 1 | **10/10 IGUALES** |
+
+Salida literal:
+
+```
+  >>> cierre vertical: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
+  >>> cierre horizontal: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
+  >>> lower_third vertical: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
+  >>> lower_third horizontal: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
+```
+
+40 renders, 4 sha256 (uno por configuracion), cero diferencias dentro de cada configuracion.
+
+### 2.4
+
+No aplica: ninguna corrida difirio.
+
+## BLOQUE 3. El flag queda fijado
+
+`hyperframes/invocador.py` gana la constante `WORKERS = "1"` con el porque y la referencia a
+este documento, y `construir_comando` la emite siempre. El test de CI
+`test_el_comando_fija_un_solo_worker` (en `tests/test_hf_invocador.py`) falla si el flag
+desaparece; es asercion sobre una lista de strings, no renderiza nada.
+
+Comando construido despues del cambio:
+
+```
+npx hyperframes render motion/hook --format mov --quality high --fps 30 --output x.mov --variables-file v.json --workers 1 --no-best-effort
+```
+
+## BLOQUE 4. El par de gates (`hf_real`)
+
+Los dos corren sobre las CINCO plantillas (`@pytest.mark.parametrize("nombre", NOMBRES)`).
+
+### 4.1. Gate de reproducibilidad
+
+`test_render_reproducible_por_plantilla`: el mismo contrato renderizado dos veces exige
+sha256 IGUAL. Usa dos raices de cache distintas a proposito; con una sola, la segunda
+llamada seria un hit y el test pasaria sin renderizar nada (lo verifica ademas con
+`assert not uno.desde_cache and not otro.desde_cache`).
+
+### 4.3. Demostracion de que 4.1 canta
+
+Se quito `--workers` del comando a mano y se corrio el gate:
+
+```
+$ pytest tests/test_hf2_real.py -m hf_real -k reproducible -q
+FFFF.                                                                    [100%]
+...
+E       AssertionError: cierre: dos renders del MISMO contrato dieron sha256 distinto (8682d1ad0f949509fd80a0f1b5877cf07c73f22accf9bb72dc28e8e271627e7e vs e8c9c3af34e2e0ecc1b2f558dbc882f6c1de32df7963944b4ee6ee027a7345eb). El render dejo de ser reproducible: revisa que el comando siga fijando --workers 1 (ver invocador.WORKERS y la auditoria de HF-2).
+E       AssertionError: dato_destacado: dos renders del MISMO contrato dieron sha256 distinto (e92ec13630dd8ad4ec61627ba99f940504e194fd50eed54a05d5a8335010851a vs 996991d94cdc02ee9fd7928b4ce402fd031996bca541425c17cccecb3b8c5978).
+E       AssertionError: hook: dos renders del MISMO contrato dieron sha256 distinto (fb55b1c2428efe07e5d69ea4d21196633b782475ab34a1cc0f6d2d857f44101c vs 5f863c660cc2a873d914c988aa10789083af43672ecd5b1277074e9934bee4d5).
+E       AssertionError: lower_third: dos renders del MISMO contrato dieron sha256 distinto (4145d52fc8b191926757a3d04c4bbfc63f7e7d5acb575d9f2a1fe7ed323d3fae vs ee574339478570ce9d996f686b7c7bf48338b827bd641b030fbff9c5dbde051c).
+=========================== short test summary info ===========================
+FAILED tests/test_hf2_real.py::test_render_reproducible_por_plantilla[cierre]
+FAILED tests/test_hf2_real.py::test_render_reproducible_por_plantilla[dato_destacado]
+FAILED tests/test_hf2_real.py::test_render_reproducible_por_plantilla[hook]
+FAILED tests/test_hf2_real.py::test_render_reproducible_por_plantilla[lower_third]
+4 failed, 1 passed, 10 deselected in 149.51s (0:02:29)
+```
+
+4 de 5 en rojo. La que pasa es `titulo_seccion`, exactamente la de menor exposicion del
+bloque 0.3, que es lo que se esperaba y no una casualidad comoda: confirma en el mismo
+experimento que su "IGUAL" original era azar y no estructura. El flag se restauro despues.
+
+### 4.2. Canario de D50.5 re-armado
+
+El canario ya no solo compara dos sha distintos: comprueba PRIMERO su propia premisa
+(renderiza el contrato base una segunda vez con otra raiz de cache y exige sha igual). Un
+canario cuya premisa vive en otro archivo se apaga sin que nadie lo note.
+
+Demostracion de que canta: se reintrodujo a mano el fallo de variables planas de D50.1 en
+`hyperframes/invocador.py`, en `variables_de` (devolver `{"texto": {...}}` anidado en vez de
+subir los slots al nivel raiz). Variables enviadas con el fallo puesto:
+
+```
+{"texto": {"kicker": "Tutorial ComfyUI", "titulo": "Entrena tu LoRA de personaje en 20 minutos"}, "marca_primario": "#FF5A2B", "marca_secundario": "#111111", "marca_texto": "#FFFFFF", "duracion_ms": 2500, "fps": 30, "tamano_ancho": 1080, "tamano_alto": 1920, "semilla": 0}
+```
+
+```
+$ pytest tests/test_hf2_real.py -m hf_real -k canario -q
+FFFFF                                                                    [100%]
+...
+E       AssertionError: cierre: el slot 'cta' no llego a la plantilla, esta pintando su valor por defecto (el fallo de D50.1)
+E       assert 'c80d57d0b4a7e435d8c6b4d8025c75eb4c2a1196fb2fe282c969269afd78376c' != 'c80d57d0b4a7e435d8c6b4d8025c75eb4c2a1196fb2fe282c969269afd78376c'
+E       AssertionError: dato_destacado: el slot 'cifra' no llego a la plantilla, esta pintando su valor por defecto (el fallo de D50.1)
+E       assert '965cdf71b15ffcec0f9b221459d5b68ba488b21c948fab95b3cdd5b213f5cc66' != '965cdf71b15ffcec0f9b221459d5b68ba488b21c948fab95b3cdd5b213f5cc66'
+E       AssertionError: hook: el slot 'kicker' no llego a la plantilla, esta pintando su valor por defecto (el fallo de D50.1)
+E       assert '47ceae1fe871358fbdd82632aca48a67bfdd919c015673bb9a9e1834d8a63549' != '47ceae1fe871358fbdd82632aca48a67bfdd919c015673bb9a9e1834d8a63549'
+=========================== short test summary info ===========================
+FAILED tests/test_hf2_real.py::test_canario_de_influencia_por_plantilla[cierre]
+FAILED tests/test_hf2_real.py::test_canario_de_influencia_por_plantilla[dato_destacado]
+FAILED tests/test_hf2_real.py::test_canario_de_influencia_por_plantilla[hook]
+FAILED tests/test_hf2_real.py::test_canario_de_influencia_por_plantilla[lower_third]
+FAILED tests/test_hf2_real.py::test_canario_de_influencia_por_plantilla[titulo_seccion]
+5 failed, 10 deselected in 131.19s (0:02:11)
+```
+
+Las CINCO en rojo, y el `assert X != X` con los dos sha256 identicos es la firma exacta del
+fallo: dos contratos distintos produjeron el MISMO archivo porque ninguno de los dos textos
+llego a la plantilla. Antes de esta reparacion ese mismo escenario habria pasado en verde,
+porque la varianza de rasterizacion habria dado dos sha distintos. El fallo se revirtio
+despues y se verifico el aplanado plano.
+
+## BLOQUE 5. `compositionHash` (solo lectura, sin adoptar)
+
+### 5.1. Donde sale
+
+Por **stderr**, dentro de las trazas estructuradas del CLI, nunca por stdout ni por el JSON
+de `--batch --json`. Formato: 16 caracteres hexadecimales, dentro del checkpoint de la fase
+`compile`:
+
+```
+[INFO] [Render:trace] {"renderJobId":"...","phase":"compile","status":"checkpoint","elapsedMs":38,"message":"composition metadata resolved","width":1080,"height":1920,"videoCount":0,"audioCount":0,"imageCount":0,"deviceScaleFactor":1,"forceScreenshot":false,"compositionHash":"0dceb4f34338fb49"}
+```
+
+Aparece en todos los modos de render probados (normal, `--json`, `--batch --json`), siempre
+en stderr.
+
+### 5.2. Prueba clave
+
+Se copio `motion/hook` FUERA del repo (a `auditoria/salida_rep/b5/hook_copia`) y se cambio
+UNA propiedad de CSS, sin tocar el contrato ni un byte:
+
+```
+editado: {'de': 'letter-spacing: 0.09em;', 'a': 'letter-spacing: 0.42em;'}
+```
+
+```
+  antes:   rc=0 hash=['0dceb4f34338fb49'] sha=3bd1da57ee5dcb80ff22da4d0c5b06eb32b854ec9774f44d68abdcb5d82f9eed
+  despues: rc=0 hash=['3f7aa7b6e8b093ea'] sha=e572b27a1dae2dc0b71d5808325ba15f767c8e02fb5784014a488cabe5e5a06b
+  clave de cache de HF-1 (identica en ambos): ce081fe554a0a2e16096c58da89e042e598bace65bd9ae825ff213149ed31a2f
+```
+
+| magnitud | antes | despues | cambio |
+|---|---|---|---|
+| `compositionHash` del CLI | `0dceb4f34338fb49` | `3f7aa7b6e8b093ea` | **SI** |
+| sha256 del MOV producido | `3bd1da57...` | `e572b27a...` | **SI** |
+| clave de cache de HF-1 (`contrato.calcular_hash`) | `ce081fe5...` | `ce081fe5...` | **NO** |
+
+### 5.3. Veredicto
+
+**SI.** `compositionHash` cubre cambios en el contenido de la plantilla que nuestra clave de
+cache actual NO ve. Un cambio de CSS produce un MOV distinto y deja la clave de cache
+intacta: un hit de cache devolveria la pieza vieja como si nada hubiera cambiado. Hoy eso
+esta tapado por la regla D51.1 (el contenido del proyecto no se hashea; lo que invalida es
+subir la version de plantilla en el catalogo), que funciona solo mientras nadie edite una
+plantilla sin acordarse de subir su version.
+
+### 5.4. Recomendacion, NO implementada en este PR
+
+Meter `compositionHash` en la clave de cache convertiria "me acorde de subir la version" en
+una garantia mecanica. NO se implementa aqui por dos razones:
+
+1. La regla dura de esta tarea prohibe cambiar la clave de cache en este PR.
+2. Tiene un costo real que hay que decidir aparte: `compositionHash` solo se conoce DESPUES
+   de lanzar el render (sale de la fase `compile`), asi que no sirve para consultar la cache
+   antes de renderizar. Usarlo obliga a un esquema de dos niveles (clave de contrato para
+   buscar, `compositionHash` guardado en el sidecar para validar el hit), que es un cambio de
+   diseno del almacen, no un ajuste.
+
+Mientras tanto sigue vigente D51.1, con su punto debil ya nombrado y ahora medido.
+
+## BLOQUE 6. Cierre del hueco del reporte anterior
+
+### 6.1. Las siete reglas del core, por plantilla y por gemelo
+
+| plantilla | gemelo | A1 Math.random, Date.now, performance.now | A2 `repeat: -1` | A3 timeline unica y pausada | A4 `gsap.set` al cargar | A5 tweens de display o visibility | A6 construccion async | A7 `data-*` del root |
+|---|---|---|---|---|---|---|---|---|
+| cierre | vertical | OK | OK | OK `:126` | OK | OK | OK | OK `:89` 1080x1920 |
+| cierre | horizontal | OK | OK | OK `:126` | OK | OK | OK | OK `:89` 1920x1080 |
+| dato_destacado | vertical | OK | OK | OK `:132` | OK | OK | OK | OK `:94` 1080x1920 |
+| dato_destacado | horizontal | OK | OK | OK `:132` | OK | OK | OK | OK `:94` 1920x1080 |
+| hook | vertical | OK | OK | OK `:132` | OK | OK | OK | OK `:94` 1080x1920 |
+| hook | horizontal | OK | OK | OK `:132` | OK | OK | OK | OK `:94` 1920x1080 |
+| lower_third | vertical | OK | OK | OK `:121` | OK | OK | OK | OK `:83` 1080x1920 |
+| lower_third | horizontal | OK | OK | OK `:121` | OK | OK | OK | OK `:83` 1920x1080 |
+| titulo_seccion | vertical | OK | OK | OK `:121` | OK | OK | OK | OK `:84` 1080x1920 |
+| titulo_seccion | horizontal | OK | OK | OK `:121` | OK | OK | OK | OK `:84` 1920x1080 |
+
+Cero VIOLACION en las diez. Los comandos y salidas literales que sostienen cada columna
+estan en el bloque A de la auditoria original, mas los dos del punto 6.3 de aqui abajo.
+
+### 6.2. Las cuatro deudas no bloqueantes
+
+1. `semilla` esta declarada en las diez plantillas (`motion/hook/index.html:12` y sus nueve
+   gemelas) y no la lee ninguna; entra al hash de cache por `invocador.py:86`, asi que
+   cambiarla invalida la cache sin cambiar un pixel.
+2. Los defaults de lienzo de los cinco gemelos horizontales apuntan a vertical
+   (`motion/hook/horizontal/index.html:10-11` declara 1080x1920 contra un root
+   `data-width="1920" data-height="1080"` en `:94`).
+3. El GSAP vendorizado trae `Math.random` (3) y `Date.now` (2) por copia
+   (`motion/hook/gsap.min.js:10` y sus cuatro copias identicas); ninguna plantilla llama a
+   las utilidades que los alcanzan, pero nada lo vigila.
+4. `--json` sin `--batch` no emite nada y devuelve returncode 0, asi que una integracion que
+   asuma JSON en stdout recibe vacio en silencio.
+
+Ninguna se toca en este PR: siguen siendo no bloqueantes.
+
+### 6.3. Reglas que estaban limpias "por inspeccion" y ahora tienen comando
+
+Dos afirmaciones del bloque A original se sostenian por lectura, sin comando pegado. Se
+ejecutan aqui.
+
+**A4, "las cinco piezas son de UNA sola escena".** Se afirmo al descartar que un `gsap.set`
+pudiera adelantarse a escenas posteriores. Comprobado:
+
+```
+$ grep -rc 'class="clip"' motion/ --include=*.html
+motion/cierre/horizontal/index.html:1
+motion/cierre/index.html:1
+motion/dato_destacado/horizontal/index.html:1
+motion/dato_destacado/index.html:1
+motion/hook/horizontal/index.html:1
+motion/hook/index.html:1
+motion/lower_third/horizontal/index.html:1
+motion/lower_third/index.html:1
+motion/titulo_seccion/horizontal/index.html:1
+motion/titulo_seccion/index.html:1
+```
+
+Exactamente un `.clip` por archivo: escena unica confirmada, no hay escena posterior posible.
+
+**A5, "las ocurrencias de `display` estan en el `<style>`, no en el `<script>`".** Se
+afirmo citando de memoria donde empieza cada script. Comprobado:
+
+```
+$ grep -rn '<script>' motion/ --include=*.html
+motion/cierre/horizontal/index.html:101:    <script>
+motion/cierre/index.html:101:    <script>
+motion/dato_destacado/horizontal/index.html:107:    <script>
+motion/dato_destacado/index.html:107:    <script>
+motion/hook/horizontal/index.html:106:    <script>
+motion/hook/index.html:106:    <script>
+motion/lower_third/horizontal/index.html:96:    <script>
+motion/lower_third/index.html:96:    <script>
+motion/titulo_seccion/horizontal/index.html:96:    <script>
+motion/titulo_seccion/index.html:96:    <script>
+```
+
+El `<script>` mas temprano empieza en la linea 96 y la ocurrencia de `display` mas tardia
+esta en la 64: ninguna cae dentro de un script. De paso corrige un dato del bloque A
+original, que citaba el arranque del script de hook en la linea 106 y el de cierre en la
+101; los numeros exactos son los de aqui arriba.
+
+## Estado de los dos bloqueantes de la auditoria
+
+| bloqueante original | estado |
+|---|---|
+| 1. `invocador.py` no fija `--workers` y el MOV no es reproducible | **CERRADO.** `WORKERS = "1"` fijado, test de CI que lo vigila, gate `hf_real` de reproducibilidad sobre las 5 plantillas, 40 renders con 10 de 10 iguales |
+| 2. `test_hf2_real.py:81`, canario de D50.5 inerte | **CERRADO.** Canario con premisa propia, demostrado en rojo sobre las 5 plantillas con el fallo de D50.1 reintroducido |
+
+## Evidencia de este addendum
+
+| ruta (en el lab, fuera del repo) | contenido |
+|---|---|
+| `auditoria/reparacion.py` | arnes de los bloques 0, 1, 2 y 5 |
+| `auditoria/salida_rep/b0/`, `b0b/`, `b0c/` | reconciliacion con HF-0, 6 corridas de titulo_seccion, 10 de HF-0 |
+| `auditoria/salida_rep/b1/` | costo de `--workers 1`, 20 renders cronometrados |
+| `auditoria/salida_rep/b2/` | 40 renders de reproducibilidad (cierre y lower_third) |
+| `auditoria/salida_rep/b5/` | prueba de `compositionHash` contra edicion de CSS |
+| `auditoria/salida_rep/demo_42_log.txt`, `demo_43_log.txt` | las dos salidas en rojo de los gates |
+| `auditoria/salida_rep/hfreal_log.txt` | corrida manual de los `hf_real` |

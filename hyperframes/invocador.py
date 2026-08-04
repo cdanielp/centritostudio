@@ -31,6 +31,13 @@ PIX_FMT_ESPERADO = "yuva444p12le"
 TIMEOUT_DEFAULT_S = 180  # HF-0: un overlay de 6 s tardo 14.9 s en esta maquina
 TOLERANCIA_MS = 120  # un MOV real no cae al milisegundo exacto
 NOMBRE_VARIABLES = "variables.json"
+# Captura en UN solo worker. Con `auto` (2 en esta maquina) el MOV NO es reproducible:
+# 9 de 10 configuraciones dieron sha256 distinto entre dos corridas del MISMO contrato,
+# por varianza de rasterizacion sub pixel en los bordes del texto animado. Con 1 worker,
+# 10 de 10 corridas byte identicas. Medido en revision/hf-2/AUDITORIA_DETERMINISMO.md
+# (bloques B y 2 del addendum). NO quitar sin volver a medir: la cache, el resume del
+# paquete y el canario de influencia dependen de que misma entrada de la misma salida.
+WORKERS = "1"
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,8 @@ def construir_comando(
     `--fps` sale del contrato, no de un default: HF-0 midio que la cadena de clips fuerza el
     fps del video base, asi que una pieza a 30 sobre un destino a 24 pierde 1 de cada 5
     frames de animacion. La pieza se renderiza directamente al fps del destino.
+
+    `--workers` va FIJO a 1 (ver `WORKERS`): es lo que hace el render reproducible.
     """
     return [
         binario,
@@ -146,6 +155,8 @@ def construir_comando(
         str(salida),
         "--variables-file",
         str(variables),
+        "--workers",
+        WORKERS,
         "--no-best-effort",
     ]
 
@@ -305,6 +316,7 @@ __all__ = [
     "PIX_FMT_ESPERADO",
     "TIMEOUT_DEFAULT_S",
     "TOLERANCIA_MS",
+    "WORKERS",
     "Adaptador",
     "Ejecucion",
     "Render",
