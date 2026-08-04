@@ -196,8 +196,29 @@ INCIDENCIA_SIN_DATO_DE_CARA = "sin_dato_de_cara"
 
 ORIENTACIONES = ("vertical", "horizontal")
 
-# Una cifra: digitos, con o sin separadores, y con moneda o porcentaje opcionales.
-_CIFRA = re.compile(r"[$€]?\s?\d+(?:[.,]\d+)*\s?%?")
+# ── Deteccion de cifras (ESPECIFICO DE ESPANOL) ──────────────────────────────
+# Un numero suelto NO es un dato destacable. "del 2023 al 2024" ponia un 2023 gigante en
+# pantalla y "2, grabado." ponia un 2: los dos son numeros de verdad y ninguno es una cifra que
+# merezca un letrero. Se exige UNIDAD, porque la unidad es lo que convierte un numero en dato.
+_NUMERO = re.compile(r"(?P<moneda>[$€])?\s?(?P<valor>\d+(?:[.,]\d+)*)\s?(?P<pct>%)?")
+# Unidades que van DETRAS del numero y lo cualifican. En tokens normalizados.
+UNIDADES_POSTERIORES = frozenset(
+    {
+        "mil", "millon", "millones", "mill", "millardo", "millardos",
+        "veces", "vez",
+        "hora", "horas", "minuto", "minutos", "segundo", "segundos",
+        "dia", "dias", "semana", "semanas", "mes", "meses", "ano", "anos",
+        "pesos", "dolares", "euros",
+        "km", "kilometros", "metros", "kilos", "gramos",
+        "puntos", "grados",
+    }
+)
+# Un ano no es un dato: es una fecha. Se descartan los enteros de cuatro digitos de este rango
+# cuando NO llevan unidad pegada, que es justo como aparecen las fechas al hablar.
+ANO_MIN, ANO_MAX = 1900, 2100
+# Unidades de varias palabras. Se prueban ANTES que las simples: con "20 por ciento", quedarse
+# en "por" produce "20 por", que no es ni una cifra ni castellano.
+UNIDADES_COMPUESTAS = (("por", "ciento"),)
 
 MOTIVO_FUERA_DE_CLIP = "no_cabe_en_el_clip"
 MOTIVO_SIN_AIRE = "sin_separacion_minima"
@@ -312,10 +333,14 @@ class _Candidata:
 
 
 def _norma(palabra: str) -> str:
-    """Token normalizado (minusculas, sin tildes ni puntuacion) para comparar contra los sets."""
+    """Token normalizado (minusculas, sin tildes ni puntuacion) para comparar contra los sets.
+
+    `stopwords_es.normalizar` no toca la enye, asi que "anos" se anade aqui: sin esto, "26
+    anos" no reconocia su unidad y la cifra se descartaba.
+    """
     import stopwords_es as sw  # noqa: PLC0415 (modulo hoja, solo stdlib)
 
-    return sw.normalizar(palabra)
+    return sw.normalizar(palabra).replace("ñ", "n")
 
 
 def _es_verbo_probable(palabra: str) -> bool:
@@ -517,11 +542,61 @@ def _aplicar_techo(colocadas: list[Pieza], omisiones: list[Omision], duracion_ms
 
 
 def buscar_cifra(texto: str) -> str | None:
-    """Primera cifra del texto, ya normalizada, o None. Puro."""
-    m = _CIFRA.search(texto or "")
-    if not m:
+    """Primera cifra DESTACABLE del texto, con su unidad pegada, o None. PURO.
+
+    Destacable no es lo mismo que numerica. Se descarta:
+
+      * el ano suelto ("del 2023 al 2024"), que es una fecha y no un dato;
+      * el entero de un digito sin unidad ("2, grabado."), que casi siempre es ruido de
+        transcripcion o una enumeracion.
+
+    Y se EXIGE unidad, porque la unidad es lo que convierte un numero en dato: `%`, moneda, o
+    una palabra detras que lo cualifique ("26 anos", "5 millones", "3 horas"). La unidad viaja
+    CON la cifra al slot, que es lo que se pinta: "10.5%", nunca "10.5".
+    """
+    limpio = " ".join((texto or "").split())
+    for m in _NUMERO.finditer(limpio):
+        cifra = _cifra_con_unidad(limpio, m)
+        if cifra:
+            return cifra
+    return None
+
+
+def _cifra_con_unidad(limpio: str, m: re.Match) -> str | None:
+    """La cifra formateada si es destacable, o None. `m` es una coincidencia de `_NUMERO`."""
+    valor, moneda, pct = m.group("valor"), m.group("moneda"), m.group("pct")
+    if moneda:
+        return f"{moneda}{valor}"
+    if pct:
+        return f"{valor}%"
+
+    detras = _palabras(limpio[m.end() :])
+    compuesta = _unidad_compuesta(detras)
+    if compuesta:
+        return f"{valor} {compuesta}"
+    if detras and _norma(detras[0]) in UNIDADES_POSTERIORES:
+        return f"{valor} {detras[0].strip(PUNTUACION_CLAUSULA)}"
+
+    # Sin unidad: solo sobreviven los numeros que ya dicen algo por si solos, y ni el ano ni el
+    # digito suelto lo hacen.
+    entero = valor.replace(".", "").replace(",", "")
+    if not entero.isdigit():
         return None
-    return " ".join(m.group(0).split())
+    if len(entero) == 4 and ANO_MIN <= int(entero) <= ANO_MAX:
+        return None
+    if len(entero) <= 1:
+        return None
+    return None
+
+
+def _unidad_compuesta(detras: list[str]) -> str | None:
+    """Unidad de varias palabras que sigue al numero, ya limpia, o None."""
+    for compuesta in UNIDADES_COMPUESTAS:
+        if len(detras) < len(compuesta):
+            continue
+        if tuple(_norma(w) for w in detras[: len(compuesta)]) == compuesta:
+            return " ".join(w.strip(PUNTUACION_CLAUSULA) for w in detras[: len(compuesta)])
+    return None
 
 
 def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[_Candidata], list]:
@@ -1012,7 +1087,10 @@ def planificar(
 
 
 __all__ = [
+    "ANO_MAX",
+    "ANO_MIN",
     "ARRANQUE_PROHIBIDO",
+    "UNIDADES_POSTERIORES",
     "MULETILLAS_SOLO_AISLADAS",
     "MULETILLAS_COMPUESTAS",
     "MULETILLAS_SIMPLES",

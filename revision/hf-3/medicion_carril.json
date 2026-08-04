@@ -23,10 +23,10 @@
     "| pieza | veces colocada |",
     "|---|---|",
     "| cierre | 34 |",
-    "| dato_destacado | 4 |",
+    "| dato_destacado | 2 |",
     "| hook | 34 |",
     "| lower_third | 34 |",
-    "| titulo_seccion | 18 |"
+    "| titulo_seccion | 20 |"
   ],
   "clips": [
     {
@@ -366,7 +366,7 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
+        "dato_destacado": "ningun_tramo_trae_cifra",
         "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": []
@@ -388,7 +388,7 @@
         "superior"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
+        "dato_destacado": "ningun_tramo_trae_cifra",
         "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": []
@@ -432,7 +432,7 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
+        "dato_destacado": "ningun_tramo_trae_cifra",
         "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": []
@@ -453,7 +453,7 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto",
+        "dato_destacado": "ningun_tramo_trae_cifra",
         "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": []
@@ -516,7 +516,7 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": []
     },
@@ -595,14 +595,16 @@
         "hook",
         "lower_third",
         "titulo_seccion",
-        "dato_destacado",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
       "incidencias": []
     },
     {
@@ -616,14 +618,16 @@
         "hook",
         "lower_third",
         "titulo_seccion",
-        "dato_destacado",
+        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "superior"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
       "incidencias": []
     },
     {

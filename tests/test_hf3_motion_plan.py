@@ -214,16 +214,63 @@ def test_si_ningun_tramo_con_cifra_cabe_se_omite_no_se_encima():
 @pytest.mark.parametrize(
     ("texto", "esperado"),
     [
+        # Con unidad pegada: la unidad viaja CON la cifra al slot.
         ("subio 87%", "87%"),
         ("cuesta $1,299 al mes", "$1,299"),
-        ("son 3 horas", "3"),
-        ("el 0.5 por ciento", "0.5"),
+        ("son 3 horas", "3 horas"),
+        ("el 0.5 por ciento", "0.5 por ciento"),
+        ("llegamos a 5 millones", "5 millones"),
+        ("300 pesos al mes", "300 pesos"),
+        ("el 10.5 % de medias superiores", "10.5%"),
+        # Sin cifra que destacar.
         ("sin cifras aqui", None),
         ("", None),
     ],
 )
 def test_busqueda_de_cifra(texto, esperado):
     assert mp.buscar_cifra(texto) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "del 2023 al 2024 este fue en un 10",  # el 2023 gigante de la demo 09
+        "en 1995 nacio el proyecto",
+        "para 2100 ya no quedara nada",
+    ],
+)
+def test_un_ano_suelto_no_es_una_cifra_destacable(texto):
+    """Un ano es una FECHA. En la demo 09 el numero grande decia 2023."""
+    assert mp.buscar_cifra(texto) is None
+
+
+def test_un_ano_CON_unidad_si_cuenta():
+    """`2020 pesos` es dinero, no una fecha: la unidad manda sobre el rango."""
+    assert mp.buscar_cifra("cuesta 2020 pesos") == "2020 pesos"
+    assert mp.buscar_cifra("subio 2020%") == "2020%"
+
+
+@pytest.mark.parametrize("texto", ["2, grabado.", "tengo 7 hermanos", "el 3 de la lista"])
+def test_un_entero_de_un_digito_sin_unidad_no_cuenta(texto):
+    """El "2" gigante de la demo 08: ruido de transcripcion, no un dato."""
+    assert mp.buscar_cifra(texto) is None
+
+
+def test_la_unidad_de_varias_palabras_no_se_parte():
+    """Quedarse en "por" producia "20 por", que no es ni cifra ni castellano."""
+    assert mp.buscar_cifra("subio 20 por ciento") == "20 por ciento"
+
+
+def test_los_anos_con_enye_reconocen_su_unidad():
+    """`normalizar` de stopwords_es no toca la enye: sin arreglarlo, "26 anos" se descartaba."""
+    assert mp.buscar_cifra("yo tengo 26 años") == "26 años"
+
+
+def test_si_ningun_tramo_tiene_cifra_valida_se_omite_la_pieza():
+    tramos = _tramos((9000, "del 2023 al 2024 fue asi"), (14000, "2, grabado."))
+    plan = _plan(90000, tramos=tramos)
+    assert "dato_destacado" not in _nombres(plan)
+    assert _motivos(plan)["dato_destacado"] == mp.MOTIVO_SIN_CIFRA
 
 
 # ── Zona de la cara (solo 9:16) ──────────────────────────────────────────────
@@ -480,7 +527,7 @@ def test_el_relleno_gasta_todo_el_presupuesto_y_reduce_el_hueco_maximo():
 
 def test_el_relleno_se_acerca_al_objetivo_de_20s_aunque_no_siempre_llegue():
     """Numeros medidos, no supuestos: se deja escrito cuanto se queda corto y donde."""
-    medido = {56790: 21500, 90000: 19000, 120000: 23000}
+    medido = {56790: 21090, 90000: 20000, 120000: 13000}
     for dur, esperado in medido.items():
         plan = _plan(dur, tramos=_tramos_largos(dur))
         assert max(_huecos_de(plan, dur)) == esperado, f"dur={dur}"
