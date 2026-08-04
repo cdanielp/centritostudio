@@ -23,7 +23,11 @@ def test_capabilities_defaults_v2_y_reglas_fijas():
         "fx_preset": "express",
         "verify_av": True,
         "manual_sidecars": True,
+        "motion_enabled": False,
+        "motion_cta": "Sigue para mas",
     }
+    assert data["motion"]["default_enabled"] is False
+    assert data["motion"]["available_modes"] == ["v2"]
     assert data["fixed_rules"] == {
         "hook_protected_s": 3.0,
         "max_video_windows": 1,

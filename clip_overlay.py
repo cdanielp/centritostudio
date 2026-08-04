@@ -8,8 +8,19 @@ subprocess: aqui solo se construyen strings; `core_overlays.construir_comando` l
 y `core_ass` ejecuta FFmpeg en un solo pase.
 
 Reglas del clip (regla #19, la mas importante): el AUDIO del clip NUNCA se mapea ni se mezcla; el
-render mapea solo el audio original (`0:a`). Aqui no se construye ningun filtro de audio. V1: solo
-`fit="cover"`, `mute=True`, un unico clip por render.
+render mapea solo el audio original (`0:a`). Aqui no se construye ningun filtro de audio.
+
+HF-3 desbloquea tres limites que el perfil de capacidad del Motor B citaba como razon de rechazo,
+sin cambiar un solo byte de la salida historica (`fit="cover"` + `posicion=None` + `mute=True`
+producen exactamente los mismos strings que antes):
+
+  fit="nativo"   el overlay se compone a su tamano propio, sin escalar ni recortar. Es lo que
+                 necesita un letrero con alfa: `cover` escala a la caja y recorta, y en un
+                 grafico transparente eso deforma la tipografia o se come los margenes.
+  posicion=(x,y) esquina superior izquierda en pixeles. None = centrado (comportamiento historico).
+  exigir_mute    parametro del validador en vez de constante. Sigue en True por default: el
+                 render mapea solo `0:a` (core_ass), asi que un clip con audio seria una mentira
+                 silenciosa mientras esa ruta no lo soporte.
 """
 
 from __future__ import annotations
@@ -17,7 +28,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-FIT_VALIDOS = frozenset({"cover"})  # V1: solo cover (contain DIFERIDO, ver DECISIONES D31)
+# `nativo` (HF-3): el overlay conserva su tamano propio. `contain` sigue DIFERIDO (D31).
+FIT_VALIDOS = frozenset({"cover", "nativo"})
+FIT_SIN_ESCALA = "nativo"
 CLIP_FADE_S = 0.20  # mismo fade largo del cutaway de imagen (elemento grande)
 SIZE_PCT_MIN = 0.05
 SIZE_PCT_MAX = 1.0
@@ -30,7 +43,10 @@ class ClipOverlay:
     `clip` es la ruta local (ya descargada por el fetcher o local). `t0/t1` los decide la ENTRADA,
     no Pexels. `source_start` recorta desde ese punto del clip. `loop=True` repite el clip corto
     hasta cubrir la ventana; `loop=False` no congela el ultimo frame (vuelve al video original).
-    `mute=True` SIEMPRE en V1: el audio del clip jamas entra al render.
+    `mute=True` SIEMPRE mientras el render mapee solo el audio original.
+
+    `posicion` = (x, y) en pixeles de la esquina superior izquierda del overlay. None = centrado,
+    que es el comportamiento historico y el unico que usa el b-roll de Pexels.
     """
 
     clip: Path
@@ -44,6 +60,7 @@ class ClipOverlay:
     behind_text: bool = True
     fade: bool = True
     mute: bool = True
+    posicion: tuple[int, int] | None = None
 
 
 def validar_clip_overlay(
@@ -55,9 +72,17 @@ def validar_clip_overlay(
     size_pct: float,
     loop: object,
     mute: object,
+    posicion: object = None,
+    exigir_mute: bool = True,
 ) -> None:
     """Valida el CONTRATO de un clip cutaway. Errores de contrato -> ValueError (se propaga; el
-    adaptador de JSON manual los captura y omite solo esa entrada, ver DECISIONES D31)."""
+    adaptador de JSON manual los captura y omite solo esa entrada, ver DECISIONES D31).
+
+    `exigir_mute=True` (default) es la regla del b-roll de Pexels. Se deja como PARAMETRO y no
+    como constante para que el dia que el render mapee mas de `0:a` no haya que reescribir el
+    validador. Hoy ningun llamador lo baja: bajarlo solo conseguiria aceptar un clip cuyo audio
+    se descarta igualmente y sin decir nada.
+    """
     if t0 < 0:
         raise ValueError(f"t0 invalido: {t0!r} (debe ser >= 0)")
     if t1 <= t0:
@@ -65,13 +90,31 @@ def validar_clip_overlay(
     if source_start < 0:
         raise ValueError(f"source_start invalido: {source_start!r} (debe ser >= 0)")
     if fit not in FIT_VALIDOS:
-        raise ValueError(f"fit invalido: {fit!r} (V1 solo admite 'cover')")
+        raise ValueError(f"fit invalido: {fit!r} (admitidos: {', '.join(sorted(FIT_VALIDOS))})")
     if not (SIZE_PCT_MIN <= size_pct <= SIZE_PCT_MAX):
         raise ValueError(f"size_pct fuera de rango: {size_pct!r} (permitido [{SIZE_PCT_MIN}, 1.0])")
     if not isinstance(loop, bool):
         raise ValueError(f"loop debe ser booleano, no {type(loop).__name__}")
-    if not isinstance(mute, bool) or mute is not True:
-        raise ValueError("mute=True es obligatorio para b-roll de video Pexels en V1")
+    if not isinstance(mute, bool):
+        raise ValueError(f"mute debe ser booleano, no {type(mute).__name__}")
+    if exigir_mute and mute is not True:
+        raise ValueError("mute=True es obligatorio mientras el render mapee solo el audio original")
+    validar_posicion(posicion)
+
+
+def validar_posicion(posicion: object) -> None:
+    """`posicion` debe ser None (centrado) o un par de ENTEROS (x, y) en pixeles.
+
+    Los enteros son obligatorios porque el valor viaja literal al filtro `overlay` de FFmpeg:
+    un float imprimiria `overlay=x=12.0`, que FFmpeg rechaza, y un bool colaria `x=True`.
+    """
+    if posicion is None:
+        return
+    if not isinstance(posicion, (tuple, list)) or len(posicion) != 2:
+        raise ValueError(f"posicion invalida: {posicion!r} (usa None o un par (x, y))")
+    for valor in posicion:
+        if not isinstance(valor, int) or isinstance(valor, bool):
+            raise ValueError(f"posicion invalida: {posicion!r} (x e y deben ser enteros)")
 
 
 def preparar_clip(c: ClipOverlay, video_w: int, video_h: int, fps: float) -> dict | None:
@@ -85,7 +128,12 @@ def preparar_clip(c: ClipOverlay, video_w: int, video_h: int, fps: float) -> dic
         print(f"[clip] rango invalido ({c.t0:.2f}-{c.t1:.2f}), clip omitido: {nombre}")
         return None
     if c.fit not in FIT_VALIDOS:
-        print(f"[clip] fit '{c.fit}' no soportado (V1 solo cover), clip omitido: {nombre}")
+        print(f"[clip] fit '{c.fit}' no soportado, clip omitido: {nombre}")
+        return None
+    try:
+        validar_posicion(c.posicion)
+    except ValueError as exc:
+        print(f"[clip] {exc}, clip omitido: {nombre}")
         return None
     pct = min(max(c.size_pct, SIZE_PCT_MIN), SIZE_PCT_MAX)
     box_w = max(int(video_w * pct) - int(video_w * pct) % 2, 2)  # par para libx264
@@ -99,9 +147,11 @@ def preparar_clip(c: ClipOverlay, video_w: int, video_h: int, fps: float) -> dic
         "window": max(c.t1 - c.t0, 0.1),
         "box_w": box_w,
         "box_h": box_h,
+        "fit": c.fit,
         "fps": fps if fps and fps > 0 else 30.0,
         "fade_s": CLIP_FADE_S if c.fade else 0.0,
         "behind": bool(c.behind_text),
+        "posicion": tuple(c.posicion) if c.posicion is not None else None,
     }
 
 
@@ -117,11 +167,19 @@ def input_args_clip(prep: dict) -> list[str]:
 
 def filtro_clip(idx: int, prep: dict, label: str) -> str:
     """Cadena del clip: recorte desde source_start + duracion de ventana -> normaliza (rebase de
-    timestamps, fps de la base, SAR 1, pixel format) -> cover (escala 'increase' + crop, sin
-    deformar) -> fade alpha opcional -> desplaza a t0. El audio del clip NUNCA se toca aqui."""
+    timestamps, fps de la base, SAR 1, pixel format) -> encaje -> fade alpha opcional -> desplaza
+    a t0. El audio del clip NUNCA se toca aqui.
+
+    Encaje `cover`: escala 'increase' + crop, sin deformar. Encaje `nativo` (HF-3): NINGUN filtro
+    de escala, el overlay entra con los pixeles que trae. Es lo que necesita un letrero con alfa,
+    donde escalar y recortar destroza margenes y tipografia.
+    """
     w, h = prep["box_w"], prep["box_h"]
     window, ss, fade_s = prep["window"], prep["source_start"], prep["fade_s"]
-    cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    if prep.get("fit") == FIT_SIN_ESCALA:
+        cover = ""  # sin escala ni crop: el overlay conserva su tamano
+    else:
+        cover = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
     fades = ""
     if fade_s > 0:
         out_st = max(window - fade_s, 0.0)
@@ -131,16 +189,22 @@ def filtro_clip(idx: int, prep: dict, label: str) -> str:
         )
     return (
         f"[{idx}:v]trim=start={ss:.3f}:duration={window:.3f},setpts=PTS-STARTPTS,"
-        f"fps={prep['fps']:.3f},{cover},setsar=1,format=yuva420p,{fades}"
+        f"fps={prep['fps']:.3f},{cover}setsar=1,format=yuva420p,{fades}"
         f"setpts=PTS-STARTPTS+{prep['t0']:.3f}/TB[{label}]"
     )
 
 
 def overlay_clip(src: str, ovl: str, prep: dict, dest: str) -> str:
-    """Overlay del clip centrado con ventana temporal. `eof_action=pass` + `repeatlast=0`: si el
-    clip (loop=False) termina antes de t1, NO congela el ultimo frame -> vuelve al original."""
+    """Overlay del clip con ventana temporal. `eof_action=pass` + `repeatlast=0`: si el clip
+    (loop=False) termina antes de t1, NO congela el ultimo frame -> vuelve al original.
+
+    Sin `posicion` va CENTRADO con las expresiones (W-w)/2 y (H-h)/2, que FFmpeg resuelve en
+    runtime para cualquier tamano de overlay (comportamiento historico, byte identico). Con
+    `posicion=(x, y)` se colocan las coordenadas literales de la esquina superior izquierda.
+    """
     enable = f"between(t,{prep['t0']:.3f},{prep['t1']:.3f})"
+    pos = prep.get("posicion")
+    x, y = ("(W-w)/2", "(H-h)/2") if pos is None else (str(pos[0]), str(pos[1]))
     return (
-        f"[{src}][{ovl}]overlay=x=(W-w)/2:y=(H-h)/2:"
-        f"eof_action=pass:repeatlast=0:enable='{enable}'[{dest}]"
+        f"[{src}][{ovl}]overlay=x={x}:y={y}:eof_action=pass:repeatlast=0:enable='{enable}'[{dest}]"
     )

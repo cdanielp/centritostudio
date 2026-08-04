@@ -6,7 +6,10 @@
       "kicker",
       "titulo"
     ],
-    "proyecto": "motion/hook"
+    "proyecto": {
+      "vertical": "motion/hook",
+      "horizontal": "motion/hook/horizontal"
+    }
   },
   {
     "nombre": "lower_third",
@@ -15,7 +18,10 @@
       "nombre",
       "rol"
     ],
-    "proyecto": "motion/lower_third"
+    "proyecto": {
+      "vertical": "motion/lower_third",
+      "horizontal": "motion/lower_third/horizontal"
+    }
   },
   {
     "nombre": "titulo_seccion",
@@ -23,7 +29,10 @@
     "slots_texto": [
       "titulo"
     ],
-    "proyecto": "motion/titulo_seccion"
+    "proyecto": {
+      "vertical": "motion/titulo_seccion",
+      "horizontal": "motion/titulo_seccion/horizontal"
+    }
   },
   {
     "nombre": "dato_destacado",
@@ -32,7 +41,10 @@
       "cifra",
       "etiqueta"
     ],
-    "proyecto": "motion/dato_destacado"
+    "proyecto": {
+      "vertical": "motion/dato_destacado",
+      "horizontal": "motion/dato_destacado/horizontal"
+    }
   },
   {
     "nombre": "cierre",
@@ -41,6 +53,9 @@
       "titulo",
       "cta"
     ],
-    "proyecto": "motion/cierre"
+    "proyecto": {
+      "vertical": "motion/cierre",
+      "horizontal": "motion/cierre/horizontal"
+    }
   }
 ]

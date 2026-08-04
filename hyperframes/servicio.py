@@ -29,11 +29,13 @@ from .invocador import (
 )
 from .razones import Razon
 
-# Ajustes de invocacion medidos en HF-0. Viajan en el resultado para que HF-3 no tenga que
-# redescubrirlos: `fade=False` porque la plantilla YA trae su animacion de entrada y salida,
-# y el fade de 0.20 s de la ruta de clips se sumaria encima produciendo doble entrada;
-# `fit="cover"` y `mute=True` porque son los unicos valores que esa ruta admite hoy.
-CONSUMO_SUGERIDO = {"fade": False, "fit": "cover", "mute": True}
+# Ajustes de invocacion medidos en HF-0. Viajan en el resultado para que el consumidor no
+# tenga que redescubrirlos: `fade=False` porque la plantilla YA trae su animacion de entrada y
+# salida, y el fade de 0.20 s de la ruta de clips se sumaria encima produciendo doble entrada;
+# `mute=True` porque el render mapea solo el audio original. `fit` paso de "cover" a "nativo"
+# en HF-3: la pieza ya se renderiza al tamano exacto del destino, asi que escalarla y recortarla
+# solo podia estropearla, y "nativo" no emite ni un filtro de escala.
+CONSUMO_SUGERIDO = {"fade": False, "fit": "nativo", "mute": True}
 
 
 @dataclass(frozen=True)

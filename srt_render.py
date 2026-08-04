@@ -77,15 +77,27 @@ def variante_tag(
 
 
 def nombre_base_srt(
-    stem, variante: str, use_emojis: bool, use_popups: bool, fx_preset: str | None
+    stem,
+    variante: str,
+    use_emojis: bool,
+    use_popups: bool,
+    fx_preset: str | None,
+    motion: bool = False,
 ) -> str:
-    """Basename (sin extension) del MP4 SRT: `_srt` + capas activas. No colisiona con historicos."""
+    """Basename (sin extension) del MP4 SRT: `_srt` + capas activas. No colisiona con historicos.
+
+    `motion` es la capa de letreros del Motor B. Default False, y su token se lee de `cve` para
+    que las cuatro rutas que nombran un MP4 escriban exactamente la misma grafia.
+    """
+    import cve  # noqa: PLC0415
+
     fx_tag = f"_fx-{fx_preset}" if fx_preset else ""
     return (
         f"{stem}{variante}_srt"
         + ("_emojis" if use_emojis else "")
         + ("_popups" if use_popups else "")
         + fx_tag
+        + (cve.TOKEN_MOTION if motion else "")
     )
 
 

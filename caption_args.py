@@ -121,6 +121,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="Capa FX local opcional (S36-FX): punch-in/flash/scanner/logo antes del ass",
     )
     parser.add_argument(
+        "--motion",
+        action="store_true",
+        default=False,
+        help=(
+            "Letreros animados del Motor B (HyperFrames) sobre el video: hook, lower third, "
+            "dato destacado y cierre, colocados solos. Capa aditiva y apagada por default; si "
+            "falla, el video sale igual pero sin letreros"
+        ),
+    )
+    parser.add_argument(
+        "--motion-titulo",
+        default=None,
+        metavar="TEXTO",
+        help="Titulo del hook y del cierre. Sin esto no se coloca ninguna pieza. Exige --motion",
+    )
+    parser.add_argument(
+        "--motion-nombre",
+        default=None,
+        metavar="TEXTO",
+        help="Nombre del lower third. Vacio omite esa pieza entera. Exige --motion",
+    )
+    parser.add_argument(
+        "--motion-rol",
+        default=None,
+        metavar="TEXTO",
+        help="Rol que acompana al nombre en el lower third. Exige --motion",
+    )
+    parser.add_argument(
+        "--motion-cta",
+        default=None,
+        metavar="TEXTO",
+        help="Llamada a la accion del cierre. Exige --motion",
+    )
+    parser.add_argument(
         "--caption-qa",
         action="store_true",
         default=False,
@@ -151,6 +185,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Auditor DeepSeek de alertas dudosas (opt-in, fail-open)",
     )
     return parser
+
+
+def motion_opts_de_args(args: argparse.Namespace):
+    """`motion_capa.OpcionesMotion` a partir de los args. Sin `--motion` devuelve la capa OFF.
+
+    Los `--motion-*` sin `--motion` son un error del llamador, no algo que se ignore en silencio:
+    quien los escribe espera letreros, y tragarselos produciria un video sin ellos y sin aviso.
+    """
+    import motion_capa  # noqa: PLC0415 (la ruta historica no importa la capa)
+
+    sueltos = [
+        f"--motion-{c}"
+        for c in ("titulo", "nombre", "rol", "cta")
+        if getattr(args, f"motion_{c}", None) is not None
+    ]
+    if not args.motion:
+        if sueltos:
+            raise SystemExit(f"{', '.join(sueltos)} exige --motion")
+        return motion_capa.OpcionesMotion()
+    return motion_capa.OpcionesMotion(
+        enabled=True,
+        titulo=args.motion_titulo or "",
+        nombre=args.motion_nombre or "",
+        rol=args.motion_rol or "",
+        cta=args.motion_cta or "",
+    )
 
 
 def qa_opts_de_args(args: argparse.Namespace) -> dict | None:

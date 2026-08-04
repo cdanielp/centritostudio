@@ -1071,13 +1071,24 @@ def start_auto(
     fx_enabled: bool = True,
     fx_preset: str = "express",
     caption_source: str = "transcript",
+    motion_enabled: bool = False,
+    motion_nombre: str | None = None,
+    motion_rol: str | None = None,
+    motion_cta: str | None = None,
 ):
     """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
     _validar_name(name)
     if caption_source not in ("transcript", "srt"):
         raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
+    motion = {
+        "motion_enabled": motion_enabled,
+        "motion_nombre": motion_nombre,
+        "motion_rol": motion_rol,
+        "motion_cta": motion_cta,
+    }
+    _validar_params_motion(motion)
     if caption_source == "srt":
-        return _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset)
+        return _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion)
     mp4 = _resolver_video_input(name)
     if mp4 is None:
         raise HTTPException(404, f"Video {name} no encontrado en input/")
@@ -1089,6 +1100,7 @@ def start_auto(
             broll_enabled=broll_enabled,
             fx_enabled=fx_enabled,
             fx_preset=fx_preset,
+            **motion,
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from None
@@ -1107,7 +1119,21 @@ def start_auto(
     return {"job_id": jid}
 
 
-def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset):
+def _validar_params_motion(motion: dict) -> None:
+    """Los textos de letreros exigen la capa encendida. Pedirlos sin ella es error del llamador.
+
+    Sin este freno, un formulario que manda el nombre pero olvida la casilla produciria un run
+    sin letreros y sin una sola queja, que es justo el fallo silencioso que este proyecto ya
+    conoce de otras capas.
+    """
+    if motion.get("motion_enabled"):
+        return
+    sueltos = sorted(k for k, v in motion.items() if k != "motion_enabled" and v is not None)
+    if sueltos:
+        raise HTTPException(400, f"{', '.join(sueltos)} exige motion_enabled=true.")
+
+
+def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion=None):
     """Auto con caption_source=srt: usa el video EXACTO asociado (no por stem) y la selección SRT.
 
     La resolución de timings privados + procedencia por clip ocurre dentro de ejecutar_auto
@@ -1128,6 +1154,7 @@ def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset):
             fx_enabled=fx_enabled,
             fx_preset=fx_preset,
             caption_source="srt",
+            **(motion or {}),
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from None

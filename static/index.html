@@ -551,6 +551,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
           <option value="premium">Premium</option>
         </select>
       </label>
+      <label class="auto-toggle"><span><b>Letreros animados</b><small>Hook, lower third, dato destacado y cierre. Se colocan solos; si fallan, el clip sale sin ellos.</small></span><input type="checkbox" id="auto-motion-enabled" onchange="updateAutoConfigUI()"></label>
+      <div id="auto-motion-textos" hidden>
+        <label class="auto-preset"><span>Nombre (lower third)</span><input type="text" id="auto-motion-nombre" maxlength="120" placeholder="Vacío omite el lower third"></label>
+        <label class="auto-preset"><span>Rol</span><input type="text" id="auto-motion-rol" maxlength="120" placeholder="Ej. Fundador"></label>
+        <label class="auto-preset"><span>Llamada a la acción (cierre)</span><input type="text" id="auto-motion-cta" maxlength="120" placeholder="Sigue para más"></label>
+      </div>
       <div class="cap-grid auto-fixed-rules">
         <span class="cap-chip">Captions siempre ON</span><span class="cap-chip">Reframe 9:16</span>
         <span class="cap-chip">Audio verificado</span><span class="cap-chip">Manual gana</span>
@@ -863,10 +869,18 @@ function updateAutoConfigUI() {
   const preset = document.getElementById('auto-fx-preset');
   if (preset) preset.disabled = autoRunning || !fx;
   const broll = document.getElementById('auto-broll-enabled')?.checked ?? true;
+  // La capa de letreros solo existe en v2; al salir de v2 se apaga sola para que nadie deje la
+  // casilla marcada en clásico y crea que va a recibir letreros.
+  const motionBox = document.getElementById('auto-motion-enabled');
+  if (motionBox && !v2) motionBox.checked = false;
+  const motion = motionBox?.checked ?? false;
+  const motionTextos = document.getElementById('auto-motion-textos');
+  if (motionTextos) motionTextos.hidden = !motion;
   const summary = document.getElementById('auto-config-summary');
   if (summary) summary.innerHTML = v2 ? `<div class="auto-summary-list">
     <span>Transcript, clipper, reframe y captions</span><span>B-roll ${broll?'activado':'desactivado'}</span>
     <span>FX ${fx?'activado · '+escHtml(preset?.value || 'express'):'desactivado'}</span><span>Verificación A/V obligatoria</span>
+    <span>Letreros ${motion?'activados':'desactivados'}</span>
     <span>Sidecars manuales respetados</span><span>Revisión del paquete en el Editor</span></div>`
     : `<div class="auto-summary-list"><span>Transcript y clipper</span><span>Reframe 9:16</span>
        <span>Captions y emojis</span><span>Reporte histórico</span></div>
@@ -876,7 +890,8 @@ function updateAutoConfigUI() {
 }
 function setAutoControlsLocked(locked) {
   autoRunning = locked;
-  ['auto-video-select','auto-broll-enabled','auto-fx-enabled','auto-fx-preset'].forEach(id => {
+  ['auto-video-select','auto-broll-enabled','auto-fx-enabled','auto-fx-preset',
+   'auto-motion-enabled','auto-motion-nombre','auto-motion-rol','auto-motion-cta'].forEach(id => {
     const el = document.getElementById(id); if (el) el.disabled = locked;
   });
   document.querySelectorAll('[data-auto-mode]').forEach(b => b.disabled = locked);
@@ -2254,6 +2269,15 @@ async function startAuto() {
       params.set('broll_enabled', document.getElementById('auto-broll-enabled').checked ? 'true' : 'false');
       params.set('fx_enabled', document.getElementById('auto-fx-enabled').checked ? 'true' : 'false');
       params.set('fx_preset', document.getElementById('auto-fx-preset').value);
+      // Los textos solo viajan con la casilla marcada: el backend rechaza con 400 un texto
+      // suelto, precisamente para que nadie reciba un video sin letreros y sin explicacion.
+      if (document.getElementById('auto-motion-enabled')?.checked) {
+        params.set('motion_enabled', 'true');
+        [['nombre','motion_nombre'],['rol','motion_rol'],['cta','motion_cta']].forEach(([id, key]) => {
+          const v = (document.getElementById('auto-motion-' + id)?.value || '').trim();
+          if (v) params.set(key, v);
+        });
+      }
     }
     const res = await fetch(`/api/videos/${encodeURIComponent(name)}/auto?${params}`, {method:'POST'});
     const data = await res.json();

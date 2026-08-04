@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import core
-from caption_args import build_parser, qa_opts_de_args
+from caption_args import build_parser, motion_opts_de_args, qa_opts_de_args
 from srt_import import SrtError as _SrtUserError  # error de USUARIO del SRT (no bug); stdlib
 from styles import get_style
 
@@ -134,6 +134,34 @@ def _resolver_plan_fx(fx_preset: str | None, stem: str, duration: float):
         return None
 
 
+def _clips_de_motion_cli(motion_opts, groups, video_path: Path, width, height, duration) -> list:
+    """Letreros del Motor B para la CLI de un video suelto. Sin `--motion` no toca nada.
+
+    La cache de piezas vive en `output/.piezas` (fuera de un paquete de Auto, que es donde vive
+    en la ruta de clips). La trayectoria del reframe se busca con el mismo helper que usa el
+    resto del render; si no existe, el planificador considera el carril vertical ocupado.
+    """
+    if motion_opts is None or not getattr(motion_opts, "enabled", False):
+        return []
+    import motion_capa  # noqa: PLC0415
+    import tray_resolve  # noqa: PLC0415
+
+    raiz = Path(__file__).resolve().parent
+    return list(
+        motion_capa.clips_de_motion(
+            opciones=motion_opts,
+            ancho=width,
+            alto=height,
+            fps=core.get_video_info(video_path).get("fps") or 30.0,
+            duracion_s=duration,
+            raiz_cache=raiz / "output" / ".piezas",
+            root=raiz,
+            tramos=motion_capa.tramos_de_groups(groups),
+            tray_csv=tray_resolve.resolver_tray_csv(video_path, _TRANSCRIPTS_DIR),
+        ).clips
+    )
+
+
 def _resolver_capas_y_quemar(
     video_path: Path,
     ass_path: Path,
@@ -147,8 +175,9 @@ def _resolver_capas_y_quemar(
     use_emojis: bool,
     use_popups: bool,
     fx_preset: str | None,
+    motion_opts=None,
 ) -> None:
-    """Resuelve popups/clips/FX/emojis y quema. Fuente UNICA para el flujo clasico y SRT.
+    """Resuelve popups/clips/FX/emojis/letreros y quema. Fuente UNICA para el flujo clasico y SRT.
 
     Reutiliza exactamente los motores existentes (cve_popups/cve_clips/assets_comfy/fx +
     core.burn_video/burn_video_with_emojis); no duplica ni reimplementa internals. Cada
@@ -162,6 +191,11 @@ def _resolver_capas_y_quemar(
 
         popups = cve_popups.resolver_popups(groups, stem, video_w=width, video_h=height)
         clips = cve_clips.resolver_clips(stem, video_w=width, video_h=height)
+
+    clips = [
+        *clips,
+        *_clips_de_motion_cli(motion_opts, groups, video_path, width, height, duration),
+    ]
 
     fx_plan = _resolver_plan_fx(fx_preset, stem, duration)
 
@@ -255,11 +289,20 @@ def _reportar_parciales(plan) -> None:
         print(linea)
 
 
-def _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset) -> str:
+def _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset, motion=False) -> str:
     """Sufijo determinista para SRT (delegado a srt_render; fuente unica con el worker)."""
     import srt_render  # noqa: PLC0415
 
-    return srt_render.nombre_base_srt(stem, variante, use_emojis, use_popups, fx_preset)
+    return srt_render.nombre_base_srt(stem, variante, use_emojis, use_popups, fx_preset, motion)
+
+
+def _tag_motion(motion_opts) -> str:
+    """Token de la capa de letreros para el nombre del MP4. Apagada devuelve cadena vacia."""
+    if motion_opts is None or not getattr(motion_opts, "enabled", False):
+        return ""
+    import cve  # noqa: PLC0415
+
+    return cve.TOKEN_MOTION
 
 
 def _process_srt(
@@ -282,6 +325,7 @@ def _process_srt(
     srt_parcial: bool = False,
     srt_offset_ms: int = 0,
     srt_min_coverage: float | None = None,
+    motion_opts=None,
 ) -> tuple[float, dict]:
     """Render con SRT como texto oficial (S36-B). Whisper solo aporta timings.
 
@@ -336,7 +380,9 @@ def _process_srt(
         style_cfg = plan.style_cfg
 
     variante = _variante_tag(plan, style, pop, rebote, intensidad, densidad)
-    base = _nombre_srt(stem, variante, use_emojis, use_popups, fx_preset)
+    base = _nombre_srt(
+        stem, variante, use_emojis, use_popups, fx_preset, bool(_tag_motion(motion_opts))
+    )
     ass_path = output_dir / f"{stem}{variante}_srt.ass"
     out_path = output_dir / f"{base}.mp4"
     core.build_ass(groups, width, height, style_cfg, ass_path)
@@ -355,6 +401,7 @@ def _process_srt(
         use_emojis,
         use_popups,
         fx_preset,
+        motion_opts,
     )
     if plan:
         import cve  # noqa: PLC0415
@@ -389,6 +436,7 @@ def process_video(
     srt_parcial: bool = False,
     srt_offset_ms: int = 0,
     srt_min_coverage: float | None = None,
+    motion_opts=None,
 ) -> tuple[float, dict]:
     if srt_path is not None:
         return _process_srt(
@@ -411,6 +459,7 @@ def process_video(
             srt_parcial,
             srt_offset_ms,
             srt_min_coverage,
+            motion_opts,
         )
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -438,8 +487,14 @@ def process_video(
         variante = f"_{style}{pop_tag}{reb_tag}"
     ass_path = output_dir / f"{stem}{variante}.ass"
     fx_tag = f"_fx-{fx_preset}" if fx_preset else ""
+    # La capa de letreros nombra el MP4, no el ASS: los captions salen identicos lleve o no
+    # lleve letreros, asi que un ASS por variante de motion serian dos archivos iguales.
     suffix = (
-        variante + ("_emojis" if use_emojis else "") + ("_popups" if use_popups else "") + fx_tag
+        variante
+        + ("_emojis" if use_emojis else "")
+        + ("_popups" if use_popups else "")
+        + fx_tag
+        + _tag_motion(motion_opts)
     )
     out_path = output_dir / f"{stem}{suffix}.mp4"
 
@@ -486,6 +541,7 @@ def process_video(
         use_emojis,
         use_popups,
         fx_preset,
+        motion_opts,
     )
 
     if plan:
@@ -594,6 +650,7 @@ def main() -> None:
     input_path = Path(args.input)
     rebote = None if args.rebote is None else (args.rebote == "on")
     qa_opts = qa_opts_de_args(args)
+    motion_opts = motion_opts_de_args(args)
     srt_path = Path(args.srt) if args.srt else None
 
     _validar_flags_srt(args, srt_path)
@@ -645,6 +702,7 @@ def main() -> None:
                 densidad=args.densidad,
                 qa_opts=qa_opts,
                 fx_preset=args.fx,
+                motion_opts=motion_opts,
             )
             total += t
         print(f"[batch] Total: {total:.1f}s")
@@ -671,6 +729,7 @@ def main() -> None:
                 srt_parcial=args.srt_parcial,
                 srt_offset_ms=int(args.srt_offset),
                 srt_min_coverage=args.srt_min_coverage,
+                motion_opts=motion_opts,
             )
         except _SrtUserError as exc:
             # Errores de USUARIO del SRT: mensaje corto con basename, exit no cero (no traceback).

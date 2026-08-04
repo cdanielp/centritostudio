@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from hyperframes import pedir_pieza
-from hyperframes.catalogo import Catalogo, Plantilla
+from hyperframes.catalogo import Catalogo
 
 pytestmark = pytest.mark.hf_real
 
@@ -32,20 +32,9 @@ RAIZ = Path(__file__).resolve().parents[1]
 CATALOGO = Catalogo.desde_archivo(RAIZ / "motion" / "catalogo.json")
 NOMBRES = ("cierre", "dato_destacado", "hook", "lower_third", "titulo_seccion")
 
-# Catalogo ad-hoc para el gemelo 16:9: mismas plantillas, proyecto + "/horizontal".
-# Es la convencion que HF-3 tendra que adoptar mientras el catalogo no exprese
-# un proyecto por orientacion (decision pendiente de K, ver D51).
-CATALOGO_H = Catalogo(
-    [
-        Plantilla(
-            nombre=p["nombre"],
-            version=p["version"],
-            slots_texto=tuple(p["slots_texto"]),
-            proyecto=p["proyecto"] + "/horizontal",
-        )
-        for p in json.loads((RAIZ / "motion" / "catalogo.json").read_text(encoding="utf-8"))
-    ]
-)
+# Catalogo del gemelo 16:9. Desde HF-3 el propio catalogo declara un proyecto POR ORIENTACION,
+# asi que ya no hay que fabricarlo concatenando "/horizontal" a la ruta vertical: se carga.
+CATALOGO_H = Catalogo.desde_archivo(RAIZ / "motion" / "catalogo.json", "horizontal")
 
 
 def _ejemplo(nombre: str) -> dict:

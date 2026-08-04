@@ -299,12 +299,20 @@ def aplicar_preset(
     return groups, plan, aviso
 
 
+# Token unico de la capa de letreros en los nombres de salida. Una sola grafia para las cuatro
+# rutas que nombran un MP4 (CLI clasica, CLI SRT, worker del Studio, worker SRT): si cada una
+# escribiera "_motion" a mano, la primera que se equivocara produciria dos archivos distintos
+# que se creen la misma variante.
+TOKEN_MOTION = "_motion"
+
+
 def tag_variante(
     preset: str,
     intensidad: str | None,
     densidad: str | None = None,
     position: str | None = None,
     avoid_faces: bool | None = None,
+    motion: bool | None = None,
 ) -> str:
     """Sufijo de salida de una variante de preset — helper unico, CLI y Studio identicos.
 
@@ -315,6 +323,11 @@ def tag_variante(
     o `avoid_faces=False` no colisiona con su override. Para los built-ins (default bottom
     + avoid_faces True) el naming historico se conserva intacto: position bottom/None y
     avoid_faces True/None nunca agregan token; center/top y False si.
+
+    `motion` (HF-3) es la capa de letreros del Motor B. Su default de proyecto es OFF, asi que
+    solo `motion=True` agrega token: con la capa apagada el nombre de salida no cambia ni un
+    caracter. Es una dimension del MP4, no del ASS: los captions salen identicos lleve o no
+    lleve letreros, y quien nombre el ASS debe pedir el tag sin este argumento.
     """
     p = _PRESETS.get((preset or "").lower().strip(), {})
     default_position = p.get("position", "bottom")
@@ -328,6 +341,8 @@ def tag_variante(
         tag += f"_{position}"
     if isinstance(avoid_faces, bool) and avoid_faces != default_avoid_faces:
         tag += "_faces" if avoid_faces else "_nofaces"
+    if motion is True:
+        tag += TOKEN_MOTION
     return tag
 
 

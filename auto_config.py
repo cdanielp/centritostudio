@@ -24,6 +24,13 @@ MODES = frozenset({"classic", "v2"})
 FX_PRESETS = frozenset({"express", "pro", "premium"})
 CAPTION_SOURCES = frozenset({"transcript", "srt"})
 
+# Campos de la capa de letreros (Motor B, HF-3). Con `motion_enabled=False` NO entran al
+# `to_dict()` ni al fingerprint: un paquete v2 anterior a HF-3 conserva su fingerprint exacto
+# y sigue reanudandose. Es la traduccion del invariante "capa apagada = nada cambia" al
+# contrato de reanudacion, no solo a los pixeles.
+CAMPOS_MOTION = ("motion_nombre", "motion_rol", "motion_cta")
+MOTION_TEXTO_MAX = 120
+
 
 class AutoConfigError(ValueError):
     """Config del Modo Automatico invalida (error de contrato, no bug)."""
@@ -51,6 +58,17 @@ class AutoConfig:
     # "srt" = usa la selección SRT explícita del video y deriva SRT/words/groups por clip.
     caption_source: Literal["transcript", "srt"] = "transcript"
 
+    # Capa de letreros del Motor B (HyperFrames, HF-3). DEFAULT OFF y aditiva: apagada, el
+    # render y el nombre de salida son los historicos byte a byte. Solo v2: la ruta classic no
+    # sella un fingerprint en su marker, asi que un resume no podria distinguir un paquete con
+    # letreros de uno sin ellos y mezclaria clips de las dos clases sin avisar.
+    motion_enabled: bool = False
+    # Textos de marca. Neutros a proposito: los reales los decide K, aqui no se inventan.
+    # `motion_nombre` vacio omite el lower_third entero (no se pinta una tarjeta en blanco).
+    motion_nombre: str = ""
+    motion_rol: str = ""
+    motion_cta: str = "Sigue para mas"
+
     target_coverage_pct: float = 0.27
     max_coverage_pct: float = 0.35
     hook_protected_s: float = 3.0
@@ -59,9 +77,16 @@ class AutoConfig:
     def __post_init__(self) -> None:
         if self.mode not in MODES:
             raise AutoConfigError(f"mode invalido: {self.mode!r} (usa classic o v2)")
-        for campo in ("broll_enabled", "fx_enabled", "verify_av", "manual_sidecars"):
+        for campo in (
+            "broll_enabled",
+            "fx_enabled",
+            "verify_av",
+            "manual_sidecars",
+            "motion_enabled",
+        ):
             if not _es_bool(getattr(self, campo)):
                 raise AutoConfigError(f"{campo} debe ser bool")
+        self._validar_motion()
         if self.fx_preset not in FX_PRESETS:
             raise AutoConfigError(f"fx_preset invalido: {self.fx_preset!r}")
         if self.caption_source not in CAPTION_SOURCES:
@@ -79,10 +104,37 @@ class AutoConfig:
         if isinstance(self.max_video_windows, bool) or self.max_video_windows not in (0, 1):
             raise AutoConfigError("max_video_windows solo admite 0 o 1 en V1")
 
+    def _validar_motion(self) -> None:
+        """Reglas de la capa de letreros. Textos: str acotado; encendida: solo en v2."""
+        for campo in CAMPOS_MOTION:
+            valor = getattr(self, campo)
+            if not isinstance(valor, str):
+                raise AutoConfigError(f"{campo} debe ser texto")
+            if len(valor) > MOTION_TEXTO_MAX:
+                raise AutoConfigError(f"{campo} supera {MOTION_TEXTO_MAX} caracteres")
+            if "\n" in valor or "\r" in valor:
+                raise AutoConfigError(f"{campo} no admite saltos de linea")
+        if self.motion_enabled and self.mode != "v2":
+            raise AutoConfigError(
+                "motion_enabled exige mode='v2': el paquete classic no sella un fingerprint de "
+                "config en su marker, asi que una reanudacion mezclaria clips con letreros y sin "
+                "ellos sin que nadie se entere"
+            )
+
     def to_dict(self) -> dict:
-        """Dict JSON-serializable y estable (sin rutas, sin secretos, sin reloj)."""
+        """Dict JSON-serializable y estable (sin rutas, sin secretos, sin reloj).
+
+        Con la capa de letreros APAGADA sus campos se OMITEN por completo. No es cosmetica:
+        `to_dict` alimenta el fingerprint que gobierna la reanudacion, y meter una clave nueva
+        habria invalidado de golpe todos los paquetes v2 ya existentes sin que su salida hubiera
+        cambiado en un solo byte. Omitirlos tambien es lo correcto en semantica: con la capa
+        apagada, `motion_cta` no influye en nada.
+        """
         d = asdict(self)
         d["pipeline_version"] = PIPELINE_VERSION
+        if not self.motion_enabled:
+            for campo in ("motion_enabled", *CAMPOS_MOTION):
+                d.pop(campo, None)
         return d
 
     def fingerprint(self) -> str:

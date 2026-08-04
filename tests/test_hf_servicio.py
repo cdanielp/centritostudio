@@ -71,9 +71,9 @@ def test_render_exitoso_devuelve_resultado_completo(tmp_path):
 
 
 def test_consumo_sugerido_trae_los_ajustes_de_hf0(tmp_path):
-    """HF-3 no debe redescubrir que fade va en false ni que la ruta encaja con cover."""
+    """El consumidor no debe redescubrir que fade va en false ni con que fit se compone."""
     r = _pedir(tmp_path)
-    assert r.consumo_sugerido == {"fade": False, "fit": "cover", "mute": True}
+    assert r.consumo_sugerido == {"fade": False, "fit": "nativo", "mute": True}
 
 
 def test_segunda_llamada_es_hit_y_no_invoca_el_proceso(tmp_path):
