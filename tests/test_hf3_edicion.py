@@ -298,7 +298,11 @@ def test_editar_una_pieza_solo_invalida_esa_pieza_en_la_cache():
         return {
             pieza.plantilla: calcular_hash(
                 motion_capa.contrato_de_pieza(
-                    pieza, version="1.0.0", ancho=1080, alto=1920, fps=30,
+                    pieza,
+                    version="1.0.0",
+                    ancho=1080,
+                    alto=1920,
+                    fps=30,
                     marca=motion_capa.MARCA,
                 ),
                 entorno,

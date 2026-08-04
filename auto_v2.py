@@ -160,6 +160,7 @@ def _capa_motion(
         nombre=config.motion_nombre,
         rol=config.motion_rol,
         cta=config.motion_cta,
+        textos_llm=config.motion_textos_llm,
     )
     return motion_capa.clips_de_motion(
         opciones=opciones,

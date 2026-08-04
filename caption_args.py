@@ -155,6 +155,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Llamada a la accion del cierre. Exige --motion",
     )
     parser.add_argument(
+        "--motion-sin-llm",
+        action="store_true",
+        default=False,
+        help=(
+            "Escribe los textos de los letreros con las reglas de espanol en vez de pedirselos "
+            "al LLM. Por default los escribe el LLM. Exige --motion"
+        ),
+    )
+    parser.add_argument(
         "--caption-qa",
         action="store_true",
         default=False,
@@ -200,6 +209,8 @@ def motion_opts_de_args(args: argparse.Namespace):
         for c in ("titulo", "nombre", "rol", "cta")
         if getattr(args, f"motion_{c}", None) is not None
     ]
+    if getattr(args, "motion_sin_llm", False):
+        sueltos.append("--motion-sin-llm")
     if not args.motion:
         if sueltos:
             raise SystemExit(f"{', '.join(sueltos)} exige --motion")
@@ -210,6 +221,7 @@ def motion_opts_de_args(args: argparse.Namespace):
         nombre=args.motion_nombre or "",
         rol=args.motion_rol or "",
         cta=args.motion_cta or "",
+        textos_llm=not args.motion_sin_llm,
     )
 
 

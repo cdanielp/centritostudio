@@ -1,0 +1,311 @@
+"""motion_textos_llm.py — Los textos de los letreros los escribe el LLM, no las reglas.
+
+Las heuristicas de espanol llegaron hasta donde podian llegar: distinguen una frase de media
+frase, pero no saben si lo que dice vale la pena. El sintoma medido: `dato_destacado` solo se
+colocaba en 4 de 34 clips reales, porque la regla exige una unidad LITERAL detras del numero y
+la gente dice "diez y medio por ciento" o "la mitad de los alumnos". Un modelo lee eso y saca
+el dato; una expresion regular no.
+
+Este modulo pide TODOS los textos de un clip en UNA sola llamada y devuelve JSON estricto. Las
+reglas se quedan como RESPALDO, intactas: si el LLM falla, devuelve basura o no hay clave, el
+plan sale con los textos de siempre y nadie se entera salvo el log.
+
+Tres cosas que no se negocian:
+
+1. FAIL-OPEN. Ningun camino de aqui puede tumbar un render. Todo error acaba en `None` y el
+   llamador usa las reglas.
+2. CACHE CON LA MISMA HUELLA QUE EL BRAIN. Texto + prompt + modelo + proveedor. Sin ella, dos
+   corridas del mismo clip darian textos distintos y el MP4 dejaria de ser reproducible, que es
+   justo lo que se acaba de arreglar en `brain.py`.
+3. EL LLM PROPONE, EL PLANIFICADOR DISPONE. El modelo escribe frases; donde va cada pieza y
+   cuantas caben lo sigue decidiendo `motion_plan`, que es puro y determinista.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+import motion_plan as mp
+
+TRANSCRIPTS = Path(__file__).resolve().parent / "transcripts"
+SUFIJO_SIDECAR = ".motion_textos.json"
+SCHEMA_CACHE = 1  # sube si cambia la FORMA del sidecar, para invalidar los viejos de golpe
+
+# Limites por slot. Son los mismos que ya respeta el respaldo de reglas: el LLM no puede
+# inventarse mas espacio del que la plantilla sabe pintar.
+LIMITES = {
+    "hook_titulo": mp.TITULO_SECCION_MAX_CHARS,
+    "hook_kicker": 18,
+    "seccion": mp.TITULO_SECCION_MAX_CHARS,
+    "dato_cifra": 12,
+    "dato_etiqueta": mp.DATO_ETIQUETA_MAX_CHARS,
+    "cierre_titulo": mp.TITULO_SECCION_MAX_CHARS,
+}
+MAX_SECCIONES = 8  # tope de cordura de la respuesta, no una regla de colocacion
+
+_SYSTEM = (
+    "Eres editor de video en espanol de Mexico. Escribes los letreros que van sobre un clip "
+    "vertical de redes sociales. Cada letrero se lee en menos de dos segundos y va SOLO en "
+    "pantalla, sin contexto. Respondes UNICAMENTE con JSON valido, sin texto adicional."
+)
+
+_PROMPT = """\
+Este es un clip de {dur_s:.0f} segundos. Su transcripcion por tramos, con el milisegundo en que
+empieza cada uno:
+
+{tramos}
+
+Escribe los letreros del clip. Reglas de escritura, todas obligatorias:
+- En espanol, con las tildes correctas.
+- Cada texto tiene que entenderse SOLO, sin leer los demas ni la transcripcion.
+- Frases enteras: nada que empiece por "que", "y", "de", "porque" ni que quede cortado.
+- Sin muletillas: nada de "pues", "este", "o sea", "digamos", "bueno", "entonces".
+- No copies el tramo literal si suena a habla suelta: reescribelo para que se lea.
+- Respeta el limite de caracteres de cada campo. Si no cabe, di lo mismo mas corto.
+
+Campos:
+- "hook_titulo" ({l_hook} car.): el gancho del clip. Lo que hace que alguien no siga scrolleando.
+- "hook_kicker" ({l_kicker} car.): dos o tres palabras de categoria, en MAYUSCULAS. "" si no aplica.
+- "secciones": lista de hasta {max_sec} objetos {{"t0_ms": int, "titulo": str}} ({l_sec} car.),
+  uno por cada CAMBIO DE TEMA del clip. `t0_ms` es el milisegundo del tramo donde empieza ese
+  tema. Lista vacia si el clip trata de una sola cosa.
+- "dato_cifra" ({l_cifra} car.) y "dato_etiqueta" ({l_etiq} car.): el numero mas contundente que
+  se dice, CON su unidad ("10.5%", "26 anos", "5 millones"), y de que es ese numero. Cuenta
+  tambien si el numero se dice con palabras ("diez y medio por ciento" -> "10.5%"). Los dos en
+  "" si el clip no dice ninguna cifra que valga la pena destacar. Un ano de calendario NO es
+  una cifra destacable.
+- "dato_t0_ms": milisegundo del tramo donde se dice esa cifra, o null si no hay cifra.
+- "cierre_titulo" ({l_cierre} car.): con que idea se queda el espectador. NO repitas el hook.
+
+JSON: {{"hook_titulo":str,"hook_kicker":str,"secciones":[{{"t0_ms":int,"titulo":str}}],\
+"dato_cifra":str,"dato_etiqueta":str,"dato_t0_ms":int|null,"cierre_titulo":str}}\
+"""
+
+
+@dataclass(frozen=True)
+class TextosLLM:
+    """Lo que el modelo propone. Todo opcional: un campo vacio cae al respaldo de reglas."""
+
+    hook_titulo: str = ""
+    hook_kicker: str = ""
+    secciones: tuple[tuple[int, str], ...] = ()
+    dato_cifra: str = ""
+    dato_etiqueta: str = ""
+    dato_t0_ms: int | None = None
+    cierre_titulo: str = ""
+
+    @property
+    def vacio(self) -> bool:
+        return not (self.hook_titulo or self.secciones or self.dato_cifra or self.cierre_titulo)
+
+    def a_dict(self) -> dict:
+        return {
+            "hook_titulo": self.hook_titulo,
+            "hook_kicker": self.hook_kicker,
+            "secciones": [{"t0_ms": t, "titulo": s} for t, s in self.secciones],
+            "dato_cifra": self.dato_cifra,
+            "dato_etiqueta": self.dato_etiqueta,
+            "dato_t0_ms": self.dato_t0_ms,
+            "cierre_titulo": self.cierre_titulo,
+        }
+
+
+# ── Huella y cache ───────────────────────────────────────────────────────────
+
+
+def ruta_sidecar(stem: str) -> Path:
+    return TRANSCRIPTS / f"{stem}{SUFIJO_SIDECAR}"
+
+
+def huella(tramos: list[mp.Tramo], duracion_ms: int) -> str:
+    """sha256 de TODO lo que determina la respuesta: texto, tiempos, prompt, modelo, proveedor.
+
+    Los tiempos SI entran aqui, al reves que en el brain: el modelo los ve en el prompt y los
+    devuelve en `t0_ms`, asi que moverlos cambia la respuesta.
+    """
+    import brain  # noqa: PLC0415 (fuente unica del modelo y el proveedor)
+
+    payload = json.dumps(
+        {
+            "schema": SCHEMA_CACHE,
+            "duracion_ms": duracion_ms,
+            "tramos": [[t.t0_ms, t.t1_ms, t.texto] for t in tramos],
+            "system": _SYSTEM,
+            "prompt": _PROMPT,
+            "modelo": brain.MODEL,
+            "proveedor": brain.PROVIDER,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sidecar_reutilizable(stem: str, marca: str) -> dict | None:
+    """Sidecar previo si lo genero EXACTAMENTE esta entrada. Cualquier problema -> None."""
+    if not stem:
+        return None
+    ruta = ruta_sidecar(stem)
+    if not ruta.is_file():
+        return None
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(datos, dict) or datos.get("huella") != marca:
+        return None
+    return datos.get("textos") if isinstance(datos.get("textos"), dict) else None
+
+
+# ── Saneado de la respuesta ──────────────────────────────────────────────────
+
+
+def _texto_valido(valor: object, limite: int) -> str:
+    """Cadena de una linea, recortada al limite. Cualquier otra cosa se descarta."""
+    if not isinstance(valor, str):
+        return ""
+    limpio = " ".join(valor.split())
+    return limpio if 0 < len(limpio) <= limite else ""
+
+
+def _secciones_validas(valor: object, duracion_ms: int) -> tuple[tuple[int, str], ...]:
+    """Secciones con t0 dentro del clip y titulo que cabe. El resto se tira sin ruido."""
+    if not isinstance(valor, list):
+        return ()
+    salida: list[tuple[int, str]] = []
+    for item in valor[:MAX_SECCIONES]:
+        if not isinstance(item, dict):
+            continue
+        t0 = item.get("t0_ms")
+        titulo = _texto_valido(item.get("titulo"), LIMITES["seccion"])
+        if not titulo or not isinstance(t0, int) or isinstance(t0, bool):
+            continue
+        if not 0 <= t0 < duracion_ms:
+            continue
+        salida.append((t0, titulo))
+    salida.sort(key=lambda x: x[0])
+    return tuple(salida)
+
+
+def sanear(dato: object, duracion_ms: int) -> TextosLLM | None:
+    """Respuesta cruda del modelo -> `TextosLLM`, o None si no hay nada aprovechable.
+
+    Se sanea campo a campo y NO se rechaza la respuesta entera por un campo malo: si el modelo
+    acerta con el hook y falla con la cifra, se usa el hook y la cifra cae al respaldo. Tirar
+    todo por una parte seria desperdiciar una llamada que ya se pago.
+    """
+    if not isinstance(dato, dict):
+        return None
+    t0_dato = dato.get("dato_t0_ms")
+    if not isinstance(t0_dato, int) or isinstance(t0_dato, bool) or not 0 <= t0_dato < duracion_ms:
+        t0_dato = None
+    cifra = _texto_valido(dato.get("dato_cifra"), LIMITES["dato_cifra"])
+    textos = TextosLLM(
+        hook_titulo=_texto_valido(dato.get("hook_titulo"), LIMITES["hook_titulo"]),
+        hook_kicker=_texto_valido(dato.get("hook_kicker"), LIMITES["hook_kicker"]),
+        secciones=_secciones_validas(dato.get("secciones"), duracion_ms),
+        dato_cifra=cifra,
+        # Una etiqueta sin cifra no significa nada: se descarta con ella.
+        dato_etiqueta=_texto_valido(dato.get("dato_etiqueta"), LIMITES["dato_etiqueta"])
+        if cifra
+        else "",
+        dato_t0_ms=t0_dato if cifra else None,
+        cierre_titulo=_texto_valido(dato.get("cierre_titulo"), LIMITES["cierre_titulo"]),
+    )
+    return None if textos.vacio else textos
+
+
+# ── La llamada ───────────────────────────────────────────────────────────────
+
+
+def _prompt_de(tramos: list[mp.Tramo], duracion_ms: int) -> str:
+    lineas = "\n".join(f"[{t.t0_ms}] {' '.join((t.texto or '').split())}" for t in tramos)
+    return _PROMPT.format(
+        dur_s=duracion_ms / 1000.0,
+        tramos=lineas,
+        l_hook=LIMITES["hook_titulo"],
+        l_kicker=LIMITES["hook_kicker"],
+        l_sec=LIMITES["seccion"],
+        l_cifra=LIMITES["dato_cifra"],
+        l_etiq=LIMITES["dato_etiqueta"],
+        l_cierre=LIMITES["cierre_titulo"],
+        max_sec=MAX_SECCIONES,
+    )
+
+
+def pedir_textos(
+    tramos: list[mp.Tramo], duracion_ms: int, *, stem: str = "", forzar: bool = False
+) -> TextosLLM | None:
+    """Textos del clip segun el LLM, o None si no hay nada utilizable. NUNCA lanza.
+
+    None es una respuesta normal, no un fallo: el llamador sigue con las reglas de siempre.
+    """
+    if not tramos or duracion_ms <= 0:
+        return None
+    try:
+        marca = huella(tramos, duracion_ms)
+    except Exception as exc:  # noqa: BLE001 - ni siquiera calcular la huella puede tumbar nada
+        print(f"[motion-llm] no se pudo calcular la huella, se usan las reglas: {exc}")
+        return None
+
+    if not forzar:
+        previo = _sidecar_reutilizable(stem, marca)
+        if previo is not None:
+            textos = sanear(previo, duracion_ms)
+            if textos is not None:
+                print(f"[motion-llm] cache HIT {stem}{SUFIJO_SIDECAR} | sin llamada al LLM")
+                return textos
+
+    try:
+        import brain  # noqa: PLC0415
+
+        crudo = brain.llm(
+            [
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": _prompt_de(tramos, duracion_ms)},
+            ]
+        )
+    except Exception as exc:  # noqa: BLE001 - fail-open duro
+        print(f"[motion-llm] fallo la llamada, se usan las reglas: {type(exc).__name__}: {exc}")
+        return None
+
+    textos = sanear(crudo, duracion_ms)
+    if textos is None:
+        print("[motion-llm] respuesta sin nada aprovechable, se usan las reglas")
+        return None
+    _guardar(stem, marca, textos)
+    print(
+        f"[motion-llm] OK | hook={'si' if textos.hook_titulo else 'no'} "
+        f"secciones={len(textos.secciones)} cifra={textos.dato_cifra or 'no'}"
+    )
+    return textos
+
+
+def _guardar(stem: str, marca: str, textos: TextosLLM) -> None:
+    """Persiste el sidecar. Un fallo de escritura no puede tumbar el render."""
+    if not stem:
+        return
+    try:
+        from atomic_io import atomic_write_json  # noqa: PLC0415
+
+        atomic_write_json(
+            ruta_sidecar(stem),
+            {"schema": SCHEMA_CACHE, "huella": marca, "textos": textos.a_dict()},
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion-llm] no se pudo guardar el sidecar: {exc}")
+
+
+__all__ = [
+    "LIMITES",
+    "MAX_SECCIONES",
+    "SUFIJO_SIDECAR",
+    "TextosLLM",
+    "huella",
+    "pedir_textos",
+    "ruta_sidecar",
+    "sanear",
+]

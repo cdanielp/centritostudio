@@ -29,6 +29,7 @@ CAPTION_SOURCES = frozenset({"transcript", "srt"})
 # y sigue reanudandose. Es la traduccion del invariante "capa apagada = nada cambia" al
 # contrato de reanudacion, no solo a los pixeles.
 CAMPOS_MOTION = ("motion_nombre", "motion_rol", "motion_cta")
+CAMPOS_MOTION_BOOL = ("motion_textos_llm",)
 MOTION_TEXTO_MAX = 120
 
 
@@ -68,6 +69,9 @@ class AutoConfig:
     motion_nombre: str = ""
     motion_rol: str = ""
     motion_cta: str = "Sigue para mas"
+    # Los textos de los letreros los escribe el LLM. Las heuristicas de espanol se quedan como
+    # respaldo y entran solas si el modelo falla. Solo cuenta con `motion_enabled`.
+    motion_textos_llm: bool = True
 
     target_coverage_pct: float = 0.27
     max_coverage_pct: float = 0.35
@@ -83,6 +87,7 @@ class AutoConfig:
             "verify_av",
             "manual_sidecars",
             "motion_enabled",
+            "motion_textos_llm",
         ):
             if not _es_bool(getattr(self, campo)):
                 raise AutoConfigError(f"{campo} debe ser bool")
@@ -133,7 +138,7 @@ class AutoConfig:
         d = asdict(self)
         d["pipeline_version"] = PIPELINE_VERSION
         if not self.motion_enabled:
-            for campo in ("motion_enabled", *CAMPOS_MOTION):
+            for campo in ("motion_enabled", *CAMPOS_MOTION, *CAMPOS_MOTION_BOOL):
                 d.pop(campo, None)
         return d
 

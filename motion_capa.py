@@ -82,6 +82,9 @@ class OpcionesMotion:
     nombre: str = ""
     rol: str = ""
     cta: str = ""
+    # Los textos los escribe el LLM por default. Las heuristicas de espanol se quedan como
+    # RESPALDO y entran solas si el modelo falla, devuelve basura o no hay clave configurada.
+    textos_llm: bool = True
 
     def textos(self) -> mp.TextosMarca:
         return mp.TextosMarca(
@@ -110,6 +113,8 @@ def resolver_plan(
     tramos: list[mp.Tramo] | None,
     tray_csv: Path | None,
     catalogo: set[str],
+    textos_llm: bool = False,
+    stem: str = "",
 ) -> tuple[mp.PlanMotion, str]:
     """(plan, origen). El plan EDITADO manda sobre el automatico si existe y es utilizable.
 
@@ -132,8 +137,22 @@ def resolver_plan(
         textos=textos,
         tramos=tramos,
         tray_csv=tray_csv,
+        llm=_textos_del_llm(textos_llm, tramos, duracion_ms, stem),
     )
     return plan, me.ORIGEN_AUTOMATICO
+
+
+def _textos_del_llm(activo: bool, tramos, duracion_ms: int, stem: str):
+    """Textos del LLM, o None para que manden las reglas. FAIL-OPEN en todos los caminos."""
+    if not activo:
+        return None
+    try:
+        import motion_textos_llm  # noqa: PLC0415 (solo con la capa encendida)
+
+        return motion_textos_llm.pedir_textos(list(tramos or []), duracion_ms, stem=stem)
+    except Exception as exc:  # noqa: BLE001 - la capa de textos jamas tumba un plan
+        print(f"[motion] textos del LLM no disponibles, se usan las reglas: {exc}")
+        return None
 
 
 def plan_automatico(
@@ -323,6 +342,8 @@ def _clips_de_motion(
         tramos=tramos,
         tray_csv=tray_csv,
         catalogo=set(versiones),
+        textos_llm=opciones.textos_llm,
+        stem=Path(clip_mp4).stem if clip_mp4 else "",
     )
     informe = _informe_base(plan)
     informe["origen"] = origen
