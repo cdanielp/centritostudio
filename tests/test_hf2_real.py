@@ -66,17 +66,64 @@ def _pedir(dato: dict, cache: Path, catalogo: Catalogo = CATALOGO):
 
 @pytest.mark.skipif(shutil.which("npx") is None, reason="npx no esta instalado")
 @pytest.mark.parametrize("nombre", NOMBRES)
+def test_render_reproducible_por_plantilla(nombre, tmp_path):
+    """El MISMO contrato renderizado dos veces debe dar el MISMO sha256.
+
+    Es el gate que nunca existio. Sin el, la auditoria de HF-2 midio 9 de 10
+    configuraciones con sha distinto entre corridas identicas, y eso dejaba inerte al
+    canario de influencia de aqui abajo: su asercion se cumplia por ruido.
+
+    Las dos corridas usan RAICES DE CACHE DISTINTAS a proposito. Con la misma raiz, la
+    segunda seria un hit de cache y devolveria el sha guardado sin renderizar nada: el
+    test pasaria sin haber probado absolutamente nada.
+    """
+    base = _ejemplo(nombre)
+
+    uno = _pedir(base, tmp_path / "cache_a")
+    otro = _pedir(base, tmp_path / "cache_b")
+
+    assert uno.razon_fallo is None, f"{nombre}: {uno.razon_fallo} {uno.detalle}"
+    assert otro.razon_fallo is None, f"{nombre}: {otro.razon_fallo} {otro.detalle}"
+    assert not uno.desde_cache and not otro.desde_cache, (
+        f"{nombre}: alguna corrida salio de cache, el test no probo el render"
+    )
+    assert uno.hash == otro.hash, f"{nombre}: el mismo contrato dio claves de cache distintas"
+    assert uno.sha256 == otro.sha256, (
+        f"{nombre}: dos renders del MISMO contrato dieron sha256 distinto "
+        f"({uno.sha256} vs {otro.sha256}). El render dejo de ser reproducible: revisa que "
+        "el comando siga fijando --workers 1 (ver invocador.WORKERS y la auditoria de HF-2)."
+    )
+
+
+@pytest.mark.skipif(shutil.which("npx") is None, reason="npx no esta instalado")
+@pytest.mark.parametrize("nombre", NOMBRES)
 def test_canario_de_influencia_por_plantilla(nombre, tmp_path):
-    """D50.5: cambiar el texto de un slot debe cambiar el sha256 del MOV."""
+    """D50.5: cambiar el texto de un slot debe cambiar el sha256 del MOV.
+
+    El canario solo dice algo si el render es reproducible. Mientras no lo fue, esta
+    asercion se cumplia por varianza de rasterizacion aunque el slot jamas hubiera llegado
+    a la plantilla, que es justo el fallo de D50.1 que viene a cazar. Por eso la premisa se
+    comprueba AQUI, en el mismo test, y no se delega a otro archivo: un canario cuya
+    premisa vive lejos se apaga sin que nadie lo note.
+    """
     base = _ejemplo(nombre)
     primer_slot = sorted(base["texto"])[0]
     variante = dict(base, texto=dict(base["texto"], **{primer_slot: "Texto canario distinto"}))
 
     uno = _pedir(base, tmp_path / "cache")
+    testigo = _pedir(base, tmp_path / "cache_testigo")
     otro = _pedir(variante, tmp_path / "cache")
 
     assert uno.razon_fallo is None, f"{nombre}: {uno.razon_fallo} {uno.detalle}"
     assert otro.razon_fallo is None, f"{nombre}: {otro.razon_fallo} {otro.detalle}"
+    assert testigo.razon_fallo is None, f"{nombre}: {testigo.razon_fallo} {testigo.detalle}"
+
+    # Premisa: sin reproducibilidad, la asercion de abajo no prueba nada.
+    assert uno.sha256 == testigo.sha256, (
+        f"{nombre}: el render no es reproducible, asi que este canario no puede detectar "
+        "nada. Arregla la reproducibilidad ANTES de leer el resultado de abajo."
+    )
+
     assert uno.hash != otro.hash
     assert uno.sha256 != otro.sha256, (
         f"{nombre}: el slot {primer_slot!r} no llego a la plantilla, "

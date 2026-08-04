@@ -198,6 +198,37 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   `--no-cache`, formato, `check.bat` y gate de docs verdes (números en la bitácora del
 >   cierre).
 
+> **ADDENDUM DE DETERMINISMO HF-2 (2026-08-04).** Dos PRs APILADOS y ABIERTOS, ninguno
+> mergeado, que corrigen una conclusión de HF-0 y cierran un agujero que HF-2 no vio.
+>
+> - **PR #43 (`docs/hf2-auditoria-determinismo`), ABIERTO sobre `main` `ff016a9`.** Auditoría
+>   de determinismo del catálogo, solo lectura y medición:
+>   `revision/hf-2/AUDITORIA_DETERMINISMO.md`. Bloques A a D. Halló que **dos renders del
+>   mismo contrato daban sha256 distinto en 9 de 10 configuraciones**; refutó la sospecha
+>   sobre `duracion_ms` (gobierna, desvío 0 ms en 4 de 4); y estableció que el CLI no emite
+>   ningún campo `sha` en ningún modo.
+> - **PR #44 (`fix/hf2-render-reproducible`), ABIERTO, apilado sobre la rama de #43.**
+>   Reparación: **D52**. `hyperframes/invocador.py` fija `WORKERS = "1"`; par de gates
+>   `hf_real` sobre las 5 plantillas (reproducibilidad NUEVO + canario de D50.5 RE-ARMADO con
+>   premisa propia); test de CI que vigila el flag. Cero cambios bajo `motion/`; la clave de
+>   caché NO se tocó.
+> - **Orden de merge obligatorio:** primero #43, después #44. #44 contiene los commits de #43
+>   por estar apilado.
+> - **Corrección de HF-0 (D52).** El "3/3 renders byte-idénticos" de HF-0 es cierto para SU
+>   composición (se rehízo: mismo sha que entonces, 10 de 10 veces, con 6 workers), pero la
+>   generalización *"el render es reproducible al hash"* es FALSA. Lo que expone al fallo es
+>   cuántos frames re-rasterizan texto, no cuántos workers hay: la pieza de HF-0 está quieta
+>   en 134 de sus 180 frames. Corolario: **tres corridas no son evidencia de determinismo**;
+>   `titulo_seccion` parecía determinista con 2 corridas y falló 1 de 6.
+> - **`--workers 1` no cuesta, ahorra:** el catálogo baja de 121.2 s a 58.7 s (2.07x más
+>   rápido); cada worker extra levanta un Chrome que estas piezas cortas no amortizan.
+> - **Recomendación escrita y NO implementada:** `compositionHash` del CLI cubre cambios de
+>   contenido de plantilla que la clave de caché actual no ve (medido: editar una propiedad
+>   CSS cambia el MOV y deja la clave idéntica). Es una fisura real de D51.1; adoptarlo exige
+>   rediseño del almacén y se decide aparte.
+> - **Verificado en la rama de #44:** ver los conteos exactos de pytest, `ruff check .
+>   --no-cache` y la corrida manual de los `hf_real` en el cuerpo del PR.
+
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
 > esencial (D40) fue APROBADA por K y **mergeada** (`4a378d8`) — la nota "PR #23 autorizado para

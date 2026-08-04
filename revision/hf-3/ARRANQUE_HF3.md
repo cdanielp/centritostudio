@@ -77,3 +77,50 @@ hashea, la version es lo que invalida).
 - Banda de captions medida (estilo default): vertical 80.2-89.9% del alto, horizontal
   72.5-89.9%; zona prohibida de diseno 70-92%. OJO: con `avoid_faces` o posiciones alternas
   la banda SE MUEVE (D51.1).
+
+## Addendum de determinismo (2026-08-04, D52). Leer ANTES de tocar la cache o el resume
+
+Dos PRs apilados, ABIERTOS y sin mergear cuando se escribio esto: **#43** (auditoria, rama
+`docs/hf2-auditoria-determinismo`) y **#44** (reparacion, rama `fix/hf2-render-reproducible`,
+apilada sobre la de #43). Orden de merge obligatorio: primero #43, despues #44.
+
+Lo que cambia para HF-3:
+
+1. **El render YA es reproducible, y eso es una precondicion que HF-3 daba por sentada sin
+   que fuera cierta.** `hyperframes/invocador.py` fija ahora `WORKERS = "1"`. Antes, dos
+   renders del mismo contrato daban sha256 distinto en 9 de 10 configuraciones. Sin ese
+   arreglo, la pieza que HF-3 mete en el paquete y vuelve a producir tras un resume NO seria
+   la misma que ya se compuso, y la propiedad "los clips no reprocesados quedan byte
+   identicos" (verificada en el proyecto desde S36-C2C) no valdria para el Motor B.
+   **No quites `--workers 1` para ganar velocidad: ademas de romper esto, seria mas lento**
+   (el catalogo entero tarda 58.7 s con 1 worker contra 121.2 s con el reparto `auto`).
+
+2. **Hay dos gates `hf_real` que HF-3 tiene que mantener verdes**, los dos sobre las cinco
+   plantillas, en `tests/test_hf2_real.py`:
+   `test_render_reproducible_por_plantilla` (mismo contrato dos veces, sha igual) y
+   `test_canario_de_influencia_por_plantilla` (texto distinto, sha distinto, con su premisa
+   de reproducibilidad comprobada dentro del propio test). Se corren a mano (D50.4):
+   `venv\Scripts\python -m pytest tests/test_hf2_real.py -m hf_real -q`.
+
+3. **Fisura conocida de la clave de cache, medida y NO reparada.** Editar el contenido de una
+   plantilla (por ejemplo una propiedad de CSS) produce un MOV distinto y deja la clave de
+   `contrato.calcular_hash` IDENTICA: un hit de cache devolveria la pieza vieja. Hoy lo tapa
+   la regla D51.1 (subir la version de plantilla es lo que invalida), que depende de que
+   nadie se olvide. El `compositionHash` del CLI si detecta ese cambio, pero solo se conoce
+   DESPUES de lanzar el render, asi que adoptarlo obliga a un esquema de dos niveles (clave
+   de contrato para buscar, `compositionHash` en el sidecar para validar el hit). Es rediseno
+   del almacen, no un ajuste: **si HF-3 va a tocar la cache, esta es la decision que hay que
+   tomar de paso.**
+
+4. **Regla metodologica que hereda HF-3:** tres corridas no son evidencia de determinismo
+   cuando el fallo es un evento raro por frame. `titulo_seccion` parecia determinista con dos
+   corridas y fallo una de seis. Cualquier afirmacion de "sale igual" necesita un numero de
+   corridas proporcional a cuantos frames rasterizan texto.
+
+5. **Cuatro deudas no bloqueantes** siguen abiertas y documentadas en el bloque 6.2 del
+   addendum de `revision/hf-2/AUDITORIA_DETERMINISMO.md`: `semilla` declarada y no consumida,
+   defaults de lienzo de los gemelos horizontales apuntando a vertical, `Math.random` y
+   `Date.now` en el GSAP vendorizado, y `--json` sin `--batch` que no emite nada en silencio.
+
+Detalle completo, con comandos y salidas literales, en el ADDENDUM de
+`revision/hf-2/AUDITORIA_DETERMINISMO.md` y en D52 de `DECISIONES.md`.

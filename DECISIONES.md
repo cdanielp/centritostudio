@@ -2389,3 +2389,95 @@ plantillas o evidencia.
    juzgar contraste en los sheets, pendiente de que K entregue los valores reales. Cambiarlos
    luego es barato por diseno: defaults + fallbacks CSS (un test fija que coincidan) +
    ejemplos, y las piezas ya renderizadas se invalidan subiendo la version (regla D51.1).
+
+## D52 - Render reproducible por `--workers 1`, canario re-armado y par de gates
+
+**Numero elegido:** D52. Es el siguiente libre: el encabezado mas alto de este documento era
+`## D51` y `D52` no aparece en ningun `.md` del repo (comprobado con
+`grep -rlE "\bD52\b" --include=*.md .`, sin coincidencias). No se reutiliza ningun D50.x ni
+D51.x: aquellos son addenda de sus fases y esto es una decision nueva.
+
+**Contexto.** La auditoria de determinismo de HF-2
+(`revision/hf-2/AUDITORIA_DETERMINISMO.md`) midio que dos renders del MISMO contrato daban
+sha256 distinto en 9 de 10 configuraciones, y que eso dejaba INERTE al canario de influencia
+de D50.5: su asercion `uno.sha256 != otro.sha256` se cumplia por ruido de rasterizacion
+aunque el slot jamas hubiera llegado a la plantilla, que es justo el fallo de D50.1 que viene
+a cazar.
+
+### Decision
+
+1. **El comando fija `--workers 1`.** `hyperframes/invocador.py` declara `WORKERS = "1"` con
+   el porque y la referencia a la auditoria, y `construir_comando` lo emite siempre. Con el
+   reparto `auto` (2 a 4 workers segun la pieza en esta maquina) la captura se divide entre
+   procesos de Chrome distintos y el texto animado se rasteriza con delta 1 sobre 255 en los
+   bordes antialiaseados de unos pocos frames: imperceptible a ojo, suficiente para romper el
+   sha. Con 1 worker, 40 renders dieron 10 de 10 iguales en cuatro configuraciones.
+
+2. **No cuesta, ahorra.** El catalogo completo baja de 121.2 s a 58.7 s (factor 0.48, o sea
+   2.07 veces mas rapido). Cada worker extra levanta su propio Chrome (unos 2 s) y estas
+   piezas duran de 60 a 135 frames: no hay captura suficiente para amortizar ese arranque. La
+   decision no tiene contrapartida que discutir.
+
+3. **Par de gates `hf_real`, sobre las CINCO plantillas.**
+   - `test_render_reproducible_por_plantilla` (NUEVO, el que nunca existio): el mismo
+     contrato dos veces exige sha256 igual. Usa dos raices de cache distintas a proposito, y
+     ademas asegura `not desde_cache`, porque con una sola raiz la segunda llamada seria un
+     hit y el test pasaria sin renderizar nada.
+   - `test_canario_de_influencia_por_plantilla` (RE-ARMADO): antes de comparar dos textos
+     distintos, comprueba SU PROPIA PREMISA renderizando el contrato base una segunda vez y
+     exigiendo sha igual. Un canario cuya premisa vive en otro archivo se apaga sin que nadie
+     lo note.
+   Los dos se demostraron EN ROJO: el de reproducibilidad con `--workers` quitado a mano
+   (4 de 5 fallan), y el canario con el fallo de variables planas de D50.1 reintroducido
+   (5 de 5 fallan, con dos sha256 identicos, que es la firma exacta del fallo).
+
+4. **Barrera en el CI.** `test_el_comando_fija_un_solo_worker` en
+   `tests/test_hf_invocador.py` falla si el flag desaparece del comando construido. Es
+   asercion sobre una lista de strings, no renderiza nada, y por eso si va al CI.
+
+### Correccion explicita del resultado de HF-0 sobre determinismo
+
+HF-0 concluyo, con tres renders byte identicos de su overlay: *"En esta maquina, con estas
+versiones, el render es reproducible al hash"*. **Esa generalizacion es FALSA y queda
+corregida aqui.**
+
+El dato de HF-0 es correcto para SU composicion: se rehizo la medicion y no solo reprodujo,
+sino que dio el MISMO sha que HF-0 registro (`3ec305e6d7819d60...`), diez veces seguidas y
+con SEIS workers. Lo que no vale es el salto de esa composicion al renderer en general. La
+composicion de HF-0 declara `data-duration` estatico en el root, dura 6 s y se queda QUIETA
+entre t=0.94 s y t=5.5 s: 134 de sus 180 frames son identicos entre si y el dedup de frames
+estaticos los rinde una vez y los copia. Solo 46 frames se rasterizan de verdad, y con el
+texto inmovil.
+
+Las cinco plantillas de HF-2 llevan una respiracion sinusoidal durante todo el sostenimiento,
+asi que casi ningun frame se repite: entre 58 y 130 frames se rasterizan aparte, con el texto
+cambiando de geometria sub pixel en cada uno. **Lo que expone al fallo es el numero de frames
+en los que el texto se rasteriza de nuevo, no el numero de workers.** HF-0 midio una
+composicion mayoritariamente estatica y creyo estar midiendo el renderer.
+
+Corolario metodologico, que es lo que de verdad se lleva el proyecto: **tres corridas no son
+evidencia de determinismo cuando el fallo es un evento raro por frame.** La prueba esta en
+`titulo_seccion vertical`, la unica configuracion que la auditoria vio reproducir: con dos
+corridas parecia determinista, y con seis fallo una. Cualquier afirmacion futura de
+reproducibilidad necesita un numero de corridas proporcional a cuantos frames se rasterizan,
+no dos ni tres.
+
+### Lo que NO se hizo, a proposito
+
+`compositionHash` (16 hex que el CLI emite por stderr en la fase `compile`) SI cubre cambios
+en el contenido de la plantilla que nuestra clave de cache NO ve: editando una sola propiedad
+de CSS en una copia fuera del repo, el `compositionHash` cambio, el MOV cambio, y la clave de
+`contrato.calcular_hash` se quedo identica. Es una fisura real de D51.1, que confia en que
+nadie edite una plantilla sin subir su version.
+
+No se adopta en este PR (la regla de la tarea lo prohibe) y ademas no es un ajuste: el
+`compositionHash` solo se conoce DESPUES de lanzar el render, asi que no sirve para consultar
+la cache antes de renderizar. Adoptarlo obliga a un esquema de dos niveles (clave de contrato
+para buscar, `compositionHash` en el sidecar para validar el hit), que es rediseno del
+almacen. Queda como recomendacion escrita, con la medicion hecha, para decidirla aparte.
+
+### Verificacion
+
+Suite completa, `ruff check . --no-cache` y los `hf_real` corridos a mano (regla D50.4):
+salidas pegadas en el PR y en el addendum de `revision/hf-2/AUDITORIA_DETERMINISMO.md`.
+Cero cambios bajo `motion/`. La clave de cache no se toco.

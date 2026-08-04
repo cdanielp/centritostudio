@@ -43,8 +43,24 @@ def test_comando_construido_es_el_esperado(tmp_path):
         str(salida),
         "--variables-file",
         str(variables),
+        "--workers",
+        "1",
         "--no-best-effort",
     ]
+
+
+def test_el_comando_fija_un_solo_worker():
+    """Sin `--workers 1` el MOV NO es reproducible y este proyecto se queda sin cache fiable.
+
+    Medido en revision/hf-2/AUDITORIA_DETERMINISMO.md: con el reparto `auto` (2 workers en
+    la maquina de referencia), 9 de 10 configuraciones dieron sha256 distinto entre dos
+    corridas del MISMO contrato; con 1 worker, 10 de 10 byte identicas. Este test es la
+    unica barrera contra que alguien quite el flag "porque va mas lento".
+    """
+    cmd = inv.construir_comando(PIEZA_OK, PLANTILLA, "x.mov", "v.json", binario="npx")
+    assert "--workers" in cmd, "se quito --workers: el render deja de ser reproducible"
+    assert cmd[cmd.index("--workers") + 1] == "1"
+    assert inv.WORKERS == "1"
 
 
 def test_el_comando_no_lleva_non_interactive():
