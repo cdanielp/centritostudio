@@ -557,11 +557,9 @@ def test_el_texto_de_seccion_se_condensa_a_una_linea():
 @pytest.mark.parametrize(
     ("crudo", "esperado"),
     [
-        # Cabe entero y se lee como una unidad: se deja tal cual.
-        (
-            "La desercion escolar subio, y eso preocupa",
-            "La desercion escolar subio, y eso preocupa",
-        ),
+        # Cabe entero, pero la coletilla "y eso preocupa" no anade informacion: gana la
+        # clausula principal, que dice lo mismo en menos espacio.
+        ("La desercion escolar subio, y eso preocupa", "La desercion escolar subio"),
         # Corte JUSTO ANTES de una conjuncion: la clausula anterior queda entera.
         ("Es que imaginemonos un Garcia, pues por los traslados", "Es que imaginemonos un Garcia"),
         # No puede EMPEZAR por preposicion.
@@ -856,3 +854,58 @@ def test_la_lista_de_muletillas_esta_en_constantes_y_es_de_espanol():
     assert "digamos" in mp.MULETILLAS_SIMPLES
     assert ("o", "sea") in mp.MULETILLAS_COMPUESTAS
     assert mp.MULETILLAS_SOLO_AISLADAS == frozenset({"no"})
+
+
+# ── Condensar por informacion, no por longitud (punto 4) ─────────────────────
+
+
+@pytest.mark.parametrize(
+    ("crudo", "mas_largo", "mas_denso"),
+    [
+        (
+            "La desercion escolar subio, y eso preocupa",
+            "La desercion escolar subio, y eso preocupa",
+            "La desercion escolar subio",
+        ),
+        (
+            "Los traslados cuestan dinero, y tiempo, y salud",
+            "Los traslados cuestan dinero, y tiempo",
+            "Los traslados cuestan dinero",
+        ),
+        (
+            "el costo subio un 42%, que es muchisimo",
+            "el costo subio un 42%, que es muchisimo",
+            "el costo subio un 42%",
+        ),
+        (
+            "La jefa es este, o sea, el podcast que hacemos",
+            "La jefa es este, el podcast que hacemos",
+            "La jefa es este, el podcast",
+        ),
+        (
+            "Cuestan mucho, pero valen la pena siempre",
+            "Cuestan mucho, pero valen la pena siempre",
+            "Cuestan mucho",
+        ),
+    ],
+)
+def test_gana_el_fragmento_mas_denso_no_el_mas_largo(crudo, mas_largo, mas_denso):
+    """El mas largo suele ser el mismo fragmento con una coletilla vacia pegada detras."""
+    assert mp.condensar_clausula(crudo, mp.TITULO_SECCION_MAX_CHARS) == mas_denso
+    assert mas_denso != mas_largo, "el caso no prueba nada si los dos coinciden"
+    assert mp.densidad_informativa(mas_denso) > mp.densidad_informativa(mas_largo)
+
+
+def test_a_igualdad_de_densidad_gana_el_mas_corto():
+    """Lo que menos tapa del video."""
+    corto, largo = "Los traslados", "Los traslados"
+    assert mp.densidad_informativa(corto) == mp.densidad_informativa(largo)
+    # Un texto y el mismo con una palabra vacia detras: misma informacion, menos densidad.
+    assert mp.densidad_informativa("Los traslados cuestan") > mp.densidad_informativa(
+        "Los traslados cuestan de la"
+    )
+
+
+def test_la_densidad_premia_cifras_y_palabras_largas():
+    assert mp.densidad_informativa("subio 42%") > mp.densidad_informativa("subio de la")
+    assert mp.puntos_informativos("desercion") > mp.puntos_informativos("subio")

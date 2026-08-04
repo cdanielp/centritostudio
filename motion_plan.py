@@ -594,14 +594,21 @@ def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS
     limpio = limpiar_muletillas(" ".join((texto or "").split()))
     if not limpio:
         return ""
+    validos = []
     for candidato in _candidatos_de_clausula(limpio, maximo):
         recortado = _quitar_arranque_debil(candidato).rstrip(" " + PUNTUACION_CLAUSULA)
         if not minimo <= len(recortado) <= maximo:
             continue
         if _termina_colgando(recortado):
             continue
-        return recortado
-    return ""
+        validos.append(recortado)
+    if not validos:
+        return ""
+    # Gana el de mayor DENSIDAD informativa, no el mas largo. El mas largo suele ser el mismo
+    # fragmento con dos subordinadas pegadas detras que no anaden nada; el denso dice lo mismo
+    # en menos espacio y se lee de un golpe. A igualdad de densidad gana el mas corto, que es
+    # lo que menos tapa del video.
+    return max(validos, key=lambda t: (densidad_informativa(t), -len(t)))
 
 
 def _termina_colgando(fragmento: str) -> bool:
@@ -618,11 +625,7 @@ def _termina_colgando(fragmento: str) -> bool:
 
 
 def _candidatos_de_clausula(limpio: str, maximo: int) -> list[str]:
-    """Prefijos que terminan en limite de clausula, del mas largo al mas corto.
-
-    El mas largo primero porque un letrero que dice mas es mejor, siempre que quepa y siga
-    siendo una unidad de sentido.
-    """
+    """Prefijos que terminan en limite de clausula. Sin ordenar: los ordena quien elige."""
     palabras = _palabras(limpio)
     cortes: list[str] = []
     if len(limpio) <= maximo:
@@ -641,7 +644,6 @@ def _candidatos_de_clausula(limpio: str, maximo: int) -> list[str]:
         )
         if termina_en_puntuacion or empieza_clausula:
             cortes.append(parcial)
-    cortes.sort(key=len, reverse=True)
     return cortes
 
 
