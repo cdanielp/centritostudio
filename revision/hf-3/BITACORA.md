@@ -201,3 +201,36 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   `<LAB>\demo\09_TEXTO_LIMPIO.mp4` sobre el mismo clip que el 06, para comparar lado a lado:
   5 piezas frente a las 7 de antes (el techo se llevo dos `titulo_seccion`), con los textos ya
   sin muletillas ni fragmentos colgando.
+
+## Sesion 5: cuatro arreglos de calidad visual (ultima ronda antes del merge)
+
+- **15:39 - PASO 1 OK (la cifra ya no elige anos).** Un numero suelto no es un dato: "del 2023
+  al 2024" ponia un 2023 gigante y "2, grabado." ponia un 2. Ahora se descartan los anos entre
+  1900 y 2100 sin unidad y los enteros de un digito sin unidad, y se EXIGE unidad (`%`, moneda,
+  o una palabra detras que cualifique). La unidad viaja CON la cifra al slot: "10.5%", no
+  "10.5". Dos arreglos que salieron al medir: `stopwords_es.normalizar` no toca la enye, asi que
+  "26 anos" no reconocia su unidad, y "20 por ciento" se quedaba en "20 por".
+- **15:42 - PASO 2 y PASO 4 OK (jerarquia del cierre y acento del hook).** El cierre vuelve al
+  reparto de la plantilla: titulo grande y CTA corta en la pastilla. Meter el fragmento hablado
+  en la pastilla lo dejaba ilegible. Se conserva lo unico que valia del intento anterior: el
+  titulo del cierre no repite el del hook, porque sale de lo ultimo que se habla; sin tramo
+  disponible el cierre lleva solo la pastilla y la placa se encoge. Y el hook recupera el rojo
+  de marca: al vaciarse el kicker se quedaba sin su unico acento, asi que ahora pinta un filete,
+  el mismo recurso que la barra del lower_third. `hook` y `cierre` suben a 1.0.4.
+- **15:47 - PASO 3 OK (el titulo se sostiene solo).** Exige VERBO CONJUGADO en la clausula
+  PRINCIPAL y prohibe la subordinada colgando: nada que empiece por relativo, por subjuntivo
+  huerfano ni por pronombre atono, nada que empalme dos oraciones cortadas, y minimo tres
+  palabras. La guarda se aplica al TITULO, no a la etiqueta del dato: exigirle verbo a la
+  etiqueta dejaba `dato_destacado` en cero en los 34 clips reales, y la etiqueta acompana a una
+  cifra que ya carga el significado.
+- **15:49 - PASO 5 OK (dos ajustes de numero).** `MAX_PIEZAS_POR_MINUTO` de 5 a 7: con 5,
+  cualquier clip de menos de 36 s se quedaba solo con las tres fijas, y eso les pasaba a 25 de
+  34 clips. Al recortar por techo, `dato_destacado` NUNCA cae antes que `titulo_seccion`. Y la
+  huella de la cache del brain pasa a cubrir el system prompt, el prompt de usuario, el modelo
+  y el proveedor: editar las instrucciones reutilizaba en silencio un resultado generado con
+  otras. El modelo pasa de literal a constante para poder entrar a la huella.
+- **15:57 - PASO 6 OK (demos finales).** Cache borrada antes de renderizar.
+  `<LAB>\demo\10_FINAL_VERTICAL.mp4` (5 piezas) y `<LAB>\demo\11_FINAL_HORIZONTAL.mp4`
+  (7 piezas), sobre los mismos clips que 06/09 y 07 para comparar lado a lado. El primer render
+  saco tres titulos flojos ("preparatoria", "primarias totalmente", "te puedas, pues puedas ahi
+  jugar") y se cerro la guarda antes de dar la demo por buena.

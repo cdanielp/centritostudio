@@ -937,9 +937,9 @@ def test_la_lista_de_muletillas_esta_en_constantes_y_es_de_espanol():
             "La jefa es este, el podcast",
         ),
         (
-            "Cuestan mucho, pero valen la pena siempre",
-            "Cuestan mucho, pero valen la pena siempre",
-            "Cuestan mucho",
+            "Los traslados cuestan mucho, pero valen la pena",
+            "Los traslados cuestan mucho, pero valen la pena",
+            "Los traslados cuestan mucho",
         ),
     ],
 )
@@ -1002,12 +1002,12 @@ def test_los_fragmentos_que_se_sostienen_sobreviven(crudo):
 
 
 def test_un_demostrativo_final_deja_la_frase_colgando():
-    """"La jefa es este" tiene verbo y principal, pero acaba en el aire."""
+    """ "La jefa es este" tiene verbo y principal, pero acaba en el aire."""
     assert mp.condensar_clausula("La jefa es este", mp.TITULO_SECCION_MAX_CHARS) == ""
 
 
 def test_el_infinitivo_no_cuenta_como_verbo_conjugado():
-    """"costar mucho dinero" no es una frase; "cuestan mucho dinero" si."""
+    """ "costar mucho dinero" no es una frase; "cuestan mucho dinero" si."""
     assert mp.se_sostiene_solo("costar mucho dinero") is False
     assert mp.se_sostiene_solo("cuestan mucho dinero") is True
 
@@ -1059,3 +1059,24 @@ def test_el_dato_destacado_nunca_cae_antes_que_un_titulo_seccion():
 )
 def test_el_techo_nuevo_se_prorratea_por_duracion(dur_ms, techo):
     assert mp.techo_de_piezas(dur_ms) == techo
+
+
+@pytest.mark.parametrize(
+    "crudo",
+    ["preparatoria", "primarias totalmente", "te puedas, pues puedas ahi jugar"],
+)
+def test_los_titulos_flojos_de_la_demo_10_se_omiten(crudo):
+    """Los tres que se colaron en el primer render de la demo final."""
+    assert mp.se_sostiene_solo(crudo) is False
+
+
+def test_un_articulo_inicial_no_se_confunde_con_un_pronombre_atono():
+    """`los` abre "los traslados cuestan"; solo me/te/se/nos/os/le/les cuelgan."""
+    assert mp.se_sostiene_solo("los traslados cuestan mucho dinero") is True
+    assert mp.se_sostiene_solo("La desercion escolar subio") is True
+    assert mp.se_sostiene_solo("le cuestan mucho dinero") is False
+
+
+def test_un_adverbio_en_mente_no_es_un_verbo():
+    assert mp._es_verbo_probable("totalmente") is False
+    assert mp._es_verbo_probable("cuestan") is True

@@ -148,8 +148,20 @@ FINAL_PROHIBIDO = ARRANQUE_PROHIBIDO | ARTICULOS
 # anteriores y no significan nada sueltos. Un letrero es una frase, y una frase necesita un
 # VERBO CONJUGADO y no puede ser una subordinada colgando de otra que no se ve.
 RELATIVOS = frozenset(
-    {"que", "quien", "quienes", "cual", "cuales", "donde", "cuando", "cuyo", "cuya", "cuyos",
-     "cuyas", "como"}
+    {
+        "que",
+        "quien",
+        "quienes",
+        "cual",
+        "cuales",
+        "donde",
+        "cuando",
+        "cuyo",
+        "cuya",
+        "cuyos",
+        "cuyas",
+        "como",
+    }
 )
 # Terminaciones de verbo CONJUGADO en espanol. `-a` y `-e` entran porque son la tercera persona
 # del singular, que es lo que mas se habla ("cuesta", "sube", "arranca"); `-o` NO, porque choca
@@ -157,42 +169,203 @@ RELATIVOS = frozenset(
 # personas frecuentes ya estan en VERBOS_COMUNES. Los infinitivos quedan fuera a proposito:
 # "cuestan mucho dinero" es una frase, "costar mucho dinero" no.
 TERMINACIONES_VERBO = (
-    "a", "e", "as", "es", "an", "en", "amos", "emos", "imos",
-    "aba", "abas", "aban", "ia", "ias", "ian",
-    "aste", "aron", "ieron", "io",
-    "ara", "iera", "ase", "ese",
-    "ando", "endo", "iendo",
+    "a",
+    "e",
+    "as",
+    "es",
+    "an",
+    "en",
+    "amos",
+    "emos",
+    "imos",
+    "aba",
+    "abas",
+    "aban",
+    "ia",
+    "ias",
+    "ian",
+    "aste",
+    "aron",
+    "ieron",
+    "io",
+    "ara",
+    "iera",
+    "ase",
+    "ese",
+    "ando",
+    "endo",
+    "iendo",
 )
 # Formas conjugadas frecuentisimas que las terminaciones no cazan o que `stopwords_es` trata
 # como auxiliares. Se comprueban ANTES que nada: sin ellas, "yo tengo 26 anos" no tenia verbo.
 VERBOS_COMUNES = frozenset(
-    {"es", "son", "esta", "estan", "hay", "tengo", "tiene", "tienen", "va", "van", "fue",
-     "fueron", "era", "eran", "ha", "han", "he", "puede", "pueden", "hace", "hacen", "dice",
-     "dicen", "sube", "subio", "baja", "bajo", "cuesta", "cuestan", "vale", "valen", "quiero",
-     "quiere", "quieren", "sabe", "saben", "se", "vas", "vamos", "estoy", "estamos", "somos",
-     "cayo", "crecio", "llego", "paso", "quedo", "gano", "perdio", "costo", "duro", "salio",
-     "entro", "logro", "termino", "empezo", "aumento", "bajaron", "subieron"}
+    {
+        "es",
+        "son",
+        "esta",
+        "estan",
+        "hay",
+        "tengo",
+        "tiene",
+        "tienen",
+        "va",
+        "van",
+        "fue",
+        "fueron",
+        "era",
+        "eran",
+        "ha",
+        "han",
+        "he",
+        "puede",
+        "pueden",
+        "hace",
+        "hacen",
+        "dice",
+        "dicen",
+        "sube",
+        "subio",
+        "baja",
+        "bajo",
+        "cuesta",
+        "cuestan",
+        "vale",
+        "valen",
+        "quiero",
+        "quiere",
+        "quieren",
+        "sabe",
+        "saben",
+        "se",
+        "vas",
+        "vamos",
+        "estoy",
+        "estamos",
+        "somos",
+        "cayo",
+        "crecio",
+        "llego",
+        "paso",
+        "quedo",
+        "gano",
+        "perdio",
+        "costo",
+        "duro",
+        "salio",
+        "entro",
+        "logro",
+        "termino",
+        "empezo",
+        "aumento",
+        "bajaron",
+        "subieron",
+    }
 )
 # Palabras que TERMINAN como un verbo y no lo son. Sin esta lista, cualquier sintagma nominal
 # con un plural en -as o -es pasaria por frase.
 NO_SON_VERBOS = frozenset(
-    {"para", "cada", "mucha", "muchas", "poca", "pocas", "toda", "todas", "otra", "otras",
-     "misma", "mismas", "distinta", "distintas", "nueva", "nuevas", "buenas", "malas",
-     "carreras", "secundarias", "primarias", "preparatorias", "facultades", "condiciones",
-     "personas", "escuelas", "familias", "actividades", "horas", "dias", "meses", "anos",
-     "veces", "cosas", "casas", "gentes", "partes", "formas", "ideas", "zonas", "areas",
-     "lineas", "puntos", "grados", "pesos", "dolares", "euros", "millones", "traslados",
-     "estudiantes", "alumnos", "chavos", "padres", "madres", "hijos", "jovenes", "mejores",
-     "peores", "mayores", "menores", "grandes", "chicas", "chicos", "medias", "superiores"}
+    {
+        "para",
+        "cada",
+        "mucha",
+        "muchas",
+        "poca",
+        "pocas",
+        "toda",
+        "todas",
+        "otra",
+        "otras",
+        "misma",
+        "mismas",
+        "distinta",
+        "distintas",
+        "nueva",
+        "nuevas",
+        "buenas",
+        "malas",
+        "carreras",
+        "secundarias",
+        "primarias",
+        "preparatorias",
+        "facultades",
+        "condiciones",
+        "personas",
+        "escuelas",
+        "familias",
+        "actividades",
+        "horas",
+        "dias",
+        "meses",
+        "anos",
+        "veces",
+        "cosas",
+        "casas",
+        "gentes",
+        "partes",
+        "formas",
+        "ideas",
+        "zonas",
+        "areas",
+        "lineas",
+        "puntos",
+        "grados",
+        "pesos",
+        "dolares",
+        "euros",
+        "millones",
+        "traslados",
+        "estudiantes",
+        "alumnos",
+        "chavos",
+        "padres",
+        "madres",
+        "hijos",
+        "jovenes",
+        "mejores",
+        "peores",
+        "mayores",
+        "menores",
+        "grandes",
+        "chicas",
+        "chicos",
+        "medias",
+        "superiores",
+    }
 )
 # Demostrativos: pueden abrir un letrero pero no cerrarlo. "La jefa es este" se queda a medias
 # igual que si acabara en preposicion.
 DEMOSTRATIVOS = frozenset({"este", "esta", "esto", "ese", "esa", "eso", "aquel", "aquella"})
 # Subjuntivos que en el habla solo aparecen colgando de un `que` que se acaba de recortar:
 # "que tenga todas las condiciones" sigue siendo media frase aunque se le quite el `que`.
+# Pronombres atonos: un titulo que arranca por uno de ellos cuelga del verbo anterior.
+# "te puedas, pues puedas ahi jugar" es la mitad de una frase que empieza antes.
+# `lo`, `la`, `los` y `las` NO entran: como primera palabra son articulos, y "los traslados
+# cuestan mucho" es un arranque perfectamente valido.
+CLITICOS = frozenset({"me", "te", "se", "nos", "os", "le", "les"})
+# Un titulo necesita al menos sujeto y verbo, o verbo y complemento. Con una o dos palabras
+# ("preparatoria", "primarias totalmente") no hay frase que sostener.
+PALABRAS_MINIMAS_TITULO = 3
 SUBJUNTIVO_COLGANDO = frozenset(
-    {"tenga", "tengan", "sea", "sean", "este", "esten", "haya", "hayan", "pueda", "puedan",
-     "vaya", "vayan", "haga", "hagan", "diga", "digan", "quiera", "quieran"}
+    {
+        "tenga",
+        "tengan",
+        "sea",
+        "sean",
+        "este",
+        "esten",
+        "haya",
+        "hayan",
+        "pueda",
+        "puedan",
+        "vaya",
+        "vayan",
+        "haga",
+        "hagan",
+        "diga",
+        "digan",
+        "quiera",
+        "quieran",
+    }
 )
 
 # Mayor a menor. Cuando dos piezas no pueden convivir, cae la de MENOR prioridad.
@@ -256,13 +429,38 @@ _NUMERO = re.compile(r"(?P<moneda>[$€])?\s?(?P<valor>\d+(?:[.,]\d+)*)\s?(?P<pc
 # Unidades que van DETRAS del numero y lo cualifican. En tokens normalizados.
 UNIDADES_POSTERIORES = frozenset(
     {
-        "mil", "millon", "millones", "mill", "millardo", "millardos",
-        "veces", "vez",
-        "hora", "horas", "minuto", "minutos", "segundo", "segundos",
-        "dia", "dias", "semana", "semanas", "mes", "meses", "ano", "anos",
-        "pesos", "dolares", "euros",
-        "km", "kilometros", "metros", "kilos", "gramos",
-        "puntos", "grados",
+        "mil",
+        "millon",
+        "millones",
+        "mill",
+        "millardo",
+        "millardos",
+        "veces",
+        "vez",
+        "hora",
+        "horas",
+        "minuto",
+        "minutos",
+        "segundo",
+        "segundos",
+        "dia",
+        "dias",
+        "semana",
+        "semanas",
+        "mes",
+        "meses",
+        "ano",
+        "anos",
+        "pesos",
+        "dolares",
+        "euros",
+        "km",
+        "kilometros",
+        "metros",
+        "kilos",
+        "gramos",
+        "puntos",
+        "grados",
     }
 )
 # Un ano no es un dato: es una fecha. Se descartan los enteros de cuatro digitos de este rango
@@ -411,6 +609,8 @@ def _es_verbo_probable(palabra: str) -> bool:
     t = _norma(palabra)
     if t in VERBOS_COMUNES:
         return True
+    if t.endswith("mente"):  # los adverbios en -mente jamas son verbos
+        return False
     if len(t) < 4 or t in NO_SON_VERBOS or t in RELATIVOS or t in DEMOSTRATIVOS:
         return False
     if t in sw.STOPWORDS_ES:  # articulos, pronombres, adverbios y conectores no cuentan
@@ -423,19 +623,19 @@ def se_sostiene_solo(fragmento: str) -> bool:
 
     Dos condiciones, las dos necesarias:
 
-      1. Tiene al menos un VERBO CONJUGADO. Sin verbo es un sintagma suelto.
-      2. No es una subordinada colgando: no empieza por `que`, `quien`, `cual`, `donde`,
-         `cuando`, `cuyo` ni `como`, porque esas palabras piden una principal que no esta.
+      1. Tiene al menos un VERBO CONJUGADO en la clausula principal, y al menos tres palabras:
+         con una o dos ("preparatoria", "primarias totalmente") no hay frase que sostener.
+      2. No es una subordinada colgando: no empieza por relativo, por subjuntivo huerfano ni
+         por pronombre atono, porque los tres piden una principal que no esta.
 
     "secundarias que tenga todas" cae por la segunda leida al reves: su unico verbo vive
     dentro de la subordinada, y sin la principal el letrero no dice nada.
     """
     palabras = _palabras(fragmento)
-    if not palabras:
+    if len(palabras) < PALABRAS_MINIMAS_TITULO:
         return False
-    if _norma(palabras[0]) in RELATIVOS:
-        return False
-    if _norma(palabras[0]) in SUBJUNTIVO_COLGANDO:
+    cabeza = _norma(palabras[0])
+    if cabeza in RELATIVOS or cabeza in SUBJUNTIVO_COLGANDO or cabeza in CLITICOS:
         return False
     # Un punto en MEDIO significa que el fragmento empalma dos oraciones y al menos una esta
     # cortada: "Platicarte. La jefa es este" es la mitad de una y la mitad de otra.
@@ -449,7 +649,6 @@ def se_sostiene_solo(fragmento: str) -> bool:
             break
         principal.append(palabra)
     return any(_es_verbo_probable(w) for w in principal)
-
 
 
 def limpiar_muletillas(texto: str) -> str:
@@ -1190,6 +1389,8 @@ def planificar(
 
 __all__ = [
     "ANO_MAX",
+    "CLITICOS",
+    "PALABRAS_MINIMAS_TITULO",
     "NO_SON_VERBOS",
     "RELATIVOS",
     "se_sostiene_solo",
