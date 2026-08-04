@@ -158,3 +158,46 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   incidencia `sin_dato_de_cara` registrada. Confirmado en los 7 frames de
   `08_VERTICAL_FALLBACK_frames.png`: ninguna pieza cae sobre una cara, porque en este material
   las dos caras viven en la mitad superior del cuadro y el carril esta por debajo.
+
+## Sesion 4: techo de densidad, tres arreglos de texto y cache del brain
+
+- **15:13 - PASO 1 OK (techo de densidad).** `MAX_PIEZAS_POR_MINUTO = 5`, en una sola constante
+  comentada, prorrateado por duracion con redondeo al alza desde la mitad (`round` de Python
+  daria 2 piezas en un clip de 30 s por el criterio del banquero). Las protegidas (`hook`,
+  `lower_third`, `cierre`) nunca se recortan; el techo se cobra de `titulo_seccion` y
+  `dato_destacado`, cayendo primero la de menor sustancia informativa. El techo se aplica ANTES
+  de rellenar huecos y el relleno recibe lo que sobra: rellenar y recortar despues quitaba justo
+  las piezas puestas para cerrar un hueco. Total sobre los 34 clips reales: 158 -> 124 piezas,
+  media 4.65 -> 3.65. La regla de los 20 s pasa a ser el OBJETIVO del relleno y no una garantia,
+  porque las dos reglas se contradicen y manda el techo.
+- **15:18 - PASO 2 OK (ninguna pieza repite tramo).** Regla global: un tramo del SRT usado por
+  cualquier pieza queda marcado y ninguna otra puede usarlo. El reparto va de la pieza MAS
+  atada a un tramo concreto (`dato_destacado`, que solo sirve donde se dice la cifra) a la
+  menos atada (el `cierre`, que sirve con cualquier tramo anterior); si el cierre eligiera
+  primero se quedaria con el tramo de la cifra y mataria al dato sin necesidad. Sin tramo libre,
+  el secundario del cierre va vacio y la pastilla se esconde. Dos bugs del relleno salieron al
+  medir esto: las pausas se calculaban sobre la lista YA filtrada, lo que inventaba cambios de
+  tema donde solo habia un tramo apartado, y se colocaba en varios huecos con una sola foto de
+  la lista, lo que amontonaba los letreros.
+- **15:20 - PASO 3 OK (muletillas).** Lista en constantes y marcada como especifica de espanol.
+  Se quitan al principio del fragmento en cadena, en racha de dos o mas seguidas en cualquier
+  posicion, y como interjeccion aislada entre comas. Corre ANTES de medir longitud para que el
+  hueco lo ocupe texto con contenido. Dos excepciones: `entonces` con verbo detras abre oracion
+  y se conserva, y `no` JAMAS se quita del arranque, porque "no sabemos que paso" sin el dice
+  exactamente lo contrario.
+- **15:21 - PASO 4 OK (condensar por informacion).** Elegir el fragmento mas largo se llevaba la
+  coletilla vacia pegada detras. Ahora gana el de mayor densidad informativa, con una
+  heuristica sin dependencias que lee la lista de palabras vacias de `stopwords_es`, que ya
+  existia y esta testeada, en vez de escribir una segunda. A igualdad de densidad gana el mas
+  corto, que es lo que menos tapa del video.
+- **15:27 - PASO 5 OK (cache del brain).** COMMIT APARTE, porque toca codigo fuera de la capa de
+  motion. `brain.analizar_grupos` guarda la huella de la transcripcion que genero el sidecar y
+  lo reutiliza si coincide; `forzar=True` recalcula, default apagado. La huella cubre solo el
+  TEXTO, que es lo unico que ve el LLM, y los `kw_ts` se recalculan siempre contra los grupos de
+  ahora. Sidecar sin huella o corrupto: fail-closed. MEDIDO sobre un clip real por Auto v2
+  (`<LAB>\medir_cache_brain.py`): la segunda corrida NO llama al LLM y el MP4 sale byte
+  identico (`932b34a4...`). Con esto un clip de Auto v2 pasa a ser reproducible.
+- **15:31 - PASO 6 OK (demo).** Cache borrada antes de renderizar.
+  `<LAB>\demo\09_TEXTO_LIMPIO.mp4` sobre el mismo clip que el 06, para comparar lado a lado:
+  5 piezas frente a las 7 de antes (el techo se llevo dos `titulo_seccion`), con los textos ya
+  sin muletillas ni fragmentos colgando.
