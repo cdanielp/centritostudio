@@ -53,15 +53,30 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   habria omitido TODAS las piezas en 9:16 sin que nada fallara. Ahora se pide, y solo con la
   capa encendida. Ademas se expuso la capa en el worker de render y en la pestana de render del
   Studio, que es lo que hace posible la demo horizontal.
-- **12:52 - BLOQUE 5 OK (paletas).** Una sola hoja, : las CINCO
-  piezas (filas: hook, lower_third, titulo_seccion, dato_destacado, cierre) en las TRES paletas
+- **12:52 - BLOQUE 5 OK (paletas).** Una sola hoja, `<LAB>\demo\04_PALETAS.png`: las CINCO piezas
+  (filas: hook, lower_third, titulo_seccion, dato_destacado, cierre) en las TRES paletas
   (columnas), compuestas sobre un fotograma real del video de K. A = el naranja actual
-  ; B = sobria de alto contraste , la que menos compite con el amarillo y el
-  verde de los captions hormozi; C = , el morado que la interfaz del Studio YA usa,
-  sobre su mismo fondo , para que el letrero del video y la app sean el mismo color y
+  `#FF5A2B`; B = sobria de alto contraste `#1D4ED8`, la que menos compite con el amarillo y el
+  verde de los captions hormozi; C = `#7C3AED`, el morado que la interfaz del Studio YA usa,
+  sobre su mismo fondo `#08080F`, para que el letrero del video y la app sean el mismo color y
   no dos morados parecidos. NINGUNA se ha implementado: K elige. Aplicarla es cambiar
-  , los fallbacks CSS de  y subir la version de cada
-  plantilla. Gotcha del arnes: componer la pieza con  de ENTRADA sobre un PNG fijo daba
+  `motion_capa.MARCA_PROVISIONAL`, los fallbacks CSS de `motion/` y subir la version de cada
+  plantilla. Gotcha del arnes: componer la pieza con `-ss` de ENTRADA sobre un PNG fijo daba
   fotogramas en blanco de forma erratica (el still tiene un solo frame y el overlay se quedaba
   sin base al rebasar el MOV); se extrae el fotograma de la pieza con seek de SALIDA y luego se
   componen dos imagenes fijas.
+- **13:05 - BLOQUE 6 OK (humo de imagen).** Spike AISLADO en `<LAB>\spike_imagen\`, fuera de
+  `motion/` y sin tocar nada de los bloques 1 a 5. Un PNG con alfa de los que ya genera ComfyUI
+  entra, se sostiene y sale con GSAP dentro de una pieza de fondo transparente. Las DOS vias
+  funcionan y, mas aun, producen el MISMO sha256, asi que la eleccion es de mantenimiento y no
+  de resultado. Sale ganando (a), el archivo relativo. Salidas: `<LAB>\demo\05_IMAGEN.mp4`,
+  `<LAB>\demo\05_IMAGEN_frames.png` y `<LAB>\demo\05_IMAGEN.json`. Detalle en las cuatro lineas
+  del informe final.
+- **13:20 - CIERRE.** Suite completa y `ruff check . --no-cache` al final. Los `hf_real` a mano
+  dieron `16 passed / 1 failed` en la primera pasada: fallo
+  `test_render_reproducible_por_plantilla[dato_destacado]` (dos renders del mismo contrato con
+  sha distinto). Re-corrido aislado DOS veces, pasa las dos. No es una regresion de HF-3 (el
+  diff no toca el renderer, y las dos corridas del test usan raices de cache distintas a
+  proposito, o sea que ninguna se sirve de cache): es exactamente el fallo raro por frame que
+  ya documento el addendum D52.4, donde `titulo_seccion` fallo una de seis. Queda anotado en
+  DEUDAS porque desmiente que "el render ya es reproducible" sea cierto sin matices.
