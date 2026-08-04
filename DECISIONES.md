@@ -2009,3 +2009,82 @@ que hay que teclear (`--srt-offset`). Ambas cosas con test.
 Byte-identidad de la ruta clasica probada con el arnes de S39/S40 (0 diferencias, 90 combinaciones
 x 2 corpus). Smoke real de la CLI y capturas del Studio con backend real. Detalle:
 `revision/s41-exponer-modo-parcial/EVIDENCIA.md`.
+
+---
+
+## D50 - HF-1: contrato de datos entre Centrito y HyperFrames
+
+**Contexto.** HF-0 demostro que HyperFrames puede producir un overlay con alfa que la ruta de
+clips existente compone limpio (MOV ProRes 4444, `yuva444p12le`, sin halos, captions encima).
+Lo que faltaba no era capacidad de render sino una FRONTERA: algo que permita a un cliente
+pedir una pieza de motion graphics sin saber que debajo hay un navegador, un CLI de node y un
+formato de video. HF-1 construye esa frontera y nada mas.
+
+**Decision.** Un paquete `hyperframes/` HUERFANO: ningun modulo del pipeline lo importa. Cero
+cambios de comportamiento (byte-identidad de la ruta clasica verificada, 0 diferencias). Se
+cablea en HF-3; hasta entonces existe pero no corre en produccion.
+
+1. **Contrato de pieza versionado.** Un JSON estricto (`contrato: 1`) con nombres de campo en
+   espanol, para que los paquetes de HF-2 se lean sin diccionario. Estricto quiere decir que un
+   campo desconocido es ERROR: un typo tiene que doler al construir el catalogo, no producir una
+   pieza con ese dato vacio en silencio.
+2. **El esquema y el perfil de capacidad son capas SEPARADAS.** El esquema admite `posicion.modo
+   = caja` y `fit = cover|contain` porque son parte del contrato que HF-3 acabara soportando; el
+   perfil de capacidad los RECHAZA hoy porque `clip_overlay.py` no puede consumirlos. Separarlos
+   evita tener que versionar el contrato el dia que HF-3 desbloquee la caja.
+3. **El perfil vive en UNA constante** (`capacidad.PERFIL_RUTA_CLIPS`), no disperso en ifs, y
+   cada rechazo nombra el campo, el valor y la LINEA que impone el limite
+   (`clip_overlay.py:20/73/124/144`). HF-3 lee el mensaje y sabe que abrir, sin ir a buscarlo.
+4. **La clave de cache incluye las cuatro versiones del entorno** (hyperframes, node, chromium,
+   ffmpeg), leidas en tiempo de ejecucion. Si no se pueden leer es fallo con razon, NUNCA un
+   default inventado: un default falso serviria una pieza renderizada con otro Chrome como si
+   fuera la buena. Las partes del hash van dentro de un objeto JSON en vez de concatenarse a
+   pelo, porque una concatenacion plana dejaria que mover un caracter entre dos versiones
+   produjera la misma clave.
+5. **Fail-open con vocabulario cerrado.** `pedir_pieza` NUNCA lanza al llamador: devuelve
+   `ruta_mov=None` y una `razon_fallo` de una lista de nueve. Es la regla de oro 8 del repo
+   (fail-open del cerebro) aplicada al Motor B: un motion graphic que no sale no puede tumbar un
+   paquete de clips que por lo demas esta bien. La validacion explicita SI lanza, para que HF-2
+   vea el error al construir el catalogo.
+6. **Solo MOV ProRes 4444.** WebM VP9 no se ofrece ni como opcion: HF-0 midio que declara
+   `yuv420p` y que sin `-c:v libvpx-vp9` explicito FFmpeg pierde el alfa en silencio. Pesa 166x
+   menos, y esa es exactamente la razon por la que conviene cerrarle la puerta por contrato en
+   vez de dejarlo como tentacion.
+7. **Cualquier desvio de la salida descarta el archivo.** Se verifica con ffprobe pix_fmt, fps,
+   tamano y duracion (tolerancia 120 ms). Mas vale no tener pieza que tener una sin alfa: esa se
+   compondria como un rectangulo opaco tapando el video.
+8. **`consumo_sugerido` viaja en el resultado** (`fade=False`, `fit="cover"`, `mute=True`) para
+   que HF-3 no redescubra los ajustes de invocacion de HF-0. `fade=False` porque la plantilla ya
+   trae su animacion de entrada y salida, y el fade de 0.20 s de la ruta de clips se sumaria
+   encima produciendo doble entrada.
+9. **Sin GC ni limite de tamano de cache**, solo `tamano_ocupado()` que reporta. Decidir cuando
+   borrar exige saber que piezas siguen referenciadas por un paquete, y eso no existe hasta HF-3.
+
+**Publicacion atomica: por que NO se reuso `media_integrity.ruta_temporal`.** Ese helper fuerza
+`.mp4` en el temporal (documentado en su docstring: FFmpeg elige el muxer por la extension), y
+HyperFrames tambien. Reutilizarlo produciria un MP4 sin alfa. `almacen.temporal` replica el mismo
+contrato (temporal unico en subdir privado del mismo volumen, borrado ante fallo, `os.replace`)
+con sufijo `.mov`. El sidecar SI usa `atomic_io.atomic_write_json`, que es la fuente unica del
+repo, y `pieza_id` se valida con `path_safety.is_safe_basename`.
+
+**Lock por hash.** `mkdir` atomico, con reclamo de locks rancios (>900 s). Sin el reclamo, un
+hard-kill dejaria esa pieza bloqueada para siempre y ninguna corrida futura podria regenerarla.
+
+**Medido durante la implementacion (no estaba en HF-0).**
+- `hyperframes doctor --json` devuelve `ok: false` cuando faltan Docker o whisper-cpp, que no
+  hacen falta para renderizar. Gatear en ese `ok` global, como sugiere la doc de la CLI, seria un
+  falso negativo permanente. Se gatea en los cuatro checks concretos.
+- `shutil.which("npx")` devuelve `npx.CMD` en Windows, y `subprocess` con el literal `"npx"`
+  falla con WinError 2 porque CreateProcess no aplica PATHEXT. El binario se resuelve una vez.
+- `hyperframes render` RECHAZA `--non-interactive` con "Unknown flag" (es un flag de `init`); el
+  modo no interactivo se auto-detecta por non-TTY.
+- `cache_corrupta` es INOBSERVABLE cuando falta el binario: la clave de cache incluye las
+  versiones del entorno, que se leen con ese binario, asi que sin binario no hay hash que
+  consultar. Es consecuencia directa del punto 4 y esta fijado con un test.
+
+**Verificacion.** Suite `2748 passed, 4 skipped` (+130); ruff, formato y `check.bat` verdes. La
+suite corre entera SIN HyperFrames instalado y sin renderizar: el CLI y ffprobe entran por un
+`Adaptador` inyectable. El unico test que renderiza de verdad va marcado `@pytest.mark.hf_real`
+y esta excluido por default (`addopts = -m "not hf_real"`); corrido a mano produce un MOV
+`yuva444p12le` real en 16.7 s. Byte-identidad de la ruta clasica: mismo sha256 antes y despues
+de la rama. Ningun test fija pixeles ni sha256 de video como asercion de correccion.
