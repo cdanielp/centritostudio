@@ -786,7 +786,7 @@ Los renders de medicion viven fuera del repo, en
 **Alcance:** este addendum NO reescribe nada de arriba. Corrige dos conclusiones (la de HF-0
 sobre determinismo y la del "IGUAL" de titulo_seccion) y documenta la reparacion.
 
-Arnes de medicion: `C:\CLAUDECODE\hyperframes-lab\auditoria\reparacion.py`, salidas en
+Arnes de medicion: `<LAB>\auditoria\reparacion.py`, salidas en
 `auditoria/salida_rep/`. Mismo entorno fijado que la auditoria original.
 
 ## BLOQUE 0. Reconciliacion con HF-0
@@ -794,7 +794,7 @@ Arnes de medicion: `C:\CLAUDECODE\hyperframes-lab\auditoria\reparacion.py`, sali
 ### 0.1. Como se midio el determinismo en HF-0
 
 HF-0 no dejo el comando de render en ningun documento. Lo que dejo es el veredicto en
-`C:\CLAUDECODE\hyperframes-lab\INFORME_HF0.md`, linea 20 de la tabla de resultados y su
+`<LAB>\INFORME_HF0.md`, linea 20 de la tabla de resultados y su
 paso 6, citado literal:
 
 ```
@@ -817,7 +817,7 @@ Byte-idénticos. En esta máquina, con estas versiones, el render es reproducibl
 (Las dos citas conservan los em dashes del documento de HF-0 porque son cita literal.)
 
 Como el comando no quedo registrado, se REHIZO la medicion sobre la misma composicion
-(`C:\CLAUDECODE\hyperframes-lab\overlay`, intacta desde HF-0) con el mismo comando que usa
+(`<LAB>\overlay`, intacta desde HF-0) con el mismo comando que usa
 produccion. El sha obtenido hoy es el MISMO que HF-0 registro, asi que la reconstruccion es
 fiel y no hay deriva de entorno:
 
@@ -864,7 +864,7 @@ default (HF-0 solo midio tres):
   hf0 r08: rc=0 16.3s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
   hf0 r09: rc=0 15.8s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
   hf0 r10: rc=0 16.0s workers=6 sha=3ec305e6d7819d603023aa5920b5a1bb87d4b7c865d70374a0955104b9843a40
-  >>> HF-0: 10 corridas, 1 sha distinto(s)
+  >>> HF-0: 10 corridas, 1 sha unico(s)
 ```
 
 10 de 10 identicas. La composicion de HF-0 es genuinamente estable, no fue suerte.
@@ -888,7 +888,7 @@ estructura.** Se comprobo corriendola seis veces con el default en lugar de dos:
   r4: rc=0 8.3s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
   r5: rc=0 8.2s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
   r6: rc=0 8.1s workers=2 sha=3ae9ff7534fad99feed7233ece8b4516a5aeae1845a5897c80246fb43bcfbaed
-  >>> 6 corridas, 2 sha distinto(s)
+  >>> 6 corridas, 2 sha unico(s)
 ```
 
 Cinco iguales y una distinta (`r3`). La configuracion NO es reproducible; el par de corridas
@@ -988,10 +988,10 @@ mas alto del catalogo (7455), que es la superficie real de rasterizacion de text
 Salida literal:
 
 ```
-  >>> cierre vertical: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
-  >>> cierre horizontal: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
-  >>> lower_third vertical: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
-  >>> lower_third horizontal: 10 corridas, 1 sha distinto(s) -> 10/10 IGUALES
+  >>> cierre vertical: 10 corridas, 1 sha unico(s) -> 10/10 IGUALES
+  >>> cierre horizontal: 10 corridas, 1 sha unico(s) -> 10/10 IGUALES
+  >>> lower_third vertical: 10 corridas, 1 sha unico(s) -> 10/10 IGUALES
+  >>> lower_third horizontal: 10 corridas, 1 sha unico(s) -> 10/10 IGUALES
 ```
 
 40 renders, 4 sha256 (uno por configuracion), cero diferencias dentro de cada configuracion.
