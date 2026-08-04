@@ -158,6 +158,7 @@ def _clips_de_motion_cli(motion_opts, groups, video_path: Path, width, height, d
             root=raiz,
             tramos=motion_capa.tramos_de_groups(groups),
             tray_csv=tray_resolve.resolver_tray_csv(video_path, _TRANSCRIPTS_DIR),
+            clip_mp4=Path(video_path),
         ).clips
     )
 

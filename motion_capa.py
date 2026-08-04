@@ -101,6 +101,60 @@ class ResultadoMotion:
         return bool(self.clips)
 
 
+def resolver_plan(
+    *,
+    clip_mp4: Path | None,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo] | None,
+    tray_csv: Path | None,
+    catalogo: set[str],
+) -> tuple[mp.PlanMotion, str]:
+    """(plan, origen). El plan EDITADO manda sobre el automatico si existe y es utilizable.
+
+    El origen viaja al informe para que el Studio pueda decirle a K si lo que esta viendo es lo
+    que decidio la maquina o lo que corrigio el. Sin ese dato, "por que salio asi" no tiene
+    respuesta.
+    """
+    import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
+
+    if clip_mp4 is not None:
+        editado = me.cargar(
+            clip_mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
+        )
+        if editado is not None:
+            print(f"[motion] plan EDITADO a mano: {len(editado.piezas)} pieza(s)")
+            return editado, me.ORIGEN_EDITADO
+    plan = mp.planificar(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=textos,
+        tramos=tramos,
+        tray_csv=tray_csv,
+    )
+    return plan, me.ORIGEN_AUTOMATICO
+
+
+def plan_automatico(
+    *,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo] | None = None,
+    tray_csv: Path | None = None,
+) -> mp.PlanMotion:
+    """El plan que propondria la maquina, ignorando cualquier edicion. Lo usa el Studio para
+    ofrecer el boton de volver al automatico sin tener que borrar el sidecar antes."""
+    return mp.planificar(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=textos,
+        tramos=tramos,
+        tray_csv=tray_csv,
+    )
+
+
 def tramos_de_groups(groups: list[dict]) -> list[mp.Tramo]:
     """Grupos de subtitulo (transcript o SRT) -> tramos del planificador, en ms. PURO.
 
@@ -208,6 +262,7 @@ def clips_de_motion(
     tramos: list[mp.Tramo] | None = None,
     tray_csv: Path | None = None,
     timeout_s: float = 180.0,
+    clip_mp4: Path | None = None,
 ) -> ResultadoMotion:
     """Planifica, pide las piezas y devuelve los overlays. NUNCA lanza.
 
@@ -229,6 +284,7 @@ def clips_de_motion(
             tramos=tramos,
             tray_csv=tray_csv,
             timeout_s=timeout_s,
+            clip_mp4=clip_mp4,
         )
     except Exception as exc:  # noqa: BLE001 - fail-open duro: la capa jamas tumba el render
         print(f"[motion] capa desactivada por un fallo, el video sale sin letreros: {exc}")
@@ -248,29 +304,35 @@ def _clips_de_motion(
     tramos: list[mp.Tramo] | None,
     tray_csv: Path | None,
     timeout_s: float,
+    clip_mp4: Path | None,
 ) -> ResultadoMotion:
     from hyperframes import pedir_pieza  # noqa: PLC0415 (solo con la capa encendida)
     from hyperframes.catalogo import Catalogo  # noqa: PLC0415
 
     orientacion = orientacion_de(ancho, alto)
     fps_destino = max(int(round(float(fps) or 30.0)), 1)
-    plan = mp.planificar(
-        duracion_ms=int(round(float(duracion_s) * 1000)),
+    duracion_ms = int(round(float(duracion_s) * 1000))
+    ruta_catalogo = root / CATALOGO_REL
+    versiones = versiones_del_catalogo(ruta_catalogo)
+
+    plan, origen = resolver_plan(
+        clip_mp4=clip_mp4,
+        duracion_ms=duracion_ms,
         orientacion=orientacion,
         textos=opciones.textos(),
         tramos=tramos,
         tray_csv=tray_csv,
+        catalogo=set(versiones),
     )
     informe = _informe_base(plan)
+    informe["origen"] = origen
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
         return ResultadoMotion((), informe)
 
     validar_sin_solape(list(plan.piezas), orientacion)
 
-    ruta_catalogo = root / CATALOGO_REL
     catalogo = Catalogo.desde_archivo(ruta_catalogo, orientacion)
-    versiones = versiones_del_catalogo(ruta_catalogo)
     raiz_cache.mkdir(parents=True, exist_ok=True)
 
     clips: list[ClipOverlay] = []
@@ -376,7 +438,9 @@ __all__ = [
     "desplazamiento_de_banda",
     "marca_de",
     "orientacion_de",
+    "plan_automatico",
     "raiz_cache_de_paquete",
+    "resolver_plan",
     "tramos_de_groups",
     "validar_sin_solape",
     "versiones_del_catalogo",
