@@ -22,6 +22,11 @@ from pathlib import Path
 NOMBRE_LOCK = "versiones.lock.json"
 # Lo que NO entra al sello: artefactos que no cambian lo que se pinta.
 IGNORADOS = ("__pycache__", ".DS_Store", "Thumbs.db")
+# Extensiones de TEXTO, cuyos finales de linea se normalizan antes de hashear. Git los convierte
+# a CRLF al hacer checkout en Windows y los deja en LF en Linux, asi que hashear los bytes tal
+# cual daba un sello distinto en cada plataforma y el gate reventaba en el CI aunque nadie
+# hubiera tocado una plantilla. Un cambio de CRLF a LF no cambia lo que HyperFrames renderiza.
+EXTENSIONES_TEXTO = (".html", ".js", ".json", ".css", ".txt", ".md", ".svg")
 
 
 def _archivos_de(carpeta: Path) -> list[Path]:
@@ -33,18 +38,32 @@ def _archivos_de(carpeta: Path) -> list[Path]:
     )
 
 
+def _bytes_normalizados(archivo: Path) -> bytes:
+    """Bytes del archivo, con los finales de linea normalizados si es texto.
+
+    Los binarios (las fuentes) van tal cual: ahi una secuencia CR LF es un dato, no un salto.
+    """
+    crudo = archivo.read_bytes()
+    if archivo.suffix.lower() in EXTENSIONES_TEXTO:
+        return crudo.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return crudo
+
+
 def sello_de_carpeta(carpeta: Path) -> str:
     """sha256 del CONTENIDO de una plantilla: rutas relativas + bytes de cada archivo.
 
     La ruta entra al hash ademas de los bytes: sin ella, renombrar `index.html` a `otro.html`
     daria el mismo sello, y eso si cambia lo que renderiza HyperFrames.
+
+    Los finales de linea de los archivos de texto se normalizan: el sello tiene que valer lo
+    mismo en Windows y en el runner del CI, y Git cambia CRLF por LF entre los dos.
     """
     carpeta = Path(carpeta)
     h = hashlib.sha256()
     for archivo in _archivos_de(carpeta):
         h.update(archivo.relative_to(carpeta).as_posix().encode("utf-8"))
         h.update(b"\0")
-        h.update(archivo.read_bytes())
+        h.update(_bytes_normalizados(archivo))
         h.update(b"\0")
     return h.hexdigest()
 
@@ -118,6 +137,7 @@ def comparar(actual: dict, lock: dict) -> list[str]:
 
 
 __all__ = [
+    "EXTENSIONES_TEXTO",
     "NOMBRE_LOCK",
     "comparar",
     "escribir_lock",

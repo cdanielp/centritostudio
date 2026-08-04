@@ -137,3 +137,22 @@ def test_los_artefactos_ignorados_no_mueven_el_sello(tmp_path, basura):
     else:
         destino.write_text("ruido", encoding="utf-8")
     assert ms.sello_de_carpeta(carpeta) == antes
+
+
+def test_el_sello_no_depende_del_final_de_linea(tmp_path):
+    """Git deja LF en Linux y CRLF en Windows: sin normalizar, el gate reventaba en el CI
+    aunque nadie hubiera tocado una plantilla."""
+    unix = _plantilla_falsa(tmp_path / "u", "p", "linea uno\nlinea dos\n")
+    (tmp_path / "w").mkdir()
+    windows = _plantilla_falsa(tmp_path / "w", "p", "linea uno\r\nlinea dos\r\n")
+    assert ms.sello_de_carpeta(unix) == ms.sello_de_carpeta(windows)
+
+
+def test_un_binario_se_hashea_tal_cual(tmp_path):
+    """En una fuente, una secuencia CR LF es un dato y no un salto de linea."""
+    carpeta = tmp_path / "p"
+    carpeta.mkdir(parents=True)
+    (carpeta / "fuente.woff2").write_bytes(b"\x00\r\n\x01")
+    antes = ms.sello_de_carpeta(carpeta)
+    (carpeta / "fuente.woff2").write_bytes(b"\x00\n\x01")
+    assert ms.sello_de_carpeta(carpeta) != antes
