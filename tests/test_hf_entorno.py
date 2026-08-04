@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 import pytest
+
 from hyperframes import entorno as en
 from hyperframes.errores import EntornoIlegible
 
