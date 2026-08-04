@@ -1,6 +1,7 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0 y HF-1 en
-`main` (D50), HF-2 en PR (D51, gate visual pendiente), HF-3 no iniciada
+Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0, HF-1 y
+HF-2 en `main` (D50, D51), HF-3 y HF-4 pendientes · Arranque de HF-3:
+`revision/hf-3/ARRANQUE_HF3.md`
 
 ## v1 — qué la compone
 
@@ -173,6 +174,29 @@ Merges cerrados en `main` (posteriores a F6 esencial):
 >   impide hoy que dos se pinten encima si sus ventanas de tiempo se cruzan; restricción
 >   anotada para HF-3 (recomendación: prohibir el solapamiento temporal en vertical, no
 >   crear un segundo carril). Paleta marcada como provisional.
+
+> **ADDENDUM DE CIERRE HF-2 (2026-08-03).** El addendum HF-2 de arriba dice "PR abierto, sin
+> mergear, gate visual pendiente". Eso quedó SUPERADO: **HF-2 está CERRADA y MERGEADA en
+> `main` con veredicto visual explícito de K** (APROBADO sobre los contact sheets de
+> `d476dbe`, registrado en el cuerpo del merge commit como exige la regla del repo).
+>
+> - **Merge:** `67faf756b3e7be021d391aa7c1ad8fc843f5c60b` (merge commit de 2 padres:
+>   `6cf29bc` main anterior + `aaef7cd` HEAD de la rama), PR **#41**. Rama
+>   `feat/hf2-catalogo` **conservada**. Verificado en el GRAFO con
+>   `git merge-base --is-ancestor` (la API de GitHub también lo marca MERGED, sin repetir
+>   el 502 de #39/#40).
+> - **Reconciliación de #39 y #40:** GitHub ya los muestra MERGED con sus merge commits
+>   exactos (`5c345f6` y `6cf29bc`); no hizo falta cerrarlos a mano. La anomalía del 502
+>   documentada en el cierre de HF-1 quedó disuelta.
+> - **Estado de fases HyperFrames:** HF-0 (humo), HF-1 (contrato, D50) y HF-2 (catálogo,
+>   D51 con addenda .1/.2/.3) cerradas en `main`. **HF-3 (cableado) y HF-4 pendientes, NO
+>   iniciadas.** El punto de arranque de HF-3, con las decisiones ya tomadas por K
+>   (orientación como campo del catálogo; prohibición de solapamiento temporal en 9:16),
+>   lo que hay que desbloquear con archivo y línea, la vía prevista para la cara y el
+>   bloqueante suave de la paleta provisional, vive en `revision/hf-3/ARRANQUE_HF3.md`.
+> - **Verificado en `main` ya mergeado:** suite `2839 passed, 4 skipped`; ruff
+>   `--no-cache`, formato, `check.bat` y gate de docs verdes (números en la bitácora del
+>   cierre).
 
 > **HISTÓRICO (superado).** El cálculo de avance "88/100" y la suite "1894 passed / 3 skipped" eran
 > métricas previas al hardening y a GPU/NVENC; se conservan en la bitácora como registro. F6
