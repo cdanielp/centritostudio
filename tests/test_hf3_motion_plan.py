@@ -140,7 +140,7 @@ def test_cuando_no_hay_aire_cae_la_pieza_de_menor_prioridad():
     Es el caso mas limpio de la regla de prioridad, porque las dos piezas quieren el mismo
     instante y la de arriba de la lista gana sin discusion.
     """
-    plan = _plan(30000, tramos=_tramos((1000, "arranca con un 90% de acierto")))
+    plan = _plan(90000, tramos=_tramos((1000, "arranca con un 90% de acierto")))
     assert "hook" in _nombres(plan)
     assert plan.piezas[0].t0_ms == 0
     assert "dato_destacado" not in _nombres(plan)
@@ -174,17 +174,17 @@ def _tramos(*pares):
 def test_dato_destacado_exige_clip_largo_y_una_cifra():
     tramos = _tramos((8000, "subio un 87% en tres meses"))
     assert "dato_destacado" not in _nombres(_plan(9000, tramos=tramos))
-    assert "dato_destacado" in _nombres(_plan(30000, tramos=tramos))
+    assert "dato_destacado" in _nombres(_plan(90000, tramos=tramos))
 
 
 def test_sin_cifra_no_hay_dato_destacado_y_se_dice_por_que():
-    plan = _plan(30000, tramos=_tramos((8000, "sin numeros por ninguna parte")))
+    plan = _plan(90000, tramos=_tramos((8000, "sin numeros por ninguna parte")))
     assert "dato_destacado" not in _nombres(plan)
     assert _motivos(plan)["dato_destacado"] == mp.MOTIVO_SIN_CIFRA
 
 
 def test_dato_destacado_arranca_al_inicio_del_tramo_con_cifra():
-    plan = _plan(30000, tramos=_tramos((5000, "nada"), (9000, "cayo 42% el costo")))
+    plan = _plan(90000, tramos=_tramos((5000, "nada"), (9000, "cayo 42% el costo")))
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms == 9000
     assert dato.texto["cifra"] == "42%"
@@ -195,7 +195,7 @@ def test_si_el_primer_tramo_con_cifra_no_cabe_se_prueba_el_siguiente():
     """La regla habla de 'algun tramo': quedarse en el primero la dejaria practicamente muerta,
     porque los primeros segundos casi siempre los ocupa el hook."""
     plan = _plan(
-        30000,
+        90000,
         tramos=_tramos(
             (500, "el 10% inicial ya era mucho"),
             (14000, "luego subio hasta el 55% del total"),
@@ -438,7 +438,7 @@ def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
 
 def test_el_dato_sigue_arrancando_al_inicio_del_tramo_cuando_esta_libre():
     """La regla original manda: la ventana es un plan B, no un desplazamiento por gusto."""
-    plan = _plan(30000, tramos=_tramos((9000, "cayo 42% el costo")))
+    plan = _plan(90000, tramos=_tramos((9000, "cayo 42% el costo")))
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.t0_ms == 9000
 
@@ -454,13 +454,44 @@ def _tramos_largos(dur_ms, paso=2500):
     ]
 
 
-def test_en_clips_largos_no_queda_ningun_hueco_de_mas_de_20s():
-    for dur in (35000, 56790, 90000, 120000):
+def _huecos_de(plan, dur):
+    piezas = sorted(plan.piezas, key=lambda p: p.t0_ms)
+    bordes = [0, *[t for p in piezas for t in (p.t0_ms, p.t1_ms)], dur]
+    return [bordes[i + 1] - bordes[i] for i in range(0, len(bordes) - 1, 2)]
+
+
+def test_el_relleno_gasta_todo_el_presupuesto_y_reduce_el_hueco_maximo():
+    """Las dos reglas se contradicen y el TECHO manda: es un limite duro, no una preferencia.
+
+    La regla de los 20 s pasa a ser el OBJETIVO del relleno, no una garantia: con
+    `MAX_PIEZAS_POR_MINUTO=5` no siempre alcanza el presupuesto para bajar todos los huecos de
+    20 s, y forzarlo seria saltarse el techo. Lo que si se exige es que el presupuesto se gaste
+    entero y que el hueco maximo baje de verdad respecto a no rellenar.
+    """
+    for dur in (56790, 90000, 120000):
+        tramos = _tramos_largos(dur)
+        plan = _plan(dur, tramos=tramos)
+        sin_relleno = _plan(dur, tramos=[])
+        assert len(plan.piezas) == mp.techo_de_piezas(dur) or not [
+            h for h in _huecos_de(plan, dur) if h > mp.HUECO_MAX_MS
+        ], f"dur={dur}: sobro presupuesto y quedaron huecos"
+        assert max(_huecos_de(plan, dur)) < max(_huecos_de(sin_relleno, dur)), f"dur={dur}"
+
+
+def test_el_relleno_se_acerca_al_objetivo_de_20s_aunque_no_siempre_llegue():
+    """Numeros medidos, no supuestos: se deja escrito cuanto se queda corto y donde."""
+    medido = {56790: 21500, 90000: 19000, 120000: 23000}
+    for dur, esperado in medido.items():
         plan = _plan(dur, tramos=_tramos_largos(dur))
-        piezas = sorted(plan.piezas, key=lambda p: p.t0_ms)
-        bordes = [0, *[t for p in piezas for t in (p.t0_ms, p.t1_ms)], dur]
-        huecos = [bordes[i + 1] - bordes[i] for i in range(0, len(bordes) - 1, 2)]
-        assert max(huecos) <= mp.HUECO_MAX_MS, f"dur={dur} huecos={huecos}"
+        assert max(_huecos_de(plan, dur)) == esperado, f"dur={dur}"
+
+
+def test_cuando_el_techo_no_deja_presupuesto_el_hueco_se_acepta_y_se_dice():
+    dur = 35000
+    plan = _plan(dur, tramos=_tramos_largos(dur))
+    assert mp.techo_de_piezas(dur) - len(mp.PIEZAS_PROTEGIDAS) <= 0
+    assert max(_huecos_de(plan, dur)) > mp.HUECO_MAX_MS
+    assert "titulo_seccion" not in _nombres(plan)
 
 
 def test_el_relleno_usa_titulo_seccion_con_texto_del_tramo_no_del_clip():
@@ -612,7 +643,7 @@ def test_el_secundario_del_cierre_va_vacio_si_nada_es_titulable():
 
 
 def test_la_etiqueta_del_dato_tambien_pasa_por_la_guarda():
-    plan = _plan(30000, tramos=_tramos((9000, "y el costo subio un 42% este ano")))
+    plan = _plan(90000, tramos=_tramos((9000, "y el costo subio un 42% este ano")))
     dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
     assert dato.texto["etiqueta"] == "el costo subio un 42% este ano"
     assert len(dato.texto["etiqueta"]) <= mp.DATO_ETIQUETA_MAX_CHARS
@@ -620,6 +651,77 @@ def test_la_etiqueta_del_dato_tambien_pasa_por_la_guarda():
 
 def test_si_la_cifra_vive_en_un_tramo_intitulable_el_dato_se_omite_con_su_motivo():
     """Hay cifra, pero no hay forma de etiquetarla sin partir la frase."""
-    plan = _plan(30000, tramos=_tramos((9000, "con el 42% y de")))
+    plan = _plan(90000, tramos=_tramos((9000, "con el 42% y de")))
     assert "dato_destacado" not in _nombres(plan)
     assert _motivos(plan)["dato_destacado"] == mp.MOTIVO_ETIQUETA_SUCIA
+
+
+# ── Techo de densidad (punto 1) ──────────────────────────────────────────────
+
+
+def test_el_techo_esta_en_una_sola_constante():
+    assert mp.MAX_PIEZAS_POR_MINUTO == 5
+    assert mp.PIEZAS_PROTEGIDAS == frozenset({"hook", "lower_third", "cierre"})
+    assert mp.PIEZAS_OPCIONALES == frozenset({"titulo_seccion", "dato_destacado"})
+
+
+@pytest.mark.parametrize(
+    ("dur_ms", "techo"),
+    [(1000, 1), (12000, 1), (24000, 2), (30000, 3), (56790, 5), (60000, 5), (120000, 10)],
+)
+def test_el_techo_se_prorratea_por_duracion(dur_ms, techo):
+    assert mp.techo_de_piezas(dur_ms) == techo
+
+
+def test_el_redondeo_es_al_alza_desde_la_mitad_no_del_banquero():
+    """round(2.5) da 2 en Python: un clip de 30 s daria 2 piezas y nadie lo entenderia."""
+    assert mp.techo_de_piezas(30000) == 3
+
+
+def test_ninguna_pieza_protegida_se_recorta_aunque_pasen_del_techo():
+    """En 20 s el techo son 2 piezas y las protegidas son 3: mandan ellas."""
+    plan = _plan(20000, tramos=_tramos_largos(20000))
+    assert mp.techo_de_piezas(20000) == 2
+    assert sorted(_nombres(plan)) == ["cierre", "hook", "lower_third"]
+
+
+def test_ningun_clip_pasa_del_techo_salvo_por_las_protegidas():
+    for dur in (12001, 20000, 35000, 56790, 90000, 120000, 300000):
+        plan = _plan(dur, tramos=_tramos_largos(dur))
+        opcionales = [p for p in plan.piezas if p.plantilla in mp.PIEZAS_OPCIONALES]
+        techo = mp.techo_de_piezas(dur)
+        protegidas = [p for p in plan.piezas if p.plantilla in mp.PIEZAS_PROTEGIDAS]
+        assert len(opcionales) <= max(techo - len(protegidas), 0), dur
+
+
+def test_al_recortar_cae_primero_la_pieza_de_menor_sustancia():
+    """Se compara una seccion con contenido contra otra hecha de palabras vacias."""
+    floja = mp.Pieza("titulo_seccion", 30000, 32000, {"titulo": "y de la que con"})
+    fuerte = mp.Pieza("titulo_seccion", 40000, 42000, {"titulo": "desercion escolar por traslados"})
+    assert mp.puntos_informativos(fuerte.texto["titulo"]) > mp.puntos_informativos(
+        floja.texto["titulo"]
+    )
+    colocadas = [
+        mp.Pieza("hook", 0, 2500, {}),
+        mp.Pieza("lower_third", 3000, 7500, {}),
+        mp.Pieza("cierre", 50000, 53500, {}),
+        floja,
+        fuerte,
+    ]
+    omisiones: list = []
+    mp._aplicar_techo(colocadas, omisiones, 48000)  # techo 4, protegidas 3 -> solo 1 opcional
+    assert fuerte in colocadas
+    assert floja not in colocadas
+    assert omisiones[0].motivo == mp.MOTIVO_TECHO_DENSIDAD
+
+
+def test_el_recorte_deja_su_motivo_nunca_desaparece_en_silencio():
+    plan = _plan(35000, tramos=_tramos_largos(35000))
+    assert _motivos(plan).get("titulo_seccion") == mp.MOTIVO_TECHO_DENSIDAD
+
+
+def test_puntos_informativos_ignora_las_palabras_vacias_del_espanol():
+    assert mp.puntos_informativos("de la que con y por el") == 0.0
+    assert mp.puntos_informativos("desercion escolar") > 0
+    # Una cifra siempre cuenta, aunque sea corta.
+    assert mp.puntos_informativos("un 42%") > mp.puntos_informativos("un")

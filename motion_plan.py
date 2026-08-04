@@ -31,6 +31,7 @@ la duracion: un letrero a medias es peor que ningun letrero.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,6 +122,17 @@ FINAL_PROHIBIDO = ARRANQUE_PROHIBIDO | ARTICULOS
 # Mayor a menor. Cuando dos piezas no pueden convivir, cae la de MENOR prioridad.
 PRIORIDAD = ("hook", "cierre", "lower_third", "dato_destacado")
 
+# ── Techo de densidad ────────────────────────────────────────────────────────
+# Piezas por minuto que puede llevar un clip. El relleno de huecos itera hasta que ninguno
+# pasa de HUECO_MAX_MS y eso, en un clip largo con habla continua, produce una pieza cada 20 s
+# ademas de las fijas: se llega a 11 letreros en 77 s, que satura. UN SOLO NUMERO para poder
+# subirlo o bajarlo sin tocar nada mas.
+MAX_PIEZAS_POR_MINUTO = 5
+# `hook`, `lower_third` y `cierre` son la estructura del clip (gancho, quien habla, que hacer):
+# nunca se recortan aunque el techo quede por debajo. El techo se cobra de las opcionales.
+PIEZAS_PROTEGIDAS = frozenset({"hook", "lower_third", "cierre"})
+PIEZAS_OPCIONALES = frozenset({"titulo_seccion", "dato_destacado"})
+
 # ── Restricciones espaciales (medidas en HF-2, D51; no se vuelven a medir) ───
 ZONA_CAPTIONS = (0.70, 0.92)  # franja prohibida de diseno, en fraccion del alto
 CARRIL_VERTICAL = (0.54, 0.68)  # donde el HTML de las piezas dibuja su contenido en 9:16
@@ -167,6 +179,7 @@ MOTIVO_FUERA_DE_CLIP = "no_cabe_en_el_clip"
 MOTIVO_SIN_AIRE = "sin_separacion_minima"
 MOTIVO_SIN_CIFRA = "ningun_tramo_trae_cifra"
 MOTIVO_ETIQUETA_SUCIA = "la_cifra_esta_en_un_tramo_que_no_da_etiqueta_limpia"
+MOTIVO_TECHO_DENSIDAD = "supera_el_techo_de_piezas_por_minuto"
 MOTIVO_CLIP_CORTO = "clip_demasiado_corto"
 MOTIVO_SIN_NOMBRE = "sin_nombre_configurado"
 MOTIVO_SIN_TITULO = "sin_titulo_del_clipper"
@@ -267,6 +280,81 @@ class _Candidata:
     plantilla: str
     ventanas: tuple[tuple[int, int], ...]
     texto: dict[str, str]
+
+
+def puntos_informativos(texto: str) -> float:
+    """Cuanta informacion carga un texto, en puntos absolutos. PURO y sin dependencias.
+
+    Heuristica, no modelo: una palabra vacia del espanol (articulo, preposicion, conjuncion,
+    pronombre, auxiliar) no suma nada; una palabra con contenido suma 1; si pasa de 5 letras
+    suma medio punto mas, porque los sustantivos y verbos largos son los que llevan el
+    significado; y una cifra suma otro medio, porque un numero en pantalla es justo lo que hace
+    que un letrero valga la pena.
+
+    La lista de palabras vacias se LEE de `stopwords_es`, que ya existe y esta testeada, en vez
+    de escribir una nueva aqui: dos listas de stopwords en el mismo repo se desincronizan.
+    """
+    import stopwords_es as sw  # noqa: PLC0415 (modulo hoja, solo stdlib)
+
+    puntos = 0.0
+    for palabra in _palabras(texto):
+        limpio = sw.normalizar(palabra)
+        if not limpio:
+            continue
+        if any(c.isdigit() for c in limpio):
+            puntos += 1.5
+            continue
+        if limpio in sw.STOPWORDS_ES:
+            continue
+        puntos += 1.5 if len(limpio) > 5 else 1.0
+    return puntos
+
+
+def densidad_informativa(texto: str) -> float:
+    """Puntos de informacion POR CARACTER. Es lo que decide entre dos fragmentos que caben."""
+    limpio = " ".join((texto or "").split())
+    if not limpio:
+        return 0.0
+    return puntos_informativos(limpio) / len(limpio)
+
+
+def techo_de_piezas(duracion_ms: int) -> int:
+    """Cuantas piezas admite un clip de esa duracion. Prorrateado, minimo 1.
+
+    El redondeo es al alza desde la mitad (`floor(x + 0.5)`) y NO `round`, que en Python
+    redondea 2.5 a 2 por el criterio del banquero: un clip de 30 s daria 2 piezas en vez de 3
+    y nadie entenderia por que.
+    """
+    minutos = max(duracion_ms, 1) / 60000.0
+    return max(1, math.floor(MAX_PIEZAS_POR_MINUTO * minutos + 0.5))
+
+
+def _aplicar_techo(
+    colocadas: list[Pieza], omisiones: list[Omision], duracion_ms: int
+) -> None:
+    """Recorta las piezas OPCIONALES hasta respetar el techo. Muta `colocadas` en sitio.
+
+    Las protegidas no se tocan aunque ellas solas ya pasen del techo: sin gancho, sin quien
+    habla y sin llamada a la accion el clip pierde su estructura, y ese es un precio peor que
+    ir un poco por encima de la densidad objetivo. De las opcionales cae primero la de MENOR
+    sustancia; a igualdad de sustancia, la mas tardia, para que el clip conserve el ritmo de
+    entrada. Cada recorte deja su omision con motivo, nunca desaparece en silencio.
+    """
+    techo = techo_de_piezas(duracion_ms)
+    protegidas = [p for p in colocadas if p.plantilla in PIEZAS_PROTEGIDAS]
+    opcionales = [p for p in colocadas if p.plantilla not in PIEZAS_PROTEGIDAS]
+    permitidas = max(techo - len(protegidas), 0)
+    if len(opcionales) <= permitidas:
+        return
+    # Peor primero: menos sustancia, y entre iguales la que llega mas tarde.
+    orden = sorted(
+        opcionales,
+        key=lambda p: (puntos_informativos(" ".join(p.texto.values())), -p.t0_ms),
+    )
+    sobran = orden[: len(opcionales) - permitidas]
+    for pieza in sobran:
+        colocadas.remove(pieza)
+        omisiones.append(Omision(pieza.plantilla, MOTIVO_TECHO_DENSIDAD, f"t0={pieza.t0_ms}ms"))
 
 
 def buscar_cifra(texto: str) -> str | None:
@@ -603,9 +691,12 @@ def _tramo_relevante(tramos: list[Tramo], desde: int, hasta: int) -> Tramo | Non
         if fin_previo.get(t.t0_ms) is not None
         and t.t0_ms - fin_previo[t.t0_ms] >= PAUSA_CAMBIO_TEMA_MS
     ]
-    if tras_pausa:
-        return tras_pausa[0]
-    return max(dentro, key=lambda t: (len(" ".join((t.texto or "").split())), -t.t0_ms))
+    # Dentro del hueco se prefiere lo mas CENTRADO, no lo mas largo: un letrero pegado a un
+    # extremo parte el hueco en 5 s y 40 s, y el de 40 s sigue estando vacio. Centrado, cada
+    # mitad baja a la vez. Entre los que empatan gana el que llega antes.
+    medio = (desde + hasta) // 2
+    candidatos = tras_pausa or dentro
+    return min(candidatos, key=lambda t: (abs(t.t0_ms - medio), t.t0_ms))
 
 
 def _rellenar_huecos(
@@ -615,6 +706,7 @@ def _rellenar_huecos(
     orientacion: str,
     tray_csv: Path | None,
     tramos: list[Tramo],
+    presupuesto: int,
 ) -> None:
     """Mete `titulo_seccion` donde el clip pasa demasiado tiempo sin un solo letrero.
 
@@ -622,8 +714,15 @@ def _rellenar_huecos(
     del clip. Solo entra en clips largos y solo en huecos de mas de HUECO_MAX_MS; el bucle
     repite mientras siga abriendo huecos nuevos, porque un hueco de 50 s necesita mas de un
     letrero para bajar de 20 s.
+
+    `presupuesto` es lo que deja el techo de densidad. Los huecos se atacan de MAYOR a menor:
+    si no alcanza para todos, el que se queda sin letrero es el mas corto, que es el que menos
+    se nota.
     """
     if duracion_ms <= UMBRAL_RELLENO_MS:
+        return
+    if presupuesto <= 0:
+        omisiones.append(Omision("titulo_seccion", MOTIVO_TECHO_DENSIDAD))
         return
     if not tramos:
         omisiones.append(Omision("titulo_seccion", MOTIVO_SIN_TRAMO))
@@ -631,12 +730,15 @@ def _rellenar_huecos(
     dur = DURACION_MS["titulo_seccion"]
     motivo_final = MOTIVO_SIN_HUECO
     colocada_alguna = False
-    while True:
+    while presupuesto > 0:
         candidatos = [(a, b) for a, b in _huecos(colocadas, duracion_ms) if b - a > HUECO_MAX_MS]
         if not candidatos:
             break
+        candidatos.sort(key=lambda h: h[1] - h[0], reverse=True)  # el hueco mas grande primero
         progreso = False
         for desde, hasta in candidatos:
+            if presupuesto <= 0:
+                break
             elegido = _tramo_titulable(tramos, desde, hasta)
             if elegido is None:
                 motivo_final = MOTIVO_SIN_TRAMO
@@ -652,6 +754,7 @@ def _rellenar_huecos(
                 motivo_final = motivo
                 continue
             colocadas.append(pieza)
+            presupuesto -= 1
             colocada_alguna = True
             progreso = True
         if not progreso:
@@ -696,7 +799,14 @@ def planificar(
         else:
             colocadas.append(pieza)
 
-    _rellenar_huecos(colocadas, omisiones, duracion_ms, orientacion, tray_csv, lista_tramos)
+    # El techo se cobra ANTES de rellenar y el relleno recibe lo que sobra. Rellenar primero y
+    # recortar despues quitaba justo las piezas que se habian puesto para cerrar un hueco, y
+    # dejaba huecos peores que si no se hubiera rellenado.
+    _aplicar_techo(colocadas, omisiones, duracion_ms)
+    presupuesto = max(techo_de_piezas(duracion_ms) - len(colocadas), 0)
+    _rellenar_huecos(
+        colocadas, omisiones, duracion_ms, orientacion, tray_csv, lista_tramos, presupuesto
+    )
     colocadas.sort(key=lambda p: p.t0_ms)
     omisiones.sort(key=lambda o: (o.plantilla, o.motivo))
     return PlanMotion(orientacion, tuple(colocadas), tuple(omisiones), tuple(incidencias))
@@ -704,6 +814,13 @@ def planificar(
 
 __all__ = [
     "ARRANQUE_PROHIBIDO",
+    "MAX_PIEZAS_POR_MINUTO",
+    "MOTIVO_TECHO_DENSIDAD",
+    "PIEZAS_OPCIONALES",
+    "PIEZAS_PROTEGIDAS",
+    "densidad_informativa",
+    "puntos_informativos",
+    "techo_de_piezas",
     "MOTIVO_ETIQUETA_SUCIA",
     "FINAL_PROHIBIDO",
     "BANDA_ARRIBA",
