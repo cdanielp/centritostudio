@@ -14,6 +14,7 @@ Escribe la tabla por stdout y el detalle por clip en `revision/hf-3/medicion_car
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -79,7 +80,7 @@ def clips_reales() -> list[Path]:
     return sorted(p for p in CLIPS_DIR.glob("*.mp4") if not p.name.startswith("_"))
 
 
-def medir() -> list[dict]:
+def medir(usar_llm: bool = False) -> list[dict]:
     import motion_capa
     import motion_plan as mp
     import tray_resolve
@@ -92,12 +93,21 @@ def medir() -> list[dict]:
         dur_s, ancho, alto = info
         orientacion = motion_capa.orientacion_de(ancho, alto)
         tray = tray_resolve.resolver_tray_csv(mp4, TRANSCRIPTS)
+        tramos = tramos_de(mp4.stem)
+        llm = None
+        if usar_llm and tramos:
+            import motion_textos_llm
+
+            llm = motion_textos_llm.pedir_textos(
+                tramos, int(round(dur_s * 1000)), stem=mp4.stem
+            )
         plan = mp.planificar(
             duracion_ms=int(round(dur_s * 1000)),
             orientacion=orientacion,
             textos=mp.TextosMarca(titulo=TITULO, nombre=NOMBRE, rol=ROL, cta=CTA),
-            tramos=tramos_de(mp4.stem),
+            tramos=tramos,
             tray_csv=tray,
+            llm=llm,
         )
         filas.append({
             "clip": mp4.name,
@@ -110,6 +120,10 @@ def medir() -> list[dict]:
             "bandas": sorted({p.banda for p in plan.piezas}),
             "omisiones": {o.plantilla: o.motivo for o in plan.omisiones},
             "incidencias": list(plan.incidencias),
+            "textos_llm": llm is not None,
+            "textos": {
+                p.plantilla: list(p.texto.values())[0] if p.texto else "" for p in plan.piezas
+            },
         })
     return filas
 
@@ -191,7 +205,14 @@ def informe(filas: list[dict]) -> str:
 
 
 def main() -> None:
-    filas = medir()
+    parser = argparse.ArgumentParser(description="Mide el planificador sobre los clips reales")
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Pide los textos al LLM en vez de usar las reglas (una llamada por clip)",
+    )
+    args = parser.parse_args()
+    filas = medir(usar_llm=args.llm)
     if not filas:
         print("no se encontro ningun clip legible en output/clips/")
         return

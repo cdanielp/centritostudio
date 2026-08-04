@@ -18,15 +18,15 @@
     "HORIZONTALES EN CERO: 0 de 13 (0.0%)",
     "",
     "VERTICALES SIN DATO DE CARA: 10 de 21. Colocan en el carril nativo (54-68%), el aprobado en el gate visual de HF-2 por no pisar caras.",
-    "CLIPS POR BANDA USADA: centro=31 superior=7",
+    "CLIPS POR BANDA USADA: centro=31 superior=6",
     "",
     "| pieza | veces colocada |",
     "|---|---|",
     "| cierre | 34 |",
-    "| dato_destacado | 7 |",
+    "| dato_destacado | 4 |",
     "| hook | 34 |",
     "| lower_third | 34 |",
-    "| titulo_seccion | 34 |"
+    "| titulo_seccion | 42 |"
   ],
   "clips": [
     {
@@ -49,12 +49,12 @@
         "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TIEMPO PERDIDO",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "207 min",
-        "cierre": "El 43% de tu tiempo libre se va en el camion"
+        "dato_destacado": "207 minutos",
+        "cierre": "% el 43 % es en transporte"
       }
     },
     {
@@ -78,12 +78,12 @@
         "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TIEMPO PERDIDO",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "207 min/dia",
-        "cierre": "El 43% de tu tiempo libre se va en el camion"
+        "dato_destacado": "207 minutos",
+        "cierre": "% el 43 % es en transporte"
       }
     },
     {
@@ -102,14 +102,14 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "sin_separacion_minima"
+        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "DATOS",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "El clima extremo afecta a los usuarios"
+        "cierre": "solazo o si no en la lluvia"
       }
     },
     {
@@ -128,14 +128,14 @@
         "superior"
       ],
       "omisiones": {
-        "dato_destacado": "sin_separacion_minima"
+        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "DATOS",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Imagina esperar el camión sin sombra"
+        "cierre": "solazo o si no en la lluvia"
       }
     },
     {
@@ -144,12 +144,11 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 6,
+      "n_piezas": 5,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
-        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
@@ -158,13 +157,13 @@
       ],
       "omisiones": {},
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "EDUCACIÓN",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "10.5%",
+        "dato_destacado": "5%",
         "titulo_seccion": "fútbol americano, básquetas",
-        "cierre": "Un García con bienestar y esperanza"
+        "cierre": "García en desarrollo"
       }
     },
     {
@@ -173,12 +172,11 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 6,
+      "n_piezas": 5,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
-        "titulo_seccion",
         "titulo_seccion",
         "cierre"
       ],
@@ -187,13 +185,13 @@
       ],
       "omisiones": {},
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "EDUCACIÓN",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "10.5%",
+        "dato_destacado": "5%",
         "titulo_seccion": "fútbol americano, básquetas",
-        "cierre": "Un García con bienestar y esperanza"
+        "cierre": "García en desarrollo"
       }
     },
     {
@@ -219,12 +217,12 @@
         "dato_destacado": "sin_separacion_minima"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "PODCAST",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "gusto tenerte por aquí",
-        "cierre": "Conoce a Ernesto, guardia forestal de Garcia"
+        "titulo_seccion": "yo tengo 26 años",
+        "cierre": "raza te escuche"
       }
     },
     {
@@ -418,11 +416,11 @@
         "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "FRONTERA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Hasta dos pancholares te quitaban"
+        "cierre": "empiezas a contar cien"
       }
     },
     {
@@ -444,11 +442,11 @@
         "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "FRONTERA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Hasta dos pancholares te quitaban"
+        "cierre": "empiezas a contar cien"
       }
     },
     {
@@ -461,22 +459,22 @@
       "piezas": [
         "hook",
         "lower_third",
-        "dato_destacado",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
       "omisiones": {
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO EDITOR",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "1056 x 1920",
-        "cierre": "No podrias animar una imagen asi en otras IA"
+        "titulo_seccion": "fue el vídeo final",
+        "cierre": "incalculable, sin mencionar"
       }
     },
     {
@@ -489,7 +487,7 @@
       "piezas": [
         "hook",
         "lower_third",
-        "dato_destacado",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
@@ -497,14 +495,14 @@
         "superior"
       ],
       "omisiones": {
-        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "CALIDAD VIDEO",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "1056x1920",
+        "titulo_seccion": "fue el vídeo final",
         "cierre": "incalculable, sin mencionar"
       }
     },
@@ -557,11 +555,11 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "IA GRATIS",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "En ConfyUI no entrenas el modelo base",
+        "titulo_seccion": "ConfyUI tu no entrenas el modelo",
         "cierre": "lo usas gratis"
       }
     },
@@ -579,19 +577,18 @@
         "cierre"
       ],
       "bandas": [
-        "centro",
-        "superior"
+        "centro"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "ESCALA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Ese trabajo ya está hecho",
-        "cierre": "El aprendizaje ya ocurrió, solo lo aprovechas"
+        "titulo_seccion": "ConfyUI tu no entrenas el modelo",
+        "cierre": "lo usas gratis"
       }
     },
     {
@@ -614,12 +611,12 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "CONFUI IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Sin modelo cargado no hay dibujo",
-        "cierre": "Describe y el artista dibuja desde su archivo"
+        "titulo_seccion": "Piensa en un dibujante",
+        "cierre": "experiencia entera está guardada"
       }
     },
     {
@@ -642,12 +639,12 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "CONFUI IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Sin modelo cargado no hay dibujo",
-        "cierre": "Describe y el artista dibuja"
+        "titulo_seccion": "Piensa en un dibujante",
+        "cierre": "experiencia entera está guardada"
       }
     },
     {
@@ -666,12 +663,12 @@
         "centro"
       ],
       "omisiones": {
-        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
+        "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
         "cierre": "siempre, debe estar en .001, 3"
       }
@@ -764,26 +761,29 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 6,
+      "n_piezas": 8,
       "piezas": [
         "hook",
         "lower_third",
         "titulo_seccion",
         "titulo_seccion",
-        "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
-      "omisiones": {},
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "El PNG guarda el valor exacto del ruido",
-        "dato_destacado": "0.60",
+        "titulo_seccion": "vuelve a abrir esto parece magia",
         "cierre": "Aquí vas a guardar todos sus en tus"
       }
     },
@@ -811,12 +811,12 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "estamos haciendo aquí es",
-        "cierre": "Guarda tus imágenes: ahí vive todo el registro"
+        "titulo_seccion": "vuelve a abrir esto parece magia",
+        "cierre": "Aquí vas a guardar todos sus en tus"
       }
     },
     {
@@ -839,11 +839,11 @@
         "titulo_seccion": "sin_hueco_que_rellenar"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO COMODO",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Instala los nodos faltantes con un clic"
+        "cierre": "analice tu workflow y vea"
       }
     },
     {
@@ -881,10 +881,12 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 7,
+      "n_piezas": 9,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -898,9 +900,9 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO CONFUI",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
         "titulo_seccion": "Los custom nodes básicamente son",
         "cierre": "ya viene con algunas apps"
@@ -912,10 +914,12 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": null,
-      "n_piezas": 7,
+      "n_piezas": 9,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -931,9 +935,9 @@
       "incidencias": [
         "sin_dato_de_cara"
       ],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TUTORIAL",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
         "titulo_seccion": "Los custom nodes básicamente son",
         "cierre": "ya viene con algunas apps"
@@ -962,12 +966,12 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TIP CLAVE",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Varía iluminación, ropa y estilo",
-        "cierre": "El personaje es lo que está debajo de la ropa"
+        "titulo_seccion": "palabra detonadora que lo vamos a ver",
+        "cierre": "el modelo entienda"
       }
     },
     {
@@ -976,10 +980,11 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "top",
-      "n_piezas": 6,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -993,12 +998,12 @@
         "dato_destacado": "ningun_tramo_trae_cifra"
       },
       "incidencias": [],
-      "textos_llm": true,
+      "textos_llm": false,
       "textos": {
-        "hook": "TRUCO IA",
+        "hook": "",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Usa diferente iluminación y estilo",
-        "cierre": "En la siguiente clase: cómo usar captions"
+        "titulo_seccion": "palabra detonadora que lo vamos a ver",
+        "cierre": "el modelo entienda"
       }
     }
   ]
