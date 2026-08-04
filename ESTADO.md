@@ -1,7 +1,33 @@
 # ESTADO — Centrito Studio
-Actualizado: 2026-08-03 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0, HF-1 y
-HF-2 en `main` (D50, D51), HF-3 y HF-4 pendientes · Arranque de HF-3:
-`revision/hf-3/ARRANQUE_HF3.md`
+Actualizado: 2026-08-04 · Fase: **v1 CERRADA** (tag `v1.0.0`) · HyperFrames: HF-0, HF-1, HF-2 y
+**HF-3** en `main` (D50, D51, D52) · HF-4 pendiente · Bitacora de HF-3:
+`revision/hf-3/BITACORA.md`
+
+## HF-3: el Motor B ya compone letreros en el pipeline
+
+`hyperframes.pedir_pieza` deja de estar huerfano. La capa de motion graphics es **aditiva y
+default OFF**: apagada, la salida es byte identica a la de antes (test de sha256 contra el
+arbol previo al merge). Encendida, un planificador puro y determinista (`motion_plan.py`)
+decide que piezas del catalogo de `motion/` lleva cada clip y en que milisegundo entra cada
+una, y `motion_capa.py` las pide, las valida y las entrega como overlays a la ruta de clips
+que ya existia para el b-roll de video.
+
+| Pieza | Que aporta |
+|---|---|
+| `motion_plan.py` | planificador puro: reglas de duracion, bandas, huecos, techo de densidad |
+| `motion_capa.py` | cableado: contrato de pieza, cache por paquete, freno de solapamiento |
+| `motion_sello.py` | gate de CI: el contenido de `motion/` no puede cambiar sin subir version |
+| Studio | casilla en Auto y en Render, con textos de marca configurables |
+| CLI | `--motion` y `--motion-titulo/nombre/rol/cta`, todos default OFF |
+
+Paleta oficial de Prompt Models Studio aplicada a las diez plantillas: texto `#F5F5F7`, gris
+separador `#2A2A35`, y **un acento por pieza** (rojo `#FF3D3D` en hook y cierre, cyan `#06B6D4`
+en cifras, violeta `#6C3AED` en etiquetas). El fondo de marca `#0A0A0F` ya vivia en la placa
+estructural de las plantillas.
+
+De paso, fuera de la capa: `brain.py` cachea su sidecar contra una huella de la transcripcion,
+el prompt, el modelo y el proveedor. Antes llamaba al LLM en cada corrida y escribia un archivo
+que nadie leia; ahora la segunda corrida del mismo clip no llama y el MP4 sale byte identico.
 
 ## v1 — qué la compone
 

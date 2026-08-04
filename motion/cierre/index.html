@@ -2,9 +2,9 @@
 <html lang="es" data-composition-variables='[
   {"id":"titulo","type":"string","label":"Titulo de cierre","default":"SIN-VARIABLE-titulo"},
   {"id":"cta","type":"string","label":"Llamada a la accion","default":"SIN-VARIABLE-cta"},
-  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF5A2B"},
-  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#111111"},
-  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF3D3D"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#2A2A35"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#F5F5F7"},
   {"id":"duracion_ms","type":"number","label":"Duracion ms","default":3500},
   {"id":"fps","type":"number","label":"FPS","default":30},
   {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
@@ -26,9 +26,9 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { overflow: hidden; background: transparent; }
       :root {
-        --primario: #FF5A2B;
-        --secundario: #111111;
-        --texto: #FFFFFF;
+        --primario: #FF3D3D;
+        --secundario: #2A2A35;
+        --texto: #F5F5F7;
         --u: 10.8px;
         --vh: 19.2px;
         /* Estructurales de legibilidad: placa oscura y sombra (unicos colores fijos). */
@@ -115,8 +115,19 @@
       css.setProperty("--secundario", v.marca_secundario);
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
-      document.getElementById("titulo").textContent = String(v.titulo);
-      document.getElementById("cta").textContent = String(v.cta);
+      var elTitulo = document.getElementById("titulo");
+      elTitulo.textContent = String(v.titulo);
+      /* Sin titulo, la placa se queda solo con la pastilla de la CTA: se esconde la linea
+         y se encoge el relleno vertical para que no quede un hueco en blanco arriba. */
+      if (!String(v.titulo).trim()) {
+        elTitulo.style.display = "none";
+        document.getElementById("placa").style.padding = "calc(var(--u) * 2.4) calc(var(--u) * 3)";
+      }
+      var elCta = document.getElementById("cta");
+      elCta.textContent = String(v.cta);
+      /* La pastilla es un acento, no un hueco: sin texto secundario se esconde en vez de
+         pintar un rectangulo de color vacio. */
+      if (!String(v.cta).trim()) { elCta.style.display = "none"; }
 
       var ENTRA = Math.min(14 * F, DUR * 0.28);
       var SALE = Math.max(6 * F, ENTRA * 0.65);

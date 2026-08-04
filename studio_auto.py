@@ -23,11 +23,19 @@ def construir_auto_config(
     fx_enabled: bool,
     fx_preset: str,
     caption_source: str = "transcript",
+    motion_enabled: bool = False,
+    motion_nombre: str | None = None,
+    motion_rol: str | None = None,
+    motion_cta: str | None = None,
 ) -> AutoConfig | None:
     """Parametros publicos de Studio -> contrato inmutable del pipeline.
 
     classic + transcript = None (ruta historica EXACTA). caption_source="srt" SIEMPRE devuelve
     un AutoConfig (aunque mode=classic): la ruta SRT no es la historica.
+
+    `motion_enabled` es la capa de letreros del Motor B, apagada por default. Solo tiene sentido
+    con mode=v2 (lo impone `AutoConfig`); pedirla en classic es un error del llamador y sube como
+    400, no como un run silencioso sin letreros.
     """
     if mode not in AUTO_MODES:
         raise ValueError(f"mode invalido: {mode!r}")
@@ -37,8 +45,22 @@ def construir_auto_config(
         raise ValueError(f"caption_source invalido: {caption_source!r}")
     if not isinstance(broll_enabled, bool) or not isinstance(fx_enabled, bool):
         raise TypeError("broll_enabled y fx_enabled deben ser bool")
-    if mode == "classic" and caption_source == "transcript":
+    if not isinstance(motion_enabled, bool):
+        raise TypeError("motion_enabled debe ser bool")
+    if mode == "classic" and caption_source == "transcript" and not motion_enabled:
         return None  # ruta historica exacta
+    # Un campo que Studio no manda NO se pasa: asi el default de `AutoConfig` (que es donde vive
+    # el unico valor neutro de cada texto) gana, en vez de que un "" del formulario lo pise.
+    extra: dict = {}
+    if motion_enabled:
+        extra["motion_enabled"] = True
+        for clave, valor in (
+            ("motion_nombre", motion_nombre),
+            ("motion_rol", motion_rol),
+            ("motion_cta", motion_cta),
+        ):
+            if valor is not None:
+                extra[clave] = valor
     return AutoConfig(
         mode="v2" if mode == "v2" else "classic",
         broll_enabled=broll_enabled,
@@ -47,6 +69,7 @@ def construir_auto_config(
         verify_av=True,
         manual_sidecars=True,
         caption_source=caption_source,
+        **extra,
     )
 
 
@@ -85,6 +108,19 @@ def capacidades_auto() -> dict:
             "fx_preset": defaults.fx_preset,
             "verify_av": defaults.verify_av,
             "manual_sidecars": defaults.manual_sidecars,
+            "motion_enabled": defaults.motion_enabled,
+            "motion_cta": defaults.motion_cta,
+        },
+        # Capa de letreros del Motor B. Se publica para que la UI sepa que existe, que viene
+        # apagada y que solo esta disponible en v2.
+        "motion": {
+            "available_modes": ["v2"],
+            "default_enabled": defaults.motion_enabled,
+            "plantillas": ["hook", "lower_third", "dato_destacado", "cierre"],
+            "description": (
+                "Letreros animados colocados solos segun la duracion del clip. Capa aditiva: "
+                "si falla, el clip sale igual pero sin letreros."
+            ),
         },
         "fixed_rules": {
             "hook_protected_s": defaults.hook_protected_s,

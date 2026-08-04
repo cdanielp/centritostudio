@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_cierre",
   "plantilla": {
     "nombre": "cierre",
-    "version": "1.0.1"
+    "version": "1.0.4"
   },
   "duracion_ms": 3500,
   "fps": 30,
@@ -16,9 +16,9 @@
     "cta": "Aprende con la comunidad de Prompt Models Studio"
   },
   "marca": {
-    "primario": "#FF5A2B",
-    "secundario": "#111111",
-    "texto": "#FFFFFF"
+    "primario": "#FF3D3D",
+    "secundario": "#2A2A35",
+    "texto": "#F5F5F7"
   },
   "posicion": {
     "modo": "cuadro_completo"

@@ -1,11 +1,13 @@
-"""Perfil de capacidad: que puede consumir HOY la ruta de clips de Centrito (HF-1).
+"""Perfil de capacidad: que puede consumir HOY la ruta de clips de Centrito (HF-1, ampliado HF-3).
 
 Validar el esquema no basta. Una pieza puede ser un contrato perfectamente valido y aun asi
 imposible de componer, porque `clip_overlay.py` tiene limites propios que HF-1 no toca.
 El perfil vive en UNA constante inspeccionable, y cada rechazo NOMBRA la linea que impone el
-limite para que HF-3 sepa exactamente que desbloquear en vez de ir a buscarlo.
+limite para que quede claro que hay que desbloquear en vez de ir a buscarlo.
 
-Medido en HF-0 sobre el filter_complex real de un overlay de 1920x1080 con alfa.
+Medido en HF-0 sobre el filter_complex real de un overlay de 1920x1080 con alfa. HF-3 levanto
+tres de los cuatro limites (`fit=nativo`, `posicion.modo=caja` y el tamano ligado a la caja);
+el del audio sigue en pie porque lo impone el mapeo `0:a` del render, no `clip_overlay`.
 """
 
 from __future__ import annotations
@@ -28,38 +30,38 @@ class Limite:
 PERFIL_RUTA_CLIPS: dict[str, Limite] = {
     "posicion_modo": Limite(
         campo="posicion.modo",
-        admitido="cuadro_completo",
-        referencia="clip_overlay.py:144",
+        admitido="cuadro_completo o caja",
+        referencia="clip_overlay.py:overlay_clip",
         motivo=(
-            "el overlay se compone con x=(W-w)/2:y=(H-h)/2 fijo al centro, "
-            "asi que no hay forma de colocar un grafico sub-cuadro"
+            "el overlay se compone centrado cuando no se da posicion y en (x, y) literales "
+            "cuando si; cualquier otro modo no tiene traduccion a ese filtro"
         ),
     ),
     "fit": Limite(
         campo="fit",
-        admitido="nativo",
-        referencia="clip_overlay.py:20",
+        admitido="nativo o cover",
+        referencia="clip_overlay.py:FIT_VALIDOS",
         motivo=(
-            "FIT_VALIDOS solo admite 'cover', que siempre escala y recorta a la caja; "
-            "una pieza a tamano nativo solo sobrevive si ya mide igual que el destino"
+            "'nativo' compone la pieza con sus propios pixeles y 'cover' escala y recorta a la "
+            "caja; 'contain' sigue sin implementarse en la cadena de clips"
         ),
     ),
     "audio": Limite(
         campo="audio",
         admitido="false",
-        referencia="clip_overlay.py:73",
+        referencia="core_ass.burn_video_with_emojis (mapeo -map 0:a)",
         motivo=(
-            "validar_clip_overlay exige mute=True y el render mapea solo 0:a, "
-            "asi que el audio de la pieza jamas entraria a la mezcla"
+            "el render mapea SOLO el audio original, asi que el audio de la pieza se descartaria "
+            "en silencio; aceptarlo seria mentirle al llamador"
         ),
     ),
     "tamano": Limite(
         campo="tamano",
-        admitido="igual al tamano del video destino",
-        referencia="clip_overlay.py:124",
+        admitido="igual al destino en cuadro_completo, igual a la caja en modo caja",
+        referencia="clip_overlay.py:filtro_clip",
         motivo=(
-            "el encaje cover escala a la caja y recorta el excedente; "
-            "si la pieza no mide igual que el destino se deforma el encuadre"
+            "con fit nativo no hay escalado: la pieza ocupa exactamente los pixeles que trae, "
+            "asi que declarar otro tamano la descuadraria respecto de donde se coloca"
         ),
     ),
 }
@@ -72,17 +74,30 @@ def _rechazar(limite: Limite, recibido: str) -> None:
     )
 
 
+def _tamano_esperado(posicion: dict, destino: tuple[int, int]) -> tuple[int, int]:
+    """Que tamano debe declarar la pieza segun donde se va a colocar."""
+    if posicion.get("modo") == "caja":
+        return (posicion.get("ancho"), posicion.get("alto"))
+    return tuple(destino)
+
+
 def verificar_capacidad(dato: dict, destino: tuple[int, int]) -> None:
     """Comprueba la pieza contra PERFIL_RUTA_CLIPS. Lanza CapacidadNoSoportada.
 
     `destino` es (ancho, alto) del video sobre el que se va a componer.
     """
-    modo = (dato.get("posicion") or {}).get("modo")
-    if modo != PERFIL_RUTA_CLIPS["posicion_modo"].admitido:
+    from clip_overlay import FIT_VALIDOS as FIT_RUTA_CLIPS  # noqa: PLC0415
+
+    posicion = dato.get("posicion") or {}
+    modo = posicion.get("modo")
+    if modo not in ("cuadro_completo", "caja"):
         _rechazar(PERFIL_RUTA_CLIPS["posicion_modo"], str(modo))
 
+    # 'nativo' del contrato = componer sin escalar, que es exactamente el fit del mismo nombre
+    # de la ruta de clips. La lista se lee de `clip_overlay` y no se copia: dos listas separadas
+    # se desincronizan y el perfil terminaria mintiendo sobre lo que la ruta admite.
     fit = dato.get("fit")
-    if fit != PERFIL_RUTA_CLIPS["fit"].admitido:
+    if fit not in FIT_RUTA_CLIPS:
         _rechazar(PERFIL_RUTA_CLIPS["fit"], str(fit))
 
     if dato.get("audio") is not False:
@@ -90,10 +105,11 @@ def verificar_capacidad(dato: dict, destino: tuple[int, int]) -> None:
 
     tamano = dato.get("tamano") or {}
     pieza = (tamano.get("ancho"), tamano.get("alto"))
-    if pieza != tuple(destino):
+    esperado = _tamano_esperado(posicion, destino)
+    if pieza != esperado:
         _rechazar(
             PERFIL_RUTA_CLIPS["tamano"],
-            f"{pieza[0]}x{pieza[1]} sobre un destino de {destino[0]}x{destino[1]}",
+            f"{pieza[0]}x{pieza[1]} donde se esperaba {esperado[0]}x{esperado[1]}",
         )
 
 

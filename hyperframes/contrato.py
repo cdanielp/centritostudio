@@ -216,15 +216,28 @@ def canonicalizar(dato: object) -> str:
     return json.dumps(dato, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+# Campos del contrato que NO influyen en los pixeles y por tanto no entran a la clave de cache.
+# `semilla` esta declarada en las diez plantillas del catalogo y NINGUNA la lee: no alimenta
+# ningun generador, ni de posicion, ni de retardo, ni de nada. Mientras entraba al hash, cambiarla
+# invalidaba la cache y hacia renderizar de nuevo un MOV byte identico al que ya habia. Sacarla es
+# lo barato y lo correcto: el dia que una plantilla la consuma de verdad, esta lista es el unico
+# sitio donde hay que quitarla, y ese cambio ya vendra con una version de plantilla nueva, que es
+# lo que invalida la cache segun la regla D51.1.
+CAMPOS_FUERA_DEL_HASH = ("semilla",)
+
+
 def calcular_hash(dato: dict, entorno: dict) -> str:
     """Clave de cache: sha256 del contrato canonico + plantilla + las 4 versiones del entorno.
 
     Las partes van dentro de un objeto JSON en vez de concatenarse a pelo: una concatenacion
     plana dejaria que mover un caracter entre dos versiones produjera la misma clave.
+
+    Los campos de `CAMPOS_FUERA_DEL_HASH` se excluyen del canonico porque no cambian la salida.
     """
     plantilla = dato.get("plantilla") or {}
+    influyente = {k: v for k, v in dato.items() if k not in CAMPOS_FUERA_DEL_HASH}
     partes = {
-        "pieza": canonicalizar(dato),
+        "pieza": canonicalizar(influyente),
         "plantilla": {
             "nombre": plantilla.get("nombre"),
             "version": plantilla.get("version"),
@@ -235,6 +248,7 @@ def calcular_hash(dato: dict, entorno: dict) -> str:
 
 
 __all__ = [
+    "CAMPOS_FUERA_DEL_HASH",
     "ESQUEMA",
     "VERSION_SOPORTADA",
     "calcular_hash",

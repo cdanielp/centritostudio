@@ -131,6 +131,49 @@ def _resolver_broll_v2(
     return manual_popups, manual_clips, resol, resolved
 
 
+def _capa_motion(
+    config: AutoConfig,
+    clip: dict,
+    paquete_dir: Path,
+    clip_9x16: Path,
+    groups: list,
+    vinfo: dict,
+    dur: float,
+):
+    """Letreros del Motor B para UN clip. Apagada devuelve el resultado vacio sin tocar nada.
+
+    El titulo del hook y del cierre es el que ya genero el clipper viral: es la unica frase del
+    clip que esta escrita para engancharse, y volver a inventar una seria duplicar el trabajo
+    del cerebro. El CSV de trayectoria es el que acaba de escribir el reframe junto al clip
+    9:16, que es donde `tray_resolve` lo busca primero.
+    """
+    import motion_capa  # noqa: PLC0415 (aditiva: la ruta historica no lo importa)
+
+    if not config.motion_enabled:
+        return motion_capa.ResultadoMotion((), {"enabled": False})
+
+    import tray_resolve  # noqa: PLC0415
+
+    opciones = motion_capa.OpcionesMotion(
+        enabled=True,
+        titulo=str(clip.get("titulo") or ""),
+        nombre=config.motion_nombre,
+        rol=config.motion_rol,
+        cta=config.motion_cta,
+    )
+    return motion_capa.clips_de_motion(
+        opciones=opciones,
+        ancho=vinfo["width"],
+        alto=vinfo["height"],
+        fps=vinfo.get("fps") or 30.0,
+        duracion_s=dur,
+        raiz_cache=motion_capa.raiz_cache_de_paquete(paquete_dir),
+        root=Path(__file__).resolve().parent,
+        tramos=motion_capa.tramos_de_groups(groups),
+        tray_csv=tray_resolve.resolver_tray_csv(Path(clip_9x16), Path(clip_9x16).parent),
+    )
+
+
 def procesar_clip_v2(
     clip: dict,
     paquete_dir: Path,
@@ -155,8 +198,16 @@ def procesar_clip_v2(
 
     stem = clip["archivo"].replace(".mp4", "")
     stem_9x16, final_path = _final_path(clip, paquete_dir)
+    # `tray_dir` SOLO con la capa de letreros encendida. El reframe escribe entonces
+    # `trayectoria_{stem}.csv` junto al clip 9:16, que es de donde el planificador saca la zona
+    # de la cara. Apagada no se pide, y el paso queda exactamente como estaba: sin el, la capa
+    # veria siempre "sin dato de cara", trataria el carril como ocupado y no colocaria NUNCA una
+    # pieza en 9:16, en silencio y sin que nada fallara.
     rf = reframe.reframe_clip(
-        clips_dir / clip["archivo"], clips_dir / f"{stem_9x16}.mp4", tracker="escenas"
+        clips_dir / clip["archivo"],
+        clips_dir / f"{stem_9x16}.mp4",
+        tracker="escenas",
+        **({"tray_dir": clips_dir} if config.motion_enabled else {}),
     )
     groups, brain_data = _grupos_y_brain(stem, stem_9x16, transcripts)
     groups_captions = core.apply_brain(groups, brain_data) if brain_data else groups
@@ -193,6 +244,13 @@ def procesar_clip_v2(
     final_clips = sorted([*manual_clips, *resol.auto_clips], key=lambda c: c.t0)
     arb = auto_fx.arbitrar_fx(fx_plan, auto_fx.intervalos_cutaway(final_popups, final_clips))
     fx_final = None if arb.plan.vacio() else arb.plan
+
+    # Capa de letreros (Motor B). Aditiva y default OFF: con `motion_enabled=False` devuelve
+    # cero clips sin importar `hyperframes` siquiera, y todo lo de abajo queda como siempre.
+    # Va DESPUES del b-roll para que el letrero se pinte encima del cutaway, y con
+    # behind_text=True para que los captions se pinten encima del letrero.
+    motion = _capa_motion(config, clip, paquete_dir, clip_9x16, groups_captions, vinfo, dur)
+    final_clips = [*final_clips, *motion.clips]
 
     style_cfg = get_style(STYLE_AUTO)
     ass_path = root / "output" / f"{stem_9x16}_{STYLE_AUTO}.ass"
@@ -251,6 +309,9 @@ def procesar_clip_v2(
             "warnings": list(arb.warnings),
         },
         "av": av,
+        # Solo cuando la capa esta encendida: con `motion_enabled=False` la clave no aparece y
+        # el checkpoint de un paquete historico queda con la misma forma exacta que antes.
+        **({"motion": motion.informe} if config.motion_enabled else {}),
     }
 
 

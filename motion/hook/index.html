@@ -2,9 +2,9 @@
 <html lang="es" data-composition-variables='[
   {"id":"kicker","type":"string","label":"Kicker","default":"SIN-VARIABLE-kicker"},
   {"id":"titulo","type":"string","label":"Titulo","default":"SIN-VARIABLE-titulo"},
-  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF5A2B"},
-  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#111111"},
-  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#FFFFFF"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF3D3D"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#2A2A35"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#F5F5F7"},
   {"id":"duracion_ms","type":"number","label":"Duracion ms","default":2500},
   {"id":"fps","type":"number","label":"FPS","default":30},
   {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
@@ -27,9 +27,9 @@
       html, body { overflow: hidden; background: transparent; }
       :root {
         /* Colores de marca: SIEMPRE por variables del contrato, nunca fijos aqui. */
-        --primario: #FF5A2B;
-        --secundario: #111111;
-        --texto: #FFFFFF;
+        --primario: #FF3D3D;
+        --secundario: #2A2A35;
+        --texto: #F5F5F7;
         /* Unidades relativas al viewport de la pieza (el script las fija en px). */
         --u: 10.8px;   /* 1% del lado corto */
         --vh: 19.2px;  /* 1% de la altura */
@@ -65,6 +65,14 @@
         text-transform: uppercase;
         padding: calc(var(--u) * 0.8) calc(var(--u) * 2);
         border-radius: calc(var(--u) * 0.8);
+        margin-bottom: calc(var(--u) * 2.2);
+      }
+      /* Filete de acento: el kicker sin texto. Mismo papel que la barra del lower_third. */
+      #kicker.filete {
+        width: calc(var(--u) * 9);
+        height: calc(var(--u) * 0.9);
+        padding: 0;
+        border-radius: calc(var(--u) * 0.45);
         margin-bottom: calc(var(--u) * 2.2);
       }
       #titulo {
@@ -120,7 +128,17 @@
       css.setProperty("--secundario", v.marca_secundario);
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
-      document.getElementById("kicker").textContent = String(v.kicker);
+      var elKicker = document.getElementById("kicker");
+      elKicker.textContent = String(v.kicker);
+      /* Un kicker vacio pintaba una pastilla de color sin texto dentro. Se oculta en vez
+         de dejarla: el contrato exige el slot, pero no exige que siempre traiga frase. */
+      if (!String(v.kicker).trim()) {
+        /* El kicker era el UNICO sitio donde el hook pintaba el acento de marca: sin el,
+           el rojo desaparecia del clip entero. En vez de esconderlo, la pastilla se
+           convierte en un filete, el mismo recurso que ya usa la barra del lower_third. */
+        elKicker.textContent = "";
+        elKicker.className = "filete";
+      }
       document.getElementById("titulo").textContent = String(v.titulo);
 
       /* Tiempos adaptativos: entrada acotada por la duracion, salida mas rapida. */

@@ -365,12 +365,16 @@ def _info_orfano(clip: dict, final_path: Path) -> dict:
     }
 
 
-def _brain_fail_open(groups: list[dict], stem: str) -> dict | None:
-    """Analisis IA del clip. Fail-open: sin brain el paquete sigue (regla #8)."""
+def _brain_fail_open(groups: list[dict], stem: str, *, forzar: bool = False) -> dict | None:
+    """Analisis IA del clip. Fail-open: sin brain el paquete sigue (regla #8).
+
+    `forzar=True` salta la cache del sidecar y vuelve a llamar al LLM. Default apagado: con la
+    cache, re-renderizar el mismo clip no gasta una llamada mas y el resultado no cambia.
+    """
     try:
         import brain  # noqa: PLC0415
 
-        data = brain.analizar_grupos(groups, video_name=stem)
+        data = brain.analizar_grupos(groups, video_name=stem, forzar=forzar)
         return data if data.get("groups") else None
     except Exception as exc:
         print(f"[auto] brain fail-open: {type(exc).__name__}")
