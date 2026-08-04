@@ -109,6 +109,12 @@ def medir(usar_llm: bool = False) -> list[dict]:
             tray_csv=tray,
             llm=llm,
         )
+        antes = {i: dict(p.texto) for i, p in enumerate(plan.piezas)}
+        if usar_llm and tramos:
+            plan = motion_capa.rellenar_textos_con_llm(
+                plan, tramos, int(round(dur_s * 1000)), mp4.stem
+            )
+        del antes
         filas.append({
             "clip": mp4.name,
             "dur_s": round(dur_s, 2),
@@ -124,6 +130,10 @@ def medir(usar_llm: bool = False) -> list[dict]:
             "textos": {
                 p.plantilla: list(p.texto.values())[0] if p.texto else "" for p in plan.piezas
             },
+            "piezas_detalle": [
+                {"plantilla": p.plantilla, "t0_ms": p.t0_ms, "texto": dict(p.texto)}
+                for p in plan.piezas
+            ],
         })
     return filas
 

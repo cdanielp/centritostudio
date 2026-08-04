@@ -157,7 +157,10 @@ def _sidecar_reutilizable(stem: str, marca: str) -> dict | None:
         return None
     if not isinstance(datos, dict) or datos.get("huella") != marca:
         return None
-    return datos.get("textos") if isinstance(datos.get("textos"), dict) else None
+    # Se devuelve el valor CRUDO: la primera pasada guarda un objeto y la segunda una lista, y
+    # cada llamador valida su forma. Filtrar aqui por dict hacia que la cache del relleno no
+    # acertara nunca y se pagara una llamada por render.
+    return datos.get("textos")
 
 
 # ── Saneado de la respuesta ──────────────────────────────────────────────────
@@ -253,7 +256,7 @@ def pedir_textos(
 
     if not forzar:
         previo = _sidecar_reutilizable(stem, marca)
-        if previo is not None:
+        if isinstance(previo, dict):
             textos = sanear(previo, duracion_ms)
             if textos is not None:
                 print(f"[motion-llm] cache HIT {stem}{SUFIJO_SIDECAR} | sin llamada al LLM")
@@ -299,13 +302,245 @@ def _guardar(stem: str, marca: str, textos: TextosLLM) -> None:
         print(f"[motion-llm] no se pudo guardar el sidecar: {exc}")
 
 
+_SYSTEM_RELLENO = (
+    "Eres editor de video en espanol de Mexico. Te dan los HUECOS exactos de un clip que ya "
+    "estan decididos y el fragmento que se habla en cada uno. Escribes el letrero de cada "
+    "hueco, uno por uno, sin saltarte ninguno. Respondes UNICAMENTE con JSON valido."
+)
+
+_PROMPT_RELLENO = """\
+Clip de {dur_s:.0f} segundos. Estos letreros YA estan colocados. Para cada uno tienes el
+fragmento que se habla justo ahi. Escribe el TITULO de cada letrero.
+
+{huecos}
+
+Un titulo NO es el fragmento. Es una frase CORTA que resume lo que ahi se dice.
+
+Ejemplo. Fragmento: "porque un dato, la desercion escolar del ciclo del 2023 al 2024 este fue
+en un 10.5 por ciento de medias superiores". Titulo correcto: "10.5% dejo la prepa en un ano".
+Titulo INCORRECTO: copiar el fragmento entero.
+
+Reglas, todas obligatorias:
+- NUNCA superes el limite de caracteres de cada linea. Es un limite duro: si no cabe, di lo
+  mismo con menos palabras. Un titulo de 30 caracteres es mejor que uno de 60.
+- No copies el fragmento literal. Reescribe.
+- En espanol, con las tildes correctas.
+- Cada titulo se entiende SOLO, sin leer los demas.
+- Frases enteras: nada cortado ni que empiece por "que", "y", "de", "porque".
+- Sin muletillas: "pues", "este", "o sea", "digamos", "bueno", "entonces".
+- USA SOLO PALABRAS QUE APARECEN EN SU FRAGMENTO. No inventes terminos ni sinonimos.
+- Devuelve un texto por CADA id de la lista. Ninguno vacio.
+
+JSON: {{"textos":[{{"id":int,"texto":str}}]}}"""
+
+
+def _prompt_relleno(huecos: list[dict], duracion_ms: int) -> str:
+    lineas = "\n".join(
+        f"[{h['id']}] {h['plantilla']} en el segundo {h['t0_ms'] / 1000:.1f}, "
+        f'maximo {h["limite"]} caracteres. Se habla: "{h["contexto"]}"'
+        for h in huecos
+    )
+    return _PROMPT_RELLENO.format(dur_s=duracion_ms / 1000.0, huecos=lineas)
+
+
+def huella_relleno(huecos: list[dict], duracion_ms: int) -> str:
+    """sha256 de los huecos y su contexto, mas prompt, modelo y proveedor."""
+    import brain  # noqa: PLC0415
+
+    payload = json.dumps(
+        {
+            "schema": SCHEMA_CACHE,
+            "duracion_ms": duracion_ms,
+            "huecos": [
+                [h["id"], h["plantilla"], h["t0_ms"], h["limite"], h["contexto"]] for h in huecos
+            ],
+            "system": _SYSTEM_RELLENO,
+            "prompt": _PROMPT_RELLENO,
+            "modelo": brain.MODEL,
+            "proveedor": brain.PROVIDER,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def pedir_textos_para(
+    huecos: list[dict],
+    duracion_ms: int,
+    *,
+    stem: str = "",
+    forzar: bool = False,
+    transcripcion: str = "",
+) -> dict[int, str]:
+    """{id: texto} para los huecos que el PLANIFICADOR ya decidio. NUNCA lanza.
+
+    Es la segunda pasada, y es la que hace que no se descarte nada. En la primera, el modelo
+    proponia secciones con su instante y solo se usaban las que caian en un hueco de mas de
+    20 s; el resto volvia al respaldo de reglas y por eso seguian saliendo titulos como
+    "futbol americano, basquetas". Aqui el orden esta invertido: los instantes ya estan fijados
+    y al modelo se le pide texto PARA ESOS, con el fragmento hablado de cada uno delante.
+
+    Devuelve solo los ids que vinieron con texto utilizable. Los que falten caen al respaldo,
+    que es lo mismo que pasaba antes pero ahora por excepcion y no por diseno.
+    """
+    if not huecos or duracion_ms <= 0:
+        return {}
+    try:
+        marca = huella_relleno(huecos, duracion_ms)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion-llm] no se pudo calcular la huella del relleno: {exc}")
+        return {}
+
+    sufijo = f"{stem}.relleno" if stem else ""
+    if not forzar and sufijo:
+        previo = _sidecar_reutilizable(sufijo, marca)
+        if previo:
+            print(f"[motion-llm] cache HIT relleno de {stem} | sin llamada al LLM")
+            return _sanear_relleno(previo, huecos)
+
+    try:
+        import brain  # noqa: PLC0415
+
+        crudo = brain.llm(
+            [
+                {"role": "system", "content": _SYSTEM_RELLENO},
+                {"role": "user", "content": _prompt_relleno(huecos, duracion_ms)},
+            ]
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion-llm] fallo el relleno, se usan las reglas: {type(exc).__name__}: {exc}")
+        return {}
+
+    textos = _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, huecos)
+    textos, incidencias = _filtrar_inventadas(textos, huecos, duracion_ms, transcripcion)
+    if incidencias:
+        print(f"[motion-llm] guarda: {len(incidencias)} campo(s) con palabras no dichas")
+    if textos and sufijo:
+        _guardar_relleno(sufijo, marca, textos)
+    print(f"[motion-llm] relleno: {len(textos)}/{len(huecos)} letreros escritos")
+    return textos
+
+
+def _filtrar_inventadas(
+    textos: dict[int, str], huecos: list[dict], duracion_ms: int, transcripcion: str
+) -> tuple[dict[int, str], list[dict]]:
+    """Quita los textos con palabras que nadie dijo, tras UN reintento. Devuelve las incidencias.
+
+    El reintento se pide en bloque y solo para los campos sospechosos, con la instruccion
+    explicita de usar unicamente palabras del fragmento. Lo que vuelva a fallar se descarta y
+    ese campo cae al respaldo de reglas, que nunca inventa nada.
+    """
+    import motion_guarda  # noqa: PLC0415
+
+    # Se contrasta contra la transcripcion del CLIP ENTERO, no contra el fragmento: un letrero
+    # puede usar legitimamente una palabra dicha treinta segundos antes.
+    fuente = transcripcion or " ".join(h.get("contexto", "") for h in huecos)
+    incidencias: list[dict] = []
+    sospechosos = {}
+    for ident, texto in textos.items():
+        veredicto = motion_guarda.revisar(texto, fuente)
+        if not veredicto.ok:
+            sospechosos[ident] = veredicto.sospechosas
+    if not sospechosos:
+        return textos, incidencias
+
+    reintentados = _reintentar(sospechosos, huecos, duracion_ms)
+    limpios = dict(textos)
+    for ident, palabras in sospechosos.items():
+        nuevo = reintentados.get(ident, "")
+        if nuevo and motion_guarda.revisar(nuevo, fuente).ok:
+            limpios[ident] = nuevo
+            incidencias.append({"id": ident, "palabras": list(palabras), "resuelto": "reintento"})
+            continue
+        # Segundo fallo: fuera. Ese campo se queda con el texto de las reglas.
+        limpios.pop(ident, None)
+        incidencias.append({"id": ident, "palabras": list(palabras), "resuelto": "respaldo"})
+    return limpios, incidencias
+
+
+def _reintentar(
+    sospechosos: dict[int, tuple[str, ...]], huecos: list[dict], duracion_ms: int
+) -> dict[int, str]:
+    """UNA segunda llamada, solo para los campos sospechosos. Sin cache: es un caso raro."""
+    afectados = [h for h in huecos if h["id"] in sospechosos]
+    if not afectados:
+        return {}
+    detalle = "\n".join(
+        f"[{h['id']}] escribiste palabras que NO se dicen: "
+        f"{', '.join(sospechosos[h['id']])}. Se habla: {h['contexto']}"
+        for h in afectados
+    )
+    try:
+        import brain  # noqa: PLC0415
+
+        crudo = brain.llm(
+            [
+                {"role": "system", "content": _SYSTEM_RELLENO},
+                {
+                    "role": "user",
+                    "content": (
+                        _prompt_relleno(afectados, duracion_ms)
+                        + "\n\nCORRECCION OBLIGATORIA:\n"
+                        + detalle
+                        + "\nReescribelos usando UNICAMENTE palabras de su fragmento."
+                    ),
+                },
+            ]
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion-llm] el reintento fallo: {type(exc).__name__}: {exc}")
+        return {}
+    return _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, afectados)
+
+
+def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
+    """Lista cruda -> {id: texto}, con el limite de cada hueco aplicado."""
+    limites = {h["id"]: h["limite"] for h in huecos}
+    salida: dict[int, str] = {}
+    if isinstance(dato, dict):  # tolerancia: algunos modelos devuelven {"3": "..."}
+        dato = [{"id": k, "texto": v} for k, v in dato.items()]
+    if not isinstance(dato, list):
+        return {}
+    for item in dato:
+        if not isinstance(item, dict):
+            continue
+        ident = item.get("id")
+        if isinstance(ident, str) and ident.isdigit():
+            ident = int(ident)
+        if not isinstance(ident, int) or isinstance(ident, bool) or ident not in limites:
+            continue
+        texto = _texto_valido(item.get("texto"), limites[ident])
+        if texto:
+            salida[ident] = texto
+    return salida
+
+
+def _guardar_relleno(sufijo: str, marca: str, textos: dict[int, str]) -> None:
+    try:
+        from atomic_io import atomic_write_json  # noqa: PLC0415
+
+        atomic_write_json(
+            ruta_sidecar(sufijo),
+            {
+                "schema": SCHEMA_CACHE,
+                "huella": marca,
+                "textos": [{"id": k, "texto": v} for k, v in sorted(textos.items())],
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion-llm] no se pudo guardar el relleno: {exc}")
+
+
 __all__ = [
     "LIMITES",
     "MAX_SECCIONES",
     "SUFIJO_SIDECAR",
     "TextosLLM",
     "huella",
+    "huella_relleno",
     "pedir_textos",
+    "pedir_textos_para",
     "ruta_sidecar",
     "sanear",
 ]

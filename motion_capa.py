@@ -131,15 +131,116 @@ def resolver_plan(
         if editado is not None:
             print(f"[motion] plan EDITADO a mano: {len(editado.piezas)} pieza(s)")
             return editado, me.ORIGEN_EDITADO
+    lista = list(tramos or [])
     plan = mp.planificar(
         duracion_ms=duracion_ms,
         orientacion=orientacion,
         textos=textos,
-        tramos=tramos,
+        tramos=lista,
         tray_csv=tray_csv,
-        llm=_textos_del_llm(textos_llm, tramos, duracion_ms, stem),
+        llm=_textos_del_llm(textos_llm, lista, duracion_ms, stem),
     )
+    # SEGUNDA PASADA. La primera deja al modelo proponer instantes y solo se usan los que caen
+    # donde el planificador abrio hueco; el resto volvia al respaldo de reglas. Aqui los
+    # instantes YA estan fijados y se le pide texto para cada uno, con el fragmento hablado
+    # delante, asi que no se descarta ninguno.
+    if textos_llm:
+        plan = rellenar_textos_con_llm(plan, lista, duracion_ms, stem)
     return plan, me.ORIGEN_AUTOMATICO
+
+
+# Que slot de cada plantilla escribe el modelo en la segunda pasada, y con que limite. Los
+# demas slots (nombre, rol, cta, cifra) NO se tocan: salen de la configuracion o de la primera
+# pasada, y pedirselos otra vez solo los cambiaria sin motivo.
+SLOT_A_RELLENAR = {
+    "hook": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "titulo_seccion": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "cierre": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "dato_destacado": ("etiqueta", mp.DATO_ETIQUETA_MAX_CHARS),
+}
+# Cuanto texto hablado se le da al modelo como contexto de cada pieza. Suficiente para que la
+# frase se entienda, corto para que no se ponga a resumir el clip entero.
+CONTEXTO_MS = 6000
+
+
+def contexto_hablado(tramos: list[mp.Tramo], t0_ms: int, ventana_ms: int = CONTEXTO_MS) -> str:
+    """Lo que se habla alrededor de `t0_ms`. PURO.
+
+    Es lo que convierte la segunda pasada en algo util: el modelo no escribe sobre el clip en
+    abstracto, escribe sobre lo que se dice JUSTO donde va el letrero.
+    """
+    desde, hasta = t0_ms - ventana_ms // 3, t0_ms + ventana_ms
+    trozos = [
+        " ".join((t.texto or "").split())
+        for t in sorted(tramos, key=lambda x: x.t0_ms)
+        if t.t1_ms >= desde and t.t0_ms <= hasta
+    ]
+    return " ".join(x for x in trozos if x).strip()
+
+
+def rellenar_textos_con_llm(
+    plan: mp.PlanMotion, tramos: list[mp.Tramo], duracion_ms: int, stem: str
+) -> mp.PlanMotion:
+    """Reescribe con el LLM el slot principal de cada pieza YA colocada. FAIL-OPEN.
+
+    Mapeo uno a uno: una pieza, un texto. Lo que el modelo no devuelva se queda como estaba,
+    que es el texto de las reglas. El plan sale con las mismas piezas en los mismos instantes:
+    aqui solo cambian las palabras.
+    """
+    if not plan.piezas or not tramos:
+        return plan
+    try:
+        import motion_textos_llm  # noqa: PLC0415
+
+        huecos = []
+        for i, pieza in enumerate(plan.piezas):
+            slot = SLOT_A_RELLENAR.get(pieza.plantilla)
+            if slot is None or slot[0] not in pieza.texto:
+                continue
+            contexto = contexto_hablado(tramos, pieza.t0_ms)
+            if not contexto:
+                continue
+            huecos.append(
+                {
+                    "id": i,
+                    "plantilla": pieza.plantilla,
+                    "t0_ms": pieza.t0_ms,
+                    "limite": slot[1],
+                    "contexto": contexto,
+                }
+            )
+        if not huecos:
+            return plan
+        escritos = motion_textos_llm.pedir_textos_para(
+            huecos,
+            duracion_ms,
+            stem=stem,
+            transcripcion=" ".join((t.texto or "") for t in tramos),
+        )
+    except Exception as exc:  # noqa: BLE001 - la segunda pasada jamas tumba un plan
+        print(f"[motion] relleno del LLM no disponible, se conservan las reglas: {exc}")
+        return plan
+
+    if not escritos:
+        return plan
+    piezas = []
+    for i, pieza in enumerate(plan.piezas):
+        texto = escritos.get(i)
+        slot = SLOT_A_RELLENAR.get(pieza.plantilla)
+        if not texto or slot is None or slot[0] not in pieza.texto:
+            piezas.append(pieza)
+            continue
+        piezas.append(
+            mp.Pieza(
+                pieza.plantilla,
+                pieza.t0_ms,
+                pieza.t1_ms,
+                {**pieza.texto, slot[0]: texto},
+                pieza.banda,
+                pieza.tramo_t0,
+            )
+        )
+    return mp.PlanMotion(plan.orientacion, tuple(piezas), plan.omisiones, plan.incidencias)
 
 
 def _textos_del_llm(activo: bool, tramos, duracion_ms: int, stem: str):
@@ -454,13 +555,17 @@ __all__ = [
     "SolapamientoDePiezas",
     "ACENTO_POR_PLANTILLA",
     "MARCA",
+    "CONTEXTO_MS",
+    "SLOT_A_RELLENAR",
     "clips_de_motion",
+    "contexto_hablado",
     "contrato_de_pieza",
     "desplazamiento_de_banda",
     "marca_de",
     "orientacion_de",
     "plan_automatico",
     "raiz_cache_de_paquete",
+    "rellenar_textos_con_llm",
     "resolver_plan",
     "tramos_de_groups",
     "validar_sin_solape",
