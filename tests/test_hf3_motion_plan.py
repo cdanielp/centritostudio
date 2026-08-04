@@ -1021,3 +1021,13 @@ def test_si_ningun_tramo_del_hueco_se_sostiene_la_seccion_se_omite():
     plan = _plan(56790, tramos=tramos)
     assert "titulo_seccion" not in _nombres(plan)
     assert _motivos(plan)["titulo_seccion"] == mp.MOTIVO_SIN_TRAMO
+
+
+def test_la_etiqueta_del_dato_no_exige_frase_completa():
+    """La etiqueta acompana a una cifra grande que ya carga el significado.
+
+    Pedirle verbo conjugado la mataba en TODOS los clips reales del proyecto, y con ella la
+    pieza entera. El titulo si lo exige, porque el titulo va solo.
+    """
+    assert mp.condensar_clausula("de medias superiores", 38, exigir_frase=False)
+    assert mp.condensar_clausula("de medias superiores", 38) == ""

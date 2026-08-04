@@ -758,7 +758,9 @@ def _palabras(texto: str) -> list[str]:
     return [w for w in re.split(r"\s+", " ".join((texto or "").split())) if w]
 
 
-def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS) -> str:
+def condensar_clausula(
+    texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS, *, exigir_frase: bool = True
+) -> str:
     """Fragmento de texto que se lee como una frase entera, o "" si no lo hay.
 
     Cortar por palabras a N caracteres producia letreros como "con secundarias que tenga
@@ -766,6 +768,10 @@ def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS
     LIMITE DE CLAUSULA (puntuacion o antes de una conjuncion), el fragmento no puede EMPEZAR
     por conjuncion ni preposicion, y si nada de eso da un fragmento de tamano razonable se
     devuelve vacio para que la pieza se omita. Calidad por encima de cobertura.
+
+    `exigir_frase=False` levanta la comprobacion de que el fragmento se sostenga solo. Se usa
+    para la ETIQUETA del dato destacado, que no es un titulo: acompana a una cifra grande que
+    ya carga el significado, y pedirle verbo conjugado la mataba en todos los clips reales.
     """
     limpio = limpiar_muletillas(" ".join((texto or "").split()))
     if not limpio:
@@ -777,7 +783,7 @@ def condensar_clausula(texto: str, maximo: int, minimo: int = TEXTO_MINIMO_CHARS
             continue
         if _termina_colgando(recortado):
             continue
-        if not se_sostiene_solo(recortado):
+        if exigir_frase and not se_sostiene_solo(recortado):
             continue
         validos.append(recortado)
     if not validos:
@@ -888,7 +894,7 @@ def _candidata_dato(tramos: list[Tramo], usados: set[int]) -> _Candidata | str |
     titulables = [
         (tr, cifra, etiqueta)
         for tr, cifra in con_cifra
-        if (etiqueta := condensar_clausula(tr.texto, DATO_ETIQUETA_MAX_CHARS))
+        if (etiqueta := condensar_clausula(tr.texto, DATO_ETIQUETA_MAX_CHARS, exigir_frase=False))
     ]
     if not titulables:
         return MOTIVO_ETIQUETA_SUCIA  # hay cifra, pero ningun tramo se puede etiquetar limpio
