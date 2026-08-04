@@ -116,7 +116,11 @@
       css.setProperty("--texto", v.marca_texto);
       document.getElementById("pieza").setAttribute("data-duration", String(DUR));
       document.getElementById("titulo").textContent = String(v.titulo);
-      document.getElementById("cta").textContent = String(v.cta);
+      var elCta = document.getElementById("cta");
+      elCta.textContent = String(v.cta);
+      /* La pastilla es un acento, no un hueco: sin texto secundario se esconde en vez de
+         pintar un rectangulo de color vacio. */
+      if (!String(v.cta).trim()) { elCta.style.display = "none"; }
 
       var ENTRA = Math.min(14 * F, DUR * 0.28);
       var SALE = Math.max(6 * F, ENTRA * 0.65);

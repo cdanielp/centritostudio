@@ -300,7 +300,8 @@ def test_los_textos_llegan_a_los_slots_que_declara_cada_plantilla():
     assert slots["lower_third"] == {"nombre", "rol"}
     assert slots["cierre"] == {"titulo", "cta"}
     assert plan.piezas[0].texto["titulo"] == TEXTOS.titulo
-    assert plan.piezas[-1].texto["cta"] == TEXTOS.cta
+    # El cierre YA NO repite el titulo del hook: manda la CTA.
+    assert plan.piezas[-1].texto["titulo"] == TEXTOS.cta
 
 
 # ── Pureza y determinismo ────────────────────────────────────────────────────
@@ -350,3 +351,126 @@ def test_las_restricciones_espaciales_son_las_medidas_en_hf2():
     assert mp.CARRIL_VERTICAL == (0.54, 0.68)
     assert mp.SEPARACION_MIN_MS == 500
     assert mp.MARGEN_FINAL_MS == 200
+
+
+# ── Coherencia entre el letrero y lo que se dice (punto 4) ───────────────────
+
+
+def test_el_cierre_no_repite_el_titulo_del_hook():
+    """Con el hook y el cierre diciendo lo mismo, el ultimo letrero no aportaba nada."""
+    plan = _plan(20000)
+    hook = next(p for p in plan.piezas if p.plantilla == "hook")
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert cierre.texto["titulo"] != hook.texto["titulo"]
+    assert cierre.texto["titulo"] == TEXTOS.cta
+
+
+def test_el_secundario_del_cierre_sale_de_lo_ultimo_que_se_dice():
+    plan = _plan(20000, tramos=_tramos((2000, "empieza"), (15000, "y aqui termina la idea")))
+    cierre = next(p for p in plan.piezas if p.plantilla == "cierre")
+    assert cierre.texto["cta"] == "y aqui termina la idea"
+
+
+def test_sin_tramos_el_secundario_del_cierre_va_vacio_y_no_se_inventa():
+    cierre = next(p for p in _plan(20000).piezas if p.plantilla == "cierre")
+    assert cierre.texto["cta"] == ""
+
+
+def test_el_dato_destacado_se_coloca_aunque_el_inicio_del_tramo_este_ocupado():
+    """Punto 4.3, el caso real: dos cifras habladas dentro del lower_third (3000-7500 ms).
+
+    Antes se omitia entero por `sin_separacion_minima` teniendo hueco 500 ms despues. Ahora la
+    ventana llega hasta el final del tramo y la pieza entra sin pisar a nadie.
+    """
+    tramos = [mp.Tramo(3700, 7460, "del 2023 al 2024 fue un 10"),
+              mp.Tramo(7460, 10800, "5 % de medias superiores")]
+    plan = _plan(56790, tramos=tramos)
+    dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
+    assert dato.t0_ms >= 8000, "debe arrancar tras el lower_third mas la separacion minima"
+    lower = next(p for p in plan.piezas if p.plantilla == "lower_third")
+    assert dato.t0_ms - lower.t1_ms >= mp.SEPARACION_MIN_MS
+
+
+def test_el_dato_sigue_arrancando_al_inicio_del_tramo_cuando_esta_libre():
+    """La regla original manda: la ventana es un plan B, no un desplazamiento por gusto."""
+    plan = _plan(30000, tramos=_tramos((9000, "cayo 42% el costo")))
+    dato = next(p for p in plan.piezas if p.plantilla == "dato_destacado")
+    assert dato.t0_ms == 9000
+
+
+# ── Relleno de huecos (punto 4.4) ────────────────────────────────────────────
+
+
+def _tramos_largos(dur_ms, paso=2500):
+    """Habla continua de principio a fin, para que el hueco sea de piezas y no de texto."""
+    return [
+        mp.Tramo(t, t + paso - 100, f"frase numero {i} del clip")
+        for i, t in enumerate(range(0, dur_ms - paso, paso))
+    ]
+
+
+def test_en_clips_largos_no_queda_ningun_hueco_de_mas_de_20s():
+    for dur in (35000, 56790, 90000, 120000):
+        plan = _plan(dur, tramos=_tramos_largos(dur))
+        piezas = sorted(plan.piezas, key=lambda p: p.t0_ms)
+        bordes = [0, *[t for p in piezas for t in (p.t0_ms, p.t1_ms)], dur]
+        huecos = [
+            bordes[i + 1] - bordes[i] for i in range(0, len(bordes) - 1, 2)
+        ]
+        assert max(huecos) <= mp.HUECO_MAX_MS, f"dur={dur} huecos={huecos}"
+
+
+def test_el_relleno_usa_titulo_seccion_con_texto_del_tramo_no_del_clip():
+    plan = _plan(56790, tramos=_tramos_largos(56790))
+    secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
+    assert secciones, "el clip largo necesitaba relleno"
+    for s in secciones:
+        assert s.texto["titulo"].startswith("frase numero")
+        assert s.texto["titulo"] != TEXTOS.titulo
+
+
+def test_en_clips_cortos_no_se_rellena_nada():
+    for dur in (12500, 20000, 30000):
+        plan = _plan(dur, tramos=_tramos_largos(dur))
+        assert "titulo_seccion" not in _nombres(plan), dur
+
+
+def test_el_relleno_prefiere_el_tramo_que_llega_tras_una_pausa_larga():
+    """Una pausa larga es donde el hablante cambia de tema; ahi es donde va el titulo."""
+    tramos = [
+        mp.Tramo(0, 3000, "arranque del clip"),
+        mp.Tramo(3100, 12000, "sigue la misma idea sin parar"),
+        mp.Tramo(14000, 20000, "y aqui empieza el tema nuevo"),
+        mp.Tramo(20100, 40000, "que continua sin pausa ninguna"),
+    ]
+    plan = _plan(45000, tramos=tramos)
+    secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
+    assert secciones
+    assert secciones[0].texto["titulo"] == "y aqui empieza el tema nuevo"
+
+
+def test_el_relleno_respeta_la_separacion_y_no_se_encima():
+    plan = _plan(90000, tramos=_tramos_largos(90000))
+    piezas = sorted(plan.piezas, key=lambda p: p.t0_ms)
+    for previa, siguiente in zip(piezas, piezas[1:], strict=False):
+        assert siguiente.t0_ms - previa.t1_ms >= mp.SEPARACION_MIN_MS
+
+
+def test_el_relleno_tambien_respeta_la_cara_en_vertical(tmp_path):
+    plan = _plan(
+        56790,
+        orientacion="vertical",
+        tramos=_tramos_largos(56790),
+        tray_csv=_csv_cara(tmp_path, 0.55, t_max=60.0),
+    )
+    secciones = [p for p in plan.piezas if p.plantilla == "titulo_seccion"]
+    assert secciones
+    assert {p.banda for p in secciones} == {mp.BANDA_ARRIBA}
+
+
+def test_el_texto_de_seccion_se_condensa_a_una_linea():
+    largo = "una frase muy larga que no cabe de ninguna manera en una placa de una sola linea"
+    plan = _plan(56790, tramos=[mp.Tramo(t, t + 2400, largo) for t in range(0, 54000, 2500)])
+    for s in (p for p in plan.piezas if p.plantilla == "titulo_seccion"):
+        assert len(s.texto["titulo"]) <= mp.TITULO_SECCION_MAX_CHARS
+        assert not s.texto["titulo"].endswith(" ")
