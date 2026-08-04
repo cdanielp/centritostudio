@@ -10,7 +10,7 @@
 
 | Componente | Version | Como se verifico |
 |---|---|---|
-| HyperFrames | `0.7.90` | `npx --no-install hyperframes --version` desde `C:\CLAUDECODE\hyperframes-lab` |
+| HyperFrames | `0.7.90` | `npx --no-install hyperframes --version` desde `<LAB>` |
 | Node.js | `v24.18.0` | `node -v` |
 | Chromium Headless Shell | `152.0.7928.2` | traza del propio render: `HeadlessChrome/152.0.7928.2` |
 | FFmpeg / FFprobe | `8.0-essentials_build-www.gyan.dev` | `ffmpeg -version` |
@@ -21,7 +21,7 @@ No se ejecuto `npx hyperframes skills update` ni ningun comando que cambie versi
 
 ## Metodologia
 
-Los renders de medicion viven FUERA del repo, en `C:\CLAUDECODE\hyperframes-lab\auditoria\`
+Los renders de medicion viven FUERA del repo, en `<LAB>\auditoria\`
 (arnes `medir.py`, `diferencia.py`, `diff_pixel.py`; salidas en `auditoria/salida/`).
 
 El arnes reutiliza `hyperframes.invocador.construir_comando` y
@@ -30,10 +30,16 @@ EXACTAMENTE el que ejecuta produccion, no una aproximacion. `npx` se resuelve co
 `shutil.which` (devuelve `npx.CMD`), las variables van por `--variables-file` en UTF-8
 explicito y todo corre con `PYTHONDONTWRITEBYTECODE=1`.
 
+**Redaccion de rutas.** El gate de privacidad de H4 (`revision/pre-hyperframes/smoke_h4_docs.py`,
+regla `ruta-personal`) bloquea las raices absolutas de esta maquina. En todas las salidas
+pegadas de este documento, y solo en el prefijo de la ruta, se sustituye
+`<REPO>` por la raiz del repositorio y `<LAB>` por la del laboratorio de HyperFrames. Nada
+mas se toca: ni comandos, ni sha256, ni conteos, ni mensajes de error.
+
 Comando exacto de una medicion (hook vertical, corrida 1 del bloque B):
 
 ```
-C:\Program Files\nodejs\npx.CMD hyperframes render C:\CLAUDECODE\ediciondevideo\motion\hook --format mov --quality high --fps 30 --output C:\CLAUDECODE\hyperframes-lab\auditoria\salida\b\hook_vertical\run1\pieza.mov --variables-file C:\CLAUDECODE\hyperframes-lab\auditoria\salida\b\hook_vertical\run1\pieza-variables.json --no-best-effort
+C:\Program Files\nodejs\npx.CMD hyperframes render <REPO>\motion\hook --format mov --quality high --fps 30 --output <LAB>\auditoria\salida\b\hook_vertical\run1\pieza.mov --variables-file <LAB>\auditoria\salida\b\hook_vertical\run1\pieza-variables.json --no-best-effort
 ```
 
 Las dos corridas de cada caso escriben en carpetas distintas pero con el MISMO basename
@@ -514,20 +520,20 @@ defecto que el script reescribe antes de la sonda.
 Primer intento, `--json` sobre el comando de produccion tal cual:
 
 ```
-C:\Program Files\nodejs\npx.CMD hyperframes render C:\CLAUDECODE\ediciondevideo\motion\hook --format mov --quality high --fps 30 --output ...\pieza.mov --variables-file ...\pieza-variables.json --no-best-effort --json
+C:\Program Files\nodejs\npx.CMD hyperframes render <REPO>\motion\hook --format mov --quality high --fps 30 --output ...\pieza.mov --variables-file ...\pieza-variables.json --no-best-effort --json
 ```
 
 `returncode = 0`, MOV producido (18713528 bytes), y **stdout sin ningun documento JSON**. Lo
 que sale por stdout es la interfaz de progreso del CLI:
 
 ```
-◆  Rendering hook → C:\CLAUDECODE\hyperframes-lab\auditoria\salida\d\json\pieza.mov
+◆  Rendering hook → <LAB>\auditoria\salida\d\json\pieza.mov
    30fps · high · auto workers (16 cores detected)
    GPU: browser GPU (auto-detect)
 ...
   █████████████████████████  100%  Render complete
 
-◇  C:\CLAUDECODE\hyperframes-lab\auditoria\salida\d\json\pieza.mov
+◇  <LAB>\auditoria\salida\d\json\pieza.mov
    17.8 MB · 2.5s video · rendered in 9.8s
 ```
 
@@ -559,7 +565,7 @@ Segundo intento, en el modo documentado. `--batch` resulto ser mutuamente excluy
 Tercer intento, con las variables dentro del lote. Comando:
 
 ```
-npx hyperframes render C:\CLAUDECODE\ediciondevideo\motion\hook --format mov --quality high --fps 30 --output ...\batch2\pieza.mov --no-best-effort --batch ...\batch2\lote.json --json
+npx hyperframes render <REPO>\motion\hook --format mov --quality high --fps 30 --output ...\batch2\pieza.mov --no-best-effort --batch ...\batch2\lote.json --json
 ```
 
 Salida JSON completa, literal (el unico documento que el CLI emite):
@@ -758,7 +764,7 @@ Ninguno. Los cuatro bloques se ejecutaron completos con evidencia pegada.
 ## Ubicacion de la evidencia
 
 Los renders de medicion viven fuera del repo, en
-`C:\CLAUDECODE\hyperframes-lab\auditoria\`:
+`<LAB>\auditoria\`:
 
 | ruta | contenido |
 |---|---|
