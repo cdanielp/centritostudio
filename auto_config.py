@@ -68,7 +68,7 @@ class AutoConfig:
     # `motion_nombre` vacio omite el lower_third entero (no se pinta una tarjeta en blanco).
     motion_nombre: str = ""
     motion_rol: str = ""
-    motion_cta: str = "Sigue para mas"
+    motion_cta: str = "Sigue para más"
     # Los textos de los letreros los escribe el LLM. Las heuristicas de espanol se quedan como
     # respaldo y entran solas si el modelo falla. Solo cuenta con `motion_enabled`.
     motion_textos_llm: bool = True

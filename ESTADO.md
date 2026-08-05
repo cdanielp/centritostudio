@@ -577,3 +577,24 @@ F4.2-CORTES se ADELANTA a F5-s2: el material real de K (OBS/edicion) tiene corte
 identica: ese test sigue verde.
 
 **Sin iniciar:** HF-4.
+
+## ADDENDUM DE DETALLES DE MOTION (2026-08-04)
+
+**PR #49 MERGEADO en `main` via merge commit `PENDIENTE` (dos padres).** Rama
+`fix/motion-detalles` preservada. Tres detalles salidos de mirar la demo 18 y el editor, sobre
+el pulido de HF-3 que entro por `366f218`.
+
+- **El CTA por defecto lleva su acento.** "Sigue para mas" salia en pantalla en TODOS los videos
+  con la capa encendida. El mismo texto vivia en el default de la API, en `AutoConfig`, en el
+  arnes de medicion y en dos fixtures; un test barre el repo con `git grep` para que no vuelva.
+- **La cifra es exclusiva del `dato_destacado`.** El hook decia "subio 10.5%" y seis segundos
+  despues la tarjeta pintaba "10.5%" a pantalla completa. La cifra se queda en la tarjeta y cede
+  la otra pieza, en la misma llamada de correccion que ya arregla longitudes y repeticiones.
+- **`POST /api/motion/plan/{clip}/regenerar` y el boton "Generar otro plan".** Son dos botones
+  distintos a proposito: **Descartar mis cambios** tira lo que escribio K y deja el plan que el
+  video ya tenia; **Generar otro plan** tira el plan del video y pide una propuesta nueva.
+  Regenerar olvida ademas los sidecars de texto del clip, porque la cache del LLM esta indexada
+  por transcripcion y prompt y sin tirarla el boton devolveria las mismas frases.
+
+**Verificacion:** suite `3205 -> 3214`, `ruff --no-cache` limpio, `hf_real` 17 passed a mano,
+Quality Gate verde. Capa apagada = salida byte identica: ese test sigue verde.

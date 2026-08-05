@@ -18,7 +18,7 @@ TEXTOS = mp.TextosMarca(
     kicker="",
     nombre="Carlos Daniel Penagos",
     rol="Prompt Models Studio",
-    cta="Sigue para mas",
+    cta="Sigue para más",
 )
 
 

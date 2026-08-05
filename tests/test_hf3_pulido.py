@@ -724,3 +724,139 @@ def test_la_huella_de_entrada_no_depende_de_donde_viva_la_trayectoria(tmp_path):
     assert motion_capa.huella_de_entrada(**comunes, tray_csv=a) == motion_capa.huella_de_entrada(
         **comunes, tray_csv=b
     )
+
+
+# ── El CTA por defecto lleva su acento (sesion 10) ───────────────────────────
+
+
+def test_el_cta_por_defecto_lleva_acento():
+    """Sale en pantalla en TODOS los videos, asi que un "mas" sin tilde se ve en todos."""
+    import auto_config
+
+    assert auto_config.AutoConfig().motion_cta == "Sigue para más"
+
+
+def test_ningun_default_del_repo_escribe_el_cta_sin_acento():
+    """Barrido: el mismo texto vivia en el default de la API, en la config y en los fixtures."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1]
+    # La aguja se arma en trozos para que este archivo no se cace a si mismo.
+    aguja = "Sigue para " + "mas"
+    salida = subprocess.run(
+        ["git", "grep", "-l", aguja, "--", "*.py", "*.html", "*.json"],
+        cwd=raiz,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    culpables = [
+        linea
+        for linea in salida.stdout.splitlines()
+        # Las mediciones son artefactos historicos: dicen lo que se genero entonces.
+        if linea and not linea.startswith("revision/hf-3/medicion_carril")
+    ]
+    assert culpables == [], f"CTA sin acento en: {culpables} ({sys.platform})"
+
+
+# ── La cifra es exclusiva del dato_destacado (sesion 10) ─────────────────────
+
+
+def _huecos_con_dato():
+    return [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {
+            "id": 1,
+            "plantilla": "dato_destacado",
+            "t0_ms": 8000,
+            "limite": 60,
+            "contexto": "y",
+            "cifra": "10.5%",
+        },
+    ]
+
+
+def test_otra_pieza_no_puede_llevar_la_cifra_del_dato():
+    """Medido en la demo 18: el hook decia "subio 10.5%" y la tarjeta pintaba "10.5%"."""
+    motivos = tl._motivos_por_cifra_repetida(
+        {0: "La deserción escolar subió 10.5%", 1: "de quienes ya estaban en prepa"},
+        _huecos_con_dato(),
+    )
+    assert list(motivos) == [0], "cede la otra pieza, no la tarjeta"
+    assert "10.5" in motivos[0]
+
+
+def test_la_tarjeta_del_dato_conserva_su_cifra():
+    """La cifra es lo que la hace destacable: nunca se le pide que la quite."""
+    motivos = tl._motivos_por_cifra_repetida({1: "10.5% de los alumnos"}, _huecos_con_dato())
+    assert motivos == {}
+
+
+def test_un_numero_dentro_de_otro_no_cuenta_como_repetido():
+    """Sin los bordes, la cifra "26" se daria por repetida dentro de "2026"."""
+    huecos = [
+        {"id": 0, "plantilla": "cierre", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {
+            "id": 1,
+            "plantilla": "dato_destacado",
+            "t0_ms": 8000,
+            "limite": 60,
+            "contexto": "y",
+            "cifra": "26 años",
+        },
+    ]
+    assert tl._motivos_por_cifra_repetida({0: "El plan para 2026"}, huecos) == {}
+
+
+def test_sin_dato_destacado_no_hay_cifra_que_proteger():
+    huecos = [{"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"}]
+    assert tl._motivos_por_cifra_repetida({0: "Subió 10.5% en un año"}, huecos) == {}
+
+
+# ── Pedir otro plan es distinto de descartar la edicion (sesion 10) ──────────
+
+
+def test_generar_otro_plan_tira_el_sello_y_replanifica(clip_sellado, monkeypatch):
+    """Es lo contrario de descartar: aquello tira lo de K, esto tira lo del video."""
+    import motion_edicion as me
+    import studio_motion as sm
+
+    mp4 = sm.resolver_clip("clipx")
+    assert me.ruta_render(mp4).is_file()
+    llamadas = []
+    monkeypatch.setattr(sm.motion_capa, "resolver_plan", lambda **kw: llamadas.append(kw) or None)
+
+    with pytest.raises(sm.StudioMotionError):
+        sm.regenerar_plan("clipx")  # el doble no vuelve a sellar, asi que no hay plan que ver
+
+    assert not me.ruta_render(mp4).is_file(), "el sello se tira antes de replanificar"
+    assert len(llamadas) == 1, "se replanifica una vez"
+
+
+def test_generar_otro_plan_olvida_la_cache_de_textos(tmp_path, monkeypatch):
+    """Sin tirar la cache del LLM, "otro plan" devolveria exactamente las mismas frases."""
+    import motion_textos_llm as mtl
+    import studio_motion as sm
+
+    monkeypatch.setattr(mtl, "TRANSCRIPTS", tmp_path)
+    mtl.ruta_sidecar("clipx").write_text("{}", encoding="utf-8")
+    mtl.ruta_sidecar("clipx.relleno").write_text("{}", encoding="utf-8")
+
+    sm._olvidar_textos_del_llm("clipx")
+
+    assert not mtl.ruta_sidecar("clipx").exists()
+    assert not mtl.ruta_sidecar("clipx.relleno").exists()
+
+
+def test_con_una_edicion_a_medias_no_se_regenera(clip_sellado):
+    """Planificar por encima dejaria el sello en automatico y el sidecar mandando en el render."""
+    import studio_motion as sm
+
+    piezas = sm.ver_plan("clipx")["piezas"]
+    piezas[0]["texto"]["titulo"] = "Lo que escribio K"
+    sm.guardar_plan("clipx", piezas)
+
+    with pytest.raises(sm.StudioMotionError, match="editado a mano"):
+        sm.regenerar_plan("clipx")

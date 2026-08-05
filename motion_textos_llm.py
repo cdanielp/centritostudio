@@ -447,6 +447,8 @@ Reglas, todas obligatorias:
 - VARIA LA CONSTRUCCION entre letreros. Dos no pueden empezar por la misma palabra, ni seguir
   el mismo molde. Si uno arranca con el sujeto, que el siguiente arranque con la accion, con la
   cifra o con la consecuencia.
+- La cifra del letrero de dato es SUYA. Ningun otro letrero puede llevar ese numero: la tarjeta
+  ya lo pinta en grande y verlo dos veces en el mismo video sobra.
 - Devuelve un texto por CADA id de la lista, con EL MISMO id que se te dio. No los renumeres.
 
 JSON: {{"textos":[{{"id":int,"texto":str}}]}}"""
@@ -554,7 +556,11 @@ def pedir_textos_para(
     # UNA sola correccion para los dos motivos por los que un texto no sirve: no cabe en la
     # plantilla, o repite lo que ya dice otra pieza del mismo clip. Juntarlos en una llamada
     # evita dos viajes por clip para dos peticiones que el modelo puede atender a la vez.
-    motivos = {**_motivos_por_largo(bruto, huecos), **_motivos_por_repeticion(textos, huecos)}
+    motivos = {
+        **_motivos_por_largo(bruto, huecos),
+        **_motivos_por_repeticion(textos, huecos),
+        **_motivos_por_cifra_repetida(textos, huecos),
+    }
     if motivos:
         textos = _corregir(textos, huecos, duracion_ms, motivos)
     incidencias = _registrar_inventadas(textos, huecos, transcripcion)
@@ -603,6 +609,37 @@ def _crudos_por_id(bruto: object) -> dict[int, str]:
         if isinstance(ident, int) and not isinstance(ident, bool):
             salida[ident] = " ".join(item["texto"].split())
     return salida
+
+
+def _motivos_por_cifra_repetida(textos: dict[int, str], huecos: list[dict]) -> dict[int, str]:
+    """Ids que repiten la cifra que ya pinta el `dato_destacado`. PURO.
+
+    Medido en la demo 18: el hook decia "La desercion escolar subio 10.5%" y la tarjeta, seis
+    segundos despues, "10.5%" a pantalla completa. La cifra es lo que hace destacable a esa
+    tarjeta, asi que se queda ahi y cede la otra pieza, sea cual sea su prioridad. Un numero
+    repetido no lo caza `secuencia_compartida`, que pide tres palabras significativas seguidas,
+    ni `arranque_compartido`, que solo mira la primera.
+    """
+    cifras = {
+        _NUMERO_INICIAL.search(h["cifra"]).group(0)
+        for h in huecos
+        if h.get("cifra") and _NUMERO_INICIAL.search(h["cifra"])
+    }
+    if not cifras:
+        return {}
+    duenos = {h["id"] for h in huecos if h.get("cifra")}
+    motivos: dict[int, str] = {}
+    for ident, texto in sorted(textos.items()):
+        if ident in duenos:
+            continue
+        # Sin los bordes, la cifra "26" se daria por repetida dentro de "2026".
+        repetidas = sorted(c for c in cifras if re.search(rf"(?<!\d){re.escape(c)}(?!\d)", texto))
+        if repetidas:
+            motivos[ident] = (
+                f'lleva la cifra "{", ".join(repetidas)}", que ya pinta en grande la tarjeta '
+                f"del dato. Di lo mismo SIN el numero."
+            )
+    return motivos
 
 
 def _motivos_por_repeticion(textos: dict[int, str], huecos: list[dict]) -> dict[int, str]:
