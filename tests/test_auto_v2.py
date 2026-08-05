@@ -606,7 +606,7 @@ def entorno_e2e(entorno, tmp_path, monkeypatch):
     monkeypatch.setattr(assets_comfy, "resolver_overlays", lambda *a: [])
     import caption_qa
 
-    monkeypatch.setattr(caption_qa, "qa_para_reporte", lambda stem: None)
+    monkeypatch.setattr(caption_qa, "qa_para_reporte", lambda stem, words_path=None: None)
 
     from types import SimpleNamespace
 

@@ -643,14 +643,9 @@ def _renderizar_clip(
         import auto_v2  # noqa: PLC0415
 
         progress(pct, f"Etapa 3-4/4: reencuadre + captions + b-roll (clip {etiqueta})...")
-        # Bloque 3 (HF-4): procesar_clip_v2 todavia devuelve un solo dict (formato "ambos"
-        # llega en el siguiente commit); se envuelve aqui para que el contrato de
-        # _renderizar_clip ya sea list[dict] en todos los caminos.
-        return [
-            auto_v2.procesar_clip_v2(
-                clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
-            )
-        ]
+        return auto_v2.procesar_clip_v2(
+            clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
+        )
     if formato == "9:16" and video_reanudable(final_path):  # solo reutiliza un MP4 publicable
         progress(pct, f"Clip {etiqueta}: reutilizando render previo")
         return [_info_orfano(clip, final_path)]

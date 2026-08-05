@@ -24,7 +24,7 @@ Tres reglas de esta capa, en orden de importancia:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import motion_plan as mp
@@ -126,10 +126,17 @@ class OpcionesMotion:
 
 @dataclass(frozen=True)
 class ResultadoMotion:
-    """Clips listos para componer + informe. `clips` vacio siempre es una salida valida."""
+    """Clips listos para componer + informe. `clips` vacio siempre es una salida valida.
+
+    `plan` (HF-4, Formato dual) es el `PlanMotion` TEMPORAL vivo detras de `informe["plan"]`
+    (que solo trae el dict serializado). Una pierna extra de formato lo necesita para
+    `plan_para_otro_formato`, sin volver a llamar al LLM. `None` cuando la capa esta apagada o
+    fallo: sin plan primario no hay de donde derivar una pierna extra.
+    """
 
     clips: tuple[ClipOverlay, ...] = ()
     informe: dict = field(default_factory=dict)
+    plan: mp.PlanMotion | None = None
 
     @property
     def activo(self) -> bool:
@@ -255,6 +262,63 @@ def resolver_plan(
     # El sello va AQUI y no en el render: es lo que hace que la proxima corrida reutilice este
     # plan en vez de volver a negociarlo, y lo que el editor ensena.
     _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, marca)
+    return plan, me.ORIGEN_AUTOMATICO
+
+
+# HF-4 Paso 1/3 (Formato dual): una pieza cuya banda en ESTA orientacion invade su propia
+# franja de captions (que puede ser distinta de la orientacion primaria) se omite EN ESE
+# FORMATO, no en los dos. No es lo mismo que MOTIVO_NO_CABE_EN_EL_LIENZO (ese es el backstop de
+# alfa medido tras renderizar; este es una comprobacion de banda ANTES de pedir la pieza).
+MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO = "banda_invade_captions_en_este_formato"
+
+
+def plan_para_otro_formato(
+    plan_base: mp.PlanMotion,
+    *,
+    clip_mp4: Path | None,
+    duracion_ms: int,
+    orientacion: str,
+    tray_csv: Path | None,
+    catalogo: set[str],
+) -> tuple[mp.PlanMotion, str]:
+    """(plan, origen) para una pierna EXTRA de formato (HF-4, Formato dual).
+
+    Reusa integramente el plan TEMPORAL ya resuelto por `resolver_plan()` para la pierna
+    primaria (piezas, tiempos, textos): CERO llamadas al LLM ni a Pexels. Solo redistribuye
+    banda para esta orientacion vía `motion_plan_spatial.colocar_bandas` (el PASO ESPACIAL), y
+    omite -con motivo propio- cualquier pieza cuya banda en ESTA orientacion invada su franja
+    de captions, sin tocar la lista de omisiones de la pierna primaria.
+
+    Como con la pierna primaria: un plan editado a mano para ESTE `clip_mp4` (que ya es un
+    nombre distinto al de la primaria) manda sobre el derivado automaticamente.
+    """
+    import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
+
+    if clip_mp4 is not None:
+        editado = me.cargar(
+            clip_mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
+        )
+        if editado is not None:
+            print(f"[motion] plan EDITADO a mano ({orientacion}): {len(editado.piezas)} pieza(s)")
+            return editado, me.ORIGEN_EDITADO
+
+    recolocadas = mps.colocar_bandas(plan_base.piezas, orientacion=orientacion, tray_csv=tray_csv)
+    piezas_ok: list[mp.Pieza] = []
+    omisiones = list(plan_base.omisiones)
+    for pieza in recolocadas:
+        if mps.banda_invade_captions(pieza.banda, orientacion):
+            print(
+                f"[motion] pieza '{pieza.plantilla}' omitida en {orientacion}: "
+                f"{MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO}"
+            )
+            omisiones.append(
+                mp.Omision(pieza.plantilla, MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO, orientacion)
+            )
+        else:
+            piezas_ok.append(pieza)
+    plan = replace(
+        plan_base, orientacion=orientacion, piezas=tuple(piezas_ok), omisiones=tuple(omisiones)
+    )
     return plan, me.ORIGEN_AUTOMATICO
 
 
@@ -541,11 +605,18 @@ def clips_de_motion(
     tray_csv: Path | None = None,
     timeout_s: float = 180.0,
     clip_mp4: Path | None = None,
+    plan_precomputado: tuple[mp.PlanMotion, str] | None = None,
 ) -> ResultadoMotion:
     """Planifica, pide las piezas y devuelve los overlays. NUNCA lanza.
 
     `raiz_cache` debe apuntar DENTRO del paquete (ver `raiz_cache_de_paquete`): asi las piezas
     viajan con el paquete y una reanudacion las encuentra en vez de volver a renderizarlas.
+
+    `plan_precomputado` (HF-4, Formato dual): cuando se pasa, se SALTA `resolver_plan()` (y por
+    tanto el LLM) y se usa ese `(plan, origen)` tal cual -- ver `plan_para_otro_formato`. Sigue
+    pidiendo las piezas a HyperFrames a este `ancho`/`alto` (necesario: el MOV y el desplazamiento
+    de banda dependen del lienzo de destino) y sigue sellando su propio `_motion_render.json`
+    junto a `clip_mp4` (que ya es un nombre distinto al de la pierna primaria).
     """
     if not opciones.enabled:
         return ResultadoMotion((), {"enabled": False})
@@ -563,6 +634,7 @@ def clips_de_motion(
             tray_csv=tray_csv,
             timeout_s=timeout_s,
             clip_mp4=clip_mp4,
+            plan_precomputado=plan_precomputado,
         )
     except Exception as exc:  # noqa: BLE001 - fail-open duro: la capa jamas tumba el render
         print(f"[motion] capa desactivada por un fallo, el video sale sin letreros: {exc}")
@@ -583,6 +655,7 @@ def _clips_de_motion(
     tray_csv: Path | None,
     timeout_s: float,
     clip_mp4: Path | None,
+    plan_precomputado: tuple[mp.PlanMotion, str] | None = None,
 ) -> ResultadoMotion:
     from hyperframes import pedir_pieza  # noqa: PLC0415 (solo con la capa encendida)
     from hyperframes.catalogo import Catalogo  # noqa: PLC0415
@@ -594,25 +667,28 @@ def _clips_de_motion(
     versiones = versiones_del_catalogo(ruta_catalogo)
 
     estilo_pedido = opciones.estilo or ESTILO_DEFAULT
-    plan, origen = resolver_plan(
-        clip_mp4=clip_mp4,
-        duracion_ms=duracion_ms,
-        orientacion=orientacion,
-        textos=opciones.textos(),
-        tramos=tramos,
-        tray_csv=tray_csv,
-        catalogo=set(versiones),
-        textos_llm=opciones.textos_llm,
-        stem=Path(clip_mp4).stem if clip_mp4 else "",
-        estilo=estilo_pedido,
-    )
+    if plan_precomputado is not None:
+        plan, origen = plan_precomputado
+    else:
+        plan, origen = resolver_plan(
+            clip_mp4=clip_mp4,
+            duracion_ms=duracion_ms,
+            orientacion=orientacion,
+            textos=opciones.textos(),
+            tramos=tramos,
+            tray_csv=tray_csv,
+            catalogo=set(versiones),
+            textos_llm=opciones.textos_llm,
+            stem=Path(clip_mp4).stem if clip_mp4 else "",
+            estilo=estilo_pedido,
+        )
     informe = _informe_base(plan)
     informe["origen"] = origen
     informe["estilo"] = estilo_pedido
     informe["incidencias_estilo"] = []
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
-        return ResultadoMotion((), informe)
+        return ResultadoMotion((), informe, plan=plan)
 
     validar_sin_solape(list(plan.piezas), orientacion)
 
@@ -694,7 +770,7 @@ def _clips_de_motion(
     )
     _resellar_con_incidencias_de_estilo(clip_mp4, plan, origen, duracion_ms, huella, informe)
     print(f"[motion] {len(clips)}/{len(plan.piezas)} piezas compuestas en {orientacion}")
-    return ResultadoMotion(tuple(clips), informe)
+    return ResultadoMotion(tuple(clips), informe, plan=plan)
 
 
 def _resellar_con_incidencias_de_estilo(
@@ -864,10 +940,12 @@ __all__ = [
     "bbox_alfa",
     "pieza_cabe_en_el_lienzo",
     "MOTIVO_NO_CABE_EN_EL_LIENZO",
+    "MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO",
     "huella_de_entrada",
     "marca_de",
     "orientacion_de",
     "plan_automatico",
+    "plan_para_otro_formato",
     "raiz_cache_de_paquete",
     "rellenar_textos_con_llm",
     "resolver_estilo",
