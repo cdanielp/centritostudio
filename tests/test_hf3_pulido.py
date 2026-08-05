@@ -759,3 +759,57 @@ def test_ningun_default_del_repo_escribe_el_cta_sin_acento():
         if linea and not linea.startswith("revision/hf-3/medicion_carril")
     ]
     assert culpables == [], f"CTA sin acento en: {culpables} ({sys.platform})"
+
+
+# ── La cifra es exclusiva del dato_destacado (sesion 10) ─────────────────────
+
+
+def _huecos_con_dato():
+    return [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {
+            "id": 1,
+            "plantilla": "dato_destacado",
+            "t0_ms": 8000,
+            "limite": 60,
+            "contexto": "y",
+            "cifra": "10.5%",
+        },
+    ]
+
+
+def test_otra_pieza_no_puede_llevar_la_cifra_del_dato():
+    """Medido en la demo 18: el hook decia "subio 10.5%" y la tarjeta pintaba "10.5%"."""
+    motivos = tl._motivos_por_cifra_repetida(
+        {0: "La deserción escolar subió 10.5%", 1: "de quienes ya estaban en prepa"},
+        _huecos_con_dato(),
+    )
+    assert list(motivos) == [0], "cede la otra pieza, no la tarjeta"
+    assert "10.5" in motivos[0]
+
+
+def test_la_tarjeta_del_dato_conserva_su_cifra():
+    """La cifra es lo que la hace destacable: nunca se le pide que la quite."""
+    motivos = tl._motivos_por_cifra_repetida({1: "10.5% de los alumnos"}, _huecos_con_dato())
+    assert motivos == {}
+
+
+def test_un_numero_dentro_de_otro_no_cuenta_como_repetido():
+    """Sin los bordes, la cifra "26" se daria por repetida dentro de "2026"."""
+    huecos = [
+        {"id": 0, "plantilla": "cierre", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {
+            "id": 1,
+            "plantilla": "dato_destacado",
+            "t0_ms": 8000,
+            "limite": 60,
+            "contexto": "y",
+            "cifra": "26 años",
+        },
+    ]
+    assert tl._motivos_por_cifra_repetida({0: "El plan para 2026"}, huecos) == {}
+
+
+def test_sin_dato_destacado_no_hay_cifra_que_proteger():
+    huecos = [{"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"}]
+    assert tl._motivos_por_cifra_repetida({0: "Subió 10.5% en un año"}, huecos) == {}
