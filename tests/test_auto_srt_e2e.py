@@ -333,7 +333,9 @@ def test_transcript_default_no_toca_srt(env, monkeypatch):
     )
     # basta con que NO se llame a auto_srt_run; se mockea _procesar_clip para evitar FFmpeg real.
     monkeypatch.setattr(
-        auto, "_procesar_clip", lambda clip, pdir: {"archivo": clip["archivo"], "titulo": ""}
+        auto,
+        "_procesar_clip",
+        lambda clip, pdir, *, formato="9:16": [{"archivo": clip["archivo"], "titulo": ""}],
     )
     r = auto.ejecutar_auto(env["video"], "demo")  # sin config = transcript histórico
     assert len(r["clips"]) == 3

@@ -381,69 +381,101 @@ def _brain_fail_open(groups: list[dict], stem: str, *, forzar: bool = False) -> 
         return None
 
 
-def _procesar_clip(clip: dict, paquete_dir: Path) -> dict:
-    """Un clip del clipper -> reframe escenas + captions + emojis en el paquete.
+def _procesar_clip(clip: dict, paquete_dir: Path, *, formato: str = "9:16") -> list[dict]:
+    """Un clip del clipper -> reframe escenas + captions + emojis en el paquete, una vez por
+    cada formato pedido.
 
     Orquestacion pura de funciones existentes (regla #19): reframe.reframe_clip,
     core.apply_brain/build_ass/burn_video_with_emojis, assets_comfy.resolver_overlays.
+
+    La pierna "9:16", cuando esta pedida, corre por el codigo EXACTO de siempre (regla de oro
+    de HF-4: nunca cambia, protege la byte-identidad historica). Cualquier pierna extra reusa
+    el transcript, el brain y los overlays YA resueltos por la primera pierna en vez de volver
+    a leerlos o a llamar al LLM: `auto_formato.formatos_pedidos` garantiza que "9:16" va
+    primero en la lista cuando esta presente.
     """
+    import auto_formato  # noqa: PLC0415
     import core  # noqa: PLC0415
     import reframe  # noqa: PLC0415
     from styles import get_style  # noqa: PLC0415
 
     stem = clip["archivo"].replace(".mp4", "")
-    stem_9x16, final_path = _final_path(clip, paquete_dir)
     clip_path = CLIPS_DIR / clip["archivo"]
+    info_fuente = core.get_video_info(clip_path)
+    pedidos = auto_formato.formatos_pedidos(
+        formato, src_ancho=info_fuente["width"], src_alto=info_fuente["height"]
+    )
 
-    rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_9x16}.mp4", tracker="escenas")
+    resultados: list[dict] = []
+    groups: list[dict] | None = None
+    overlays = None
+    palabras_path: Path | None = None
+    for salida in pedidos.salidas:
+        stem_fmt, final_path = auto_formato.ruta_final(
+            clip, paquete_dir, salida.sufijo, estilo=STYLE_AUTO
+        )
 
-    # Transcript re-basado del clipper -> stems _9x16 (regla #4: no re-transcribir)
-    for suf in ("_words.json", "_groups.json"):
-        src = TRANSCRIPTS / f"{stem}{suf}"
-        if src.exists():
-            shutil.copy(src, TRANSCRIPTS / f"{stem_9x16}{suf}")
+        if salida.necesita_reframe:
+            rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_fmt}.mp4", tracker="escenas")
+            clip_listo = CLIPS_DIR / f"{stem_fmt}.mp4"
+        else:
+            rf = {}
+            clip_listo = clip_path  # sin reencuadre: la fuente TAL CUAL (como demo_horizontal.py)
 
-    groups_path = TRANSCRIPTS / f"{stem_9x16}_groups.json"
-    groups = json.loads(groups_path.read_text(encoding="utf-8")) if groups_path.exists() else []
+        if groups is None:
+            # PIERNA PRIMARIA (o unica pedida): transcript, brain y overlays se resuelven aqui,
+            # UNA sola vez para todo el clip. Transcript re-basado del clipper -> stem de esta
+            # salida (regla #4: no re-transcribir).
+            for suf in ("_words.json", "_groups.json"):
+                src = TRANSCRIPTS / f"{stem}{suf}"
+                if src.exists():
+                    shutil.copy(src, TRANSCRIPTS / f"{stem_fmt}{suf}")
+            groups_path = TRANSCRIPTS / f"{stem_fmt}_groups.json"
+            groups = (
+                json.loads(groups_path.read_text(encoding="utf-8")) if groups_path.exists() else []
+            )
+            brain_data = _brain_fail_open(groups, stem_fmt)
+            if brain_data:
+                groups = core.apply_brain(groups, brain_data)
 
-    brain_data = _brain_fail_open(groups, stem_9x16)
-    if brain_data:
-        groups = core.apply_brain(groups, brain_data)
+            import assets_comfy as ac  # noqa: PLC0415
 
-    import assets_comfy as ac  # noqa: PLC0415
+            overlays = ac.resolver_overlays(groups_path, TRANSCRIPTS / f"{stem_fmt}.brain.json")
+            palabras_path = TRANSCRIPTS / f"{stem_fmt}_words.json"
 
-    overlays = ac.resolver_overlays(groups_path, TRANSCRIPTS / f"{stem_9x16}.brain.json")
+        info_video = core.get_video_info(clip_listo)
+        style_cfg = get_style(STYLE_AUTO)
+        ass_path = ROOT / "output" / f"{stem_fmt}_{STYLE_AUTO}.ass"
+        core.build_ass(groups, info_video["width"], info_video["height"], style_cfg, ass_path)
 
-    clip_9x16 = CLIPS_DIR / f"{stem_9x16}.mp4"
-    info = core.get_video_info(clip_9x16)
-    style_cfg = get_style(STYLE_AUTO)
-    ass_path = ROOT / "output" / f"{stem_9x16}_{STYLE_AUTO}.ass"
-    core.build_ass(groups, info["width"], info["height"], style_cfg, ass_path)
+        core.burn_video_with_emojis(clip_listo, ass_path, final_path, overlays, style_cfg)
 
-    core.burn_video_with_emojis(clip_9x16, ass_path, final_path, overlays, style_cfg)
+        # Caption QA solo-lectura para el REPORTE (regla 15: no altera el render). Reusa las
+        # words de la pierna primaria: los tiempos no cambian con el formato.
+        try:
+            import caption_qa  # noqa: PLC0415
 
-    # Caption QA solo-lectura para el REPORTE (regla 15: no altera el render)
-    try:
-        import caption_qa  # noqa: PLC0415
+            info_qa = caption_qa.qa_para_reporte(stem_fmt, words_path=palabras_path)
+        except ImportError:
+            info_qa = None
 
-        info_qa = caption_qa.qa_para_reporte(stem_9x16)  # fail-open interno
-    except ImportError:
-        info_qa = None
-
-    return {
-        "archivo": final_path.name,
-        "titulo": clip.get("titulo", ""),
-        "razon": clip.get("razon", ""),
-        "score": clip.get("score"),
-        "dur_s": clip.get("dur_s", 0),
-        "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
-        "qa": info_qa,
-        "emojis_msg": (
-            f"{len(overlays)} overlay(s)"
-            if overlays
-            else "sin overlays (ComfyUI apagado o sin keywords)"
-        ),
-    }
+        resultados.append(
+            {
+                "archivo": final_path.name,
+                "titulo": clip.get("titulo", ""),
+                "razon": clip.get("razon", ""),
+                "score": clip.get("score"),
+                "dur_s": clip.get("dur_s", 0),
+                "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
+                "qa": info_qa,
+                "emojis_msg": (
+                    f"{len(overlays)} overlay(s)"
+                    if overlays
+                    else "sin overlays (ComfyUI apagado o sin keywords)"
+                ),
+            }
+        )
+    return resultados
 
 
 def _clip_id(clip: dict) -> str:
@@ -463,76 +495,110 @@ def _marcar_pipeline_en_meta(meta: dict, *, es_v2: bool, es_srt: bool, fingerpri
         meta["config_fingerprint"] = fingerprint
 
 
-def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx) -> dict:
-    """Un clip con caption_source=srt: deriva SRT/words/groups del PADRE por rango y renderiza.
+def _procesar_clip_srt(clip: dict, paquete_dir: Path, ctx, *, formato: str = "9:16") -> list[dict]:
+    """Un clip con caption_source=srt: deriva SRT/words/groups del PADRE por rango y renderiza,
+    una vez por cada formato pedido.
 
     El texto oficial viene del clip.srt (rebasado a t=0); las words del clip solo aportan timings
     (semántica S36-C2A1: word_aligned/substitution/cue_fallback). Emojis desde los groups del clip.
     NO usa los `{stem}_words/groups` históricos. Reutiliza auto_srt_artifacts + srt_caption + core.
+
+    Los artefactos SRT (arts/groups/overlays) no dependen del formato de salida: se resuelven
+    UNA vez, en la pierna primaria ("9:16" cuando esta pedida, por `auto_formato.formatos_pedidos`),
+    y se reusan para cualquier pierna extra.
     """
+    import auto_formato  # noqa: PLC0415
     import auto_srt_artifacts  # noqa: PLC0415
     import core  # noqa: PLC0415
     import reframe  # noqa: PLC0415
     import srt_caption  # noqa: PLC0415
     from styles import get_style  # noqa: PLC0415
 
-    stem_9x16, final_path = _final_path(clip, paquete_dir)
     clip_path = CLIPS_DIR / clip["archivo"]
     start_ms = int(round(float(clip["start"]) * 1000))
     end_ms = int(round(float(clip["end"]) * 1000))
-
-    # Artefactos privados del clip en el namespace del run (SRT/words/groups/manifest).
-    arts = auto_srt_artifacts.resolve_clip_artifacts(ctx.run_dir, _clip_id(clip))
-    art_summary = auto_srt_artifacts.derive_clip_artifacts(
-        arts,
-        srt_document=ctx.srt_document,
-        parent_words=ctx.parent_words,
-        parent_video=ctx.binding.path,
-        output_clip=clip_path,
-        source_start_ms=start_ms,
-        source_end_ms=end_ms,
+    info_fuente = core.get_video_info(clip_path)
+    pedidos = auto_formato.formatos_pedidos(
+        formato, src_ancho=info_fuente["width"], src_alto=info_fuente["height"]
     )
 
-    rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_9x16}.mp4", tracker="escenas")
-    clip_9x16 = CLIPS_DIR / f"{stem_9x16}.mp4"
-    info = core.get_video_info(clip_9x16)
-    dur_ms = int(round(float(info["duration"]) * 1000)) if info.get("duration") else None
+    resultados: list[dict] = []
+    groups = overlays = art_summary = arts = None
+    fallback_ratio = 0.0
+    for salida in pedidos.salidas:
+        stem_fmt, final_path = auto_formato.ruta_final(
+            clip, paquete_dir, salida.sufijo, estilo=STYLE_AUTO
+        )
 
-    # Groups SRT-alineados del clip (texto oficial del clip.srt + timings de las words del clip).
-    clip_words = json.loads(arts.words_path.read_text(encoding="utf-8"))["words"]
-    groups, _result, alignment_payload = srt_caption.preparar_desde_srt(
-        arts.srt_path, clip_words, video_duration_ms=dur_ms, words_file=arts.words_path.name
-    )
-    auto_srt_artifacts.persist_alignment(arts, alignment_payload)
-    # fracción de cues caídos a cue_fallback (sin karaoke real); 0.0 si no hay cues.
-    fallback_ratio = round(_result.cue_fallback / _result.n_cues, 4) if _result.n_cues else 0.0
+        if salida.necesita_reframe:
+            rf = reframe.reframe_clip(clip_path, CLIPS_DIR / f"{stem_fmt}.mp4", tracker="escenas")
+            clip_listo = CLIPS_DIR / f"{stem_fmt}.mp4"
+        else:
+            rf = {}
+            clip_listo = clip_path  # sin reencuadre: la fuente TAL CUAL
 
-    import assets_comfy as ac  # noqa: PLC0415
+        info_video = core.get_video_info(clip_listo)
 
-    overlays = ac.resolver_overlays(arts.groups_path, TRANSCRIPTS / f"{stem_9x16}.brain.json")
-    style_cfg = get_style(STYLE_AUTO)
-    ass_path = ROOT / "output" / f"{stem_9x16}_{STYLE_AUTO}.ass"
-    core.build_ass(groups, info["width"], info["height"], style_cfg, ass_path)
-    core.burn_video_with_emojis(clip_9x16, ass_path, final_path, overlays, style_cfg)
+        if groups is None:
+            # PIERNA PRIMARIA (o unica pedida): artefactos SRT/groups/overlays se resuelven
+            # aqui, UNA sola vez para todo el clip.
+            arts = auto_srt_artifacts.resolve_clip_artifacts(ctx.run_dir, _clip_id(clip))
+            art_summary = auto_srt_artifacts.derive_clip_artifacts(
+                arts,
+                srt_document=ctx.srt_document,
+                parent_words=ctx.parent_words,
+                parent_video=ctx.binding.path,
+                output_clip=clip_path,
+                source_start_ms=start_ms,
+                source_end_ms=end_ms,
+            )
+            dur_ms = (
+                int(round(float(info_video["duration"]) * 1000))
+                if info_video.get("duration")
+                else None
+            )
+            clip_words = json.loads(arts.words_path.read_text(encoding="utf-8"))["words"]
+            groups, _result, alignment_payload = srt_caption.preparar_desde_srt(
+                arts.srt_path, clip_words, video_duration_ms=dur_ms, words_file=arts.words_path.name
+            )
+            auto_srt_artifacts.persist_alignment(arts, alignment_payload)
+            # fracción de cues caídos a cue_fallback (sin karaoke real); 0.0 si no hay cues.
+            fallback_ratio = (
+                round(_result.cue_fallback / _result.n_cues, 4) if _result.n_cues else 0.0
+            )
 
-    return {
-        "archivo": final_path.name,
-        "titulo": clip.get("titulo", ""),
-        "razon": clip.get("razon", ""),
-        "score": clip.get("score"),
-        "dur_s": clip.get("dur_s", 0),
-        "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
-        "caption_source": "srt",
-        "clip_id": arts.clip_id,
-        "caption_coverage": art_summary["caption_coverage"],
-        "n_cues": art_summary["n_cues"],
-        "fallback_ratio": fallback_ratio,
-        "emojis_msg": (
-            f"{len(overlays)} overlay(s)"
-            if overlays
-            else "sin overlays (ComfyUI apagado o sin keywords)"
-        ),
-    }
+            import assets_comfy as ac  # noqa: PLC0415
+
+            overlays = ac.resolver_overlays(
+                arts.groups_path, TRANSCRIPTS / f"{stem_fmt}.brain.json"
+            )
+
+        style_cfg = get_style(STYLE_AUTO)
+        ass_path = ROOT / "output" / f"{stem_fmt}_{STYLE_AUTO}.ass"
+        core.build_ass(groups, info_video["width"], info_video["height"], style_cfg, ass_path)
+        core.burn_video_with_emojis(clip_listo, ass_path, final_path, overlays, style_cfg)
+
+        resultados.append(
+            {
+                "archivo": final_path.name,
+                "titulo": clip.get("titulo", ""),
+                "razon": clip.get("razon", ""),
+                "score": clip.get("score"),
+                "dur_s": clip.get("dur_s", 0),
+                "avisos": avisos_de_segmentos(rf.get("segmentos", [])),
+                "caption_source": "srt",
+                "clip_id": arts.clip_id,
+                "caption_coverage": art_summary["caption_coverage"],
+                "n_cues": art_summary["n_cues"],
+                "fallback_ratio": fallback_ratio,
+                "emojis_msg": (
+                    f"{len(overlays)} overlay(s)"
+                    if overlays
+                    else "sin overlays (ComfyUI apagado o sin keywords)"
+                ),
+            }
+        )
+    return resultados
 
 
 def _renderizar_clip(
@@ -544,37 +610,52 @@ def _renderizar_clip(
     es_v2: bool,
     srt_ctx,
     config,
+    formato: str,
     etiqueta: str,
     pct: int,
     progress,
-) -> dict:
-    """Renderiza (o reutiliza) un clip según la ruta. SRT aísla el fallo por clip (saneado)."""
+) -> list[dict]:
+    """Renderiza (o reutiliza) un clip según la ruta. SRT aísla el fallo por clip (saneado).
+
+    Devuelve UNA entrada por formato pedido. `final_path` sigue siendo el nombre historico
+    (sufijo 9x16): el atajo de reuso por MP4 huerfano solo es fiable cuando ese es el UNICO
+    formato pedido (si hay mas de uno, un MP4 9x16 existente no dice nada sobre si el 16x9
+    tambien se termino, asi que se cae al procesamiento completo en vez de arriesgar un dato
+    a medias).
+    """
     if es_srt:
         progress(pct, f"Etapa 3-4/4: reencuadre + captions SRT (clip {etiqueta})...")
         try:  # fallo aislado por clip: un clip que revienta no detiene los demas
-            return _procesar_clip_srt(clip, paquete_dir, srt_ctx)
+            return _procesar_clip_srt(clip, paquete_dir, srt_ctx, formato=formato)
         except Exception as exc:  # noqa: BLE001 (se sanea; el run continua en 'partial')
             progress(pct, f"Clip {etiqueta}: error, continua con los demas")
-            return {
-                "archivo": final_path.name,
-                "titulo": clip.get("titulo", ""),
-                "clip_id": _clip_id(clip),
-                "caption_source": "srt",
-                "status": "error",
-                "error_code": type(exc).__name__,
-            }
+            return [
+                {
+                    "archivo": final_path.name,
+                    "titulo": clip.get("titulo", ""),
+                    "clip_id": _clip_id(clip),
+                    "caption_source": "srt",
+                    "status": "error",
+                    "error_code": type(exc).__name__,
+                }
+            ]
     if es_v2:
         import auto_v2  # noqa: PLC0415
 
         progress(pct, f"Etapa 3-4/4: reencuadre + captions + b-roll (clip {etiqueta})...")
-        return auto_v2.procesar_clip_v2(
-            clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
-        )
-    if video_reanudable(final_path):  # P1-OUT-3: solo reutiliza un MP4 realmente publicable
+        # Bloque 3 (HF-4): procesar_clip_v2 todavia devuelve un solo dict (formato "ambos"
+        # llega en el siguiente commit); se envuelve aqui para que el contrato de
+        # _renderizar_clip ya sea list[dict] en todos los caminos.
+        return [
+            auto_v2.procesar_clip_v2(
+                clip, paquete_dir, config, transcripts=TRANSCRIPTS, clips_dir=CLIPS_DIR, root=ROOT
+            )
+        ]
+    if formato == "9:16" and video_reanudable(final_path):  # solo reutiliza un MP4 publicable
         progress(pct, f"Clip {etiqueta}: reutilizando render previo")
-        return _info_orfano(clip, final_path)
+        return [_info_orfano(clip, final_path)]
     progress(pct, f"Etapa 3-4/4: reencuadre + captions (clip {etiqueta})...")
-    return _procesar_clip(clip, paquete_dir)
+    return _procesar_clip(clip, paquete_dir, formato=formato)
 
 
 def _checkpoint_reutilizable(
@@ -622,6 +703,7 @@ def ejecutar_auto(
         raise ValueError(f"Objetivo '{objetivo}' no soportado. Opciones: {OBJETIVOS}")
     es_v2 = config is not None and config.mode == "v2"
     es_srt = config is not None and config.caption_source == "srt"
+    formato = config.formato if config is not None else "9:16"
     # Un run SRT es un pipeline distinto: paquete fingerprinteado (aislado del transcript/classic).
     usa_fp = es_v2 or es_srt
     fingerprint = config.fingerprint() if usa_fp else None
@@ -680,7 +762,7 @@ def ejecutar_auto(
                 clips_info.append(info_prev)
                 continue
             progress(pct, f"Clip {i}/{len(clips)}: checkpoint incompatible, se re-renderiza")
-        info = _renderizar_clip(
+        infos = _renderizar_clip(
             clip,
             paquete_dir,
             final_path,
@@ -688,12 +770,17 @@ def ejecutar_auto(
             es_v2=es_v2,
             srt_ctx=srt_ctx,
             config=config,
+            formato=formato,
             etiqueta=f"{i}/{len(clips)}",
             pct=pct,
             progress=progress,
         )
-        atomic_write_json(sidecar, info)  # checkpoint atomico: un resume nunca lo lee truncado
-        clips_info.append(info)
+        # Un info por formato pedido (formato="9:16" default: siempre exactamente uno, mismo
+        # sidecar de siempre). Cada uno se sella con SU PROPIO checkpoint atomico, nombrado por
+        # su propio "archivo" (que ya lleva el sufijo de formato): dos formatos nunca se pisan.
+        for info in infos:
+            atomic_write_json(_sidecar_path(paquete_dir / info["archivo"]), info)
+            clips_info.append(info)
     t_render = time.time() - t1
 
     progress(95, "Armando paquete...")
@@ -709,6 +796,11 @@ def ejecutar_auto(
         "t_total_s": round(time.time() - t0, 1),
         "costo_usd": resultado.get("telemetria_resumen", {}).get("costo_usd", 0),
     }
+    # Paso 2 de HF-4: el formato pedido aparece en el resumen del job SOLO cuando no es el
+    # default historico. classic-transcript con formato="9:16" (el 99.9% de las corridas hasta
+    # hoy) sigue sin tocar meta en absoluto.
+    if formato != "9:16":
+        meta["formato"] = formato
     _marcar_pipeline_en_meta(
         meta, es_v2=es_v2, es_srt=es_srt, fingerprint=fingerprint, config=config
     )
