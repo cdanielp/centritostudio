@@ -235,3 +235,45 @@ def test_16x9_solo_produce_un_mp4_con_sufijo_16x9(entorno_e2e_horizontal):
 def test_meta_formato_ambos(entorno_e2e_horizontal):
     r = auto.ejecutar_auto(entorno_e2e_horizontal["video"], "vid", config=CFG_AMBOS)
     assert r["meta"]["formato"] == "ambos"
+
+
+# ── Letreros: el sello de la pierna sin reencuadre usa SU PROPIO nombre ──────
+#
+# Bug real detectado en la corrida de evidencia real (hf_real): la pierna 16:9 quema desde la
+# fuente compartida (sin reencuadrar), y sellar su plan bajo el nombre de ESA fuente compartida
+# (sin sufijo de formato) dejaba el sidecar bajo un nombre que el editor nunca pide y que
+# ademas podria colisionar con cualquier otro consumidor de la fuente. `clip_identidad` en
+# auto_v2.procesar_clip_v2 separa "de donde se quema" de "bajo que nombre se sella".
+
+
+def test_ambos_con_letreros_sella_el_16x9_bajo_su_propio_nombre_no_el_de_la_fuente(
+    entorno_e2e_horizontal, monkeypatch
+):
+    import motion_capa
+    import motion_plan as mp
+
+    llamadas_clip_mp4 = []
+    # plan NO vacio y NO None: si la primaria devolviera plan=None, _capa_motion_otro_formato
+    # cortaria ANTES de llamar a clips_de_motion (fail-open de "sin plan primario, sin pierna
+    # extra") y el espia solo veria la llamada primaria, sin probar nada del bug real.
+    plan_falso = mp.PlanMotion(orientacion="vertical", piezas=())
+
+    def espia(**kw):
+        llamadas_clip_mp4.append(Path(kw["clip_mp4"]).stem if kw.get("clip_mp4") else None)
+        return motion_capa.ResultadoMotion((), {"enabled": True, "plan": None}, plan=plan_falso)
+
+    monkeypatch.setattr(motion_capa, "clips_de_motion", espia)
+    cfg = AutoConfig(
+        mode="v2",
+        formato="ambos",
+        motion_enabled=True,
+        motion_nombre="K",
+        motion_textos_llm=False,
+        target_coverage_pct=0.9,
+        max_coverage_pct=0.95,
+    )
+    auto.ejecutar_auto(entorno_e2e_horizontal["video"], "vid", config=cfg)
+
+    assert llamadas_clip_mp4 == ["vid_clip1_corto_9x16", "vid_clip1_corto_16x9"]
+    # nunca el stem de la fuente compartida sin sufijo: eso pisaria/perderia el sello
+    assert "vid_clip1_corto" not in llamadas_clip_mp4

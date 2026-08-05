@@ -280,6 +280,7 @@ def plan_para_otro_formato(
     orientacion: str,
     tray_csv: Path | None,
     catalogo: set[str],
+    huella_entrada: str = "",
 ) -> tuple[mp.PlanMotion, str]:
     """(plan, origen) para una pierna EXTRA de formato (HF-4, Formato dual).
 
@@ -291,6 +292,11 @@ def plan_para_otro_formato(
 
     Como con la pierna primaria: un plan editado a mano para ESTE `clip_mp4` (que ya es un
     nombre distinto al de la primaria) manda sobre el derivado automaticamente.
+
+    Sella el plan derivado ella misma (mismo trato que `resolver_plan`, PASO 3 de HF-4): al
+    saltarse `resolver_plan()` por completo (no hay LLM que pedirle) tambien se salta SU sello,
+    y sin este paso el sidecar `<clip>_motion_render.json` de esta pierna nunca se escribiria
+    -- el editor la encontraria como "sin componer" a pesar de que el MP4 si tiene letreros.
     """
     import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
 
@@ -319,6 +325,7 @@ def plan_para_otro_formato(
     plan = replace(
         plan_base, orientacion=orientacion, piezas=tuple(piezas_ok), omisiones=tuple(omisiones)
     )
+    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, huella_entrada)
     return plan, me.ORIGEN_AUTOMATICO
 
 

@@ -152,7 +152,7 @@ def _capa_motion(
     config: AutoConfig,
     clip: dict,
     paquete_dir: Path,
-    clip_9x16: Path,
+    clip_identidad: Path,
     groups: list,
     vinfo: dict,
     dur: float,
@@ -162,8 +162,10 @@ def _capa_motion(
     Apagada devuelve el resultado vacio sin tocar nada. El titulo del hook y del cierre es el
     que ya genero el clipper viral: es la unica frase del clip que esta escrita para
     engancharse, y volver a inventar una seria duplicar el trabajo del cerebro. El CSV de
-    trayectoria es el que acaba de escribir el reframe junto al clip 9:16, que es donde
-    `tray_resolve` lo busca primero.
+    trayectoria es el que acaba de escribir el reframe junto al clip (si esta pierna reencuadro),
+    que es donde `tray_resolve` lo busca primero. `clip_identidad` es el nombre CANONICO de esta
+    salida (siempre con su sufijo de formato), no necesariamente el archivo del que se queman
+    captions: ver el comentario en `procesar_clip_v2` sobre por que se separan los dos.
     """
     import motion_capa  # noqa: PLC0415 (aditiva: la ruta historica no lo importa)
 
@@ -182,8 +184,8 @@ def _capa_motion(
         raiz_cache=motion_capa.raiz_cache_de_paquete(paquete_dir),
         root=Path(__file__).resolve().parent,
         tramos=motion_capa.tramos_de_groups(groups),
-        tray_csv=tray_resolve.resolver_tray_csv(Path(clip_9x16), Path(clip_9x16).parent),
-        clip_mp4=Path(clip_9x16),
+        tray_csv=tray_resolve.resolver_tray_csv(Path(clip_identidad), Path(clip_identidad).parent),
+        clip_mp4=Path(clip_identidad),
     )
 
 
@@ -192,7 +194,7 @@ def _capa_motion_otro_formato(
     clip: dict,
     plan_base,
     paquete_dir: Path,
-    clip_listo: Path,
+    clip_identidad: Path,
     groups: list,
     vinfo: dict,
     dur: float,
@@ -203,6 +205,11 @@ def _capa_motion_otro_formato(
     (`plan_base`, el `ResultadoMotion.plan` que devolvio `_capa_motion`) y solo redistribuye
     banda para esta orientacion via `motion_capa.plan_para_otro_formato`. Si la capa esta
     apagada o la primaria no produjo plan (apagada o fallo), no hay de donde derivar: vacio.
+
+    `clip_identidad` es SIEMPRE el nombre con sufijo de formato (`{stem}_{sufijo}.mp4`), exista
+    o no un archivo fisico ahi (una pierna sin reencuadre quema desde la fuente compartida, pero
+    su sello de letreros tiene que vivir bajo SU PROPIO nombre para que el editor lo encuentre
+    por el nombre final y para que nunca pise el sidecar de la fuente).
     """
     import motion_capa  # noqa: PLC0415
 
@@ -213,19 +220,35 @@ def _capa_motion_otro_formato(
 
     ancho, alto = vinfo["width"], vinfo["height"]
     orientacion = motion_capa.orientacion_de(ancho, alto)
-    tray_csv = tray_resolve.resolver_tray_csv(Path(clip_listo), Path(clip_listo).parent)
+    tray_csv = tray_resolve.resolver_tray_csv(Path(clip_identidad), Path(clip_identidad).parent)
     ruta_catalogo = Path(__file__).resolve().parent / motion_capa.CATALOGO_REL
     versiones = motion_capa.versiones_del_catalogo(ruta_catalogo)
+    duracion_ms = int(round(dur * 1000))
+    opciones = _opciones_motion(config, clip)
+    tramos = motion_capa.tramos_de_groups(groups)
+    # Misma huella que calcularia `resolver_plan` para esta orientacion: no gobierna ningun
+    # reuso aqui (esta pierna siempre deriva fresco de `plan_base`, nunca vuelve a leer su
+    # propio sello), pero deja el sidecar tan auditable como el de la pierna primaria.
+    huella = motion_capa.huella_de_entrada(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=opciones.textos(),
+        tramos=tramos,
+        tray_csv=tray_csv,
+        catalogo=set(versiones),
+        textos_llm=opciones.textos_llm,
+        estilo=opciones.estilo,
+    )
 
     plan, origen = motion_capa.plan_para_otro_formato(
         plan_base,
-        clip_mp4=Path(clip_listo),
-        duracion_ms=int(round(dur * 1000)),
+        clip_mp4=Path(clip_identidad),
+        duracion_ms=duracion_ms,
         orientacion=orientacion,
         tray_csv=tray_csv,
         catalogo=set(versiones),
+        huella_entrada=huella,
     )
-    opciones = _opciones_motion(config, clip)
     return motion_capa.clips_de_motion(
         opciones=opciones,
         ancho=ancho,
@@ -234,9 +257,9 @@ def _capa_motion_otro_formato(
         duracion_s=dur,
         raiz_cache=motion_capa.raiz_cache_de_paquete(paquete_dir),
         root=Path(__file__).resolve().parent,
-        tramos=motion_capa.tramos_de_groups(groups),
+        tramos=tramos,
         tray_csv=tray_csv,
-        clip_mp4=Path(clip_listo),
+        clip_mp4=Path(clip_identidad),
         plan_precomputado=(plan, origen),
     )
 
@@ -294,20 +317,28 @@ def procesar_clip_v2(
         )
         es_primaria = groups is None
 
+        # Identidad de ESTA salida para el sello de letreros (HF-4, Paso 3): SIEMPRE nombrada
+        # por formato, exista o no un archivo fisico ahi. `clip_listo` (mas abajo) es de donde
+        # se queman captions/overlays de VERDAD, y para la pierna sin reencuadre es la fuente
+        # tal cual (sin sufijo) -- pero sellar el plan bajo ESE nombre pisaria el sidecar de la
+        # fuente compartida y nunca lo encontraria el editor, que pide el plan por el nombre
+        # final (`stem_fmt`). Los dos conceptos se separan a proposito.
+        clip_identidad = clips_dir / f"{stem_fmt}.mp4"
+
         if salida.necesita_reframe:
             # `tray_dir` SOLO con la capa de letreros encendida (regla historica intacta): el
             # reframe escribe entonces `trayectoria_{stem_fmt}.csv` junto al clip, que es de
             # donde el planificador saca la zona de la cara.
             rf = reframe.reframe_clip(
                 clip_path,
-                clips_dir / f"{stem_fmt}.mp4",
+                clip_identidad,
                 tracker="escenas",
                 **({"tray_dir": clips_dir} if config.motion_enabled else {}),
             )
-            clip_listo = clips_dir / f"{stem_fmt}.mp4"
+            clip_listo = clip_identidad
         else:
             rf = {}
-            clip_listo = clip_path  # sin reencuadre: la fuente TAL CUAL
+            clip_listo = clip_path  # sin reencuadre: la fuente TAL CUAL, para el burn
 
         vinfo = core.get_video_info(clip_listo)
         w, h = vinfo["width"], vinfo["height"]
@@ -352,7 +383,7 @@ def procesar_clip_v2(
             # el letrero se pinte encima del cutaway, y con behind_text=True para que los
             # captions se pinten encima del letrero.
             motion_primaria = _capa_motion(
-                config, clip, paquete_dir, clip_listo, groups_captions, vinfo, dur
+                config, clip, paquete_dir, clip_identidad, groups_captions, vinfo, dur
             )
             motion_resultado = motion_primaria
         else:
@@ -366,7 +397,7 @@ def procesar_clip_v2(
                 clip,
                 motion_primaria.plan if motion_primaria else None,
                 paquete_dir,
-                clip_listo,
+                clip_identidad,
                 groups,
                 vinfo,
                 dur,
