@@ -374,3 +374,25 @@ Evidencia verificada por K mirando `16_TEXTO_FINAL.mp4` y `17_EDITOR.png`.
   del mismo clip, plan identico campo por campo.
 - **PASO 5 OK (demos).** Cache borrada antes de renderizar. `<LAB>\demo\18_LISTO.mp4` con su
   hoja de 7 frames y `<LAB>\demo\19_EDITOR.png` con el editor abierto sobre ESE render.
+
+## Sesion 10: tres arreglos finales
+
+- **PASO 1 OK (el acento del CTA).** "Sigue para mas" sale en pantalla en TODOS los videos con
+  la capa encendida, asi que la tilde que faltaba se veia en todos. El mismo texto vivia en
+  cuatro sitios: el default de la API, el de `AutoConfig`, el arnes de medicion y dos fixtures.
+  Un test barre el repo con `git grep` para que no vuelva por una quinta puerta.
+- **PASO 2 OK (la cifra no se repite entre piezas).** El hook decia "La desercion escolar subio
+  10.5%" y seis segundos despues la tarjeta pintaba "10.5%" a pantalla completa. Un numero
+  repetido no lo cazaba `secuencia_compartida`, que pide tres palabras significativas seguidas,
+  ni `arranque_compartido`, que solo mira la primera. La cifra se queda en `dato_destacado` y
+  cede la otra pieza, sea cual sea su prioridad, en la misma llamada de correccion que ya
+  existia. El numero se compara con bordes: sin ellos, una cifra de "26 anos" se daria por
+  repetida dentro de "2026".
+- **PASO 3 OK (boton para pedir otro plan).** Son DOS botones distintos a proposito:
+  "Descartar mis cambios" tira lo que escribio K y deja el plan que el video ya tenia;
+  "Generar otro plan" tira el plan del video y pide una propuesta nueva. Regenerar tambien
+  olvida los sidecars de texto del clip: la cache del LLM esta indexada por transcripcion y
+  prompt, que no cambian, asi que sin tirarla el boton habria devuelto las mismas frases. Con
+  una edicion a medias NO se regenera y se avisa.
+- **PASO 4 OK (cierre).** Cache borrada antes de renderizar. `<LAB>\demo\20_CIERRE.mp4` con su
+  hoja de 7 frames y `<LAB>\demo\21_EDITOR.png` con los dos botones y su explicacion visibles.

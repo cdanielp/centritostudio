@@ -31,7 +31,9 @@ sys.path.insert(0, str(ROOT))
 # Cuantas piezas llevan su vista ya generada en la captura. Las demas quedan con su boton, que
 # es como las ve K al abrir el editor: la vista se pide bajo demanda.
 PIEZAS_CON_VISTA = (0, 2)
-VENTANA = (1500, 1180)
+# Alto generoso a proposito: el pie del editor lleva los botones de guardar, descartar y pedir
+# otro plan, y una captura que los corte no sirve como evidencia de que existen.
+VENTANA = (1500, 1560)
 TIEMPO_VIRTUAL_MS = 8000
 
 
