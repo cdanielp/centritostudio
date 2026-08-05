@@ -346,3 +346,31 @@ rama sale de ahi, que si contiene `main`.
   `<LAB>\demo\16_TEXTO_FINAL.mp4` con su hoja de 7 frames y `<LAB>\demo\17_EDITOR.png`. Las 7
   piezas del editor son las 7 del video, campo por campo, y la captura no gasto ni una llamada
   al LLM porque el plan ya estaba sellado.
+
+## Sesion 9: cuatro arreglos y cierre
+
+Evidencia verificada por K mirando `16_TEXTO_FINAL.mp4` y `17_EDITOR.png`.
+
+- **PASO 1 OK (dos piezas no arrancan con la misma palabra).** Repetir la PLANTILLA esta bien;
+  repetir el SUJETO no. Tres letreros seguidos empezando por "Garcia" se leen como el mismo
+  aunque cada uno diga algo distinto, y `secuencia_compartida` no lo cazaba porque no comparten
+  tres palabras. La regla va en la VALIDACION, con la correccion en la misma llamada que ya
+  existia, y el prompt ademas pide variar la construccion.
+- **PASO 2 OK (la etiqueta no repite la cifra).** La tarjeta decia "10.5%" en grande y "10.5%
+  dejo la prepa en 2023-2024" debajo. La etiqueta es el CONTEXTO de la cifra: si el modelo la
+  devuelve delante, se le quita en el saneado, sin llamada extra. Se hace en las dos pasadas
+  porque la etiqueta la reescribe la segunda, y la cifra viaja en el hueco para que el saneado
+  sepa cual quitar.
+- **PASO 3 OK (acentos y tiempos).** Todo el texto del editor en espanol con tildes, y junto a
+  cada valor en ms el mismo tiempo en mm:ss, incluido el campo de entrada de una pieza nueva.
+  Los ms se quedan porque son el dato que se edita.
+- **PASO 4 OK (el plan no cambia entre corridas).** La causa NO era la clave de cache: era el
+  proveedor. Dos llamadas identicas devuelven textos distintos y bajar la temperatura a 0 lo
+  reduce pero no lo elimina; se comprobo lanzando el mismo clip dos veces con la cache borrada y
+  salieron 7 piezas y 6. El arreglo no depende del proveedor: el plan sellado se reutiliza
+  cuando la huella de TODO lo que entra al planificador es la misma (duracion, orientacion,
+  textos de marca, tramos, CONTENIDO de la trayectoria, catalogo y el flag del LLM). Cambia una
+  entrada, se replanifica; no cambia nada, no se vuelve a preguntar. Verificado: dos corridas
+  del mismo clip, plan identico campo por campo.
+- **PASO 5 OK (demos).** Cache borrada antes de renderizar. `<LAB>\demo\18_LISTO.mp4` con su
+  hoja de 7 frames y `<LAB>\demo\19_EDITOR.png` con el editor abierto sobre ESE render.
