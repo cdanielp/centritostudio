@@ -541,3 +541,39 @@ El avance 82/100 asume v1 = F1-F6 + reframe v2 + Modo AUTO v1 en uso real, SIN F
 ## Repriorización arquitecto (s24)
 
 F4.2-CORTES se ADELANTA a F5-s2: el material real de K (OBS/edicion) tiene cortes de escena en todos los videos probados. La precondicion "toma continua" no describe el flujo de produccion. C1=93% con cortes es ilegible (D6). Orden actualizado: s24 A/B YuNet → F4.2-CORTES → F5-s2.
+
+## ADDENDUM DE PULIDO HF-3 (2026-08-04)
+
+**PR #47 MERGEADO en `main` via merge commit `PENDIENTE` (dos padres).** Rama
+`feat/hf-3-pulido` preservada. Cierra el pulido de HF-3 en cuatro rondas, todo medido sobre los
+34 clips reales y con gate visual de K en cada una. Bitacora completa en
+`revision/hf-3/BITACORA.md` (sesiones 6 a 9).
+
+**Lo que entra:**
+
+- **Edicion de letreros desde el Studio.** `motion_edicion.py` (contrato del plan editado,
+  valida antes de escribir y devuelve todos los problemas de una vez), `studio_motion.py` (capa
+  entre la interfaz y el planificador) y un editor modal con mover, borrar, anadir, volver al
+  automatico y **previsualizacion por pieza**: el letrero compuesto sobre el frame real del
+  video en su instante de entrada, bajo demanda y cacheado por contenido.
+- **Los textos los escribe el LLM.** `motion_textos_llm.py` en dos pasadas: la primera saca
+  hook, secciones, cifra y cierre del clip entero; la segunda escribe el texto de CADA pieza ya
+  colocada, con el fragmento hablado delante. Cobertura de piezas escribibles en clips con
+  transcripcion: **72.7% -> 100%**. `dato_destacado` pasa de 4 a 6-7 clips de 34, porque el
+  modelo reconoce "diez y medio por ciento" y la regla exige unidad literal.
+- **`motion_guarda.py`, la guarda por TIPO de campo.** La cifra es estricta, los nombres propios
+  tolerantes por distancia de edicion, y el resto solo se registra. 23 incidencias sobre los 34
+  clips, ninguna tumba un texto. Ninguna lista nueva: reusa `stopwords_es`,
+  `motion_plan._es_verbo_probable` y `cve_keywords.NUMERALES`.
+- **El editor ensena el plan del RENDER.** `resolver_plan` sella junto al clip el plan exacto
+  con el que compone y el editor lee ESE en vez de replanificar. Un clip sin componer lo dice en
+  claro y no inventa un plan.
+- **El plan de un clip no se renegocia.** El sello se reutiliza mientras la huella de todo lo
+  que entra al planificador sea la misma. El proveedor no responde igual dos veces ni a
+  temperatura 0, asi que no se le pregunta dos veces.
+
+**Verificacion:** suite `2839 -> 3205` (4 skipped, 17 deselected), `ruff --no-cache` limpio,
+`hf_real` 17 passed a mano (excluidos del CI), Quality Gate verde. Capa apagada = salida byte
+identica: ese test sigue verde.
+
+**Sin iniciar:** HF-4.
