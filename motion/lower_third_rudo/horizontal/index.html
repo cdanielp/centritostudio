@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es" data-composition-variables='[
+  {"id":"nombre","type":"string","label":"Nombre","default":"SIN-VARIABLE-nombre"},
+  {"id":"rol","type":"string","label":"Rol o tema","default":"SIN-VARIABLE-rol"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF3D3D"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#2A2A35"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#F5F5F7"},
+  {"id":"duracion_ms","type":"number","label":"Duracion ms","default":4500},
+  {"id":"fps","type":"number","label":"FPS","default":30},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1920},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1080},
+  {"id":"semilla","type":"number","label":"Semilla","default":0}
+ ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <title>lower third rudo</title>
+    <script src="../gsap.min.js"></script>
+    <style>
+      /* Fuente embebida local: Inter variable (SIL OFL 1.1), sin cargas por red. */
+      @font-face {
+        font-family: "Inter";
+        src: url("../fonts/InterVariable.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { overflow: hidden; background: transparent; }
+      :root {
+        --primario: #FF3D3D;
+        --secundario: #2A2A35;
+        --texto: #F5F5F7;
+        --u: 10.8px;
+        --vh: 19.2px;
+      }
+      #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+      .clip { position: absolute; inset: 0; }
+      /* Mismo carril que el estilo pms: contenido con el borde inferior en 68% de la altura,
+         lejos de la zona de captions (70-92% medida en HF-2). */
+      #lt {
+        position: absolute;
+        left: 5.5%;
+        bottom: 32%;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: calc(var(--u) * 0.7);
+        max-width: 82%;
+      }
+      /* Barra de nombre NEGRA fija (identidad "rudo"): estructural, no viaja por marca, igual
+         que la placa oscura del estilo pms tampoco viaja por marca. */
+      #namebar {
+        background: #141518;
+        padding: calc(var(--u) * 1.1) calc(var(--u) * 2.6);
+      }
+      #nombre {
+        color: #ffffff;
+        font-weight: 700;
+        font-size: calc(var(--u) * 3.6);
+        line-height: 1;
+        letter-spacing: -0.01em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #rolebar {
+        background: var(--primario);
+        padding: calc(var(--u) * 0.75) calc(var(--u) * 1.7);
+        margin-left: calc(var(--u) * 1.1);
+      }
+      #rol {
+        color: #ffffff;
+        font-weight: 700;
+        font-size: calc(var(--u) * 1.55);
+        line-height: 1;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+      <div id="pieza" class="clip" data-start="0" data-duration="4.5" data-track-index="1">
+        <div id="lt">
+          <div id="namebar">
+            <div id="nombre">?</div>
+          </div>
+          <div id="rolebar">
+            <div id="rol">?</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var v = window.__hyperframes.getVariables();
+      var W = Number(v.tamano_ancho), H = Number(v.tamano_alto);
+      var FPS = Number(v.fps) || 30, DUR = Number(v.duracion_ms) / 1000;
+      var F = 1 / FPS;
+
+      var root = document.getElementById("root");
+      [document.documentElement, document.body, root].forEach(function (el) {
+        el.style.width = W + "px"; el.style.height = H + "px";
+      });
+      var css = document.documentElement.style;
+      css.setProperty("--u", Math.min(W, H) / 100 + "px");
+      css.setProperty("--vh", H / 100 + "px");
+      css.setProperty("--primario", v.marca_primario);
+      css.setProperty("--secundario", v.marca_secundario);
+      css.setProperty("--texto", v.marca_texto);
+      document.getElementById("pieza").setAttribute("data-duration", String(DUR));
+      document.getElementById("nombre").textContent = String(v.nombre);
+      document.getElementById("rol").textContent = String(v.rol);
+
+      var ENTRA = Math.min(14 * F, DUR * 0.28);
+      var SALE = Math.max(6 * F, ENTRA * 0.65);
+      var STAG = 4 * F;
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      var wrap = document.getElementById("lt");
+      var namebar = document.getElementById("namebar");
+      var rolebar = document.getElementById("rolebar");
+
+      /* La barra de nombre entra por la izquierda, la de rol por la derecha (opuestas). */
+      gsap.set(namebar, { clipPath: "inset(0 100% 0 0)" });
+      gsap.set(rolebar, { clipPath: "inset(0 0 0 100%)" });
+
+      tl.to(namebar, { clipPath: "inset(0 0% 0 0)", duration: ENTRA, ease: "power4.out" }, 0);
+      tl.to(rolebar, { clipPath: "inset(0 0% 0 0%)", duration: ENTRA, ease: "power4.out" }, STAG * 2);
+
+      tl.to(rolebar, { clipPath: "inset(0 0 0 100%)", duration: SALE * 0.7, ease: "power3.in" }, DUR - SALE);
+      tl.to(namebar, { clipPath: "inset(0 100% 0 0)", duration: SALE * 0.8, ease: "power3.in" }, DUR - SALE * 0.85);
+      tl.set(wrap, { visibility: "hidden" }, DUR - (2 * F));
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -70,6 +70,7 @@ PIEZA = {
     "contrato": 1,
     "pieza_id": "prueba_real",
     "plantilla": {"nombre": "minima", "version": "1.0.0"},
+    "estilo": "pms",
     "duracion_ms": 2000,
     "fps": 30,
     "tamano": {"ancho": 1920, "alto": 1080},

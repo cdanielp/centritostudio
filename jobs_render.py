@@ -136,10 +136,17 @@ def _clips_de_motion(jid: str, motion_opts, groups, mp4: Path, w: int, h: int, i
 
 
 def _mensaje_motion(motion_opts, clips: list) -> str | None:
-    """Resumen para el reporte del Studio. None con la capa apagada (reporte historico)."""
+    """Resumen para el reporte del Studio. None con la capa apagada (reporte historico).
+
+    El estilo pedido viaja en el mensaje (no solo en el contrato interno) para que quien lea
+    el resumen del job vea con que estilo salio, sin tener que abrir el sidecar.
+    """
     if not _motion_activo(motion_opts):
         return None
-    return f"{len(clips)} letrero(s) compuestos" if clips else "Sin letreros (ver log del job)"
+    estilo = getattr(motion_opts, "estilo", None) or "pms"
+    if not clips:
+        return f"Sin letreros (ver log del job) - estilo: {estilo}"
+    return f"{len(clips)} letrero(s) compuestos - estilo: {estilo}"
 
 
 def _aplicar_qa(

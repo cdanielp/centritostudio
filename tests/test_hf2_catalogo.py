@@ -23,10 +23,15 @@ RAIZ = Path(__file__).resolve().parents[1]
 RUTA_CATALOGO = RAIZ / "motion" / "catalogo.json"
 RUTA_EJEMPLOS = RAIZ / "motion" / "ejemplos"
 
-# Las cinco piezas de HF-2 y el rango de duracion natural (ms) que fija el brief.
+# Las cinco piezas de HF-2 y el rango de duracion natural (ms) que fija el brief, mas las tres
+# variantes de estilo de lower_third (HF-4): mismos slots y el mismo rango natural, porque son
+# la misma funcion con otra piel.
 PIEZAS_ESPERADAS = {
     "hook": (2000, 3000),
     "lower_third": (4000, 5000),
+    "lower_third_claro": (4000, 5000),
+    "lower_third_minimo": (4000, 5000),
+    "lower_third_rudo": (4000, 5000),
     "titulo_seccion": (2000, 2000),
     "dato_destacado": (3000, 3000),
     "cierre": (3000, 4000),
@@ -48,10 +53,10 @@ def _ejemplo(nombre: str) -> dict:
     return json.loads((RUTA_EJEMPLOS / f"{nombre}.json").read_text(encoding="utf-8"))
 
 
-def test_catalogo_declara_exactamente_las_cinco_piezas():
+def test_catalogo_declara_exactamente_las_ocho_piezas():
     nombres = {p.nombre for p in _plantillas()}
     assert nombres == set(PIEZAS_ESPERADAS), f"catalogo con piezas inesperadas: {sorted(nombres)}"
-    assert len(_catalogo()) == 5
+    assert len(_catalogo()) == 8
 
 
 @pytest.mark.parametrize("nombre", sorted(PIEZAS_ESPERADAS))

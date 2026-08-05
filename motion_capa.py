@@ -29,10 +29,12 @@ from pathlib import Path
 
 import motion_plan as mp
 from clip_overlay import ClipOverlay
+from hyperframes.contrato import ESTILOS_VALIDOS
 
 NOMBRE_CACHE = "piezas"  # subcarpeta de piezas DENTRO del paquete (sobrevive al resume)
 CATALOGO_REL = Path("motion") / "catalogo.json"
 FIT_DEFAULT = "nativo"
+ESTILO_DEFAULT = ESTILOS_VALIDOS[0]  # "pms": el estilo de fabrica, siempre declarado primero
 
 # Paleta OFICIAL de Prompt Models Studio. Sustituye a la provisional que se colo desde un
 # fixture de HF-1. El fondo de marca (#0A0A0F) NO viaja en el contrato: ya vive en la placa
@@ -52,6 +54,12 @@ ACENTO_POR_PLANTILLA = {
     "dato_destacado": ACENTO_SECUNDARIO,
     "lower_third": ACENTO_TERCIARIO,
     "titulo_seccion": ACENTO_TERCIARIO,
+    # Variantes de estilo de lower_third (HF-4). La clave es el nombre de PLANTILLA resuelto
+    # ("<funcion>_<estilo>"), no el estilo suelto: asi marca_de() sigue siendo el UNICO sitio
+    # que decide el acento, sea cual sea el eje que lo dispara.
+    "lower_third_claro": ACENTO_PRINCIPAL,
+    "lower_third_minimo": ACENTO_SECUNDARIO,
+    "lower_third_rudo": ACENTO_PRINCIPAL,
 }
 
 MARCA = {"primario": ACENTO_PRINCIPAL, "secundario": MARCA_SEPARADOR, "texto": MARCA_TEXTO}
@@ -67,6 +75,25 @@ def marca_de(plantilla: str, base: dict | None = None) -> dict:
     marca = dict(base or MARCA)
     marca["primario"] = ACENTO_POR_PLANTILLA.get(plantilla, marca.get("primario"))
     return marca
+
+
+def resolver_estilo(funcion: str, estilo: str, versiones: dict[str, str]) -> tuple[str, str, bool]:
+    """(nombre_de_plantilla, version, cayo_a_pms) para UNA funcion y el estilo pedido.
+
+    Hoy una plantilla se resolvia por (funcion, orientacion); esto anade el eje estilo sin
+    tocar `Catalogo`: la variante de estilo es una entrada MAS del catalogo, con su propio
+    nombre "<funcion>_<estilo>" (HF-4). Si esa combinacion no esta declarada, cae a la funcion
+    a secas (el estilo "pms" de fabrica) en vez de fallar: hoy solo `lower_third` tiene las
+    cuatro variantes, y que las otras cuatro funciones caigan siempre es lo esperado, no un
+    error. NUNCA lanza: sin plantilla para la funcion a secas, `version` sale vacio y quien
+    llama (Catalogo.exigir, aguas abajo) es quien se queja con detalle.
+    """
+    if estilo != ESTILO_DEFAULT:
+        candidato = f"{funcion}_{estilo}"
+        version_candidata = versiones.get(candidato)
+        if version_candidata is not None:
+            return candidato, version_candidata, False
+    return funcion, versiones.get(funcion, ""), estilo != ESTILO_DEFAULT
 
 
 class SolapamientoDePiezas(ValueError):
@@ -86,6 +113,9 @@ class OpcionesMotion:
     # Los textos los escribe el LLM por default. Las heuristicas de espanol se quedan como
     # RESPALDO y entran solas si el modelo falla, devuelve basura o no hay clave configurada.
     textos_llm: bool = True
+    # Estilo visual pedido para TODAS las piezas del video (HF-4). "pms" es el de fabrica.
+    # Una funcion sin variante para el estilo pedido cae a "pms" sola; ver `resolver_estilo`.
+    estilo: str = ESTILO_DEFAULT
 
     def textos(self) -> mp.TextosMarca:
         return mp.TextosMarca(
@@ -114,12 +144,19 @@ def huella_de_entrada(
     tray_csv: Path | None,
     catalogo: set[str],
     textos_llm: bool,
+    estilo: str = ESTILO_DEFAULT,
 ) -> str:
     """sha256 de TODO lo que entra al planificador. PURO.
 
     Si esto no cambia, el plan tampoco tiene por que cambiar, y lo unico que introduciria una
     diferencia seria volver a preguntarle al modelo. Por eso la trayectoria entra por su
     contenido y no por su ruta: el mismo CSV movido de sitio no es una entrada distinta.
+
+    `estilo` entra aqui (HF-4) aunque el planificador nunca lo lee: sin el, cambiar de estilo
+    con el mismo clip reutilizaria el plan sellado del render anterior (mismas entradas segun
+    esta huella) y el sidecar `<clip>_motion_render.json` seguiria describiendo el estilo
+    viejo. La huella tiene que ver el estilo para que el sello quede honesto, no porque el
+    estilo mueva una sola pieza.
     """
     import hashlib  # noqa: PLC0415
 
@@ -135,6 +172,7 @@ def huella_de_entrada(
             "tray": firma_tray,
             "catalogo": sorted(catalogo),
             "textos_llm": bool(textos_llm),
+            "estilo": estilo,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -153,12 +191,16 @@ def resolver_plan(
     catalogo: set[str],
     textos_llm: bool = False,
     stem: str = "",
+    estilo: str = ESTILO_DEFAULT,
 ) -> tuple[mp.PlanMotion, str]:
     """(plan, origen). El plan EDITADO manda sobre el automatico si existe y es utilizable.
 
     El origen viaja al informe para que el Studio pueda decirle a K si lo que esta viendo es lo
     que decidio la maquina o lo que corrigio el. Sin ese dato, "por que salio asi" no tiene
     respuesta.
+
+    `estilo` no cambia UNA sola decision del planificador (ver `huella_de_entrada`): viaja
+    hasta aqui solo para que la huella del plan reutilizado lo vea.
     """
     import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
 
@@ -182,6 +224,7 @@ def resolver_plan(
             tramos=lista,
             tray_csv=tray_csv,
             catalogo=catalogo,
+            estilo=estilo,
             textos_llm=textos_llm,
         )
         previo = me.cargar_render(
@@ -367,7 +410,15 @@ def orientacion_de(ancho: int, alto: int) -> str:
 
 
 def contrato_de_pieza(
-    pieza: mp.Pieza, *, version: str, ancho: int, alto: int, fps: int, marca: dict[str, str]
+    pieza: mp.Pieza,
+    *,
+    version: str,
+    ancho: int,
+    alto: int,
+    fps: int,
+    marca: dict[str, str],
+    nombre_plantilla: str | None = None,
+    estilo: str = ESTILO_DEFAULT,
 ) -> dict:
     """Contrato de pieza (HF-1) para una pieza ya planificada. PURO.
 
@@ -375,16 +426,26 @@ def contrato_de_pieza(
     asi que una pieza a 30 sobre un destino a 24 perderia 1 de cada 5 frames de animacion.
     `posicion.modo=cuadro_completo` porque las plantillas ya se colocan solas dentro de su
     lienzo; la caja queda disponible para quien la necesite, no se usa aqui.
+
+    `nombre_plantilla` es el nombre YA RESUELTO por `resolver_estilo` (puede diferir de
+    `pieza.plantilla` cuando el estilo pedido tiene variante propia); por default es
+    `pieza.plantilla`, que es exactamente el comportamiento historico previo a HF-4. `estilo`
+    viaja como campo propio del contrato (no solo codificado en el nombre de plantilla) porque
+    entra a la clave de cache vía `calcular_hash` sin que este modulo tenga que tocarla, y
+    porque el Studio y el sello del plan lo necesitan legible sin tener que parsear un nombre
+    compuesto.
     """
+    nombre = nombre_plantilla or pieza.plantilla
     return {
         "contrato": 1,
         "pieza_id": f"{pieza.plantilla}_{pieza.t0_ms}",
-        "plantilla": {"nombre": pieza.plantilla, "version": version},
+        "plantilla": {"nombre": nombre, "version": version},
+        "estilo": estilo,
         "duracion_ms": pieza.duracion_ms,
         "fps": int(fps),
         "tamano": {"ancho": int(ancho), "alto": int(alto)},
         "texto": dict(pieza.texto),
-        "marca": marca_de(pieza.plantilla, marca),
+        "marca": marca_de(nombre, marca),
         "posicion": {"modo": "cuadro_completo"},
         "fit": FIT_DEFAULT,
         "audio": False,
@@ -531,6 +592,7 @@ def _clips_de_motion(
     ruta_catalogo = root / CATALOGO_REL
     versiones = versiones_del_catalogo(ruta_catalogo)
 
+    estilo_pedido = opciones.estilo or ESTILO_DEFAULT
     plan, origen = resolver_plan(
         clip_mp4=clip_mp4,
         duracion_ms=duracion_ms,
@@ -541,9 +603,12 @@ def _clips_de_motion(
         catalogo=set(versiones),
         textos_llm=opciones.textos_llm,
         stem=Path(clip_mp4).stem if clip_mp4 else "",
+        estilo=estilo_pedido,
     )
     informe = _informe_base(plan)
     informe["origen"] = origen
+    informe["estilo"] = estilo_pedido
+    informe["incidencias_estilo"] = []
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
         return ResultadoMotion((), informe)
@@ -555,9 +620,22 @@ def _clips_de_motion(
 
     clips: list[ClipOverlay] = []
     for pieza in plan.piezas:
+        nombre_resuelto, version_resuelta, cayo_a_pms = resolver_estilo(
+            pieza.plantilla, estilo_pedido, versiones
+        )
+        estilo_efectivo = ESTILO_DEFAULT if cayo_a_pms else estilo_pedido
+        if cayo_a_pms:
+            mensaje = (
+                f"estilo '{estilo_pedido}' no existe para '{pieza.plantilla}', se uso "
+                f"'{ESTILO_DEFAULT}'"
+            )
+            print(f"[motion] {mensaje}")
+            informe["incidencias_estilo"].append(mensaje)
         dato = contrato_de_pieza(
             pieza,
-            version=versiones.get(pieza.plantilla, ""),
+            version=version_resuelta,
+            nombre_plantilla=nombre_resuelto,
+            estilo=estilo_efectivo,
             ancho=ancho,
             alto=alto,
             fps=fps_destino,
@@ -586,12 +664,66 @@ def _clips_de_motion(
                 "hash": r.hash,
                 "sha256": r.sha256,
                 "desde_cache": r.desde_cache,
+                "estilo": estilo_efectivo,
             }
         )
         clips.append(_overlay_de(pieza, r, alto))
 
+    huella = huella_de_entrada(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=opciones.textos(),
+        tramos=list(tramos or []),
+        tray_csv=tray_csv,
+        catalogo=set(versiones),
+        textos_llm=opciones.textos_llm,
+        estilo=estilo_pedido,
+    )
+    _resellar_con_incidencias_de_estilo(clip_mp4, plan, origen, duracion_ms, huella, informe)
     print(f"[motion] {len(clips)}/{len(plan.piezas)} piezas compuestas en {orientacion}")
     return ResultadoMotion(tuple(clips), informe)
+
+
+def _resellar_con_incidencias_de_estilo(
+    clip_mp4: Path | None,
+    plan: mp.PlanMotion,
+    origen: str,
+    duracion_ms: int,
+    huella_entrada: str,
+    informe: dict,
+) -> None:
+    """Deja las incidencias de estilo TAMBIEN en `<clip>_motion_render.json`, no solo en el
+    informe en memoria. Un fallo aqui no tumba el render (mismo trato que
+    `_sellar_plan_renderizado`).
+
+    Solo resella el plan AUTOMATICO: uno EDITADO a mano vive en un sidecar aparte que esta
+    funcion no toca, para no pisar silenciosamente lo que K corrigio. `huella_entrada` se
+    recalcula con las MISMAS entradas que uso `resolver_plan` (estilo incluido) para que el
+    resello no deje el sello sin huella y rompa la reutilizacion de planes de la proxima corrida.
+    """
+    incidencias_estilo: list[str] = informe.get("incidencias_estilo") or []
+    if clip_mp4 is None or not incidencias_estilo:
+        return
+    import motion_edicion as me  # noqa: PLC0415
+
+    if origen != me.ORIGEN_AUTOMATICO:
+        return
+    plan_con_incidencias = mp.PlanMotion(
+        plan.orientacion,
+        plan.piezas,
+        plan.omisiones,
+        plan.incidencias + tuple(incidencias_estilo),
+    )
+    try:
+        me.sellar_render(
+            clip_mp4,
+            plan_con_incidencias,
+            duracion_ms=duracion_ms,
+            origen=origen,
+            huella_entrada=huella_entrada,
+        )
+    except Exception as exc:  # noqa: BLE001 - el resello nunca tumba el render
+        print(f"[motion] no se pudo resellar el plan con incidencias de estilo: {exc}")
 
 
 def desplazamiento_de_banda(banda: str, alto: int) -> tuple[int, int] | None:
@@ -650,6 +782,8 @@ __all__ = [
     "ResultadoMotion",
     "SolapamientoDePiezas",
     "ACENTO_POR_PLANTILLA",
+    "ESTILO_DEFAULT",
+    "ESTILOS_VALIDOS",
     "MARCA",
     "CONTEXTO_MS",
     "SLOT_A_RELLENAR",
@@ -657,11 +791,13 @@ __all__ = [
     "contexto_hablado",
     "contrato_de_pieza",
     "desplazamiento_de_banda",
+    "huella_de_entrada",
     "marca_de",
     "orientacion_de",
     "plan_automatico",
     "raiz_cache_de_paquete",
     "rellenar_textos_con_llm",
+    "resolver_estilo",
     "resolver_plan",
     "tramos_de_groups",
     "validar_sin_solape",

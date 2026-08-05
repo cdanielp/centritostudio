@@ -161,6 +161,7 @@ def _capa_motion(
         rol=config.motion_rol,
         cta=config.motion_cta,
         textos_llm=config.motion_textos_llm,
+        estilo=config.motion_estilo,
     )
     return motion_capa.clips_de_motion(
         opciones=opciones,

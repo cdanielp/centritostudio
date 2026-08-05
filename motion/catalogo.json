@@ -24,6 +24,42 @@
     }
   },
   {
+    "nombre": "lower_third_claro",
+    "version": "1.0.0",
+    "slots_texto": [
+      "nombre",
+      "rol"
+    ],
+    "proyecto": {
+      "vertical": "motion/lower_third_claro",
+      "horizontal": "motion/lower_third_claro/horizontal"
+    }
+  },
+  {
+    "nombre": "lower_third_minimo",
+    "version": "1.0.0",
+    "slots_texto": [
+      "nombre",
+      "rol"
+    ],
+    "proyecto": {
+      "vertical": "motion/lower_third_minimo",
+      "horizontal": "motion/lower_third_minimo/horizontal"
+    }
+  },
+  {
+    "nombre": "lower_third_rudo",
+    "version": "1.0.0",
+    "slots_texto": [
+      "nombre",
+      "rol"
+    ],
+    "proyecto": {
+      "vertical": "motion/lower_third_rudo",
+      "horizontal": "motion/lower_third_rudo/horizontal"
+    }
+  },
+  {
     "nombre": "titulo_seccion",
     "version": "1.0.2",
     "slots_texto": [

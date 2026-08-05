@@ -29,12 +29,19 @@ CAMPOS_MARCA = ("primario", "secundario", "texto")
 CAMPOS_CAJA = ("x", "y", "ancho", "alto", "anclaje")
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# Estilos visuales validos para una funcion (HF-4). "pms" es el estilo historico de fabrica y
+# el default: una plantilla que no declara variante para un estilo pedido cae a "pms" en vez
+# de fallar (ver `motion_capa.resolver_estilo`). La lista vive aqui, en el esquema, porque es
+# el unico sitio con autoridad sobre que valores hacen valido un contrato.
+ESTILOS_VALIDOS = ("pms", "claro", "minimo", "rudo")
+
 # Campos de primer nivel. El valor es el nombre del verificador; el orden no importa
 # porque la validacion recorre el esquema, nunca la entrada.
 ESQUEMA = {
     "contrato": "version",
     "pieza_id": "identificador",
     "plantilla": "plantilla",
+    "estilo": "estilo",
     "duracion_ms": "entero_positivo",
     "fps": "entero_positivo",
     "tamano": "tamano",
@@ -146,6 +153,11 @@ def _ver_fit(valor: object) -> None:
         _falla(f"fit debe ser uno de {', '.join(FIT_VALIDOS)}, se recibio {valor!r}")
 
 
+def _ver_estilo(valor: object) -> None:
+    if valor not in ESTILOS_VALIDOS:
+        _falla(f"estilo debe ser uno de {', '.join(ESTILOS_VALIDOS)}, se recibio {valor!r}")
+
+
 def _ver_booleano(valor: object) -> None:
     if not isinstance(valor, bool):
         _falla(f"debe ser true o false, se recibio {valor!r}")
@@ -163,6 +175,7 @@ _VERIFICADORES = {
     "posicion": _ver_posicion,
     "fit": _ver_fit,
     "booleano": _ver_booleano,
+    "estilo": _ver_estilo,
 }
 
 
@@ -250,6 +263,7 @@ def calcular_hash(dato: dict, entorno: dict) -> str:
 __all__ = [
     "CAMPOS_FUERA_DEL_HASH",
     "ESQUEMA",
+    "ESTILOS_VALIDOS",
     "VERSION_SOPORTADA",
     "calcular_hash",
     "canonicalizar",

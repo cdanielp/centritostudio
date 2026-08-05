@@ -5,6 +5,7 @@
     "nombre": "lower_third",
     "version": "1.0.3"
   },
+  "estilo": "pms",
   "duracion_ms": 4500,
   "fps": 30,
   "tamano": {
