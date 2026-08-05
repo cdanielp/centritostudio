@@ -21,7 +21,12 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ))
 
 CLIP_ARCHIVO = "mariosoto_clip2_corto.mp4"  # 1920x1080, 20.5s, transcript ya existe
-PAQUETE_DIR = RAIZ / "output" / "paquetes" / "mariosoto_clip2_corto_ambos_hf4"
+# Nombre elegido para sortear ANTES que "mariosoto_20260711-1316" (paquete real preexistente,
+# de una sesion anterior, que por coincidencia ya tiene un clip con este mismo nombre final):
+# `studio_motion.resolver_clip()` busca el nombre del clip en TODOS los paquetes, en orden
+# alfabetico, y devuelve el primero que matchee. Sin este orden, la corrida de evidencia
+# quedaria sombreada por ese paquete viejo y el editor abriria el plan equivocado.
+PAQUETE_DIR = RAIZ / "output" / "paquetes" / "mariosoto_00hf4_formato_dual"
 
 
 def _instrumentar(modulo, nombre, contador: dict, clave: str):

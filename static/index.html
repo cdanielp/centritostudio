@@ -809,6 +809,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 /* Editor de letreros (HF-3): dialogo modal, denso y sin adornos. K lo juzga usandolo. */
 .me-overlay{position:fixed;inset:0;background:rgba(8,8,15,.82);z-index:60;display:flex;
   align-items:center;justify-content:center;padding:20px}
+/* [hidden] pierde contra la regla de arriba en especificidad empatada + orden de fuente: sin
+   esto el overlay queda VISIBLE y sigue interceptando clics de toda la pagina aunque su
+   atributo `hidden` este puesto (bug preexistente, ajeno a HF-4, encontrado al automatizar). */
+.me-overlay[hidden]{display:none}
 .me-panel{background:var(--surface);border:var(--border);border-radius:10px;padding:16px;
   width:min(860px,100%);max-height:90vh;overflow:auto}
 .me-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
