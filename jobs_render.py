@@ -130,6 +130,7 @@ def _clips_de_motion(jid: str, motion_opts, groups, mp4: Path, w: int, h: int, i
             root=raiz,
             tramos=motion_capa.tramos_de_groups(groups),
             tray_csv=tray_resolve.resolver_tray_csv(mp4, TRANSCRIPTS),
+            clip_mp4=Path(mp4),
         ).clips
     )
 

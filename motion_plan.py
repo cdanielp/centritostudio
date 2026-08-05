@@ -877,7 +877,9 @@ def _unidad_compuesta(detras: list[str]) -> str | None:
     return None
 
 
-def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[_Candidata], list]:
+def _candidatas(
+    dur_ms: int, tramos: list[Tramo], t: TextosMarca, llm=None
+) -> tuple[list[_Candidata], list]:
     """Piezas que la regla de duracion propone, en orden de prioridad, y lo ya descartado.
 
     Los tramos del SRT se REPARTEN: ninguna pieza puede usar el mismo que otra, porque dos
@@ -892,8 +894,10 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
     # partir de las piezas que de verdad entraron.
     reservados: set[int] = set()
 
-    if t.titulo.strip():
-        props.append(_Candidata("hook", ((0, 0),), {"kicker": t.kicker, "titulo": t.titulo}))
+    titulo_hook = (getattr(llm, "hook_titulo", "") or "").strip() or t.titulo
+    kicker_hook = (getattr(llm, "hook_kicker", "") or "").strip() or t.kicker
+    if titulo_hook.strip():
+        props.append(_Candidata("hook", ((0, 0),), {"kicker": kicker_hook, "titulo": titulo_hook}))
     else:
         fuera.append(Omision("hook", MOTIVO_SIN_TITULO))
 
@@ -908,7 +912,7 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
             )
         else:
             fuera.append(Omision("lower_third", MOTIVO_SIN_NOMBRE))
-        dato = _candidata_dato(tramos, reservados)
+        dato = _candidata_dato_llm(llm, tramos) or _candidata_dato(tramos, reservados)
         if dato is None:
             fuera.append(Omision("dato_destacado", MOTIVO_SIN_CIFRA))
         elif isinstance(dato, str):
@@ -923,17 +927,17 @@ def _candidatas(dur_ms: int, tramos: list[Tramo], t: TextosMarca) -> tuple[list[
 
     if dur_ms >= UMBRAL_CORTO_MS:
         t0_cierre = dur_ms - MARGEN_FINAL_MS - DURACION_MS["cierre"]
-        # El cierre YA NO repite el titulo del hook. Manda la llamada a la accion, y el texto
-        # secundario sale de lo ultimo que se dice en el clip: asi el letrero final comenta el
-        # video en vez de volver a anunciarlo. Sin tramo libre, el secundario va vacio y la
-        # plantilla esconde esa linea.
-        # Reparto ORIGINAL de la plantilla: el titulo va grande y la CTA corta en la pastilla.
-        # La pastilla es un acento de dos palabras; meter ahi el fragmento hablado lo dejaba
-        # ilegible. Lo unico que se conserva del intento anterior es que el titulo del cierre no
-        # puede repetir el del hook: para eso sale de lo ultimo que se habla.
-        titulo_cierre, cola_t0 = _cola_hablada(
-            tramos, t0_cierre, reservados, TITULO_SECCION_MAX_CHARS
-        )
+        # Reparto de la plantilla: el titulo va grande y la CTA corta en la pastilla. La
+        # pastilla es un acento de dos palabras; meter ahi el fragmento hablado lo dejaba
+        # ilegible. El titulo del cierre no puede repetir el del hook: lo escribe el LLM si
+        # esta, y si no sale de lo ultimo que se habla.
+        del_llm = (getattr(llm, "cierre_titulo", "") or "").strip()
+        if del_llm:
+            titulo_cierre, cola_t0 = del_llm, None
+        else:
+            titulo_cierre, cola_t0 = _cola_hablada(
+                tramos, t0_cierre, reservados, TITULO_SECCION_MAX_CHARS
+            )
         if cola_t0 is not None:
             reservados.add(cola_t0)
         props.append(
@@ -1074,6 +1078,37 @@ def _cola_hablada(
         if etiqueta:
             return etiqueta, tramo.t0_ms
     return "", None
+
+
+def _candidata_dato_llm(llm, tramos: list[Tramo]) -> _Candidata | None:
+    """`dato_destacado` con la cifra que reconocio el LLM, o None si no propuso ninguna.
+
+    El modelo saca la cifra aunque este dicha con palabras ("diez y medio por ciento"), que es
+    justo lo que las reglas no pueden: exigen una unidad literal detras del numero y por eso
+    solo colocaban esta pieza en 4 de 34 clips reales.
+
+    La VENTANA sigue saliendo de los tramos: el modelo dice QUE numero y de que es, no donde
+    cabe. Si no acerta con el tramo, se usa el rango entero del clip hablado y el colocador ya
+    encontrara hueco o la omitira.
+    """
+    cifra = (getattr(llm, "dato_cifra", "") or "").strip()
+    if not cifra:
+        return None
+    etiqueta = (getattr(llm, "dato_etiqueta", "") or "").strip()
+    t0 = getattr(llm, "dato_t0_ms", None)
+    ventana = None
+    if isinstance(t0, int) and not isinstance(t0, bool):
+        elegido = next((t for t in tramos if t.t0_ms == t0), None)
+        if elegido is not None:
+            ventana = (int(elegido.t0_ms), int(elegido.t1_ms))
+        else:
+            ventana = (int(t0), int(t0))
+    if ventana is None and tramos:
+        orden = sorted(tramos, key=lambda x: x.t0_ms)
+        ventana = (int(orden[0].t0_ms), int(orden[-1].t0_ms))
+    if ventana is None:
+        return None
+    return _Candidata("dato_destacado", (ventana,), {"cifra": cifra, "etiqueta": etiqueta})
 
 
 def _candidata_dato(tramos: list[Tramo], usados: set[int]) -> _Candidata | str | None:
@@ -1259,6 +1294,25 @@ def _tramo_relevante(
     return min(candidatos, key=lambda t: (abs(t.t0_ms - medio), t.t0_ms))
 
 
+def _seccion_del_llm(llm, tramos: list[Tramo], desde: int, hasta: int, usados: set[int]):
+    """(tramo, titulo) de la seccion que el LLM situa DENTRO de este hueco, o None.
+
+    El modelo marca los cambios de tema con su milisegundo; aqui solo se comprueba que ese
+    instante caiga en el hueco que toca rellenar y que su tramo no lo tenga ya otra pieza. El
+    titulo se usa TAL CUAL: es lo que se le pidio escribir y ya viene con su limite respetado.
+    """
+    secciones = getattr(llm, "secciones", ()) or ()
+    if not secciones:
+        return None
+    por_inicio = {t.t0_ms: t for t in tramos}
+    for t0, titulo in secciones:
+        if not desde <= t0 < hasta or t0 in usados:
+            continue
+        tramo = por_inicio.get(t0) or Tramo(t0, t0, titulo)
+        return tramo, titulo
+    return None
+
+
 def _rellenar_huecos(
     colocadas: list[Pieza],
     omisiones: list[Omision],
@@ -1268,6 +1322,7 @@ def _rellenar_huecos(
     tramos: list[Tramo],
     presupuesto: int,
     usados: set[int],
+    llm=None,
 ) -> None:
     """Mete `titulo_seccion` donde el clip pasa demasiado tiempo sin un solo letrero.
 
@@ -1301,7 +1356,9 @@ def _rellenar_huecos(
         candidatos.sort(key=lambda h: h[1] - h[0], reverse=True)  # el hueco mas grande primero
         progreso = False
         for desde, hasta in candidatos:
-            elegido = _tramo_titulable(tramos, desde, hasta, usados)
+            elegido = _seccion_del_llm(llm, tramos, desde, hasta, usados) or _tramo_titulable(
+                tramos, desde, hasta, usados
+            )
             if elegido is None:
                 motivo_final = MOTIVO_SIN_TRAMO
                 continue
@@ -1335,6 +1392,7 @@ def planificar(
     textos: TextosMarca,
     tramos: list[Tramo] | None = None,
     tray_csv: Path | None = None,
+    llm=None,
 ) -> PlanMotion:
     """Plan de letreros de UN clip. Puro salvo la lectura fail-open del CSV de trayectoria.
 
@@ -1342,6 +1400,11 @@ def planificar(
     ms relativos al clip. `tray_csv` es la trayectoria que escribio el reframe; None o legacy
     hace que el carril vertical se considere OCUPADO, que es la lectura conservadora: sin dato
     de la cara no se puede afirmar que el letrero no la tape.
+
+    `llm` es un `motion_textos_llm.TextosLLM` opcional. Cuando viene, sus frases SUSTITUYEN a
+    las que sacan las heuristicas, campo a campo: lo que el modelo no traiga cae al respaldo de
+    reglas, que sigue exactamente igual. El modelo escribe; DONDE va cada pieza y cuantas caben
+    lo sigue decidiendo esta funcion, que es pura y determinista.
     """
     if orientacion not in ORIENTACIONES:
         raise ValueError(f"orientacion invalida: {orientacion!r} (usa {', '.join(ORIENTACIONES)})")
@@ -1349,7 +1412,7 @@ def planificar(
         raise ValueError(f"duracion_ms debe ser un entero positivo, se recibio {duracion_ms!r}")
 
     lista_tramos = list(tramos or [])
-    props, omisiones = _candidatas(duracion_ms, lista_tramos, textos)
+    props, omisiones = _candidatas(duracion_ms, lista_tramos, textos, llm)
     colocadas: list[Pieza] = []
     incidencias: list[str] = []
     # Se consulta UNA vez sobre el clip entero: si no hay dato de cara en ningun momento, no lo
@@ -1381,6 +1444,7 @@ def planificar(
         lista_tramos,
         presupuesto,
         usados,
+        llm,
     )
     colocadas.sort(key=lambda p: p.t0_ms)
     omisiones.sort(key=lambda o: (o.plantilla, o.motivo))

@@ -23,6 +23,7 @@ Tres reglas de esta capa, en orden de importancia:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -82,6 +83,9 @@ class OpcionesMotion:
     nombre: str = ""
     rol: str = ""
     cta: str = ""
+    # Los textos los escribe el LLM por default. Las heuristicas de espanol se quedan como
+    # RESPALDO y entran solas si el modelo falla, devuelve basura o no hay clave configurada.
+    textos_llm: bool = True
 
     def textos(self) -> mp.TextosMarca:
         return mp.TextosMarca(
@@ -99,6 +103,244 @@ class ResultadoMotion:
     @property
     def activo(self) -> bool:
         return bool(self.clips)
+
+
+def huella_de_entrada(
+    *,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo],
+    tray_csv: Path | None,
+    catalogo: set[str],
+    textos_llm: bool,
+) -> str:
+    """sha256 de TODO lo que entra al planificador. PURO.
+
+    Si esto no cambia, el plan tampoco tiene por que cambiar, y lo unico que introduciria una
+    diferencia seria volver a preguntarle al modelo. Por eso la trayectoria entra por su
+    contenido y no por su ruta: el mismo CSV movido de sitio no es una entrada distinta.
+    """
+    import hashlib  # noqa: PLC0415
+
+    firma_tray = ""
+    if tray_csv is not None and Path(tray_csv).is_file():
+        firma_tray = hashlib.sha256(Path(tray_csv).read_bytes()).hexdigest()
+    payload = json.dumps(
+        {
+            "duracion_ms": int(duracion_ms),
+            "orientacion": orientacion,
+            "textos": [textos.titulo, textos.kicker, textos.nombre, textos.rol, textos.cta],
+            "tramos": [[t.t0_ms, t.t1_ms, t.texto] for t in tramos],
+            "tray": firma_tray,
+            "catalogo": sorted(catalogo),
+            "textos_llm": bool(textos_llm),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def resolver_plan(
+    *,
+    clip_mp4: Path | None,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo] | None,
+    tray_csv: Path | None,
+    catalogo: set[str],
+    textos_llm: bool = False,
+    stem: str = "",
+) -> tuple[mp.PlanMotion, str]:
+    """(plan, origen). El plan EDITADO manda sobre el automatico si existe y es utilizable.
+
+    El origen viaja al informe para que el Studio pueda decirle a K si lo que esta viendo es lo
+    que decidio la maquina o lo que corrigio el. Sin ese dato, "por que salio asi" no tiene
+    respuesta.
+    """
+    import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
+
+    lista = list(tramos or [])
+    if clip_mp4 is not None:
+        editado = me.cargar(
+            clip_mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
+        )
+        if editado is not None:
+            print(f"[motion] plan EDITADO a mano: {len(editado.piezas)} pieza(s)")
+            return editado, me.ORIGEN_EDITADO
+        # El plan del render anterior manda si NADA de lo que entra al planificador ha cambiado.
+        # Sin esto, procesar dos veces el mismo clip da dos planes distintos, porque el modelo
+        # no responde igual dos veces ni a temperatura 0: se midio con `dato_destacado` saliendo
+        # en 6 clips y en 7 con el mismo codigo. El plan es un ARTEFACTO del clip, no algo que
+        # se vuelva a negociar en cada corrida.
+        marca = huella_de_entrada(
+            duracion_ms=duracion_ms,
+            orientacion=orientacion,
+            textos=textos,
+            tramos=lista,
+            tray_csv=tray_csv,
+            catalogo=catalogo,
+            textos_llm=textos_llm,
+        )
+        previo = me.cargar_render(
+            clip_mp4, orientacion=orientacion, catalogo=catalogo, huella_entrada=marca
+        )
+        if previo is not None:
+            print(
+                f"[motion] plan REUTILIZADO del render anterior: {len(previo[0].piezas)} pieza(s)"
+            )
+            return previo
+    else:
+        marca = ""
+    plan = mp.planificar(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=textos,
+        tramos=lista,
+        tray_csv=tray_csv,
+        llm=_textos_del_llm(textos_llm, lista, duracion_ms, stem),
+    )
+    # SEGUNDA PASADA. La primera deja al modelo proponer instantes y solo se usan los que caen
+    # donde el planificador abrio hueco; el resto volvia al respaldo de reglas. Aqui los
+    # instantes YA estan fijados y se le pide texto para cada uno, con el fragmento hablado
+    # delante, asi que no se descarta ninguno.
+    if textos_llm:
+        plan = rellenar_textos_con_llm(plan, lista, duracion_ms, stem)
+    # El sello va AQUI y no en el render: es lo que hace que la proxima corrida reutilice este
+    # plan en vez de volver a negociarlo, y lo que el editor ensena.
+    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, marca)
+    return plan, me.ORIGEN_AUTOMATICO
+
+
+# Que slot de cada plantilla escribe el modelo en la segunda pasada, y con que limite. Los
+# demas slots (nombre, rol, cta, cifra) NO se tocan: salen de la configuracion o de la primera
+# pasada, y pedirselos otra vez solo los cambiaria sin motivo.
+SLOT_A_RELLENAR = {
+    "hook": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "titulo_seccion": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "cierre": ("titulo", mp.TITULO_SECCION_MAX_CHARS),
+    "dato_destacado": ("etiqueta", mp.DATO_ETIQUETA_MAX_CHARS),
+}
+# Cuanto texto hablado se le da al modelo como contexto de cada pieza. Suficiente para que la
+# frase se entienda, corto para que no se ponga a resumir el clip entero.
+CONTEXTO_MS = 6000
+
+
+def contexto_hablado(tramos: list[mp.Tramo], t0_ms: int, ventana_ms: int = CONTEXTO_MS) -> str:
+    """Lo que se habla alrededor de `t0_ms`. PURO.
+
+    Es lo que convierte la segunda pasada en algo util: el modelo no escribe sobre el clip en
+    abstracto, escribe sobre lo que se dice JUSTO donde va el letrero.
+    """
+    desde, hasta = t0_ms - ventana_ms // 3, t0_ms + ventana_ms
+    trozos = [
+        " ".join((t.texto or "").split())
+        for t in sorted(tramos, key=lambda x: x.t0_ms)
+        if t.t1_ms >= desde and t.t0_ms <= hasta
+    ]
+    return " ".join(x for x in trozos if x).strip()
+
+
+def rellenar_textos_con_llm(
+    plan: mp.PlanMotion, tramos: list[mp.Tramo], duracion_ms: int, stem: str
+) -> mp.PlanMotion:
+    """Reescribe con el LLM el slot principal de cada pieza YA colocada. FAIL-OPEN.
+
+    Mapeo uno a uno: una pieza, un texto. Lo que el modelo no devuelva se queda como estaba,
+    que es el texto de las reglas. El plan sale con las mismas piezas en los mismos instantes:
+    aqui solo cambian las palabras.
+    """
+    if not plan.piezas or not tramos:
+        return plan
+    try:
+        import motion_textos_llm  # noqa: PLC0415
+
+        huecos = []
+        for i, pieza in enumerate(plan.piezas):
+            slot = SLOT_A_RELLENAR.get(pieza.plantilla)
+            if slot is None or slot[0] not in pieza.texto:
+                continue
+            contexto = contexto_hablado(tramos, pieza.t0_ms)
+            if not contexto:
+                continue
+            huecos.append(
+                {
+                    "id": i,
+                    "plantilla": pieza.plantilla,
+                    "t0_ms": pieza.t0_ms,
+                    "limite": slot[1],
+                    "contexto": contexto,
+                    # La cifra viaja para que la etiqueta no la repita: la tarjeta ya la pinta
+                    # en grande justo encima, y decirla dos veces en el mismo cuadro se ve mal.
+                    "cifra": pieza.texto.get("cifra", ""),
+                }
+            )
+        if not huecos:
+            return plan
+        escritos = motion_textos_llm.pedir_textos_para(
+            huecos,
+            duracion_ms,
+            stem=stem,
+            transcripcion=" ".join((t.texto or "") for t in tramos),
+        )
+    except Exception as exc:  # noqa: BLE001 - la segunda pasada jamas tumba un plan
+        print(f"[motion] relleno del LLM no disponible, se conservan las reglas: {exc}")
+        return plan
+
+    if not escritos:
+        return plan
+    piezas = []
+    for i, pieza in enumerate(plan.piezas):
+        texto = escritos.get(i)
+        slot = SLOT_A_RELLENAR.get(pieza.plantilla)
+        if not texto or slot is None or slot[0] not in pieza.texto:
+            piezas.append(pieza)
+            continue
+        piezas.append(
+            mp.Pieza(
+                pieza.plantilla,
+                pieza.t0_ms,
+                pieza.t1_ms,
+                {**pieza.texto, slot[0]: texto},
+                pieza.banda,
+                pieza.tramo_t0,
+            )
+        )
+    return mp.PlanMotion(plan.orientacion, tuple(piezas), plan.omisiones, plan.incidencias)
+
+
+def _textos_del_llm(activo: bool, tramos, duracion_ms: int, stem: str):
+    """Textos del LLM, o None para que manden las reglas. FAIL-OPEN en todos los caminos."""
+    if not activo:
+        return None
+    try:
+        import motion_textos_llm  # noqa: PLC0415 (solo con la capa encendida)
+
+        return motion_textos_llm.pedir_textos(list(tramos or []), duracion_ms, stem=stem)
+    except Exception as exc:  # noqa: BLE001 - la capa de textos jamas tumba un plan
+        print(f"[motion] textos del LLM no disponibles, se usan las reglas: {exc}")
+        return None
+
+
+def plan_automatico(
+    *,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo] | None = None,
+    tray_csv: Path | None = None,
+) -> mp.PlanMotion:
+    """El plan que propondria la maquina, ignorando cualquier edicion. Lo usa el Studio para
+    ofrecer el boton de volver al automatico sin tener que borrar el sidecar antes."""
+    return mp.planificar(
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=textos,
+        tramos=tramos,
+        tray_csv=tray_csv,
+    )
 
 
 def tramos_de_groups(groups: list[dict]) -> list[mp.Tramo]:
@@ -185,6 +427,34 @@ def validar_sin_solape(piezas: list[mp.Pieza], orientacion: str) -> None:
             )
 
 
+def _sellar_plan_renderizado(
+    clip_mp4: Path | None,
+    plan: mp.PlanMotion,
+    duracion_ms: int,
+    origen: str,
+    huella_entrada: str = "",
+) -> None:
+    """Deja junto al clip el plan EXACTO que se va a componer. Un fallo aqui no tumba el render.
+
+    Es lo unico que permite que el editor ensene lo que de verdad esta en el MP4 en vez de
+    replanificar, que puede dar otros textos porque el LLM recibe otro juego de huecos.
+    """
+    if clip_mp4 is None:
+        return
+    try:
+        import motion_edicion as me  # noqa: PLC0415
+
+        me.sellar_render(
+            clip_mp4,
+            plan,
+            duracion_ms=duracion_ms,
+            origen=origen,
+            huella_entrada=huella_entrada,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion] no se pudo sellar el plan renderizado: {exc}")
+
+
 def _informe_base(plan: mp.PlanMotion | None) -> dict:
     return {
         "enabled": True,
@@ -208,6 +478,7 @@ def clips_de_motion(
     tramos: list[mp.Tramo] | None = None,
     tray_csv: Path | None = None,
     timeout_s: float = 180.0,
+    clip_mp4: Path | None = None,
 ) -> ResultadoMotion:
     """Planifica, pide las piezas y devuelve los overlays. NUNCA lanza.
 
@@ -229,6 +500,7 @@ def clips_de_motion(
             tramos=tramos,
             tray_csv=tray_csv,
             timeout_s=timeout_s,
+            clip_mp4=clip_mp4,
         )
     except Exception as exc:  # noqa: BLE001 - fail-open duro: la capa jamas tumba el render
         print(f"[motion] capa desactivada por un fallo, el video sale sin letreros: {exc}")
@@ -248,29 +520,37 @@ def _clips_de_motion(
     tramos: list[mp.Tramo] | None,
     tray_csv: Path | None,
     timeout_s: float,
+    clip_mp4: Path | None,
 ) -> ResultadoMotion:
     from hyperframes import pedir_pieza  # noqa: PLC0415 (solo con la capa encendida)
     from hyperframes.catalogo import Catalogo  # noqa: PLC0415
 
     orientacion = orientacion_de(ancho, alto)
     fps_destino = max(int(round(float(fps) or 30.0)), 1)
-    plan = mp.planificar(
-        duracion_ms=int(round(float(duracion_s) * 1000)),
+    duracion_ms = int(round(float(duracion_s) * 1000))
+    ruta_catalogo = root / CATALOGO_REL
+    versiones = versiones_del_catalogo(ruta_catalogo)
+
+    plan, origen = resolver_plan(
+        clip_mp4=clip_mp4,
+        duracion_ms=duracion_ms,
         orientacion=orientacion,
         textos=opciones.textos(),
         tramos=tramos,
         tray_csv=tray_csv,
+        catalogo=set(versiones),
+        textos_llm=opciones.textos_llm,
+        stem=Path(clip_mp4).stem if clip_mp4 else "",
     )
     informe = _informe_base(plan)
+    informe["origen"] = origen
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
         return ResultadoMotion((), informe)
 
     validar_sin_solape(list(plan.piezas), orientacion)
 
-    ruta_catalogo = root / CATALOGO_REL
     catalogo = Catalogo.desde_archivo(ruta_catalogo, orientacion)
-    versiones = versiones_del_catalogo(ruta_catalogo)
     raiz_cache.mkdir(parents=True, exist_ok=True)
 
     clips: list[ClipOverlay] = []
@@ -371,12 +651,18 @@ __all__ = [
     "SolapamientoDePiezas",
     "ACENTO_POR_PLANTILLA",
     "MARCA",
+    "CONTEXTO_MS",
+    "SLOT_A_RELLENAR",
     "clips_de_motion",
+    "contexto_hablado",
     "contrato_de_pieza",
     "desplazamiento_de_banda",
     "marca_de",
     "orientacion_de",
+    "plan_automatico",
     "raiz_cache_de_paquete",
+    "rellenar_textos_con_llm",
+    "resolver_plan",
     "tramos_de_groups",
     "validar_sin_solape",
     "versiones_del_catalogo",

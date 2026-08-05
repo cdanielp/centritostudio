@@ -160,6 +160,7 @@ def _capa_motion(
         nombre=config.motion_nombre,
         rol=config.motion_rol,
         cta=config.motion_cta,
+        textos_llm=config.motion_textos_llm,
     )
     return motion_capa.clips_de_motion(
         opciones=opciones,
@@ -171,6 +172,7 @@ def _capa_motion(
         root=Path(__file__).resolve().parent,
         tramos=motion_capa.tramos_de_groups(groups),
         tray_csv=tray_resolve.resolver_tray_csv(Path(clip_9x16), Path(clip_9x16).parent),
+        clip_mp4=Path(clip_9x16),
     )
 
 

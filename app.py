@@ -1071,6 +1071,97 @@ def auto_capabilities():
     return studio_auto.capacidades_auto()
 
 
+# ── Editor de letreros (HF-3) ────────────────────────────────────────────────
+# K solo podia prender y apagar la capa entera. Estos cuatro endpoints son lo que le permite
+# CORREGIR lo que el planificador decide: ver el plan, guardarlo editado y volver al automatico.
+
+
+def _motion_error(exc) -> HTTPException:
+    """Un error de contrato del editor es 400 con el motivo en claro, no un 500 mudo."""
+    return HTTPException(400, str(exc))
+
+
+@app.get("/api/motion/plan/{clip}")
+def motion_ver_plan(
+    clip: str,
+    titulo: str | None = None,
+    nombre: str | None = None,
+    rol: str | None = None,
+    cta: str | None = None,
+):
+    """Plan de letreros de un clip ya procesado, con su origen (automatico o editado)."""
+    import studio_motion  # noqa: PLC0415
+
+    opciones = None
+    if any(v is not None for v in (titulo, nombre, rol, cta)):
+        import motion_capa  # noqa: PLC0415
+
+        opciones = motion_capa.OpcionesMotion(
+            enabled=True, titulo=titulo or "", nombre=nombre or "", rol=rol or "", cta=cta or ""
+        )
+    try:
+        return studio_motion.ver_plan(clip, textos=opciones)
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(500, "No se pudo leer el plan de letreros.") from None
+
+
+@app.put("/api/motion/plan/{clip}")
+def motion_guardar_plan(clip: str, cuerpo: dict = Body(...)):
+    """Guarda el plan editado. Valida ANTES de escribir y devuelve TODOS los problemas."""
+    import studio_motion  # noqa: PLC0415
+
+    try:
+        return studio_motion.guardar_plan(clip, cuerpo.get("piezas"))
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(500, "No se pudo guardar el plan de letreros.") from None
+
+
+@app.delete("/api/motion/plan/{clip}")
+def motion_descartar_plan(clip: str):
+    """Borra la edicion y vuelve al plan automatico."""
+    import studio_motion  # noqa: PLC0415
+
+    try:
+        return studio_motion.descartar_edicion(clip)
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(500, "No se pudo descartar la edicion.") from None
+
+
+@app.post("/api/motion/previsualizar/{clip}")
+def motion_previsualizar(clip: str, cuerpo: dict = Body(...)):
+    """PNG del fotograma con la pieza compuesta encima, en su instante.
+
+    Bajo demanda y con cache. Si falla, el editor sigue funcionando sin la vista: por eso el
+    error sale como 400 o 503 con motivo y no como un 500 mudo.
+    """
+    import studio_motion  # noqa: PLC0415
+
+    try:
+        ruta = studio_motion.previsualizar(clip, cuerpo.get("pieza"))
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(503, "No se pudo generar la previsualizacion.") from None
+    return FileResponse(ruta, media_type="image/png")
+
+
+@app.get("/api/motion/catalogo")
+def motion_catalogo():
+    """Plantillas disponibles con su duracion fija y sus slots de texto."""
+    import studio_motion  # noqa: PLC0415
+
+    try:
+        return {"plantillas": studio_motion.catalogo_para_ui()}
+    except Exception:
+        raise HTTPException(500, "No se pudo leer el catalogo de plantillas.") from None
+
+
 @app.post("/api/videos/{name}/auto")
 def start_auto(
     name: str,

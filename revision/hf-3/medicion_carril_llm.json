@@ -1,0 +1,1005 @@
+{
+  "resumen": [
+    "CLIPS MEDIDOS: 34",
+    "",
+    "| piezas colocadas | clips | % |",
+    "|---|---|---|",
+    "| 0 | 0 | 0.0% |",
+    "| 1 | 0 | 0.0% |",
+    "| 2 | 0 | 0.0% |",
+    "| 3 o mas | 34 | 100.0% |",
+    "",
+    "CLIPS EN CERO: 0 de 34 (0.0%)",
+    "",
+    "| motivo del cero | clips |",
+    "|---|---|",
+    "",
+    "VERTICALES EN CERO: 0 de 21 (0.0%)",
+    "HORIZONTALES EN CERO: 0 de 13 (0.0%)",
+    "",
+    "VERTICALES SIN DATO DE CARA: 10 de 21. Colocan en el carril nativo (54-68%), el aprobado en el gate visual de HF-2 por no pisar caras.",
+    "CLIPS POR BANDA USADA: centro=31 superior=7",
+    "",
+    "| pieza | veces colocada |",
+    "|---|---|",
+    "| cierre | 34 |",
+    "| dato_destacado | 7 |",
+    "| hook | 34 |",
+    "| lower_third | 34 |",
+    "| titulo_seccion | 34 |"
+  ],
+  "clips": [
+    {
+      "clip": "mariosoto_clip1_corto.mp4",
+      "dur_s": 38.65,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TIEMPO PERDIDO",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "207 min",
+        "cierre": "El 43% de tu tiempo libre se va en el camion"
+      }
+    },
+    {
+      "clip": "mariosoto_clip1_corto_9x16.mp4",
+      "dur_s": 38.65,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "center",
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "cierre"
+      ],
+      "bandas": [
+        "centro",
+        "superior"
+      ],
+      "omisiones": {
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TIEMPO PERDIDO",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "207 min/dia",
+        "cierre": "El 43% de tu tiempo libre se va en el camion"
+      }
+    },
+    {
+      "clip": "mariosoto_clip2_corto.mp4",
+      "dur_s": 20.53,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "sin_separacion_minima"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "DATOS",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "El clima extremo afecta a los usuarios"
+      }
+    },
+    {
+      "clip": "mariosoto_clip2_corto_9x16.mp4",
+      "dur_s": 20.53,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "center",
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "superior"
+      ],
+      "omisiones": {
+        "dato_destacado": "sin_separacion_minima"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "DATOS",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "Imagina esperar el camión sin sombra"
+      }
+    },
+    {
+      "clip": "mariosoto_clip3_largo.mp4",
+      "dur_s": 56.79,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 6,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "EDUCACIÓN",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "10.5%",
+        "titulo_seccion": "fútbol americano, básquetas",
+        "cierre": "Un García con bienestar y esperanza"
+      }
+    },
+    {
+      "clip": "mariosoto_clip3_largo_9x16.mp4",
+      "dur_s": 56.79,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 6,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "EDUCACIÓN",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "10.5%",
+        "titulo_seccion": "fútbol americano, básquetas",
+        "cierre": "Un García con bienestar y esperanza"
+      }
+    },
+    {
+      "clip": "podcast_test_60s.mp4",
+      "dur_s": 60.03,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 7,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "sin_separacion_minima"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "PODCAST",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "gusto tenerte por aquí",
+        "cierre": "Conoce a Ernesto, guardia forestal de Garcia"
+      }
+    },
+    {
+      "clip": "podcast_test_60s_9x16.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "center",
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "superior"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "podcast_test_60s_9x16_noturnos.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "podcast_test_60s_noturnos_s12.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "podcast_test_60s_noturnos_s13.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "podcast_test_60s_turnos_s12.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "podcast_test_60s_turnos_s13.mp4",
+      "dur_s": 60.03,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "prueba2personasenmedio_clip1_corto.mp4",
+      "dur_s": 24.7,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "FRONTERA",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "Hasta dos pancholares te quitaban"
+      }
+    },
+    {
+      "clip": "prueba2personasenmedio_clip1_corto_9x16.mp4",
+      "dur_s": 24.7,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "FRONTERA",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "Hasta dos pancholares te quitaban"
+      }
+    },
+    {
+      "clip": "pruebaedicionvideoyo_clip1_corto.mp4",
+      "dur_s": 31.27,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO EDITOR",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "1056 x 1920",
+        "cierre": "No podrias animar una imagen asi en otras IA"
+      }
+    },
+    {
+      "clip": "pruebaedicionvideoyo_clip1_corto_9x16.mp4",
+      "dur_s": 31.27,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "dato_destacado",
+        "cierre"
+      ],
+      "bandas": [
+        "centro",
+        "superior"
+      ],
+      "omisiones": {
+        "titulo_seccion": "supera_el_techo_de_piezas_por_minuto"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "CALIDAD VIDEO",
+        "lower_third": "Carlos Daniel Penagos",
+        "dato_destacado": "1056x1920",
+        "cierre": "incalculable, sin mencionar"
+      }
+    },
+    {
+      "clip": "pruebaedicionvideoyo_clip1_corto_9x16_punch.mp4",
+      "dur_s": 31.27,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "pruebaparaedicion_clip1_corto.mp4",
+      "dur_s": 32.87,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "IA GRATIS",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "En ConfyUI no entrenas el modelo base",
+        "cierre": "lo usas gratis"
+      }
+    },
+    {
+      "clip": "pruebaparaedicion_clip1_corto_9x16.mp4",
+      "dur_s": 32.87,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro",
+        "superior"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "ESCALA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Ese trabajo ya está hecho",
+        "cierre": "El aprendizaje ya ocurrió, solo lo aprovechas"
+      }
+    },
+    {
+      "clip": "pruebaparaedicion_clip2_corto.mp4",
+      "dur_s": 34.67,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "CONFUI IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Sin modelo cargado no hay dibujo",
+        "cierre": "Describe y el artista dibuja desde su archivo"
+      }
+    },
+    {
+      "clip": "pruebaparaedicion_clip2_corto_9x16.mp4",
+      "dur_s": 34.67,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 4,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "CONFUI IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Sin modelo cargado no hay dibujo",
+        "cierre": "Describe y el artista dibuja"
+      }
+    },
+    {
+      "clip": "videolargo_clip1_corto.mp4",
+      "dur_s": 26.93,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "supera_el_techo_de_piezas_por_minuto"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "siempre, debe estar en .001, 3"
+      }
+    },
+    {
+      "clip": "videolargo_clip1_corto_9x16.mp4",
+      "dur_s": 26.93,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "videolargo_clip1_corto_9x16_s12.mp4",
+      "dur_s": 26.93,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "videolargo_clip1_corto_9x16_s13.mp4",
+      "dur_s": 26.93,
+      "orientacion": "vertical",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "videolargo_clip1_largo.mp4",
+      "dur_s": 67.77,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 6,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "dato_destacado",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {},
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "El PNG guarda el valor exacto del ruido",
+        "dato_destacado": "0.60",
+        "cierre": "Aquí vas a guardar todos sus en tus"
+      }
+    },
+    {
+      "clip": "videolargo_clip1_largo_9x16.mp4",
+      "dur_s": 67.77,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "bottom",
+      "n_piezas": 8,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "superior"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "estamos haciendo aquí es",
+        "cierre": "Guarda tus imágenes: ahí vive todo el registro"
+      }
+    },
+    {
+      "clip": "videolargo_clip2_corto.mp4",
+      "dur_s": 30.39,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_hueco_que_rellenar"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO COMODO",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": "Instala los nodos faltantes con un clic"
+      }
+    },
+    {
+      "clip": "videolargo_clip2_corto_9x16.mp4",
+      "dur_s": 30.39,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": null,
+      "n_piezas": 3,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra",
+        "titulo_seccion": "sin_tramo_con_texto_en_el_hueco"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": false,
+      "textos": {
+        "hook": "",
+        "lower_third": "Carlos Daniel Penagos",
+        "cierre": ""
+      }
+    },
+    {
+      "clip": "videolargo_clip2_largo.mp4",
+      "dur_s": 77.13,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 7,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO CONFUI",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Los custom nodes básicamente son",
+        "cierre": "ya viene con algunas apps"
+      }
+    },
+    {
+      "clip": "videolargo_clip2_largo_9x16.mp4",
+      "dur_s": 77.13,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": null,
+      "n_piezas": 7,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [
+        "sin_dato_de_cara"
+      ],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TUTORIAL",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Los custom nodes básicamente son",
+        "cierre": "ya viene con algunas apps"
+      }
+    },
+    {
+      "clip": "videolargo_clip3_largo.mp4",
+      "dur_s": 63.78,
+      "orientacion": "horizontal",
+      "tray_csv": false,
+      "zona_cara": null,
+      "n_piezas": 7,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TIP CLAVE",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Varía iluminación, ropa y estilo",
+        "cierre": "El personaje es lo que está debajo de la ropa"
+      }
+    },
+    {
+      "clip": "videolargo_clip3_largo_9x16.mp4",
+      "dur_s": 63.78,
+      "orientacion": "vertical",
+      "tray_csv": true,
+      "zona_cara": "top",
+      "n_piezas": 6,
+      "piezas": [
+        "hook",
+        "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
+        "titulo_seccion",
+        "cierre"
+      ],
+      "bandas": [
+        "centro",
+        "superior"
+      ],
+      "omisiones": {
+        "dato_destacado": "ningun_tramo_trae_cifra"
+      },
+      "incidencias": [],
+      "textos_llm": true,
+      "textos": {
+        "hook": "TRUCO IA",
+        "lower_third": "Carlos Daniel Penagos",
+        "titulo_seccion": "Usa diferente iluminación y estilo",
+        "cierre": "En la siguiente clase: cómo usar captions"
+      }
+    }
+  ]
+}

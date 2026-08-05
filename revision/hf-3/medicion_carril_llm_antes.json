@@ -1,33 +1,5 @@
 {
-  "resumen": [
-    "CLIPS MEDIDOS: 34",
-    "",
-    "| piezas colocadas | clips | % |",
-    "|---|---|---|",
-    "| 0 | 0 | 0.0% |",
-    "| 1 | 0 | 0.0% |",
-    "| 2 | 0 | 0.0% |",
-    "| 3 o mas | 34 | 100.0% |",
-    "",
-    "CLIPS EN CERO: 0 de 34 (0.0%)",
-    "",
-    "| motivo del cero | clips |",
-    "|---|---|",
-    "",
-    "VERTICALES EN CERO: 0 de 21 (0.0%)",
-    "HORIZONTALES EN CERO: 0 de 13 (0.0%)",
-    "",
-    "VERTICALES SIN DATO DE CARA: 10 de 21. Colocan en el carril nativo (54-68%), el aprobado en el gate visual de HF-2 por no pisar caras.",
-    "CLIPS POR BANDA USADA: centro=31 superior=6",
-    "",
-    "| pieza | veces colocada |",
-    "|---|---|",
-    "| cierre | 34 |",
-    "| dato_destacado | 6 |",
-    "| hook | 34 |",
-    "| lower_third | 34 |",
-    "| titulo_seccion | 35 |"
-  ],
+  "resumen": [],
   "clips": [
     {
       "clip": "mariosoto_clip1_corto.mp4",
@@ -50,31 +22,12 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "dato_destacado",
-          "tipo": "palabra",
-          "palabras": [
-            "diarios"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 3,
-          "campo": "cierre",
-          "tipo": "palabra",
-          "palabras": [
-            "viajar"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "TIEMPO PERDIDO",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "207 min/dia",
-        "cierre": "43% del tiempo libre es viajar"
+        "dato_destacado": "207 min",
+        "cierre": "El 43% de tu tiempo libre se va en el camion"
       },
       "piezas_detalle": [
         {
@@ -82,7 +35,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "TIEMPO PERDIDO",
-            "titulo": "García confirma el dato"
+            "titulo": "207 minutos diarios en transporte publico"
           }
         },
         {
@@ -97,15 +50,15 @@
           "plantilla": "dato_destacado",
           "t0_ms": 17800,
           "texto": {
-            "cifra": "207 min/dia",
-            "etiqueta": "207 minutos diarios en transporte"
+            "cifra": "207 min",
+            "etiqueta": "al dia en transporte publico"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 34950,
           "texto": {
-            "titulo": "43% del tiempo libre es viajar",
+            "titulo": "El 43% de tu tiempo libre se va en el camion",
             "cta": "Sigue para mas"
           }
         }
@@ -133,31 +86,12 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "dato_destacado",
-          "tipo": "palabra",
-          "palabras": [
-            "diarios"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 3,
-          "campo": "cierre",
-          "tipo": "palabra",
-          "palabras": [
-            "viajar"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "TIEMPO PERDIDO",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "207 minutos",
-        "cierre": "43% del tiempo libre es viajar"
+        "dato_destacado": "207 min/dia",
+        "cierre": "El 43% de tu tiempo libre se va en el camion"
       },
       "piezas_detalle": [
         {
@@ -165,7 +99,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "TIEMPO PERDIDO",
-            "titulo": "García confirma el dato"
+            "titulo": "207 minutos diarios en transporte publico"
           }
         },
         {
@@ -180,15 +114,15 @@
           "plantilla": "dato_destacado",
           "t0_ms": 17800,
           "texto": {
-            "cifra": "207 minutos",
-            "etiqueta": "207 minutos diarios en transporte"
+            "cifra": "207 min/dia",
+            "etiqueta": "tiempo en transporte publico en Garcia"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 34950,
           "texto": {
-            "titulo": "43% del tiempo libre es viajar",
+            "titulo": "El 43% de tu tiempo libre se va en el camion",
             "cta": "Sigue para mas"
           }
         }
@@ -214,22 +148,11 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "mitad",
-            "zonas"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "DATOS",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Clima extremo: sol o lluvia intensa"
+        "cierre": "El clima extremo afecta a los usuarios"
       },
       "piezas_detalle": [
         {
@@ -237,7 +160,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "DATOS",
-            "titulo": "La mitad de García vive en zonas extremas"
+            "titulo": "El 50% de García usa transporte público"
           }
         },
         {
@@ -252,7 +175,7 @@
           "plantilla": "cierre",
           "t0_ms": 16833,
           "texto": {
-            "titulo": "Clima extremo: sol o lluvia intensa",
+            "titulo": "El clima extremo afecta a los usuarios",
             "cta": "Sigue para mas"
           }
         }
@@ -278,21 +201,11 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "cierre",
-          "tipo": "palabra",
-          "palabras": [
-            "climáticos"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "DATOS",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Extremos climáticos: sol o lluvia"
+        "cierre": "Imagina esperar el camión sin sombra"
       },
       "piezas_detalle": [
         {
@@ -300,7 +213,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "DATOS",
-            "titulo": "El 50% de García vive en..."
+            "titulo": "El 50% de García usa transporte público"
           }
         },
         {
@@ -315,7 +228,7 @@
           "plantilla": "cierre",
           "t0_ms": 16833,
           "texto": {
-            "titulo": "Extremos climáticos: sol o lluvia",
+            "titulo": "Imagina esperar el camión sin sombra",
             "cta": "Sigue para mas"
           }
         }
@@ -327,12 +240,11 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 7,
+      "n_piezas": 6,
       "piezas": [
         "hook",
         "lower_third",
         "dato_destacado",
-        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "cierre"
@@ -343,60 +255,13 @@
       "omisiones": {},
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "Deserción"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 2,
-          "campo": "dato_destacado",
-          "tipo": "palabra",
-          "palabras": [
-            "abandono"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 3,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "abandono"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 4,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "escuelas"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 5,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "empleo",
-            "local"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "EDUCACIÓN",
         "lower_third": "Carlos Daniel Penagos",
         "dato_destacado": "10.5%",
-        "titulo_seccion": "García: empleo y desarrollo local",
-        "cierre": "Visión de futuro y bienestar"
+        "titulo_seccion": "fútbol americano, básquetas",
+        "cierre": "Un García con bienestar y esperanza"
       },
       "piezas_detalle": [
         {
@@ -404,7 +269,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "EDUCACIÓN",
-            "titulo": "Deserción escolar: 10.5% en prepa"
+            "titulo": "La decepción escolar en García: 10.5% abandonó"
           }
         },
         {
@@ -420,35 +285,28 @@
           "t0_ms": 8000,
           "texto": {
             "cifra": "10.5%",
-            "etiqueta": "10.5% de abandono en preparatoria"
+            "etiqueta": "de estudiantes de prepa abandonaron"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 13760,
           "texto": {
-            "titulo": "Traslados: causa del abandono"
+            "titulo": "El problema: los traslados"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 17500,
+          "t0_ms": 36100,
           "texto": {
-            "titulo": "García con escuelas completas"
-          }
-        },
-        {
-          "plantilla": "titulo_seccion",
-          "t0_ms": 46840,
-          "texto": {
-            "titulo": "García: empleo y desarrollo local"
+            "titulo": "fútbol americano, básquetas"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 53090,
           "texto": {
-            "titulo": "Visión de futuro y bienestar",
+            "titulo": "Un García con bienestar y esperanza",
             "cta": "Sigue para mas"
           }
         }
@@ -476,41 +334,13 @@
       "omisiones": {},
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "deserción"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 3,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "abandono"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 4,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "escuelas"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "EDUCACIÓN",
         "lower_third": "Carlos Daniel Penagos",
         "dato_destacado": "10.5%",
-        "titulo_seccion": "Deporte, cultura y actividades",
-        "cierre": "García: visión de futuro y bienestar"
+        "titulo_seccion": "Un futuro con bienestar y esperanza",
+        "cierre": "Un García con visión de futuro y bienestar"
       },
       "piezas_detalle": [
         {
@@ -518,7 +348,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "EDUCACIÓN",
-            "titulo": "10.5% de deserción escolar en prepa"
+            "titulo": "La decepción escolar en García: 10.5%"
           }
         },
         {
@@ -534,35 +364,35 @@
           "t0_ms": 8000,
           "texto": {
             "cifra": "10.5%",
-            "etiqueta": "10.5% dejó la prepa en un año"
+            "etiqueta": "de decepción escolar en media superior"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 13760,
           "texto": {
-            "titulo": "Traslados: causa del abandono"
-          }
-        },
-        {
-          "plantilla": "titulo_seccion",
-          "t0_ms": 17500,
-          "texto": {
-            "titulo": "García con escuelas completas"
+            "titulo": "El problema: los traslados escolares"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 36100,
           "texto": {
-            "titulo": "Deporte, cultura y actividades"
+            "titulo": "fútbol americano, básquetas"
+          }
+        },
+        {
+          "plantilla": "titulo_seccion",
+          "t0_ms": 46840,
+          "texto": {
+            "titulo": "Un futuro con bienestar y esperanza"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 53090,
           "texto": {
-            "titulo": "García: visión de futuro y bienestar",
+            "titulo": "Un García con visión de futuro y bienestar",
             "cta": "Sigue para mas"
           }
         }
@@ -596,8 +426,8 @@
       "textos": {
         "hook": "PODCAST",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Ernesto: 26 años",
-        "cierre": "Guardia forestal"
+        "titulo_seccion": "gusto tenerte por aquí",
+        "cierre": "Conoce a Ernesto, guardia forestal de Garcia"
       },
       "piezas_detalle": [
         {
@@ -605,7 +435,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "PODCAST",
-            "titulo": "El acomodo continúa"
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -620,35 +450,35 @@
           "plantilla": "titulo_seccion",
           "t0_ms": 16880,
           "texto": {
-            "titulo": "Bienvenidos a La Jefa"
+            "titulo": "Bienvenida a La Jefa y presentacion de Ernesto"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 19380,
           "texto": {
-            "titulo": "Presentan a Ernesto"
+            "titulo": "Estamos aquí en tu podcast La Jefa"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 23540,
           "texto": {
-            "titulo": "Ernesto, bienvenido"
+            "titulo": "bienvenida a Ernesto"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 51720,
+          "t0_ms": 29320,
           "texto": {
-            "titulo": "Ernesto: 26 años"
+            "titulo": "gusto tenerte por aquí"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 56333,
           "texto": {
-            "titulo": "Guardia forestal",
+            "titulo": "Conoce a Ernesto, guardia forestal de Garcia",
             "cta": "Sigue para mas"
           }
         }
@@ -1008,21 +838,11 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "cierre",
-          "tipo": "palabra",
-          "palabras": [
-            "recibir"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "FRONTERA",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Contar cien y recibir dos golpes"
+        "cierre": "Hasta dos pancholares te quitaban"
       },
       "piezas_detalle": [
         {
@@ -1030,7 +850,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "FRONTERA",
-            "titulo": "Sí hay frontera y pasa mucha mercancía"
+            "titulo": "La frontera con más cruces ilegales de México"
           }
         },
         {
@@ -1045,7 +865,7 @@
           "plantilla": "cierre",
           "t0_ms": 21000,
           "texto": {
-            "titulo": "Contar cien y recibir dos golpes",
+            "titulo": "Hasta dos pancholares te quitaban",
             "cta": "Sigue para mas"
           }
         }
@@ -1075,7 +895,7 @@
       "textos": {
         "hook": "FRONTERA",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Contabas cien y te salían dos pancholares"
+        "cierre": "Hasta dos pancholares te quitaban"
       },
       "piezas_detalle": [
         {
@@ -1083,7 +903,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "FRONTERA",
-            "titulo": "Sí hay frontera, pasa mucha mercancía"
+            "titulo": "La frontera más transitada del mundo"
           }
         },
         {
@@ -1098,7 +918,7 @@
           "plantilla": "cierre",
           "t0_ms": 21000,
           "texto": {
-            "titulo": "Contabas cien y te salían dos pancholares",
+            "titulo": "Hasta dos pancholares te quitaban",
             "cta": "Sigue para mas"
           }
         }
@@ -1125,30 +945,20 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "Resolución"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
-        "hook": "VIDEO VIRAL",
+        "hook": "TRUCO EDITOR",
         "lower_third": "Carlos Daniel Penagos",
         "dato_destacado": "1056 x 1920",
-        "cierre": "En Seedance o BO3 sería incalculable"
+        "cierre": "No podrias animar una imagen asi en otras IA"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "VIDEO VIRAL",
-            "titulo": "Resolución 704 x 1280 en el clip"
+            "kicker": "TRUCO EDITOR",
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1164,14 +974,14 @@
           "t0_ms": 16450,
           "texto": {
             "cifra": "1056 x 1920",
-            "etiqueta": "El video final se amplió a 1056 x 1920"
+            "etiqueta": "Resolucion final del video"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 27567,
           "texto": {
-            "titulo": "En Seedance o BO3 sería incalculable",
+            "titulo": "No podrias animar una imagen asi en otras IA",
             "cta": "Sigue para mas"
           }
         }
@@ -1199,30 +1009,20 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "resolución"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
-        "hook": "VIDEO VIRAL",
+        "hook": "CALIDAD VIDEO",
         "lower_third": "Carlos Daniel Penagos",
-        "dato_destacado": "1056 x 1920",
-        "cierre": "En Seedance o BO3 sería incalculable"
+        "dato_destacado": "1056x1920",
+        "cierre": "incalculable, sin mencionar"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "VIDEO VIRAL",
-            "titulo": "La resolución dice 704 x 1280"
+            "kicker": "CALIDAD VIDEO",
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1237,15 +1037,15 @@
           "plantilla": "dato_destacado",
           "t0_ms": 16450,
           "texto": {
-            "cifra": "1056 x 1920",
-            "etiqueta": "El video final se amplió a 1056 x 1920"
+            "cifra": "1056x1920",
+            "etiqueta": "Resolucion del video final"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 27567,
           "texto": {
-            "titulo": "En Seedance o BO3 sería incalculable",
+            "titulo": "incalculable, sin mencionar",
             "cta": "Sigue para mas"
           }
         }
@@ -1328,22 +1128,12 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "costoso"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "IA GRATIS",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Entrenar es costoso; ya está hecho por otros",
-        "cierre": "El aprendizaje ya ocurrió, solo lo aprovechas"
+        "titulo_seccion": "En ConfyUI no entrenas el modelo base",
+        "cierre": "lo usas gratis"
       },
       "piezas_detalle": [
         {
@@ -1351,7 +1141,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "IA GRATIS",
-            "titulo": "Multiplicado por miles de millones es enorme"
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1364,16 +1154,16 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 10320,
+          "t0_ms": 17560,
           "texto": {
-            "titulo": "Entrenar es costoso; ya está hecho por otros"
+            "titulo": "En ConfyUI no entrenas el modelo base"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 29167,
           "texto": {
-            "titulo": "El aprendizaje ya ocurrió, solo lo aprovechas",
+            "titulo": "lo usas gratis",
             "cta": "Sigue para mas"
           }
         }
@@ -1393,7 +1183,8 @@
         "cierre"
       ],
       "bandas": [
-        "centro"
+        "centro",
+        "superior"
       ],
       "omisiones": {
         "dato_destacado": "ningun_tramo_trae_cifra"
@@ -1402,18 +1193,18 @@
       "textos_llm": true,
       "guarda": [],
       "textos": {
-        "hook": "IA GRATIS",
+        "hook": "ESCALA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Entrenar es caro; ya está hecho",
-        "cierre": "Generar no es entrenar: solo usas"
+        "titulo_seccion": "Ese trabajo ya está hecho",
+        "cierre": "El aprendizaje ya ocurrió, solo lo aprovechas"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "IA GRATIS",
-            "titulo": "Multiplicado por miles de millones: enorme"
+            "kicker": "ESCALA",
+            "titulo": "Multiplica eso por miles de millones"
           }
         },
         {
@@ -1426,16 +1217,16 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 10320,
+          "t0_ms": 13240,
           "texto": {
-            "titulo": "Entrenar es caro; ya está hecho"
+            "titulo": "Ese trabajo ya está hecho"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 29167,
           "texto": {
-            "titulo": "Generar no es entrenar: solo usas",
+            "titulo": "El aprendizaje ya ocurrió, solo lo aprovechas",
             "cta": "Sigue para mas"
           }
         }
@@ -1466,8 +1257,8 @@
       "textos": {
         "hook": "CONFUI IA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Cambiar modelo es cambiar de artista",
-        "cierre": "Toda la experiencia vive en un archivo"
+        "titulo_seccion": "Sin modelo cargado no hay dibujo",
+        "cierre": "Describe y el artista dibuja desde su archivo"
       },
       "piezas_detalle": [
         {
@@ -1475,7 +1266,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "CONFUI IA",
-            "titulo": "Contratar artista es cargar un nodo"
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1488,16 +1279,16 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 11220,
+          "t0_ms": 8000,
           "texto": {
-            "titulo": "Cambiar modelo es cambiar de artista"
+            "titulo": "Sin modelo cargado no hay dibujo"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 30970,
           "texto": {
-            "titulo": "Toda la experiencia vive en un archivo",
+            "titulo": "Describe y el artista dibuja desde su archivo",
             "cta": "Sigue para mas"
           }
         }
@@ -1528,8 +1319,8 @@
       "textos": {
         "hook": "CONFUI IA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Cambiar modelo es cambiar de artista",
-        "cierre": "Toda la experiencia vive en un archivo"
+        "titulo_seccion": "Sin modelo cargado no hay dibujo",
+        "cierre": "Describe y el artista dibuja"
       },
       "piezas_detalle": [
         {
@@ -1537,7 +1328,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "CONFUI IA",
-            "titulo": "Contratar artista es cargar un nodo"
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1550,16 +1341,16 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 11220,
+          "t0_ms": 8000,
           "texto": {
-            "titulo": "Cambiar modelo es cambiar de artista"
+            "titulo": "Sin modelo cargado no hay dibujo"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 30970,
           "texto": {
-            "titulo": "Toda la experiencia vive en un archivo",
+            "titulo": "Describe y el artista dibuja",
             "cta": "Sigue para mas"
           }
         }
@@ -1589,7 +1380,7 @@
       "textos": {
         "hook": "TRUCO IA",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Recomiendo 2000-2100 pasos para 25 imágenes"
+        "cierre": "siempre, debe estar en .001, 3"
       },
       "piezas_detalle": [
         {
@@ -1597,7 +1388,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "TRUCO IA",
-            "titulo": "Recap: archivos en la raíz del zip"
+            "titulo": "El secreto para entrenar tu IA en 2 minutos"
           }
         },
         {
@@ -1612,7 +1403,7 @@
           "plantilla": "cierre",
           "t0_ms": 23233,
           "texto": {
-            "titulo": "Recomiendo 2000-2100 pasos para 25 imágenes",
+            "titulo": "siempre, debe estar en .001, 3",
             "cta": "Sigue para mas"
           }
         }
@@ -1787,40 +1578,28 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 7,
+      "n_piezas": 6,
       "piezas": [
         "hook",
         "lower_third",
         "titulo_seccion",
         "titulo_seccion",
-        "titulo_seccion",
-        "titulo_seccion",
+        "dato_destacado",
         "cierre"
       ],
       "bandas": [
         "centro"
       ],
-      "omisiones": {
-        "dato_destacado": "ningun_tramo_trae_cifra"
-      },
+      "omisiones": {},
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 2,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "Truco"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
         "hook": "TRUCO IA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Con este dato trabajarás mejor",
-        "cierre": "Guarda los prompts en tus imágenes"
+        "titulo_seccion": "El PNG guarda el valor exacto del ruido",
+        "dato_destacado": "0.60",
+        "cierre": "Aquí vas a guardar todos sus en tus"
       },
       "piezas_detalle": [
         {
@@ -1828,7 +1607,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "TRUCO IA",
-            "titulo": "La kit ya tiene los custom notes en rojo"
+            "titulo": "Tu workflow se guarda en la imagen que generas"
           }
         },
         {
@@ -1841,37 +1620,31 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 10440,
-          "texto": {
-            "titulo": "Truco para reabrir un workflow"
-          }
-        },
-        {
-          "plantilla": "titulo_seccion",
           "t0_ms": 17800,
           "texto": {
-            "titulo": "Arrastra la imagen desde la carpeta output"
+            "titulo": "recuerdas nuestra carpeta de output"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 39360,
           "texto": {
-            "titulo": "Deshacer ruido con 0.60 en vez de 1"
+            "titulo": "El PNG guarda el valor exacto del ruido"
           }
         },
         {
-          "plantilla": "titulo_seccion",
-          "t0_ms": 53460,
+          "plantilla": "dato_destacado",
+          "t0_ms": 44820,
           "texto": {
-            "titulo": "Con este dato trabajarás mejor"
+            "cifra": "0.60",
+            "etiqueta": ""
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 64067,
           "texto": {
-            "titulo": "Guarda los prompts en tus imágenes",
+            "titulo": "Aquí vas a guardar todos sus en tus",
             "cta": "Sigue para mas"
           }
         }
@@ -1883,10 +1656,12 @@
       "orientacion": "vertical",
       "tray_csv": true,
       "zona_cara": "bottom",
-      "n_piezas": 6,
+      "n_piezas": 8,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -1900,39 +1675,20 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 0,
-          "campo": "hook",
-          "tipo": "palabra",
-          "palabras": [
-            "rojos"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 4,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "perder"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
-        "hook": "TRUCO COMIC",
+        "hook": "TRUCO IA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Trabaja mejor sin perder el workflow",
-        "cierre": "Guarda los prompts en tus imágenes"
+        "titulo_seccion": "estamos haciendo aquí es",
+        "cierre": "Guarda tus imágenes: ahí vive todo el registro"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "TRUCO COMIC",
-            "titulo": "La kit ya tiene los custom notes rojos"
+            "kicker": "TRUCO IA",
+            "titulo": "Titulo del clipper viral"
           }
         },
         {
@@ -1947,28 +1703,42 @@
           "plantilla": "titulo_seccion",
           "t0_ms": 17800,
           "texto": {
-            "titulo": "Arrastra la imagen desde la carpeta output"
+            "titulo": "Arrastra la imagen a la carpeta de output"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 39360,
+          "t0_ms": 23380,
           "texto": {
-            "titulo": "Cambia el desenfoque de 1 a 0.60"
+            "titulo": "arrastrar la imagen"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 56000,
+          "t0_ms": 25880,
           "texto": {
-            "titulo": "Trabaja mejor sin perder el workflow"
+            "titulo": "generamos en la carpeta de output"
+          }
+        },
+        {
+          "plantilla": "titulo_seccion",
+          "t0_ms": 29540,
+          "texto": {
+            "titulo": "vuelve a abrir esto parece magia"
+          }
+        },
+        {
+          "plantilla": "titulo_seccion",
+          "t0_ms": 33440,
+          "texto": {
+            "titulo": "estamos haciendo aquí es"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 64067,
           "texto": {
-            "titulo": "Guarda los prompts en tus imágenes",
+            "titulo": "Guarda tus imágenes: ahí vive todo el registro",
             "cta": "Sigue para mas"
           }
         }
@@ -1999,7 +1769,7 @@
       "textos": {
         "hook": "TRUCO COMODO",
         "lower_third": "Carlos Daniel Penagos",
-        "cierre": "Instalamos custom nodes que faltaban"
+        "cierre": "Instala los nodos faltantes con un clic"
       },
       "piezas_detalle": [
         {
@@ -2007,7 +1777,7 @@
           "t0_ms": 0,
           "texto": {
             "kicker": "TRUCO COMODO",
-            "titulo": "Nodos ya no están en rojo"
+            "titulo": "Los nodos en rojo ya no son un problema"
           }
         },
         {
@@ -2022,7 +1792,7 @@
           "plantilla": "cierre",
           "t0_ms": 26690,
           "texto": {
-            "titulo": "Instalamos custom nodes que faltaban",
+            "titulo": "Instala los nodos faltantes con un clic",
             "cta": "Sigue para mas"
           }
         }
@@ -2110,18 +1880,18 @@
       "textos_llm": true,
       "guarda": [],
       "textos": {
-        "hook": "CONFI UI",
+        "hook": "TRUCO CONFUI",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Custom nodes agregan poderes nuevos",
-        "cierre": "Necesitarás más apps en tu config"
+        "titulo_seccion": "Los custom nodes básicamente son",
+        "cierre": "ya viene con algunas apps"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "CONFI UI",
-            "titulo": "Resolvemos nodos en rojo y más"
+            "kicker": "TRUCO CONFUI",
+            "titulo": "Resuelve nodos rojos con el manager de ConfiUI"
           }
         },
         {
@@ -2136,35 +1906,35 @@
           "plantilla": "titulo_seccion",
           "t0_ms": 11590,
           "texto": {
-            "titulo": "Instala lo que Workflow pida"
+            "titulo": "Instala lo que sea sin pelearte con nada"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 25160,
           "texto": {
-            "titulo": "Comunidad crea nodos extra"
+            "titulo": "Los Custom Nodes agregan poderes a ConfiUI"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 43080,
           "texto": {
-            "titulo": "Nodos extra: como apps de celular"
+            "titulo": "Como un celular: instala apps extra"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 63060,
           "texto": {
-            "titulo": "Custom nodes agregan poderes nuevos"
+            "titulo": "Los custom nodes básicamente son"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 73433,
           "texto": {
-            "titulo": "Necesitarás más apps en tu config",
+            "titulo": "ya viene con algunas apps",
             "cta": "Sigue para mas"
           }
         }
@@ -2198,18 +1968,18 @@
       "textos_llm": true,
       "guarda": [],
       "textos": {
-        "hook": "TRUCO CONFUI",
+        "hook": "TUTORIAL",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Nodos extra dan poderes nuevos",
-        "cierre": "Necesitarás más apps"
+        "titulo_seccion": "Los custom nodes básicamente son",
+        "cierre": "ya viene con algunas apps"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "TRUCO CONFUI",
-            "titulo": "Resolvemos nodos en rojo y más"
+            "kicker": "TUTORIAL",
+            "titulo": "Nodos en rojo en ConfiUI? Hoy lo resolvemos"
           }
         },
         {
@@ -2224,35 +1994,35 @@
           "plantilla": "titulo_seccion",
           "t0_ms": 11590,
           "texto": {
-            "titulo": "Instala lo que Workflow pida"
+            "titulo": "El manager: instala lo que sea sin pelear"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 25160,
           "texto": {
-            "titulo": "Comunidad crea nodos extra"
+            "titulo": "Custom Nodes: los poderes extra de ConfiUI"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 43080,
           "texto": {
-            "titulo": "Como apps de un celular"
+            "titulo": "Como un celular: instala apps segun necesites"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 63060,
           "texto": {
-            "titulo": "Nodos extra dan poderes nuevos"
+            "titulo": "Los custom nodes básicamente son"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 73433,
           "texto": {
-            "titulo": "Necesitarás más apps",
+            "titulo": "ya viene con algunas apps",
             "cta": "Sigue para mas"
           }
         }
@@ -2264,10 +2034,11 @@
       "orientacion": "horizontal",
       "tray_csv": false,
       "zona_cara": null,
-      "n_piezas": 6,
+      "n_piezas": 7,
       "piezas": [
         "hook",
         "lower_third",
+        "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
         "titulo_seccion",
@@ -2283,18 +2054,18 @@
       "textos_llm": true,
       "guarda": [],
       "textos": {
-        "hook": "TIP DE IA",
+        "hook": "TIP CLAVE",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "El modelo asocia la ropa al personaje",
-        "cierre": "La ropa es parte del personaje"
+        "titulo_seccion": "Varía iluminación, ropa y estilo",
+        "cierre": "El personaje es lo que está debajo de la ropa"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "TIP DE IA",
-            "titulo": "Consejo: cambia la ropa siempre"
+            "kicker": "TIP CLAVE",
+            "titulo": "Cambia de ropa para que tu LORA no se confunda"
           }
         },
         {
@@ -2307,30 +2078,37 @@
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 15940,
+          "t0_ms": 10700,
           "texto": {
-            "titulo": "La ropa define al personaje"
+            "titulo": "El modelo asocia tu LORA con esa ropa"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 19100,
+          "t0_ms": 23260,
           "texto": {
-            "titulo": "Usa la palabra detonadora"
+            "titulo": "Enséñale al modelo tu personaje completo"
           }
         },
         {
           "plantilla": "titulo_seccion",
-          "t0_ms": 38840,
+          "t0_ms": 33420,
           "texto": {
-            "titulo": "El modelo asocia la ropa al personaje"
+            "titulo": "tipo de ropa"
+          }
+        },
+        {
+          "plantilla": "titulo_seccion",
+          "t0_ms": 45460,
+          "texto": {
+            "titulo": "Varía iluminación, ropa y estilo"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 60080,
           "texto": {
-            "titulo": "La ropa es parte del personaje",
+            "titulo": "El personaje es lo que está debajo de la ropa",
             "cta": "Sigue para mas"
           }
         }
@@ -2360,39 +2138,20 @@
       },
       "incidencias": [],
       "textos_llm": true,
-      "guarda": [
-        {
-          "id": 3,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "actual"
-          ],
-          "resuelto": "registrada"
-        },
-        {
-          "id": 4,
-          "campo": "titulo_seccion",
-          "tipo": "palabra",
-          "palabras": [
-            "Variar"
-          ],
-          "resuelto": "registrada"
-        }
-      ],
+      "guarda": [],
       "textos": {
-        "hook": "CONSEJO IA",
+        "hook": "TRUCO IA",
         "lower_third": "Carlos Daniel Penagos",
-        "titulo_seccion": "Variar iluminación y estilo para el modelo",
-        "cierre": "El personaje es lo que está debajo de la ropa"
+        "titulo_seccion": "Usa diferente iluminación y estilo",
+        "cierre": "En la siguiente clase: cómo usar captions"
       },
       "piezas_detalle": [
         {
           "plantilla": "hook",
           "t0_ms": 0,
           "texto": {
-            "kicker": "CONSEJO IA",
-            "titulo": "Consejo: cambia siempre la ropa"
+            "kicker": "TRUCO IA",
+            "titulo": "Cambia tu ropa para que la IA no te confunda"
           }
         },
         {
@@ -2407,28 +2166,28 @@
           "plantilla": "titulo_seccion",
           "t0_ms": 15940,
           "texto": {
-            "titulo": "El detonador se ve en la próxima clase"
+            "titulo": "Enséñale que tu personaje es completo"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 31520,
           "texto": {
-            "titulo": "Forzaría a usar la ropa actual"
+            "titulo": "Si no cambias, forzará la misma ropa"
           }
         },
         {
           "plantilla": "titulo_seccion",
           "t0_ms": 45460,
           "texto": {
-            "titulo": "Variar iluminación y estilo para el modelo"
+            "titulo": "Usa diferente iluminación y estilo"
           }
         },
         {
           "plantilla": "cierre",
           "t0_ms": 60080,
           "texto": {
-            "titulo": "El personaje es lo que está debajo de la ropa",
+            "titulo": "En la siguiente clase: cómo usar captions",
             "cta": "Sigue para mas"
           }
         }

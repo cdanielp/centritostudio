@@ -773,6 +773,38 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
   background:var(--purple-dim);border:0.5px solid var(--purple);color:#fff;font-size:12px;flex-shrink:0}
 .step.done .step-num{background:#0f2417;border-color:#1c5334;color:#4ade80}
 .cap-chip.soon{opacity:.5}
+/* Editor de letreros (HF-3): dialogo modal, denso y sin adornos. K lo juzga usandolo. */
+.me-overlay{position:fixed;inset:0;background:rgba(8,8,15,.82);z-index:60;display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.me-panel{background:var(--surface);border:var(--border);border-radius:10px;padding:16px;
+  width:min(860px,100%);max-height:90vh;overflow:auto}
+.me-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-bottom:10px;border-bottom:var(--border)}
+.me-head-acciones{display:flex;align-items:center;gap:8px}
+.me-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.me-badge{font-size:10px;padding:2px 8px;border-radius:999px;border:var(--border);
+  text-transform:uppercase;letter-spacing:.06em}
+.me-badge.editado{color:var(--purple);border-color:var(--purple)}
+.me-lista{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.me-pieza{border:var(--border);border-radius:8px;padding:10px;display:grid;
+  grid-template-columns:130px 90px 1fr 120px auto;gap:8px;align-items:start}
+.me-previs{display:flex;flex-direction:column;gap:4px;align-items:center}
+.me-previs img{width:110px;border-radius:5px;border:var(--border);display:block}
+.me-previs button{font-size:11px;padding:3px 8px}
+.me-previs .msg{font-size:10px;margin:0;text-align:center}
+.me-pieza b{font-size:12px;font-weight:500}
+.me-pieza input,.me-pieza select,.me-anadir input,.me-anadir select{width:100%;
+  background:var(--bg);color:var(--text);border:var(--border);border-radius:6px;
+  padding:5px 7px;font-size:12px;font-family:inherit}
+.me-slots{display:flex;flex-direction:column;gap:5px}
+.me-slot{display:grid;grid-template-columns:78px 1fr;gap:6px;align-items:center}
+.me-slot span{font-size:11px;color:var(--muted)}
+.me-anadir{display:grid;grid-template-columns:1fr 140px 44px auto;gap:8px;align-items:center;
+  padding-top:10px;border-top:var(--border)}
+.me-pie{display:flex;gap:8px;align-items:center;margin-top:12px}
+.me-error{border:0.5px solid var(--red);border-radius:8px;padding:9px;font-size:12px;
+  color:var(--red);background:#1a1114;margin-bottom:10px;white-space:pre-line}
+@media(max-width:720px){.me-pieza{grid-template-columns:1fr}.me-anadir{grid-template-columns:1fr}}
 .auto-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .auto-mode-card{display:flex;flex-direction:column;gap:5px;text-align:left;min-width:0;padding:14px;
   color:var(--text);background:#101019;border:0.5px solid #2a2a3e;border-radius:10px;cursor:pointer;font:inherit}
@@ -2405,7 +2437,8 @@ function renderAutoV2Clip(c, i, pkgId) {
     </div>
     ${avisos.length?`<div class="msg warn" style="margin-top:8px">${avisos.map(escHtml).join(' · ')}</div>`:''}
     <div class="rev-actions" style="margin-top:10px">${_autoDownload(pkgId,c)}
-      <button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}',${i})">Abrir paquete en Editor</button></div>
+      <button class="btn" onclick="openPaqueteEnEditor('${esc(pkgId)}',${i})">Abrir paquete en Editor</button>
+      ${c.motion ? `<button class="btn secondary" onclick="abrirEditorLetreros('${esc((c.archivo||'').replace(/\.mp4$/,''))}')">Editar letreros</button>` : ''}</div>
   </div>`;
 }
 function renderAutoResult(result) {
@@ -2430,6 +2463,213 @@ function renderAutoResult(result) {
        <div class="msg" style="margin-top:8px">Paquete ${escHtml(pkgId)} · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" rel="noopener" style="color:var(--purple)">Ver REPORTE.md</a></div>`
     : '';
   wrap.style.display = 'block';
+}
+
+// ═══════════════════════════════════════════════════════
+// EDITOR DE LETREROS (HF-3)
+// K solo podia prender y apagar la capa entera. Aqui puede ver lo que decidio el
+// planificador, corregirlo y volver atras. La validacion la hace el backend: esta
+// interfaz no reimplementa ni una regla, solo pinta lo que el backend responde.
+// ═══════════════════════════════════════════════════════
+let mePlan = null;      // ultimo plan devuelto por el backend
+let meCatalogo = [];    // plantillas disponibles, con su duracion fija
+
+async function abrirEditorLetreros(clip) {
+  if (!clip) return;
+  document.getElementById('motion-editor').hidden = false;
+  document.getElementById('me-clip').textContent = clip;
+  meSetEstado('Cargando...');
+  meError('');
+  // Los textos de marca del formulario de Auto viajan para que el plan que se ve sea el que
+  // se compondria de verdad, no uno con los slots vacios.
+  const q = new URLSearchParams();
+  [['auto-motion-nombre','nombre'],['auto-motion-rol','rol'],['auto-motion-cta','cta']]
+    .forEach(([id,k]) => { const v=(document.getElementById(id)?.value||'').trim(); if (v) q.set(k,v); });
+  q.set('titulo', clip);
+  try {
+    const res = await fetch(`/api/motion/plan/${encodeURIComponent(clip)}?${q}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'no se pudo leer el plan');
+    mePlan = data;
+    meCatalogo = data.catalogo || [];
+    meRender();
+    meSetEstado('');
+  } catch (e) {
+    meError(String(e.message || e));
+    meSetEstado('');
+  }
+}
+
+function cerrarEditorLetreros() {
+  document.getElementById('motion-editor').hidden = true;
+  mePlan = null;
+}
+
+function meSetEstado(txt) {
+  const el = document.getElementById('me-estado');
+  if (el) el.textContent = txt || '';
+}
+
+function meError(txt) {
+  const el = document.getElementById('me-avisos');
+  if (!el) return;
+  el.innerHTML = txt ? `<div class="me-error">${escHtml(txt)}</div>` : '';
+}
+
+// Los milisegundos son el dato que se edita, pero nadie ubica el segundo 46840 de un video de
+// memoria. El mm:ss va al lado, no en lugar del numero: quien mueve una pieza sigue tecleando ms.
+function msAMinSeg(ms) {
+  const total = Math.max(0, Math.round((ms || 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function meRender() {
+  if (!mePlan) return;
+  const editado = mePlan.origen === 'editado';
+  const badge = document.getElementById('me-origen');
+  badge.textContent = editado ? 'editado a mano' : 'automático';
+  badge.className = 'me-badge' + (editado ? ' editado' : '');
+
+  const dur = mePlan.duracion_ms || 0;
+  document.getElementById('me-lista').innerHTML = (mePlan.piezas || []).map((p, i) => {
+    const slots = Object.keys(p.texto || {}).sort().map(k => `
+      <label class="me-slot"><span>${escHtml(k)}</span>
+        <input type="text" value="${escHtml(p.texto[k])}"
+               oninput="meSetTexto(${i},'${esc(k)}',this.value)"></label>`).join('');
+    return `<div class="me-pieza">
+      <div><b>${escHtml(p.plantilla)}</b>
+        <div class="me-sub">${p.t1_ms - p.t0_ms} ms · banda ${escHtml(p.banda)}</div>
+        <div class="me-sub">termina en ${msAMinSeg(p.t1_ms)}</div></div>
+      <div><input type="number" value="${p.t0_ms}" min="0" max="${dur}" step="100"
+             oninput="meMover(${i},this.value)" title="Entra en el milisegundo">
+        <div class="me-sub">${msAMinSeg(p.t0_ms)} de ${msAMinSeg(dur)}</div></div>
+      <div class="me-slots">${slots}</div>
+      <div class="me-previs" id="me-previs-${i}">
+        <button class="btn secondary" onclick="previsualizarPieza(${i})">Previsualizar</button>
+      </div>
+      <button class="btn secondary" onclick="meBorrar(${i})">Borrar</button>
+    </div>`;
+  }).join('') || '<div class="msg">Este clip no lleva ningún letrero.</div>';
+
+  const sel = document.getElementById('me-nueva-plantilla');
+  sel.innerHTML = meCatalogo.map(t =>
+    `<option value="${escHtml(t.nombre)}">${escHtml(t.nombre)} · ${t.duracion_ms} ms</option>`).join('');
+  const nuevoT0 = document.getElementById('me-nuevo-t0');
+  const eco = document.getElementById('me-nuevo-t0-mmss');
+  if (nuevoT0 && eco) {
+    const pintar = () => { eco.textContent = nuevoT0.value ? msAMinSeg(nuevoT0.value) : ''; };
+    nuevoT0.oninput = pintar;
+    pintar();
+  }
+
+  // El plan que se ensena es el del ULTIMO RENDER, no uno calculado al abrir. Por eso hay que
+  // decir cuando lo guardado ya no es lo que hay en el MP4: si no, "guardado" pareceria
+  // "aplicado" y volveriamos a la previsualizacion que miente.
+  const avisos = [];
+  if (mePlan.pendiente_de_render) {
+    avisos.push(`<div class="msg err">Hay cambios guardados que el video todavia no lleva. ` +
+      `Vuelve a lanzar Automatico sobre este video para aplicarlos.</div>`);
+  }
+  const omitidas = (mePlan.omisiones || []);
+  if (omitidas.length && !editado) {
+    avisos.push(`<div class="msg">El planificador descartó: ` +
+      omitidas.map(o => `${escHtml(o.plantilla)} (${escHtml(o.motivo)})`).join(' · ') + `</div>`);
+  }
+  document.getElementById('me-avisos').innerHTML =
+    avisos.length ? `<div style="margin-bottom:10px">${avisos.join('')}</div>` : '';
+}
+
+// Las tres ediciones tocan SOLO el objeto en memoria. Nada se escribe hasta Guardar, para que
+// una edicion a medias no deje un sidecar invalido en disco.
+function meSetTexto(i, slot, valor) { mePlan.piezas[i].texto[slot] = valor; }
+
+function meMover(i, valor) {
+  const p = mePlan.piezas[i];
+  const dur = p.t1_ms - p.t0_ms;
+  const t0 = Math.max(0, parseInt(valor, 10) || 0);
+  p.t0_ms = t0;
+  p.t1_ms = t0 + dur;   // la duracion la fija la plantilla: mover no es estirar
+}
+
+function meBorrar(i) { mePlan.piezas.splice(i, 1); meRender(); }
+
+function anadirPieza() {
+  const nombre = document.getElementById('me-nueva-plantilla').value;
+  const plantilla = meCatalogo.find(t => t.nombre === nombre);
+  if (!plantilla) return;
+  const t0 = Math.max(0, parseInt(document.getElementById('me-nuevo-t0').value, 10) || 0);
+  const texto = {};
+  (plantilla.slots || []).forEach(s => { texto[s] = ''; });
+  mePlan.piezas.push({
+    plantilla: nombre, t0_ms: t0, t1_ms: t0 + plantilla.duracion_ms,
+    texto, banda: 'centro', tramo_t0: null,
+  });
+  mePlan.piezas.sort((a, b) => a.t0_ms - b.t0_ms);
+  meRender();
+}
+
+// La vista se genera BAJO DEMANDA, no al abrir: son varios segundos por pieza la primera vez.
+// El backend cachea por contenido, asi que volver a pedir la misma pieza es instantaneo.
+async function previsualizarPieza(i) {
+  const celda = document.getElementById('me-previs-' + i);
+  if (!celda || !mePlan) return;
+  celda.innerHTML = '<div class="msg">Generando...</div>';
+  try {
+    const res = await fetch(`/api/motion/previsualizar/${encodeURIComponent(mePlan.clip)}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pieza: mePlan.piezas[i]}),
+    });
+    if (!res.ok) {
+      let motivo = 'no disponible';
+      try { motivo = (await res.json()).detail || motivo; } catch (e) { /* respuesta sin JSON */ }
+      throw new Error(motivo);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    celda.innerHTML = `<img src="${url}" alt="Previsualización de la pieza ${i + 1}">
+      <button class="btn secondary" onclick="previsualizarPieza(${i})">Actualizar</button>`;
+  } catch (e) {
+    // La previsualizacion es un extra: si falla, el editor sigue sirviendo igual.
+    celda.innerHTML = `<div class="msg err">${escHtml(String(e.message || e))}</div>
+      <button class="btn secondary" onclick="previsualizarPieza(${i})">Reintentar</button>`;
+  }
+}
+
+async function guardarPlanLetreros() {
+  if (!mePlan) return;
+  meSetEstado('Guardando...');
+  meError('');
+  try {
+    const res = await fetch(`/api/motion/plan/${encodeURIComponent(mePlan.clip)}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({piezas: mePlan.piezas}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'no se pudo guardar');
+    mePlan = Object.assign({}, mePlan, data);
+    meRender();
+    meSetEstado('Guardado. Vuelve a lanzar Auto para re-renderizar.');
+  } catch (e) {
+    meError(String(e.message || e));
+    meSetEstado('');
+  }
+}
+
+async function descartarPlanLetreros() {
+  if (!mePlan) return;
+  meSetEstado('Descartando...');
+  meError('');
+  try {
+    const res = await fetch(`/api/motion/plan/${encodeURIComponent(mePlan.clip)}`, {method: 'DELETE'});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'no se pudo descartar');
+    mePlan = data;
+    meCatalogo = data.catalogo || meCatalogo;
+    meRender();
+    meSetEstado(data.descartado ? 'Edición descartada. Vuelve el plan automático.' : 'No había edición.');
+  } catch (e) {
+    meError(String(e.message || e));
+    meSetEstado('');
+  }
 }
 
 function openRenderClip(stem) {
@@ -3189,5 +3429,36 @@ function _rutaInicial() {
 }
 _rutaInicial();
 </script>
+<div id="motion-editor" class="me-overlay" hidden>
+  <div class="me-panel">
+    <div class="me-head">
+      <div>
+        <b>Letreros del clip</b>
+        <div id="me-clip" class="me-sub"></div>
+      </div>
+      <div class="me-head-acciones">
+        <span id="me-origen" class="me-badge"></span>
+        <button class="btn secondary" onclick="cerrarEditorLetreros()">Cerrar</button>
+      </div>
+    </div>
+    <div id="me-avisos"></div>
+    <div id="me-lista" class="me-lista"></div>
+    <div class="me-anadir">
+      <select id="me-nueva-plantilla"></select>
+      <input type="number" id="me-nuevo-t0" placeholder="Entra en ms" min="0" step="100">
+      <span id="me-nuevo-t0-mmss" class="me-sub"></span>
+      <button class="btn secondary" onclick="anadirPieza()">Añadir pieza</button>
+    </div>
+    <div class="me-pie">
+      <button class="btn" onclick="guardarPlanLetreros()">Guardar plan</button>
+      <button class="btn secondary" onclick="descartarPlanLetreros()">Volver al automático</button>
+      <span id="me-estado" class="me-sub"></span>
+    </div>
+    <div class="msg" style="margin-top:8px">
+      Al guardar, este plan MANDA sobre el automático. Vuelve a lanzar Auto sobre el mismo video
+      para re-renderizar: las piezas que no cambiaste salen de caché y no se vuelven a generar.
+    </div>
+  </div>
+</div>
 </body>
 </html>

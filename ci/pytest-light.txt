@@ -44,8 +44,11 @@ tests/test_brain_cache.py
 tests/test_hf2_catalogo.py
 tests/test_hf3_clip_overlay.py
 tests/test_hf3_deudas.py
+tests/test_hf3_edicion.py
+tests/test_hf3_textos_llm.py
 tests/test_hf3_motion_capa.py
 tests/test_hf3_motion_plan.py
+tests/test_hf3_pulido.py
 tests/test_hf3_sello_motion.py
 tests/test_hf_almacen.py
 tests/test_hf_capacidad.py

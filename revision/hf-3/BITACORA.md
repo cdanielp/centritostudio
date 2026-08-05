@@ -234,3 +234,143 @@ Una linea por bloque, con la hora de cierre. Es lo que lee una sesion nueva sin 
   (7 piezas), sobre los mismos clips que 06/09 y 07 para comparar lado a lado. El primer render
   saco tres titulos flojos ("preparatoria", "primarias totalmente", "te puedas, pues puedas ahi
   jugar") y se cerro la guarda antes de dar la demo por buena.
+
+## Sesion 6: merge de HF-3, edicion desde el Studio y textos por LLM
+
+- **16:21 - BLOQUE 0 OK (merge).** Comprobado a ojo en las hojas 10 y 11 que el cierre lleva el
+  titulo grande con la CTA en la pastilla y que el hook pinta su filete rojo con el kicker
+  vacio. PR #46 contra main, **merge commit `dc6f6d0`** (dos padres, verificado en el remoto).
+  Gate de privacidad 1374 checks / 0 blockers, `hf_real` 17 passed, CI verde. El CI cazo un
+  fallo real de camino: el sello de `motion/` hasheaba los bytes crudos y Git deja LF en Linux
+  y CRLF en Windows, asi que el gate reventaba en el runner sin que nadie hubiera tocado una
+  plantilla. Los archivos de texto se normalizan; los binarios van tal cual.
+- **17:28 - BLOQUE 1 OK (edicion desde el Studio).** Lo mas importante de la sesion. Hasta hoy K
+  solo podia prender y apagar la capa entera.
+  - `motion_edicion.py`: contrato del plan editado. Un sidecar junto al clip que, si existe,
+    MANDA sobre el planificador. Valida ANTES de escribir y devuelve TODOS los problemas de una
+    vez, para que K arregle de una pasada.
+  - `studio_motion.py`: capa delgada entre la interfaz y el planificador.
+  - Cuatro endpoints (`GET`, `PUT`, `DELETE` del plan y `GET` del catalogo) y un editor modal en
+    el Studio: lista de piezas con tiempos y textos, mover, borrar, anadir y volver al automatico.
+  - La duracion de una pieza NO se puede editar: la fija la plantilla y una pieza recortada se
+    corta a media animacion. Mover si, estirar no.
+  - Re-render incremental probado sobre las claves de cache: editar un texto solo invalida esa
+    pieza, y mover una en el tiempo no invalida ninguna.
+- **17:33 - BLOQUE 2 OK (textos por LLM).** Las heuristicas de espanol llegaron hasta donde
+  podian. `motion_textos_llm.py` pide TODOS los textos de un clip en UNA llamada y devuelve JSON
+  estricto. Cache con la misma huella que el brain (texto, tiempos, prompt, modelo, proveedor),
+  asi que la segunda corrida no llama y el clip sigue siendo reproducible. FAIL-OPEN campo a
+  campo: lo que el modelo no traiga o traiga mal cae al respaldo de reglas, que no se toco (sus
+  158 tests siguen verdes). Medido sobre los 34 clips reales: `dato_destacado` pasa de 4 a 7,
+  porque el modelo reconoce "diez y medio por ciento" y la regla exige unidad literal.
+- **17:45 - BLOQUE 3 OK (demos).** Cache borrada antes de renderizar.
+  `<LAB>\demo\12_LLM_VERTICAL.mp4` (plan automatico con textos del LLM) y
+  `<LAB>\demo\13_EDITADO_VERTICAL.mp4` (el mismo con UNA pieza corregida desde el Studio), con
+  sus hojas de 7 frames. Al montar la 13 salio un fallo real: el Studio mostraba el plan de las
+  REGLAS mientras Auto renderiza con los del LLM, o sea que K habria corregido un texto y visto
+  otro en el video. Corregido antes de dar la demo por buena.
+
+## Sesion 7: acople del LLM, guarda contra palabras inventadas y previsualizacion
+
+Rama `feat/hf-3-pulido`. Nota de base: el brief decia "rama nueva desde main (ya trae dc6f6d0)",
+pero `main` NO trae el editor ni los textos por LLM; eso vive en `feat/hf-3-integracion`. La
+rama sale de ahi, que si contiene `main`.
+
+- **PASO 1 OK (invertir el orden planificador-LLM + guarda).** El orden estaba al reves: el
+  modelo proponia secciones CON su instante y el planificador descartaba las que no cabian, asi
+  que la mitad de los letreros salia del respaldo de reglas y por eso seguian apareciendo
+  titulos como "futbol americano, basquetas". Ahora el planificador decide primero cuantas
+  piezas van y en que milisegundo, y despues se le pide al modelo un texto PARA CADA UNA, con el
+  fragmento hablado de ese instante delante. Mapeo uno a uno, cero descarte.
+  - Medido sobre los 34 clips reales, pieza a pieza contra el plan de reglas y solo en clips con
+    transcripcion: **72.7% (64/88) -> 96.6% (85/88)**.
+  - Los 3 que faltan caen al respaldo porque el texto no cabia en el limite de la plantilla.
+  - `motion_guarda.py`: contrasta los SUSTANTIVOS del texto generado contra la transcripcion del
+    clip ENTERO, tolerando plural, genero y acentos. Un fallo -> UN reintento pidiendo solo
+    palabras dichas; segundo fallo -> ese campo cae a reglas. Sin listas nuevas: los verbos los
+    descarta el detector que ya existe en `motion_plan` y las palabras vacias `stopwords_es`.
+  - Dos trampas que costaron sangre. La primera version contrastaba contra el fragmento de 6 s y
+    marcaba media frase legitima; la segunda dejaba pasar justo el caso que la motivo, porque un
+    "de" suelto de la transcripcion daba por dicha cualquier palabra que empezara por esas letras
+    y "decepcion" pasaba limpia. Ahora las dos partes de la comparacion tienen que ser largas.
+- **PASO 3 OK (previsualizacion en el editor).** Cada pieza del editor tiene un boton que
+  devuelve la imagen del letrero COMPUESTO sobre el frame real del video en su instante de
+  entrada. Bajo demanda, no al abrir: son ~9 s la primera vez y 0.3 s desde cache, que se
+  indexa por contenido de la pieza + version de la plantilla + tamano del video. Si falla, la
+  celda muestra el motivo y un boton de reintentar; el editor sigue sirviendo igual.
+- **PASO 4 OK (demos y medicion).** Cache borrada antes de renderizar.
+  `<LAB>\demo\14_LLM_COMPLETO.mp4` con su hoja de 7 frames: las 7 piezas llevan texto del
+  modelo. `<LAB>\demo\15_EDITOR.png`: el editor real con la vista de dos piezas ya generada.
+  - La guarda salta en **8 campos de los 34 clips** (7 resueltos con el reintento, 1 caido a
+    reglas). Las incidencias ahora se ESCRIBEN en el sidecar del relleno, no solo se imprimen:
+    sin eso, una corrida con cache no puede decir cuantas palabras invento el modelo.
+  - Hallazgo incomodo del caso que motivo todo esto: el clip dice "desercion escolar" y Whisper
+    transcribio "decepcion". El modelo escribio "desercion", que es lo CORRECTO, y la guarda lo
+    marco como inventado porque su unica verdad es la transcripcion. El reintento devolvio un
+    texto sin la palabra. La guarda funciona; su fuente de verdad es la que falla.
+
+## Sesion 8: la guarda por tipo, la repeticion entre piezas y la previsualizacion honesta
+
+- **PASO 1 OK (la guarda reparte por tipo de campo).** El caso que motivo la guarda era al
+  reves de lo que parecia: el audio dice DESERCION, Whisper transcribio DECEPCION, el modelo
+  escribio lo correcto y la guarda lo tumbo. "Saludos", "Presentacion" o "Forzar" tampoco eran
+  alucinaciones: eran un titular abstrayendo, que es lo que se le pide.
+  - CIFRA del `dato_destacado`: ESTRICTO. Un numero en pantalla que nadie dijo es un dato falso.
+    Se acepta por digitos literales en el clip o por la cantidad en palabras en el tramo
+    ("diez y medio por ciento"), reusando `cve_keywords.NUMERALES`, que ya existia.
+  - NOMBRES PROPIOS: tolerante por distancia de edicion. Si se parece a algo dicho, se acepta:
+    quien se equivoco casi siempre es el transcriptor.
+  - Todo lo demas: solo se REGISTRA. El editor existe y K es la ultima guarda.
+  - Fuera el reintento general: gastaba una llamada por clip y devolvia un texto peor, porque
+    obligar al modelo a usar solo palabras del fragmento es pedirle que copie el fragmento.
+  - Dos trampas medidas de camino. Atar la cifra al `dato_t0_ms` que declara el modelo la hacia
+    rehen de ese instante, que el modelo falla; los digitos se buscan en todo el clip. Y el
+    transcriptor parte el decimal ("10 .5 %"), asi que la cifra correcta caia al respaldo por un
+    espacio: se recompone antes de comparar.
+  - Sobre los 34 clips: **23 incidencias, todas registradas, ninguna tumba un texto.**
+- **PASO 2 OK (las piezas dejan de repetirse).** El prompt pide explicitamente que ningun
+  letrero repita a otro y le ensena la lista completa. Despues se contrastan tres palabras
+  significativas seguidas entre piezas y la de MENOR prioridad (hook, cierre, dato_destacado,
+  titulo_seccion) se reescribe. **1 clip con repeticion pasa a 0.**
+- **PASO 4 OK (los que no caben).** El limite viaja en el prompt y lo pasado de largo se corrige
+  en la MISMA llamada que arregla la repeticion, en vez de dos viajes. La causa real de las tres
+  piezas sin texto no era la longitud: el modelo renumeraba los ids de 0 en adelante y el ultimo
+  letrero no encajaba en ningun hueco. **Cobertura 96.6% -> 100% en clips con transcripcion.**
+- **PASO 3 OK (la previsualizacion deja de mentir).** El editor replanificaba al abrirse, y el
+  LLM recibia un juego de huecos distinto segun los campos de marca del formulario, asi que K
+  podia corregir un letrero que el MP4 no tenia. Ahora `clips_de_motion` sella junto al clip el
+  plan EXACTO con el que compone y el editor lee ESE. Un clip sin componer lo dice en claro y no
+  inventa un plan. Como consecuencia, guardar deja de cambiar el video hasta el siguiente
+  Automatico, y el editor lo avisa: callarlo seria mentir de otra forma.
+- **PASO 5 OK (demos).** Cache borrada antes de renderizar.
+  `<LAB>\demo\16_TEXTO_FINAL.mp4` con su hoja de 7 frames y `<LAB>\demo\17_EDITOR.png`. Las 7
+  piezas del editor son las 7 del video, campo por campo, y la captura no gasto ni una llamada
+  al LLM porque el plan ya estaba sellado.
+
+## Sesion 9: cuatro arreglos y cierre
+
+Evidencia verificada por K mirando `16_TEXTO_FINAL.mp4` y `17_EDITOR.png`.
+
+- **PASO 1 OK (dos piezas no arrancan con la misma palabra).** Repetir la PLANTILLA esta bien;
+  repetir el SUJETO no. Tres letreros seguidos empezando por "Garcia" se leen como el mismo
+  aunque cada uno diga algo distinto, y `secuencia_compartida` no lo cazaba porque no comparten
+  tres palabras. La regla va en la VALIDACION, con la correccion en la misma llamada que ya
+  existia, y el prompt ademas pide variar la construccion.
+- **PASO 2 OK (la etiqueta no repite la cifra).** La tarjeta decia "10.5%" en grande y "10.5%
+  dejo la prepa en 2023-2024" debajo. La etiqueta es el CONTEXTO de la cifra: si el modelo la
+  devuelve delante, se le quita en el saneado, sin llamada extra. Se hace en las dos pasadas
+  porque la etiqueta la reescribe la segunda, y la cifra viaja en el hueco para que el saneado
+  sepa cual quitar.
+- **PASO 3 OK (acentos y tiempos).** Todo el texto del editor en espanol con tildes, y junto a
+  cada valor en ms el mismo tiempo en mm:ss, incluido el campo de entrada de una pieza nueva.
+  Los ms se quedan porque son el dato que se edita.
+- **PASO 4 OK (el plan no cambia entre corridas).** La causa NO era la clave de cache: era el
+  proveedor. Dos llamadas identicas devuelven textos distintos y bajar la temperatura a 0 lo
+  reduce pero no lo elimina; se comprobo lanzando el mismo clip dos veces con la cache borrada y
+  salieron 7 piezas y 6. El arreglo no depende del proveedor: el plan sellado se reutiliza
+  cuando la huella de TODO lo que entra al planificador es la misma (duracion, orientacion,
+  textos de marca, tramos, CONTENIDO de la trayectoria, catalogo y el flag del LLM). Cambia una
+  entrada, se replanifica; no cambia nada, no se vuelve a preguntar. Verificado: dos corridas
+  del mismo clip, plan identico campo por campo.
+- **PASO 5 OK (demos).** Cache borrada antes de renderizar. `<LAB>\demo\18_LISTO.mp4` con su
+  hoja de 7 frames y `<LAB>\demo\19_EDITOR.png` con el editor abierto sobre ESE render.
