@@ -40,11 +40,20 @@
       }
       #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
       .clip { position: absolute; inset: 0; }
-      /* Horizontal: banda superior 0-64%, centro del bloque en ~32% de la altura,
-         lejos de la zona prohibida de captions (70-92% medida en HF-2). */
+      /* Horizontal (HF-4b): el contenido ANCLA su borde superior en 54% (el mismo punto que
+         el carril vertical de abajo) y CRECE HACIA ABAJO. `motion_capa.desplazamiento_de_banda`
+         sube TODO el overlay -34pp para la banda superior (Paso 1 de HF-4): centrar aqui en
+         vez de anclar arriba hacia el 32% desplazaba ese -34pp desde un punto que ya estaba a
+         mitad de camino, y un titulo de tres lineas se salia por el borde superior del lienzo
+         (crecia hacia arriba Y hacia abajo desde el centro). Anclando en 54% con crecimiento
+         hacia abajo, un titulo mas largo gana alto hacia abajo, no hacia arriba, y el borde
+         superior, tras el desplazamiento, queda fijo en 20% con margen. ESTA regla es la que
+         rige el gemelo horizontal (su lienzo nunca dispara `@media (orientation: portrait)` de
+         mas abajo); el bloque portrait de mas abajo sigue intacto y sigue siendo lo que rige el
+         carril vertical, que esta sesion no toca. */
       #zona {
-        position: absolute; left: 0; top: 0; width: 100%; height: 64%;
-        display: grid; place-items: center;
+        position: absolute; left: 0; top: 54%; width: 100%; height: 46%;
+        display: grid; place-items: start center;
       }
       #placa {
         background: var(--placa);

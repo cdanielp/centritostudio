@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_dato_destacado",
   "plantilla": {
     "nombre": "dato_destacado",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "estilo": "pms",
   "duracion_ms": 3000,

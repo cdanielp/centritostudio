@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_titulo_seccion",
   "plantilla": {
     "nombre": "titulo_seccion",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "estilo": "pms",
   "duracion_ms": 2000,
