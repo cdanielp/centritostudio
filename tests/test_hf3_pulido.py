@@ -643,3 +643,84 @@ def test_el_saneado_del_relleno_tambien_quita_la_cifra_delante():
     ]
     crudo = [{"id": 0, "texto": "10.5% dejo la prepa"}]
     assert tl._sanear_relleno(crudo, huecos) == {0: "dejo la prepa"}
+
+
+# ── El plan no cambia entre corridas (sesion 9, punto 4) ─────────────────────
+
+
+def test_la_segunda_corrida_reutiliza_el_plan_y_no_vuelve_a_planificar(tmp_path, monkeypatch):
+    """El modelo no responde igual dos veces ni a temperatura 0, asi que no se le pregunta dos.
+
+    Se midio: `dato_destacado` salio en 6 clips en una corrida y en 7 en la anterior con el
+    mismo codigo. El plan es un ARTEFACTO del clip, no algo que se renegocie en cada corrida.
+    """
+    import motion_capa
+    import motion_plan as mpl
+
+    mp4 = tmp_path / "clipz.mp4"
+    mp4.write_bytes(b"no es un mp4")
+    entradas = {
+        "clip_mp4": mp4,
+        "duracion_ms": 60000,
+        "orientacion": "horizontal",
+        "textos": mpl.TextosMarca(titulo="T", nombre="N", rol="R", cta="C"),
+        "tramos": [],
+        "tray_csv": None,
+        "catalogo": {"hook", "lower_third", "cierre", "titulo_seccion", "dato_destacado"},
+    }
+    primero, _ = motion_capa.resolver_plan(**entradas)
+
+    # Si volviera a planificar, este doble lo delataria: no se puede llamar.
+    def _no_planificar(**kw):
+        raise AssertionError("replanifico un clip que no cambio")
+
+    monkeypatch.setattr(mpl, "planificar", _no_planificar)
+    segundo, origen = motion_capa.resolver_plan(**entradas)
+
+    assert origen == "automatico"
+    assert primero.a_dict() == segundo.a_dict()
+
+
+def test_cambiar_una_entrada_si_replanifica(tmp_path):
+    """El sello vale mientras las entradas sean las mismas. Otro texto de marca es otro plan."""
+    import motion_capa
+    import motion_plan as mpl
+
+    mp4 = tmp_path / "clipw.mp4"
+    mp4.write_bytes(b"no es un mp4")
+    base = {
+        "clip_mp4": mp4,
+        "duracion_ms": 60000,
+        "orientacion": "horizontal",
+        "tramos": [],
+        "tray_csv": None,
+        "catalogo": {"hook", "lower_third", "cierre", "titulo_seccion", "dato_destacado"},
+    }
+    con_nombre, _ = motion_capa.resolver_plan(
+        **base, textos=mpl.TextosMarca(titulo="T", nombre="Ana", rol="R", cta="C")
+    )
+    sin_nombre, _ = motion_capa.resolver_plan(
+        **base, textos=mpl.TextosMarca(titulo="T", nombre="", rol="", cta="C")
+    )
+    assert con_nombre.a_dict() != sin_nombre.a_dict()
+
+
+def test_la_huella_de_entrada_no_depende_de_donde_viva_la_trayectoria(tmp_path):
+    """El mismo CSV movido de sitio no es una entrada distinta: entra por contenido."""
+    import motion_capa
+    import motion_plan as mpl
+
+    a, b = tmp_path / "uno.csv", tmp_path / "dos.csv"
+    a.write_bytes(b"t,x,y\n0,1,2\n")
+    b.write_bytes(b"t,x,y\n0,1,2\n")
+    comunes = {
+        "duracion_ms": 60000,
+        "orientacion": "vertical",
+        "textos": mpl.TextosMarca(titulo="T"),
+        "tramos": [],
+        "catalogo": {"hook"},
+        "textos_llm": False,
+    }
+    assert motion_capa.huella_de_entrada(**comunes, tray_csv=a) == motion_capa.huella_de_entrada(
+        **comunes, tray_csv=b
+    )

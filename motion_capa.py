@@ -23,6 +23,7 @@ Tres reglas de esta capa, en orden de importancia:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -104,6 +105,43 @@ class ResultadoMotion:
         return bool(self.clips)
 
 
+def huella_de_entrada(
+    *,
+    duracion_ms: int,
+    orientacion: str,
+    textos: mp.TextosMarca,
+    tramos: list[mp.Tramo],
+    tray_csv: Path | None,
+    catalogo: set[str],
+    textos_llm: bool,
+) -> str:
+    """sha256 de TODO lo que entra al planificador. PURO.
+
+    Si esto no cambia, el plan tampoco tiene por que cambiar, y lo unico que introduciria una
+    diferencia seria volver a preguntarle al modelo. Por eso la trayectoria entra por su
+    contenido y no por su ruta: el mismo CSV movido de sitio no es una entrada distinta.
+    """
+    import hashlib  # noqa: PLC0415
+
+    firma_tray = ""
+    if tray_csv is not None and Path(tray_csv).is_file():
+        firma_tray = hashlib.sha256(Path(tray_csv).read_bytes()).hexdigest()
+    payload = json.dumps(
+        {
+            "duracion_ms": int(duracion_ms),
+            "orientacion": orientacion,
+            "textos": [textos.titulo, textos.kicker, textos.nombre, textos.rol, textos.cta],
+            "tramos": [[t.t0_ms, t.t1_ms, t.texto] for t in tramos],
+            "tray": firma_tray,
+            "catalogo": sorted(catalogo),
+            "textos_llm": bool(textos_llm),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def resolver_plan(
     *,
     clip_mp4: Path | None,
@@ -124,6 +162,7 @@ def resolver_plan(
     """
     import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
 
+    lista = list(tramos or [])
     if clip_mp4 is not None:
         editado = me.cargar(
             clip_mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
@@ -131,7 +170,30 @@ def resolver_plan(
         if editado is not None:
             print(f"[motion] plan EDITADO a mano: {len(editado.piezas)} pieza(s)")
             return editado, me.ORIGEN_EDITADO
-    lista = list(tramos or [])
+        # El plan del render anterior manda si NADA de lo que entra al planificador ha cambiado.
+        # Sin esto, procesar dos veces el mismo clip da dos planes distintos, porque el modelo
+        # no responde igual dos veces ni a temperatura 0: se midio con `dato_destacado` saliendo
+        # en 6 clips y en 7 con el mismo codigo. El plan es un ARTEFACTO del clip, no algo que
+        # se vuelva a negociar en cada corrida.
+        marca = huella_de_entrada(
+            duracion_ms=duracion_ms,
+            orientacion=orientacion,
+            textos=textos,
+            tramos=lista,
+            tray_csv=tray_csv,
+            catalogo=catalogo,
+            textos_llm=textos_llm,
+        )
+        previo = me.cargar_render(
+            clip_mp4, orientacion=orientacion, catalogo=catalogo, huella_entrada=marca
+        )
+        if previo is not None:
+            print(
+                f"[motion] plan REUTILIZADO del render anterior: {len(previo[0].piezas)} pieza(s)"
+            )
+            return previo
+    else:
+        marca = ""
     plan = mp.planificar(
         duracion_ms=duracion_ms,
         orientacion=orientacion,
@@ -146,6 +208,9 @@ def resolver_plan(
     # delante, asi que no se descarta ninguno.
     if textos_llm:
         plan = rellenar_textos_con_llm(plan, lista, duracion_ms, stem)
+    # El sello va AQUI y no en el render: es lo que hace que la proxima corrida reutilice este
+    # plan en vez de volver a negociarlo, y lo que el editor ensena.
+    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, marca)
     return plan, me.ORIGEN_AUTOMATICO
 
 
@@ -363,7 +428,11 @@ def validar_sin_solape(piezas: list[mp.Pieza], orientacion: str) -> None:
 
 
 def _sellar_plan_renderizado(
-    clip_mp4: Path | None, plan: mp.PlanMotion, duracion_ms: int, origen: str
+    clip_mp4: Path | None,
+    plan: mp.PlanMotion,
+    duracion_ms: int,
+    origen: str,
+    huella_entrada: str = "",
 ) -> None:
     """Deja junto al clip el plan EXACTO que se va a componer. Un fallo aqui no tumba el render.
 
@@ -375,7 +444,13 @@ def _sellar_plan_renderizado(
     try:
         import motion_edicion as me  # noqa: PLC0415
 
-        me.sellar_render(clip_mp4, plan, duracion_ms=duracion_ms, origen=origen)
+        me.sellar_render(
+            clip_mp4,
+            plan,
+            duracion_ms=duracion_ms,
+            origen=origen,
+            huella_entrada=huella_entrada,
+        )
     except Exception as exc:  # noqa: BLE001
         print(f"[motion] no se pudo sellar el plan renderizado: {exc}")
 
@@ -469,7 +544,6 @@ def _clips_de_motion(
     )
     informe = _informe_base(plan)
     informe["origen"] = origen
-    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, origen)
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
         return ResultadoMotion((), informe)

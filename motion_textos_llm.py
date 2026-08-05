@@ -46,6 +46,10 @@ LIMITES = {
     "cierre_titulo": mp.TITULO_SECCION_MAX_CHARS,
 }
 MAX_SECCIONES = 8  # tope de cordura de la respuesta, no una regla de colocacion
+# Estos textos acaban quemados en un MP4 y guardados en una cache, asi que la respuesta tiene
+# que ser REPRODUCIBLE: dos corridas del mismo clip dan el mismo plan, no uno parecido. Entra a
+# las dos huellas para que los sidecars generados con la temperatura de antes se invaliden.
+TEMPERATURA_TEXTOS = 0.0
 
 _NUMERO_INICIAL = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -140,6 +144,7 @@ def huella(tramos: list[mp.Tramo], duracion_ms: int) -> str:
             "prompt": _PROMPT,
             "modelo": brain.MODEL,
             "proveedor": brain.PROVIDER,
+            "temperatura": TEMPERATURA_TEXTOS,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -326,12 +331,15 @@ def pedir_textos(
     try:
         import brain  # noqa: PLC0415
 
-        crudo = brain.llm(
-            [
-                {"role": "system", "content": _SYSTEM},
-                {"role": "user", "content": _prompt_de(tramos, duracion_ms)},
-            ]
-        )
+        # TEMPERATURA 0. Este texto va a un MP4 y a una cache: dos corridas del mismo
+        # clip tienen que dar el mismo plan, no uno parecido.
+        with brain.temperatura(TEMPERATURA_TEXTOS):
+            crudo = brain.llm(
+                [
+                    {"role": "system", "content": _SYSTEM},
+                    {"role": "user", "content": _prompt_de(tramos, duracion_ms)},
+                ]
+            )
     except Exception as exc:  # noqa: BLE001 - fail-open duro
         print(f"[motion-llm] fallo la llamada, se usan las reglas: {type(exc).__name__}: {exc}")
         return None
@@ -482,6 +490,7 @@ def huella_relleno(huecos: list[dict], duracion_ms: int) -> str:
             "prompt": _PROMPT_RELLENO,
             "modelo": brain.MODEL,
             "proveedor": brain.PROVIDER,
+            "temperatura": TEMPERATURA_TEXTOS,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -527,12 +536,15 @@ def pedir_textos_para(
     try:
         import brain  # noqa: PLC0415
 
-        crudo = brain.llm(
-            [
-                {"role": "system", "content": _SYSTEM_RELLENO},
-                {"role": "user", "content": _prompt_relleno(huecos, duracion_ms)},
-            ]
-        )
+        # TEMPERATURA 0. Este texto va a un MP4 y a una cache: dos corridas del mismo
+        # clip tienen que dar el mismo plan, no uno parecido.
+        with brain.temperatura(TEMPERATURA_TEXTOS):
+            crudo = brain.llm(
+                [
+                    {"role": "system", "content": _SYSTEM_RELLENO},
+                    {"role": "user", "content": _prompt_relleno(huecos, duracion_ms)},
+                ]
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"[motion-llm] fallo el relleno, se usan las reglas: {type(exc).__name__}: {exc}")
         return {}
@@ -639,21 +651,24 @@ def _corregir(
     try:
         import brain  # noqa: PLC0415
 
-        crudo = brain.llm(
-            [
-                {"role": "system", "content": _SYSTEM_RELLENO},
-                {
-                    "role": "user",
-                    "content": (
-                        _prompt_relleno(afectados, duracion_ms)
-                        + "\n\nCORRECCION OBLIGATORIA. Reescribe SOLO estos letreros:\n"
-                        + detalle
-                        + "\nCada uno tiene que decir algo DISTINTO de los demas letreros del "
-                        "clip y caber en su limite de caracteres."
-                    ),
-                },
-            ]
-        )
+        # TEMPERATURA 0. Este texto va a un MP4 y a una cache: dos corridas del mismo
+        # clip tienen que dar el mismo plan, no uno parecido.
+        with brain.temperatura(TEMPERATURA_TEXTOS):
+            crudo = brain.llm(
+                [
+                    {"role": "system", "content": _SYSTEM_RELLENO},
+                    {
+                        "role": "user",
+                        "content": (
+                            _prompt_relleno(afectados, duracion_ms)
+                            + "\n\nCORRECCION OBLIGATORIA. Reescribe SOLO estos letreros:\n"
+                            + detalle
+                            + "\nCada uno tiene que decir algo DISTINTO de los demas letreros del "
+                            "clip y caber en su limite de caracteres."
+                        ),
+                    },
+                ]
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"[motion-llm] la correccion fallo, se conserva lo que habia: {type(exc).__name__}")
         return textos

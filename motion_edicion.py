@@ -229,7 +229,9 @@ def guardar(clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int) -> Path:
     return destino
 
 
-def sellar_render(clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int, origen: str) -> Path:
+def sellar_render(
+    clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int, origen: str, huella_entrada: str = ""
+) -> Path:
     """Deja escrito el plan EXACTO que se acaba de componer. Un fallo no tumba el render.
 
     Es lo que hace honesta la previsualizacion: sin esto, el editor replanificaba y podia
@@ -239,15 +241,39 @@ def sellar_render(clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int, orig
     from atomic_io import atomic_write_json  # noqa: PLC0415
 
     destino = ruta_render(clip_mp4)
-    atomic_write_json(destino, {**a_sidecar(plan, duracion_ms=duracion_ms), "origen": origen})
+    atomic_write_json(
+        destino,
+        {
+            **a_sidecar(plan, duracion_ms=duracion_ms),
+            "origen": origen,
+            # Huella de TODO lo que entro al planificador. Es lo que permite reutilizar este
+            # plan en la siguiente corrida en vez de volver a preguntarle al modelo, que no
+            # responde dos veces igual ni a temperatura 0.
+            "huella_entrada": huella_entrada,
+            # Lo descartado viaja con lo colocado. Un plan reutilizado sin sus omisiones seria
+            # un plan que ya no sabe explicar por que le falta una pieza, y eso es justo lo que
+            # el editor le ensena a K.
+            "omisiones": [
+                {"plantilla": o.plantilla, "motivo": o.motivo, "detalle": o.detalle}
+                for o in plan.omisiones
+            ],
+            "incidencias": list(plan.incidencias),
+        },
+    )
     return destino
 
 
-def cargar_render(clip_mp4: Path, *, orientacion: str, catalogo: set[str]):
+def cargar_render(
+    clip_mp4: Path, *, orientacion: str, catalogo: set[str], huella_entrada: str | None = None
+):
     """(plan, origen) del ultimo render de ese clip, o None si no hay o no vale. FAIL-OPEN.
 
     La duracion sale del propio sidecar: es la que tenia el clip cuando se compuso, y es la
     unica contra la que ese plan es valido.
+
+    Con `huella_entrada` se exige ademas que las entradas del planificador sean LAS MISMAS. El
+    editor no la pasa, porque quiere ver lo que hay en el MP4 sea cual sea; el pipeline si, para
+    no replanificar un clip que no ha cambiado.
     """
     ruta = ruta_render(clip_mp4)
     if not ruta.is_file():
@@ -262,6 +288,8 @@ def cargar_render(clip_mp4: Path, *, orientacion: str, catalogo: set[str]):
     duracion_ms = dato.get("duracion_ms")
     if not isinstance(duracion_ms, int):
         return None
+    if huella_entrada is not None and dato.get("huella_entrada") != huella_entrada:
+        return None  # el clip, su transcripcion o los textos de marca cambiaron
     resultado = validar_plan(
         dato, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
     )
@@ -269,7 +297,33 @@ def cargar_render(clip_mp4: Path, *, orientacion: str, catalogo: set[str]):
         print(f"[motion] plan renderizado no valido: {'; '.join(resultado.problemas)}")
         return None
     origen = dato.get("origen")
-    return resultado.plan, (origen if isinstance(origen, str) else ORIGEN_AUTOMATICO)
+    plan = _con_lo_descartado(resultado.plan, dato)
+    return plan, (origen if isinstance(origen, str) else ORIGEN_AUTOMATICO)
+
+
+def _con_lo_descartado(plan: mp.PlanMotion, dato: dict) -> mp.PlanMotion:
+    """Devuelve el plan con sus omisiones e incidencias, que el validador no reconstruye."""
+    crudas = dato.get("omisiones")
+    omisiones = (
+        tuple(
+            mp.Omision(
+                str(o.get("plantilla", "")), str(o.get("motivo", "")), str(o.get("detalle", ""))
+            )
+            for o in crudas
+            if isinstance(o, dict)
+        )
+        if isinstance(crudas, list)
+        else ()
+    )
+    incidencias = dato.get("incidencias")
+    return mp.PlanMotion(
+        plan.orientacion,
+        plan.piezas,
+        omisiones,
+        tuple(x for x in incidencias if isinstance(x, str))
+        if isinstance(incidencias, list)
+        else (),
+    )
 
 
 def descartar(clip_mp4: Path) -> bool:

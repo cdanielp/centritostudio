@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 try:
@@ -42,6 +43,26 @@ JSON: {{"groups":[{{"g":int,"kw":int|null,"emoji":str|null}},...]}}\
 """
 
 
+# Temperatura de las llamadas. La global se queda como estaba para no mover ni un byte de las
+# rutas que ya funcionan; quien necesite una respuesta REPRODUCIBLE la baja a 0 con el contexto
+# `temperatura(0.0)`. Sin eso, dos corridas del mismo clip con la cache borrada dan planes
+# distintos, y eso ya se midio: `dato_destacado` salio en 6 clips y en 7 con el mismo codigo.
+TEMPERATURA_DEFECTO = 0.3
+_temperatura_actual = TEMPERATURA_DEFECTO
+
+
+@contextmanager
+def temperatura(valor: float):
+    """Fija la temperatura de las llamadas de dentro del bloque. Se restaura siempre."""
+    global _temperatura_actual  # noqa: PLW0603
+    previa = _temperatura_actual
+    _temperatura_actual = float(valor)
+    try:
+        yield
+    finally:
+        _temperatura_actual = previa
+
+
 def _call_deepseek(messages: list[dict]) -> tuple[dict, dict]:
     """Llama a DeepSeek via API OpenAI-compatible."""
     from openai import OpenAI
@@ -54,7 +75,7 @@ def _call_deepseek(messages: list[dict]) -> tuple[dict, dict]:
         model=MODEL,
         messages=messages,
         response_format={"type": "json_object"},
-        temperature=0.3,
+        temperature=_temperatura_actual,
         timeout=60,
     )
     usage = {
