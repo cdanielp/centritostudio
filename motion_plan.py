@@ -36,6 +36,26 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from motion_plan_spatial import (
+    BANDA_ARRIBA,
+    BANDA_CENTRO,
+    BANDA_INFERIOR,
+    BANDA_SIN_DATO,
+    BANDA_SUPERIOR,
+    BANDAS_VALIDAS,
+    CARRIL_VERTICAL,
+    DESPLAZAMIENTO_INFERIOR,
+    DESPLAZAMIENTO_SUPERIOR,
+    ETIQUETA_BANDA,
+    INCIDENCIA_SIN_DATO_DE_CARA,
+    RANGO_INFERIOR,
+    RANGO_POR_BANDA,
+    ZONA_CAPTIONS_POR_ORIENTACION,
+    banda_invade_captions,
+    banda_libre,
+    zona_cara,
+)
+
 # ── Duraciones nativas del catalogo de HF-2 ──────────────────────────────────
 # No se leen de `motion/ejemplos/` para que el planificador siga siendo puro; un test fija
 # que esta tabla coincide con los ejemplos del catalogo, que son la fuente de verdad.
@@ -382,78 +402,12 @@ MAX_PIEZAS_POR_MINUTO = 7
 PIEZAS_PROTEGIDAS = frozenset({"hook", "lower_third", "cierre"})
 PIEZAS_OPCIONALES = frozenset({"titulo_seccion", "dato_destacado"})
 
-# ── Restricciones espaciales (medidas en HF-2, D51; no se vuelven a medir) ───
-ZONA_CAPTIONS = (0.70, 0.92)  # franja prohibida de diseno, en fraccion del alto
-CARRIL_VERTICAL = (0.54, 0.68)  # donde el HTML de las piezas dibuja su contenido en 9:16
-
-# Segunda banda, POR ENCIMA de la cara. Con la cara en `center` (0.40-0.60) o en `bottom`
-# (>0.60) el carril de 54-68% queda invadido y antes se omitia la pieza entera; medido sobre
-# los clips reales del proyecto, eso dejaba en cero al 61.9% de los verticales.
-#
-# CONFIRMADO CON RENDER REAL (revision/hf-3/confirmar_banda.py, sobre un clip 1080x1920 con la
-# cara en `center`): el hook, que es la pieza mas alta, ocupa nativamente 60.9-68.6% del alto y
-# tras el desplazamiento de -653 px cae en 26.9-34.6%. Queda por debajo del 10% de zona segura
-# de UI de TikTok/Reels, por encima del borde superior de una cara centrada (una cabeza centrada
-# en 0.50 arranca alrededor de 0.35) y muy lejos de la franja de captions (70-92%).
-BANDA_SUPERIOR = (0.20, 0.35)
-BANDA_CENTRO = "centro"
-BANDA_ARRIBA = "superior"
-
-# Cuanto hay que subir la pieza, en fraccion del alto, para llevar su contenido del carril
-# nativo a la banda superior. Es negativo: la pieza se compone desplazada hacia arriba.
-DESPLAZAMIENTO_SUPERIOR = BANDA_SUPERIOR[0] - CARRIL_VERTICAL[0]
-
-# Tercera banda del control de posicion del editor (HF-4, paso 2): "Abajo". Se define pegada
-# JUSTO DEBAJO del carril nativo, con su mismo alto (14 puntos de fraccion), en vez de inventar
-# una medida nueva. No hay margen real ahi: el carril nativo termina en 0.68 y la franja de
-# captions empieza en 0.70, asi que esta banda cae de lleno en ZONA_CAPTIONS. Es la opcion que
-# el editor ofrece pero rechaza al guardar (ver motion_edicion.validar_plan): se deja en el
-# selector, con su motivo, en vez de esconderla.
-_ALTO_CARRIL = CARRIL_VERTICAL[1] - CARRIL_VERTICAL[0]
-RANGO_INFERIOR = (CARRIL_VERTICAL[1], CARRIL_VERTICAL[1] + _ALTO_CARRIL)
-BANDA_INFERIOR = "inferior"
-
-# Cuanto hay que bajar la pieza para llevarla del carril nativo a la banda inferior. Positivo:
-# la pieza se compone desplazada hacia abajo.
-DESPLAZAMIENTO_INFERIOR = RANGO_INFERIOR[0] - CARRIL_VERTICAL[0]
-
-BANDAS_VALIDAS = (BANDA_CENTRO, BANDA_ARRIBA, BANDA_INFERIOR)
-
-# Rango ocupado (fraccion de alto) de cada banda, para comprobar si invade ZONA_CAPTIONS. Mismos
-# numeros para las dos orientaciones: ni el carril nativo ni la banda superior son CSS distinto
-# por orientacion (por eso el Paso 1 de HF-4 existe), asi que tampoco lo es esta comprobacion.
-RANGO_POR_BANDA = {
-    BANDA_CENTRO: CARRIL_VERTICAL,
-    BANDA_ARRIBA: BANDA_SUPERIOR,
-    BANDA_INFERIOR: RANGO_INFERIOR,
-}
-
-
-def banda_invade_captions(banda: str) -> bool:
-    """True si el rango de esa banda pisa la franja de captions (ZONA_CAPTIONS)."""
-    rango = RANGO_POR_BANDA.get(banda)
-    return rango is not None and rango[1] > ZONA_CAPTIONS[0]
-
-
-# Etiqueta en espanol de cada banda, para el selector del editor y para los motivos de rechazo.
-ETIQUETA_BANDA = {BANDA_ARRIBA: "Arriba", BANDA_CENTRO: "Centro", BANDA_INFERIOR: "Abajo"}
-
-
-# Buckets de `cve.zona_cara_en_rango` y la banda que dejan libre en 9:16.
-BANDA_POR_ZONA_CARA = {
-    "top": BANDA_CENTRO,  # cara arriba: el carril nativo esta despejado
-    "center": BANDA_ARRIBA,
-    "bottom": BANDA_ARRIBA,
-}
-
-# SIN dato de cara (CSV ausente, legacy o sin deteccion viva) la pieza va al carril nativo, que
-# es el que K aprobo en el gate visual de HF-2 justamente por no pisar caras. Antes se omitia,
-# y eso contradecia el fail-open de toda la capa: un dato que falta apagaba la funcion entera en
-# vez de degradarla. Ademas dejaba 8 clips derivados en cero PARA SIEMPRE, porque no tienen
-# fuente 16:9 y nunca van a tener trayectoria. La falta del dato se registra como INCIDENCIA
-# del plan, no como fallo de la pieza.
-BANDA_SIN_DATO = BANDA_CENTRO
-INCIDENCIA_SIN_DATO_DE_CARA = "sin_dato_de_cara"
+# ── Restricciones espaciales (medidas en HF-2/D51) ───────────────────────────
+# Movidas a `motion_plan_spatial.py` (HF-4, Paso 1): ZONA_CAPTIONS_POR_ORIENTACION,
+# CARRIL_VERTICAL, BANDA_SUPERIOR, RANGO_INFERIOR, RANGO_POR_BANDA, banda_invade_captions,
+# BANDA_POR_ZONA_CARA, BANDA_SIN_DATO, INCIDENCIA_SIN_DATO_DE_CARA, zona_cara y banda_libre
+# (antes `_banda_libre`) — todo lo que decide DONDE va una pieza, para poder correrlo una vez
+# POR FORMATO sin volver a negociar CUANDO va cada pieza. Se importan arriba y se usan igual.
 
 ORIENTACIONES = ("vertical", "horizontal")
 
@@ -1190,33 +1144,6 @@ def _hay_aire(t0: int, t1: int, colocadas: list[Pieza]) -> bool:
     )
 
 
-def zona_cara(tray_csv: Path | None, t0_ms: int, t1_ms: int) -> str | None:
-    """Bucket de la cara en esa ventana, o None si no hay dato. Fail-open, ya existia en cve."""
-    if not tray_csv:
-        return None
-    import cve  # noqa: PLC0415 (import perezoso: el planificador no arrastra el motor de captions)
-
-    return cve.zona_cara_en_rango(tray_csv, t0_ms / 1000.0, t1_ms / 1000.0)
-
-
-def _banda_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None) -> str:
-    """Banda donde va la pieza en esa ventana. SIEMPRE devuelve una: nunca omite.
-
-    Solo se consulta la cara en 9:16: ahi las cinco piezas comparten un carril estrecho y una
-    cara centrada o baja se lo come, asi que la pieza sube a la banda superior. Sin dato de cara
-    se usa el carril nativo, que es el aprobado en el gate visual de HF-2.
-
-    En 16:9 la cara NUNCA se consulta (ni se toca el reframe): un horizontal no pasa por el
-    reencuadre y por tanto jamas trae trayectoria. El carril nativo (54-68% de alto) es el mismo
-    HTML que en vertical, sin CSS por orientacion, y ahi caia el letrero antes de esto: la banda
-    superior, que ya existia para la cara centrada/baja en 9:16, es tambien el destino sin dato
-    de cara en 16:9.
-    """
-    if orientacion != "vertical":
-        return BANDA_ARRIBA
-    return BANDA_POR_ZONA_CARA.get(zona_cara(tray_csv, t0_ms, t1_ms), BANDA_SIN_DATO)
-
-
 def _colocar(
     cand: _Candidata,
     duracion_ms: int,
@@ -1233,7 +1160,7 @@ def _colocar(
             if not _hay_aire(t0, t1, colocadas):
                 motivo = MOTIVO_SIN_AIRE
                 continue
-            banda = _banda_libre(orientacion, t0, t1, tray_csv)
+            banda = banda_libre(orientacion, t0, t1, tray_csv)
             return Pieza(cand.plantilla, t0, t1, dict(cand.texto), banda, cand.tramo_t0), ""
         if hasta + dur > duracion_ms and motivo == MOTIVO_FUERA_DE_CLIP:
             motivo = MOTIVO_FUERA_DE_CLIP
@@ -1539,7 +1466,7 @@ __all__ = [
     "SEPARACION_MIN_MS",
     "UMBRAL_CORTO_MS",
     "UMBRAL_LARGO_MS",
-    "ZONA_CAPTIONS",
+    "ZONA_CAPTIONS_POR_ORIENTACION",
     "Omision",
     "Pieza",
     "PlanMotion",

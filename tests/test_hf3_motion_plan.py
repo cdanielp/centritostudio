@@ -304,7 +304,7 @@ def test_la_banda_superior_no_pisa_ni_la_ui_ni_los_captions():
     """0.20-0.34: por debajo del 10% de UI de TikTok y muy por encima del 70-92% de captions."""
     arriba, abajo = mp.BANDA_SUPERIOR
     assert arriba >= 0.10, "invade la zona segura superior de la UI"
-    assert abajo <= mp.ZONA_CAPTIONS[0], "invade la franja de captions"
+    assert abajo <= mp.ZONA_CAPTIONS_POR_ORIENTACION["vertical"][0], "invade la franja de captions"
     assert abajo <= 0.40, "no queda por encima del borde de una cara centrada"
     assert mp.DESPLAZAMIENTO_SUPERIOR == pytest.approx(arriba - mp.CARRIL_VERTICAL[0])
 
@@ -323,9 +323,10 @@ def test_el_desplazamiento_en_pixeles_sube_la_pieza(tmp_path):
 
 
 def test_la_banda_inferior_pisa_los_captions_y_las_otras_dos_no():
-    assert mp.banda_invade_captions(mp.BANDA_INFERIOR) is True
-    assert mp.banda_invade_captions(mp.BANDA_CENTRO) is False
-    assert mp.banda_invade_captions(mp.BANDA_ARRIBA) is False
+    for orientacion in mp.ORIENTACIONES:
+        assert mp.banda_invade_captions(mp.BANDA_INFERIOR, orientacion) is True
+        assert mp.banda_invade_captions(mp.BANDA_CENTRO, orientacion) is False
+        assert mp.banda_invade_captions(mp.BANDA_ARRIBA, orientacion) is False
 
 
 def test_la_banda_inferior_empieza_justo_donde_termina_el_carril_nativo():
@@ -471,7 +472,10 @@ def test_la_tabla_de_duraciones_coincide_con_los_ejemplos_del_catalogo():
 
 
 def test_las_restricciones_espaciales_son_las_medidas_en_hf2():
-    assert mp.ZONA_CAPTIONS == (0.70, 0.92)
+    assert mp.ZONA_CAPTIONS_POR_ORIENTACION == {
+        "vertical": (0.802, 0.899),
+        "horizontal": (0.725, 0.899),
+    }
     assert mp.CARRIL_VERTICAL == (0.54, 0.68)
     assert mp.SEPARACION_MIN_MS == 500
     assert mp.MARGEN_FINAL_MS == 200

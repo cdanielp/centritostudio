@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import motion_plan as mp
+import motion_plan_spatial as mps
 from clip_overlay import ClipOverlay
 from hyperframes.contrato import ESTILOS_VALIDOS
 
@@ -661,7 +662,7 @@ def _clips_de_motion(
         # texto es tan largo que ni el anclaje alcanza. Solo horizontal: el carril vertical no
         # se toca en esta sesion y ya paso su propio gate visual en HF-2/HF-3.
         if orientacion == "horizontal" and not pieza_cabe_en_el_lienzo(
-            pieza, Path(r.ruta_mov), int(ancho), int(alto)
+            pieza, Path(r.ruta_mov), int(ancho), int(alto), orientacion=orientacion
         ):
             print(f"[motion] pieza '{pieza.plantilla}' omitida: {MOTIVO_NO_CABE_EN_EL_LIENZO}")
             informe["piezas_fallidas"].append(
@@ -789,11 +790,14 @@ def bbox_alfa(
     return (primera, ultima) if primera is not None else None
 
 
-def pieza_cabe_en_el_lienzo(pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: int) -> bool:
+def pieza_cabe_en_el_lienzo(
+    pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: int, *, orientacion: str = "horizontal"
+) -> bool:
     """True si el contenido de la pieza, ya desplazado por su banda, queda DENTRO del lienzo
-    y sin invadir la franja de captions. Backstop de tiempo de ejecucion (Paso 2 de HF-4b):
-    el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto cubre el extremo
-    que ese anclaje no pueda absorber. Sin alfa medible no hay nada que recortar: pasa.
+    y sin invadir la franja de captions DE ESA orientacion. Backstop de tiempo de ejecucion
+    (Paso 2 de HF-4b): el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto
+    cubre el extremo que ese anclaje no pueda absorber. Sin alfa medible no hay nada que
+    recortar: pasa.
     """
     bbox = bbox_alfa(ruta_mov, pieza.duracion_ms * _FRACCION_INSTANTE_MEDIO, ancho, alto)
     if bbox is None:
@@ -803,7 +807,7 @@ def pieza_cabe_en_el_lienzo(pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: i
     y0, y1 = y0 + dy, y1 + dy
     if y0 < 0 or y1 > alto:
         return False
-    return (y1 / alto) <= mp.ZONA_CAPTIONS[0]
+    return (y1 / alto) <= mps.ZONA_CAPTIONS_POR_ORIENTACION[orientacion][0]
 
 
 def _overlay_de(pieza: mp.Pieza, resultado, alto: int) -> ClipOverlay:
