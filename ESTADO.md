@@ -580,7 +580,7 @@ identica: ese test sigue verde.
 
 ## ADDENDUM DE DETALLES DE MOTION (2026-08-04)
 
-**PR #49 MERGEADO en `main` via merge commit `PENDIENTE` (dos padres).** Rama
+**PR #49 MERGEADO en `main` via merge commit `32268f6` (dos padres: `26d94ac` + `3edf7c6`).** Rama
 `fix/motion-detalles` preservada. Tres detalles salidos de mirar la demo 18 y el editor, sobre
 el pulido de HF-3 que entro por `366f218`.
 
