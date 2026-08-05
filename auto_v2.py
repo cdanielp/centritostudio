@@ -405,6 +405,19 @@ def procesar_clip_v2(
 
         final_clips = [*final_clips_broll, *motion_resultado.clips]
 
+        if config.motion_enabled and motion_resultado.plan is not None:
+            # Segunda copia del sello, junto al MP4 FINAL publicado (no el clip de identidad
+            # interno): es por ahi que el editor busca el plan de este clip
+            # (studio_motion.resolver_clip resuelve por el nombre publicado, con estilo).
+            import motion_capa  # noqa: PLC0415
+
+            motion_capa.sellar_copia_para_editor(
+                final_path,
+                motion_resultado.plan,
+                int(round(dur * 1000)),
+                motion_resultado.informe.get("origen", "automatico"),
+            )
+
         style_cfg = get_style(STYLE_AUTO)
         ass_path = root / "output" / f"{stem_fmt}_{STYLE_AUTO}.ass"
         core.build_ass(groups_captions, w, h, style_cfg, ass_path)

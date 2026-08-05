@@ -588,6 +588,23 @@ def _sellar_plan_renderizado(
         print(f"[motion] no se pudo sellar el plan renderizado: {exc}")
 
 
+def sellar_copia_para_editor(
+    ruta_publicada: Path | None, plan: mp.PlanMotion, duracion_ms: int, origen: str
+) -> None:
+    """Sella una SEGUNDA copia del plan junto al MP4 FINAL publicado (el que ve el usuario).
+
+    `resolver_plan`/`plan_para_otro_formato` ya sellan junto al clip de identidad INTERNO
+    (dentro de `clips_dir`, la clave estable que sobrevive entre corridas de Auto y evita
+    volver a preguntarle al LLM -- ver `motion_capa.resolver_plan`). Pero
+    `studio_motion.resolver_clip()` -lo que el editor usa para encontrar un clip por su
+    nombre- resuelve al MP4 final YA PUBLICADO en el paquete, que es un archivo DISTINTO con
+    un nombre distinto (lleva el sufijo de estilo, `_hormozi`). Sin esta segunda copia el
+    editor jamas encuentra el sello de un clip que Auto v2 genero: aparece como "sin componer"
+    aunque el video si tenga letreros. Fail-open, mismo trato que el sello interno.
+    """
+    _sellar_plan_renderizado(ruta_publicada, plan, duracion_ms, origen, "")
+
+
 def _informe_base(plan: mp.PlanMotion | None) -> dict:
     return {
         "enabled": True,
@@ -957,6 +974,7 @@ __all__ = [
     "rellenar_textos_con_llm",
     "resolver_estilo",
     "resolver_plan",
+    "sellar_copia_para_editor",
     "tramos_de_groups",
     "validar_sin_solape",
     "versiones_del_catalogo",

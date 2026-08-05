@@ -277,3 +277,53 @@ def test_ambos_con_letreros_sella_el_16x9_bajo_su_propio_nombre_no_el_de_la_fuen
     assert llamadas_clip_mp4 == ["vid_clip1_corto_9x16", "vid_clip1_corto_16x9"]
     # nunca el stem de la fuente compartida sin sufijo: eso pisaria/perderia el sello
     assert "vid_clip1_corto" not in llamadas_clip_mp4
+
+
+# ── El editor encuentra el plan de un clip generado por Auto v2 ──────────────
+#
+# Bug real, mas profundo que el anterior: `resolver_plan`/`plan_para_otro_formato` sellan junto
+# al clip de IDENTIDAD interno (output/clips/, la clave estable entre corridas). El editor
+# (`studio_motion.resolver_clip`) resuelve el clip por su NOMBRE PUBLICADO -- el MP4 final
+# dentro del paquete, con el sufijo de estilo (_hormozi). Sin una copia sellada AHI, el editor
+# jamas encuentra el plan de NINGUN clip de Auto v2 (con o sin Formato dual): aparece "sin
+# componer" aunque el video si tenga letreros. Confirmado contra el repo real: cero
+# `_motion_render.json` existian alguna vez dentro de output/paquetes/ antes de este fix.
+
+
+def test_el_editor_encuentra_el_plan_de_los_dos_formatos_de_un_run_ambos(
+    entorno_e2e_horizontal, monkeypatch
+):
+    import dataclasses
+
+    import motion_capa
+    import motion_plan as mp
+    import studio_motion
+
+    monkeypatch.setattr(studio_motion, "CLIPS_DIR", entorno_e2e_horizontal["clips_dir"])
+    monkeypatch.setattr(studio_motion, "PAQUETES_DIR", entorno_e2e_horizontal["paquetes"])
+
+    plan_falso = mp.PlanMotion(
+        orientacion="vertical", piezas=(mp.Pieza("hook", 0, 2500, {"titulo": "T"}),)
+    )
+
+    def resolver_falso(**kw):
+        plan = dataclasses.replace(plan_falso, orientacion=kw.get("orientacion", "vertical"))
+        return motion_capa.ResultadoMotion((), {"enabled": True, "origen": "automatico"}, plan=plan)
+
+    monkeypatch.setattr(motion_capa, "clips_de_motion", resolver_falso)
+    cfg = AutoConfig(
+        mode="v2",
+        formato="ambos",
+        motion_enabled=True,
+        motion_nombre="K",
+        motion_textos_llm=False,
+        target_coverage_pct=0.9,
+        max_coverage_pct=0.95,
+    )
+    r = auto.ejecutar_auto(entorno_e2e_horizontal["video"], "vid", config=cfg)
+    archivos = sorted(c["archivo"] for c in r["clips"])
+    assert archivos == ["vid_clip1_corto_16x9_hormozi.mp4", "vid_clip1_corto_9x16_hormozi.mp4"]
+
+    for archivo in archivos:
+        vista = studio_motion.ver_plan(archivo.replace(".mp4", ""))
+        assert vista["piezas"], f"{archivo}: el editor no encontro piezas en el plan sellado"
