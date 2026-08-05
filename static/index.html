@@ -2672,6 +2672,35 @@ async function descartarPlanLetreros() {
   }
 }
 
+// Distinto de descartar: aquello tira lo que escribió K y deja el plan que el video ya tenía;
+// esto tira el plan del video y pide otro. Se confirma porque puede llamar al LLM y porque la
+// propuesta nueva no se parece necesariamente a la anterior.
+async function regenerarPlanLetreros() {
+  if (!mePlan) return;
+  if (!confirm('Se tira el plan actual de este video y se pide otro al sistema.\n' +
+               'Los textos van a cambiar y puede cambiar cuántos letreros salen.\n\n¿Seguir?')) return;
+  meSetEstado('Generando otro plan...');
+  meError('');
+  try {
+    const marca = {};
+    [['auto-motion-nombre','nombre'],['auto-motion-rol','rol'],['auto-motion-cta','cta']]
+      .forEach(([id,k]) => { const v=(document.getElementById(id)?.value||'').trim(); if (v) marca[k]=v; });
+    marca.titulo = mePlan.clip;
+    const res = await fetch(`/api/motion/plan/${encodeURIComponent(mePlan.clip)}/regenerar`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(marca),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'no se pudo generar otro plan');
+    mePlan = data;
+    meCatalogo = data.catalogo || meCatalogo;
+    meRender();
+    meSetEstado('Plan nuevo. Vuelve a lanzar Auto para verlo en el video.');
+  } catch (e) {
+    meError(String(e.message || e));
+    meSetEstado('');
+  }
+}
+
 function openRenderClip(stem) {
   showTab('render');
   document.getElementById('render-status').innerHTML = `
@@ -3451,12 +3480,20 @@ _rutaInicial();
     </div>
     <div class="me-pie">
       <button class="btn" onclick="guardarPlanLetreros()">Guardar plan</button>
-      <button class="btn secondary" onclick="descartarPlanLetreros()">Volver al automático</button>
+      <button class="btn secondary" onclick="descartarPlanLetreros()"
+              title="Tira TUS cambios y deja el plan que ya tiene el video">Descartar mis cambios</button>
+      <button class="btn secondary" onclick="regenerarPlanLetreros()"
+              title="Tira el plan del video y le pide otro al sistema">Generar otro plan</button>
       <span id="me-estado" class="me-sub"></span>
     </div>
     <div class="msg" style="margin-top:8px">
       Al guardar, este plan MANDA sobre el automático. Vuelve a lanzar Auto sobre el mismo video
       para re-renderizar: las piezas que no cambiaste salen de caché y no se vuelven a generar.
+    </div>
+    <div class="msg" style="margin-top:6px">
+      <b>Descartar mis cambios</b> borra lo que escribiste aquí y deja el plan que el video ya
+      tenía. <b>Generar otro plan</b> tira ese plan y le pide al sistema una propuesta nueva:
+      cambian los textos y puede cambiar cuántos letreros salen.
     </div>
   </div>
 </div>

@@ -1120,6 +1120,35 @@ def motion_guardar_plan(clip: str, cuerpo: dict = Body(...)):
         raise HTTPException(500, "No se pudo guardar el plan de letreros.") from None
 
 
+@app.post("/api/motion/plan/{clip}/regenerar")
+def motion_regenerar_plan(clip: str, cuerpo: dict = Body(default={})):
+    """Tira el plan sellado del clip y pide otro al planificador.
+
+    Es lo contrario de borrar la edicion: aquello devuelve el plan que el video ya tenia, esto
+    pide una propuesta nueva. Puede llamar al LLM, asi que no es idempotente y por eso es POST.
+    """
+    import studio_motion  # noqa: PLC0415
+
+    opciones = None
+    marca = {k: cuerpo.get(k) for k in ("titulo", "nombre", "rol", "cta")}
+    if any(v is not None for v in marca.values()):
+        import motion_capa  # noqa: PLC0415
+
+        opciones = motion_capa.OpcionesMotion(
+            enabled=True,
+            titulo=marca["titulo"] or clip,
+            nombre=marca["nombre"] or "",
+            rol=marca["rol"] or "",
+            cta=marca["cta"] or "",
+        )
+    try:
+        return studio_motion.regenerar_plan(clip, textos=opciones)
+    except studio_motion.StudioMotionError as exc:
+        raise _motion_error(exc) from None
+    except Exception:
+        raise HTTPException(500, "No se pudo generar otro plan de letreros.") from None
+
+
 @app.delete("/api/motion/plan/{clip}")
 def motion_descartar_plan(clip: str):
     """Borra la edicion y vuelve al plan automatico."""

@@ -813,3 +813,50 @@ def test_un_numero_dentro_de_otro_no_cuenta_como_repetido():
 def test_sin_dato_destacado_no_hay_cifra_que_proteger():
     huecos = [{"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"}]
     assert tl._motivos_por_cifra_repetida({0: "Subió 10.5% en un año"}, huecos) == {}
+
+
+# ── Pedir otro plan es distinto de descartar la edicion (sesion 10) ──────────
+
+
+def test_generar_otro_plan_tira_el_sello_y_replanifica(clip_sellado, monkeypatch):
+    """Es lo contrario de descartar: aquello tira lo de K, esto tira lo del video."""
+    import motion_edicion as me
+    import studio_motion as sm
+
+    mp4 = sm.resolver_clip("clipx")
+    assert me.ruta_render(mp4).is_file()
+    llamadas = []
+    monkeypatch.setattr(sm.motion_capa, "resolver_plan", lambda **kw: llamadas.append(kw) or None)
+
+    with pytest.raises(sm.StudioMotionError):
+        sm.regenerar_plan("clipx")  # el doble no vuelve a sellar, asi que no hay plan que ver
+
+    assert not me.ruta_render(mp4).is_file(), "el sello se tira antes de replanificar"
+    assert len(llamadas) == 1, "se replanifica una vez"
+
+
+def test_generar_otro_plan_olvida_la_cache_de_textos(tmp_path, monkeypatch):
+    """Sin tirar la cache del LLM, "otro plan" devolveria exactamente las mismas frases."""
+    import motion_textos_llm as mtl
+    import studio_motion as sm
+
+    monkeypatch.setattr(mtl, "TRANSCRIPTS", tmp_path)
+    mtl.ruta_sidecar("clipx").write_text("{}", encoding="utf-8")
+    mtl.ruta_sidecar("clipx.relleno").write_text("{}", encoding="utf-8")
+
+    sm._olvidar_textos_del_llm("clipx")
+
+    assert not mtl.ruta_sidecar("clipx").exists()
+    assert not mtl.ruta_sidecar("clipx.relleno").exists()
+
+
+def test_con_una_edicion_a_medias_no_se_regenera(clip_sellado):
+    """Planificar por encima dejaria el sello en automatico y el sidecar mandando en el render."""
+    import studio_motion as sm
+
+    piezas = sm.ver_plan("clipx")["piezas"]
+    piezas[0]["texto"]["titulo"] = "Lo que escribio K"
+    sm.guardar_plan("clipx", piezas)
+
+    with pytest.raises(sm.StudioMotionError, match="editado a mano"):
+        sm.regenerar_plan("clipx")

@@ -364,6 +364,64 @@ def descartar_edicion(clip: str) -> dict:
     return vista
 
 
+def _olvidar_textos_del_llm(stem: str) -> None:
+    """Borra los sidecars de texto del clip. Sin esto, "otro plan" devolveria el mismo.
+
+    La cache del LLM esta indexada por transcripcion y prompt, que no cambian: pedir otro plan
+    sin tirarla daria exactamente las mismas frases y el boton no haria nada visible.
+    """
+    try:
+        import motion_textos_llm  # noqa: PLC0415
+
+        for sufijo in (stem, f"{stem}.relleno"):
+            motion_textos_llm.ruta_sidecar(sufijo).unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001 - no poder borrar la cache no rompe nada
+        print(f"[motion] no se pudo olvidar la cache de textos de {stem}: {exc}")
+
+
+def regenerar_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> dict:
+    """Tira el plan sellado y pide otro al planificador. Devuelve la vista nueva.
+
+    Es lo contrario de `descartar_edicion`, y por eso son dos botones y no uno: descartar tira
+    lo que escribio K y deja el plan que ya tenia el video; esto tira el plan del video y pide
+    una propuesta nueva. Sin este camino, la unica forma de pedir otra propuesta era borrar el
+    sello a mano desde el explorador de archivos.
+
+    Con una edicion a medias NO se regenera: se avisa. Planificar por encima dejaria el sello
+    en automatico mientras el sidecar editado sigue mandando en el render, y K veria un plan
+    que su propio video no va a usar.
+    """
+    mp4 = resolver_clip(clip)
+    duracion_ms, orientacion, _fps = _meta_del_clip(mp4)
+    versiones = motion_capa.versiones_del_catalogo(CATALOGO)
+    catalogo = set(versiones)
+    if (
+        me.cargar(mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo)
+        is not None
+    ):
+        raise StudioMotionError(
+            "Este clip tiene un plan editado a mano. Pulsa 'Volver al automatico' primero si "
+            "quieres tirar tus cambios, y despues pide otro plan."
+        )
+    me.ruta_render(mp4).unlink(missing_ok=True)
+    _olvidar_textos_del_llm(mp4.stem)
+    opciones = textos or motion_capa.OpcionesMotion(enabled=True, titulo=mp4.stem)
+    motion_capa.resolver_plan(
+        clip_mp4=mp4,
+        duracion_ms=duracion_ms,
+        orientacion=orientacion,
+        textos=opciones.textos(),
+        tramos=_tramos_del_clip(mp4),
+        tray_csv=_tray_del_clip(mp4),
+        catalogo=catalogo,
+        textos_llm=opciones.textos_llm,
+        stem=mp4.stem,
+    )
+    vista = ver_plan(clip)
+    vista["regenerado"] = True
+    return vista
+
+
 __all__ = [
     "StudioMotionError",
     "catalogo_para_ui",
@@ -371,6 +429,7 @@ __all__ = [
     "PREVIS_DIR",
     "guardar_plan",
     "previsualizar",
+    "regenerar_plan",
     "resolver_clip",
     "ver_plan",
 ]
