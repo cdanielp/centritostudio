@@ -1,0 +1,42 @@
+{
+  "clip": "mariosoto_clip2_corto.mp4",
+  "tamano": [
+    1920,
+    1080
+  ],
+  "orientacion": "horizontal",
+  "titulo_hook": "Este titulo del hook es deliberadamente larguisimo para forzar tres lineas completas de texto envuelto dentro de la placa, sin que se corte ni una sola letra",
+  "broll_imagenes": [
+    {
+      "t0": 4.83,
+      "t1": 8.33
+    },
+    {
+      "t0": 8.59,
+      "t1": 12.09
+    }
+  ],
+  "broll_videos": [],
+  "letreros": [
+    {
+      "plantilla": "hook",
+      "t0_ms": 0,
+      "t1_ms": 2500,
+      "banda": "superior"
+    },
+    {
+      "plantilla": "lower_third",
+      "t0_ms": 3000,
+      "t1_ms": 7500,
+      "banda": "superior"
+    },
+    {
+      "plantilla": "cierre",
+      "t0_ms": 16833,
+      "t1_ms": 20333,
+      "banda": "superior"
+    }
+  ],
+  "piezas_fallidas": [],
+  "salida": "revision\\hf-4b\\evidencia_horizontal_titulo_largo\\mariosoto_clip2_corto_16x9_titulo_largo_hormozi.mp4"
+}

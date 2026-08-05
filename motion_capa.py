@@ -656,6 +656,18 @@ def _clips_de_motion(
                 {"plantilla": pieza.plantilla, "razon": r.razon_fallo.value, "detalle": r.detalle}
             )
             continue
+        # Backstop de Paso 2 (HF-4b): el anclaje de las plantillas horizontales (Paso 1) ya
+        # cubre el caso normal; esto es lo que evita que una pieza SALGA CORTADA cuando el
+        # texto es tan largo que ni el anclaje alcanza. Solo horizontal: el carril vertical no
+        # se toca en esta sesion y ya paso su propio gate visual en HF-2/HF-3.
+        if orientacion == "horizontal" and not pieza_cabe_en_el_lienzo(
+            pieza, Path(r.ruta_mov), int(ancho), int(alto)
+        ):
+            print(f"[motion] pieza '{pieza.plantilla}' omitida: {MOTIVO_NO_CABE_EN_EL_LIENZO}")
+            informe["piezas_fallidas"].append(
+                {"plantilla": pieza.plantilla, "razon": MOTIVO_NO_CABE_EN_EL_LIENZO, "detalle": ""}
+            )
+            continue
         informe["piezas_ok"].append(
             {
                 "plantilla": pieza.plantilla,
@@ -741,6 +753,59 @@ def desplazamiento_de_banda(banda: str, alto: int) -> tuple[int, int] | None:
     return None
 
 
+MOTIVO_NO_CABE_EN_EL_LIENZO = "no_cabe_en_el_lienzo_sin_invadir_captions"
+# Instante del fotograma que se mide: el mismo "medio" que usa la previsualizacion del editor
+# (`studio_motion._componer_previsualizacion`), pasada la entrada y antes de la salida.
+_FRACCION_INSTANTE_MEDIO = 0.0006
+_UMBRAL_ALFA = 8  # 8/255: ignora la cola casi invisible de una sombra, no el texto
+
+
+def bbox_alfa(
+    mov: Path, t_s: float, ancho: int, alto: int, timeout_s: int = 180
+) -> tuple[int, int] | None:
+    """(primera_fila, ultima_fila) con alfa perceptible en el frame de `mov` en `t_s`.
+
+    Mide el ALFA DEL RENDER, no lo que declara el CSS: la altura real de una pieza depende del
+    texto (un titulo de tres lineas mide mas que uno de una), asi que es la unica fuente que no
+    miente. None si no hay alfa medible ahi (pieza vacia o instante fuera de rango).
+    """
+    import subprocess  # noqa: PLC0415
+
+    crudo = subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-ss", f"{t_s:.3f}", "-i", str(mov), "-frames:v", "1",
+            "-vf", "alphaextract,format=gray", "-f", "rawvideo", "-",
+        ],
+        capture_output=True, check=True, timeout=timeout_s,
+    ).stdout
+    if len(crudo) < alto * ancho:
+        return None
+    primera = ultima = None
+    for y in range(alto):
+        fila = crudo[y * ancho : (y + 1) * ancho]
+        if max(fila) > _UMBRAL_ALFA:
+            primera = y if primera is None else primera
+            ultima = y
+    return (primera, ultima) if primera is not None else None
+
+
+def pieza_cabe_en_el_lienzo(pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: int) -> bool:
+    """True si el contenido de la pieza, ya desplazado por su banda, queda DENTRO del lienzo
+    y sin invadir la franja de captions. Backstop de tiempo de ejecucion (Paso 2 de HF-4b):
+    el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto cubre el extremo
+    que ese anclaje no pueda absorber. Sin alfa medible no hay nada que recortar: pasa.
+    """
+    bbox = bbox_alfa(ruta_mov, pieza.duracion_ms * _FRACCION_INSTANTE_MEDIO, ancho, alto)
+    if bbox is None:
+        return True
+    y0, y1 = bbox
+    dy = (desplazamiento_de_banda(pieza.banda, alto) or (0, 0))[1]
+    y0, y1 = y0 + dy, y1 + dy
+    if y0 < 0 or y1 > alto:
+        return False
+    return (y1 / alto) <= mp.ZONA_CAPTIONS[0]
+
+
 def _overlay_de(pieza: mp.Pieza, resultado, alto: int) -> ClipOverlay:
     """Pieza + resultado de HyperFrames -> ClipOverlay con los ajustes medidos en HF-0.
 
@@ -792,6 +857,9 @@ __all__ = [
     "contexto_hablado",
     "contrato_de_pieza",
     "desplazamiento_de_banda",
+    "bbox_alfa",
+    "pieza_cabe_en_el_lienzo",
+    "MOTIVO_NO_CABE_EN_EL_LIENZO",
     "huella_de_entrada",
     "marca_de",
     "orientacion_de",

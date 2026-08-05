@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_lower_third_minimo",
   "plantilla": {
     "nombre": "lower_third_minimo",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "estilo": "minimo",
   "duracion_ms": 4500,

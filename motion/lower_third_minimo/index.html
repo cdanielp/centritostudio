@@ -77,6 +77,11 @@
           calc(var(--u) * 0.14) calc(var(--u) * 0.14) 0 rgba(0, 0, 0, 0.65),
           0 calc(var(--u) * 0.2) calc(var(--u) * 2) rgba(0, 0, 0, 0.5);
       }
+      /* HF-4b, Paso 4: el rol llevaba un contorno mas debil que el nombre (0.85/0.7/0.55 de
+         alfa contra 0.9/0.75/0.65, radios mas chicos) y encima color-mix a 74%: sobre fondo
+         claro el nombre se salvaba por el contorno fuerte, el rol no. Mismo tratamiento de
+         contraste que el nombre (identico text-shadow); el color mas tenue queda como unica
+         diferencia jerarquica, ya que el contorno la sostiene sobre cualquier fondo. */
       #rol {
         color: color-mix(in srgb, var(--texto) 74%, transparent);
         font-weight: 400;
@@ -85,13 +90,13 @@
         letter-spacing: 0.02em;
         white-space: nowrap;
         text-shadow:
-          0 0 calc(var(--u) * 0.16) rgba(0, 0, 0, 0.85),
-          0 0 calc(var(--u) * 0.35) rgba(0, 0, 0, 0.7),
-          calc(var(--u) * -0.1) calc(var(--u) * -0.1) 0 rgba(0, 0, 0, 0.55),
-          calc(var(--u) * 0.1) calc(var(--u) * -0.1) 0 rgba(0, 0, 0, 0.55),
-          calc(var(--u) * -0.1) calc(var(--u) * 0.1) 0 rgba(0, 0, 0, 0.55),
-          calc(var(--u) * 0.1) calc(var(--u) * 0.1) 0 rgba(0, 0, 0, 0.55),
-          0 calc(var(--u) * 0.16) calc(var(--u) * 1.4) rgba(0, 0, 0, 0.5);
+          0 0 calc(var(--u) * 0.18) rgba(0, 0, 0, 0.9),
+          0 0 calc(var(--u) * 0.45) rgba(0, 0, 0, 0.75),
+          calc(var(--u) * -0.14) calc(var(--u) * -0.14) 0 rgba(0, 0, 0, 0.65),
+          calc(var(--u) * 0.14) calc(var(--u) * -0.14) 0 rgba(0, 0, 0, 0.65),
+          calc(var(--u) * -0.14) calc(var(--u) * 0.14) 0 rgba(0, 0, 0, 0.65),
+          calc(var(--u) * 0.14) calc(var(--u) * 0.14) 0 rgba(0, 0, 0, 0.65),
+          0 calc(var(--u) * 0.2) calc(var(--u) * 2) rgba(0, 0, 0, 0.5);
       }
     </style>
   </head>

@@ -36,10 +36,15 @@
       }
       #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
       .clip { position: absolute; inset: 0; }
-      /* Horizontal: centro del bloque en ~31% de la altura, fuera de captions (70-92%). */
+      /* Horizontal (HF-4b): ancla el borde superior en 54% (igual que el carril vertical de
+         mas abajo) y crece hacia ABAJO. `desplazamiento_de_banda` sube todo -34pp para la
+         banda superior; centrado en vez de anclado arriba, un titulo de tres lineas se salia
+         por el borde superior del lienzo. Ver hook/index.html para el detalle completo. ESTA
+         regla rige el gemelo horizontal (su lienzo nunca dispara el media portrait de mas
+         abajo); el bloque portrait sigue intacto y sigue rigiendo el carril vertical. */
       #zona {
-        position: absolute; left: 0; top: 0; width: 100%; height: 62%;
-        display: grid; place-items: center;
+        position: absolute; left: 0; top: 54%; width: 100%; height: 46%;
+        display: grid; place-items: start center;
       }
       #placa {
         background: var(--placa);
