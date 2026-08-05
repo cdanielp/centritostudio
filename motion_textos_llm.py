@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import motion_plan as mp
@@ -168,6 +168,15 @@ def _sidecar_reutilizable(stem: str, marca: str) -> dict | None:
 INCIDENCIAS: list[dict] = []
 
 
+def reiniciar_incidencias() -> None:
+    """Vacia el registro. Lo hace sola `pedir_textos`, que es la primera llamada de un clip.
+
+    Existe aparte para quien use SOLO la segunda pasada: si esa limpiara, se llevaria por
+    delante la incidencia de la cifra, que se detecta en la primera.
+    """
+    INCIDENCIAS.clear()
+
+
 def incidencias_guardadas(sufijo: str) -> list[dict]:
     """Incidencias escritas en un sidecar de relleno. Cualquier problema -> lista vacia."""
     ruta = ruta_sidecar(sufijo)
@@ -266,6 +275,9 @@ def pedir_textos(
     """
     if not tramos or duracion_ms <= 0:
         return None
+    # Primera llamada del clip: aqui empieza el registro de incidencias que la segunda pasada
+    # completa. Si no se limpiara, la cuenta arrastraria las del clip anterior.
+    INCIDENCIAS.clear()
     try:
         marca = huella(tramos, duracion_ms)
     except Exception as exc:  # noqa: BLE001 - ni siquiera calcular la huella puede tumbar nada
@@ -278,6 +290,7 @@ def pedir_textos(
             textos = sanear(previo, duracion_ms)
             if textos is not None:
                 print(f"[motion-llm] cache HIT {stem}{SUFIJO_SIDECAR} | sin llamada al LLM")
+                INCIDENCIAS.extend(incidencias_guardadas(stem))
                 return textos
 
     try:
@@ -297,7 +310,9 @@ def pedir_textos(
     if textos is None:
         print("[motion-llm] respuesta sin nada aprovechable, se usan las reglas")
         return None
-    _guardar(stem, marca, textos)
+    textos, incidencias = _cifra_verificada(textos, tramos)
+    INCIDENCIAS.extend(incidencias)
+    _guardar(stem, marca, textos, incidencias)
     print(
         f"[motion-llm] OK | hook={'si' if textos.hook_titulo else 'no'} "
         f"secciones={len(textos.secciones)} cifra={textos.dato_cifra or 'no'}"
@@ -305,7 +320,43 @@ def pedir_textos(
     return textos
 
 
-def _guardar(stem: str, marca: str, textos: TextosLLM) -> None:
+def _tramo_en(tramos: list[mp.Tramo], t0_ms: int | None) -> str:
+    """Texto del tramo que contiene ese instante, o el mas cercano. PURO."""
+    if not tramos:
+        return ""
+    if t0_ms is None:
+        return " ".join((t.texto or "") for t in tramos)
+    dentro = [t for t in tramos if t.t0_ms <= t0_ms <= t.t1_ms]
+    elegido = dentro[0] if dentro else min(tramos, key=lambda t: abs(t.t0_ms - t0_ms))
+    return elegido.texto or ""
+
+
+def _cifra_verificada(textos: TextosLLM, tramos: list[mp.Tramo]) -> tuple[TextosLLM, list[dict]]:
+    """Vacia el dato destacado si su NUMERO no se dijo. ESTRICTO, y solo aqui. PURO.
+
+    Es el unico campo donde la transcripcion manda: un titular puede abstraer lo que quiera,
+    pero una cifra que nadie pronuncio es un dato falso a pantalla completa. Vaciarla devuelve
+    ese slot al respaldo de reglas, que no inventa numeros porque solo copia los que encuentra.
+    """
+    import motion_guarda  # noqa: PLC0415
+
+    hablado = _tramo_en(tramos, textos.dato_t0_ms)
+    if not textos.dato_cifra or motion_guarda.cifra_dicha(textos.dato_cifra, hablado):
+        return textos, []
+    incidencia = {
+        "campo": "dato_cifra",
+        "tipo": "cifra",
+        "palabras": [textos.dato_cifra],
+        "resuelto": "respaldo",
+    }
+    print(f"[motion-llm] guarda: la cifra '{textos.dato_cifra}' no se dice, se usan las reglas")
+    return (
+        replace(textos, dato_cifra="", dato_etiqueta="", dato_t0_ms=None),
+        [incidencia],
+    )
+
+
+def _guardar(stem: str, marca: str, textos: TextosLLM, incidencias: list[dict]) -> None:
     """Persiste el sidecar. Un fallo de escritura no puede tumbar el render."""
     if not stem:
         return
@@ -314,7 +365,12 @@ def _guardar(stem: str, marca: str, textos: TextosLLM) -> None:
 
         atomic_write_json(
             ruta_sidecar(stem),
-            {"schema": SCHEMA_CACHE, "huella": marca, "textos": textos.a_dict()},
+            {
+                "schema": SCHEMA_CACHE,
+                "huella": marca,
+                "textos": textos.a_dict(),
+                "incidencias": incidencias,
+            },
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[motion-llm] no se pudo guardar el sidecar: {exc}")
@@ -346,8 +402,10 @@ Reglas, todas obligatorias:
 - Cada titulo se entiende SOLO, sin leer los demas.
 - Frases enteras: nada cortado ni que empiece por "que", "y", "de", "porque".
 - Sin muletillas: "pues", "este", "o sea", "digamos", "bueno", "entonces".
-- USA SOLO PALABRAS QUE APARECEN EN SU FRAGMENTO. No inventes terminos ni sinonimos.
-- Devuelve un texto por CADA id de la lista. Ninguno vacio.
+- Puedes resumir con tus palabras, pero NO inventes datos, nombres ni cifras que no se digan.
+- NINGUN letrero puede repetir el tema ni la frase de otro. Se leen seguidos en el mismo video:
+  si dos dicen lo mismo, sobra uno. Mira la lista COMPLETA antes de escribir.
+- Devuelve un texto por CADA id de la lista, con EL MISMO id que se te dio. No los renumeres.
 
 JSON: {{"textos":[{{"id":int,"texto":str}}]}}"""
 
@@ -411,7 +469,6 @@ def pedir_textos_para(
         return {}
 
     sufijo = f"{stem}.relleno" if stem else ""
-    INCIDENCIAS.clear()
     if not forzar and sufijo:
         previo = _sidecar_reutilizable(sufijo, marca)
         if previo:
@@ -432,8 +489,15 @@ def pedir_textos_para(
         print(f"[motion-llm] fallo el relleno, se usan las reglas: {type(exc).__name__}: {exc}")
         return {}
 
-    textos = _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, huecos)
-    textos, incidencias = _filtrar_inventadas(textos, huecos, duracion_ms, transcripcion)
+    bruto = crudo.get("textos") if isinstance(crudo, dict) else None
+    textos = _sanear_relleno(bruto, huecos)
+    # UNA sola correccion para los dos motivos por los que un texto no sirve: no cabe en la
+    # plantilla, o repite lo que ya dice otra pieza del mismo clip. Juntarlos en una llamada
+    # evita dos viajes por clip para dos peticiones que el modelo puede atender a la vez.
+    motivos = {**_motivos_por_largo(bruto, huecos), **_motivos_por_repeticion(textos, huecos)}
+    if motivos:
+        textos = _corregir(textos, huecos, duracion_ms, motivos)
+    incidencias = _registrar_inventadas(textos, huecos, transcripcion)
     INCIDENCIAS.extend(incidencias)
     if incidencias:
         print(f"[motion-llm] guarda: {len(incidencias)} campo(s) con palabras no dichas")
@@ -443,55 +507,77 @@ def pedir_textos_para(
     return textos
 
 
-def _filtrar_inventadas(
-    textos: dict[int, str], huecos: list[dict], duracion_ms: int, transcripcion: str
-) -> tuple[dict[int, str], list[dict]]:
-    """Quita los textos con palabras que nadie dijo, tras UN reintento. Devuelve las incidencias.
+# Que pieza cede cuando dos dicen lo mismo. El hook es el unico que se lee sin contexto y el
+# cierre es el que se recuerda; una seccion intermedia se puede reescribir sin perder nada.
+PRIORIDAD = {"hook": 0, "cierre": 1, "dato_destacado": 2, "titulo_seccion": 3}
 
-    El reintento se pide en bloque y solo para los campos sospechosos, con la instruccion
-    explicita de usar unicamente palabras del fragmento. Lo que vuelva a fallar se descarta y
-    ese campo cae al respaldo de reglas, que nunca inventa nada.
+
+def _motivos_por_largo(bruto: object, huecos: list[dict]) -> dict[int, str]:
+    """Ids cuyo texto vino pasado del limite. PURO.
+
+    `_sanear_relleno` los tira, y tirarlos era exactamente la causa de que tres piezas de los 34
+    clips acabaran con el texto de las reglas. Antes de renunciar, se pide una version corta.
+    """
+    limites = {h["id"]: h["limite"] for h in huecos}
+    largos = _crudos_por_id(bruto)
+    return {
+        ident: f"tenia {len(texto)} caracteres y el maximo es {limites[ident]}"
+        for ident, texto in largos.items()
+        if ident in limites and len(texto) > limites[ident]
+    }
+
+
+def _crudos_por_id(bruto: object) -> dict[int, str]:
+    """Lista cruda del modelo -> {id: texto}, sin aplicar limites. PURO."""
+    if isinstance(bruto, dict):
+        bruto = [{"id": k, "texto": v} for k, v in bruto.items()]
+    if not isinstance(bruto, list):
+        return {}
+    salida: dict[int, str] = {}
+    for item in bruto:
+        if not isinstance(item, dict) or not isinstance(item.get("texto"), str):
+            continue
+        ident = item.get("id")
+        if isinstance(ident, str) and ident.isdigit():
+            ident = int(ident)
+        if isinstance(ident, int) and not isinstance(ident, bool):
+            salida[ident] = " ".join(item["texto"].split())
+    return salida
+
+
+def _motivos_por_repeticion(textos: dict[int, str], huecos: list[dict]) -> dict[int, str]:
+    """Ids que repiten lo que ya dice otra pieza del clip. Cede el de MENOR prioridad. PURO.
+
+    El sintoma medido en la demo 14: una seccion decia "Garcia con vision de futuro" y el cierre
+    "Un Garcia con vision de futuro y bienestar". Dos letreros, un solo mensaje.
     """
     import motion_guarda  # noqa: PLC0415
 
-    # Se contrasta contra la transcripcion del CLIP ENTERO, no contra el fragmento: un letrero
-    # puede usar legitimamente una palabra dicha treinta segundos antes.
-    fuente = transcripcion or " ".join(h.get("contexto", "") for h in huecos)
-    incidencias: list[dict] = []
-    sospechosos = {}
-    for ident, texto in textos.items():
-        veredicto = motion_guarda.revisar(texto, fuente)
-        if not veredicto.ok:
-            sospechosos[ident] = veredicto.sospechosas
-    if not sospechosos:
-        return textos, incidencias
-
-    reintentados = _reintentar(sospechosos, huecos, duracion_ms)
-    limpios = dict(textos)
-    for ident, palabras in sospechosos.items():
-        nuevo = reintentados.get(ident, "")
-        if nuevo and motion_guarda.revisar(nuevo, fuente).ok:
-            limpios[ident] = nuevo
-            incidencias.append({"id": ident, "palabras": list(palabras), "resuelto": "reintento"})
-            continue
-        # Segundo fallo: fuera. Ese campo se queda con el texto de las reglas.
-        limpios.pop(ident, None)
-        incidencias.append({"id": ident, "palabras": list(palabras), "resuelto": "respaldo"})
-    return limpios, incidencias
+    plantillas = {h["id"]: h["plantilla"] for h in huecos}
+    orden = sorted(textos, key=lambda i: (PRIORIDAD.get(plantillas.get(i, ""), 9), i))
+    motivos: dict[int, str] = {}
+    for puesto, ident in enumerate(orden):
+        for otro in orden[:puesto]:
+            comun = motion_guarda.secuencia_compartida(textos[ident], textos[otro])
+            if comun:
+                motivos[ident] = (
+                    f'repite "{" ".join(comun)}", que ya dice el letrero [{otro}]: "{textos[otro]}"'
+                )
+                break
+    return motivos
 
 
-def _reintentar(
-    sospechosos: dict[int, tuple[str, ...]], huecos: list[dict], duracion_ms: int
+def _corregir(
+    textos: dict[int, str], huecos: list[dict], duracion_ms: int, motivos: dict[int, str]
 ) -> dict[int, str]:
-    """UNA segunda llamada, solo para los campos sospechosos. Sin cache: es un caso raro."""
-    afectados = [h for h in huecos if h["id"] in sospechosos]
+    """UNA llamada de correccion para los ids con motivo. Lo que no mejore se queda igual.
+
+    Nunca empeora: un texto corregido solo sustituye al original si vuelve dentro del limite.
+    """
+    afectados = [h for h in huecos if h["id"] in motivos]
     if not afectados:
-        return {}
-    detalle = "\n".join(
-        f"[{h['id']}] escribiste palabras que NO se dicen: "
-        f"{', '.join(sospechosos[h['id']])}. Se habla: {h['contexto']}"
-        for h in afectados
-    )
+        return textos
+    detalle = "\n".join(f"[{h['id']}] {motivos[h['id']]}" for h in afectados)
     try:
         import brain  # noqa: PLC0415
 
@@ -502,17 +588,77 @@ def _reintentar(
                     "role": "user",
                     "content": (
                         _prompt_relleno(afectados, duracion_ms)
-                        + "\n\nCORRECCION OBLIGATORIA:\n"
+                        + "\n\nCORRECCION OBLIGATORIA. Reescribe SOLO estos letreros:\n"
                         + detalle
-                        + "\nReescribelos usando UNICAMENTE palabras de su fragmento."
+                        + "\nCada uno tiene que decir algo DISTINTO de los demas letreros del "
+                        "clip y caber en su limite de caracteres."
                     ),
                 },
             ]
         )
     except Exception as exc:  # noqa: BLE001
-        print(f"[motion-llm] el reintento fallo: {type(exc).__name__}: {exc}")
-        return {}
-    return _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, afectados)
+        print(f"[motion-llm] la correccion fallo, se conserva lo que habia: {type(exc).__name__}")
+        return textos
+    nuevos = _sanear_relleno(crudo.get("textos") if isinstance(crudo, dict) else None, afectados)
+    print(f"[motion-llm] correccion: {len(nuevos)}/{len(afectados)} letreros reescritos")
+    return {**textos, **nuevos}
+
+
+def _registrar_inventadas(
+    textos: dict[int, str], huecos: list[dict], transcripcion: str
+) -> list[dict]:
+    """Palabras no dichas de cada letrero, SOLO para el registro. No toca ni un texto.
+
+    El reintento general se quito: gastaba una llamada por clip y devolvia un texto peor,
+    porque obligar al modelo a usar solo palabras del fragmento es pedirle que copie el
+    fragmento, que es justo lo que no queremos. Un titular tiene derecho a abstraer, y para lo
+    que se le escape esta el editor.
+
+    Se contrasta contra la transcripcion del CLIP ENTERO, no contra el fragmento: un letrero
+    puede usar legitimamente una palabra dicha treinta segundos antes.
+    """
+    import motion_guarda  # noqa: PLC0415
+
+    fuente = transcripcion or " ".join(h.get("contexto", "") for h in huecos)
+    plantillas = {h["id"]: h["plantilla"] for h in huecos}
+    incidencias: list[dict] = []
+    for ident, texto in sorted(textos.items()):
+        veredicto = motion_guarda.revisar(texto, fuente)
+        if veredicto.ok:
+            continue
+        incidencias.append(
+            {
+                "id": ident,
+                "campo": plantillas.get(ident, ""),
+                "tipo": "palabra",
+                "palabras": list(veredicto.sospechosas),
+                "resuelto": "registrada",
+            }
+        )
+    return incidencias
+
+
+def _renumerado(dato: list, huecos: list[dict]) -> list | None:
+    """La misma lista con los ids REALES, si el modelo la devolvio renumerada. PURO.
+
+    El modelo entrega los letreros en orden pero renumerados de 0 en adelante, ignorando los
+    ids que se le dieron. Con huecos [0, 2, 3, 4, 5, 6] eso hacia que el ultimo letrero, el
+    cierre, no encajara en ningun hueco y cayera al respaldo de reglas: dos de las tres piezas
+    sin texto del modelo en los 34 clips venian de aqui, no de la longitud.
+
+    Solo se acepta cuando hay tantos textos como huecos y los ids son exactamente 0..N-1: en
+    ese caso el orden es la unica lectura posible. Con cualquier otra forma se devuelve None y
+    manda el id declarado, porque adivinar seria peor que perder un letrero.
+    """
+    if len(dato) != len(huecos):
+        return None
+    ids = [x.get("id") for x in dato if isinstance(x, dict)]
+    if len(ids) != len(huecos) or ids != list(range(len(huecos))):
+        return None
+    reales = [h["id"] for h in huecos]
+    if ids == reales:
+        return None  # no hay nada que renumerar
+    return [{**x, "id": real} for x, real in zip(dato, reales)]
 
 
 def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
@@ -523,6 +669,7 @@ def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
         dato = [{"id": k, "texto": v} for k, v in dato.items()]
     if not isinstance(dato, list):
         return {}
+    dato = _renumerado(dato, huecos) or dato
     for item in dato:
         if not isinstance(item, dict):
             continue
@@ -568,6 +715,7 @@ __all__ = [
     "huella",
     "huella_relleno",
     "incidencias_guardadas",
+    "reiniciar_incidencias",
     "pedir_textos",
     "pedir_textos_para",
     "ruta_sidecar",

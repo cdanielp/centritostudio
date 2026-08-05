@@ -245,38 +245,45 @@ def test_cambiar_un_instante_invalida_la_cache_del_relleno(llm):
     assert len(llm) == 2
 
 
-def test_la_guarda_reintenta_una_vez_y_luego_cae_al_respaldo(monkeypatch, tmp_path):
-    """Dos fallos seguidos: ese campo se descarta y su texto lo pone el respaldo de reglas."""
+def test_la_guarda_registra_pero_no_tumba_el_texto(monkeypatch, tmp_path):
+    """Sin reintento y sin respaldo: el texto sale y la incidencia queda anotada.
+
+    El reintento general se quito porque gastaba una llamada por clip y devolvia un texto peor:
+    obligar al modelo a usar solo palabras del fragmento es pedirle que copie el fragmento.
+    """
     import brain
 
     llamadas = []
 
     def _dispatch(messages):
         llamadas.append(messages)
-        return {"textos": [{"id": 0, "texto": "La decepcion escolar"}]}, {"total": 10}
+        return {"textos": [{"id": 0, "texto": "Un giro inesperado"}]}, {"total": 10}
 
     monkeypatch.setattr(brain, "_dispatch", _dispatch)
     monkeypatch.setattr(tl, "TRANSCRIPTS", tmp_path)
+    tl.reiniciar_incidencias()
     salida = tl.pedir_textos_para(HUECOS, DUR, stem="clip", transcripcion=TRANSCRIPCION)
-    assert len(llamadas) == 2, "tiene que haber UN reintento"
-    assert salida == {}, "tras el segundo fallo, ese campo cae al respaldo"
+
+    assert len(llamadas) == 1, "una sola llamada: no hay reintento"
+    assert salida == {0: "Un giro inesperado"}, "el texto no se tumba"
+    assert [i["palabras"] for i in tl.INCIDENCIAS] == [["inesperado"]]
+    assert tl.INCIDENCIAS[0]["resuelto"] == "registrada"
 
 
-def test_si_el_reintento_acierta_se_usa(monkeypatch, tmp_path):
+def test_un_nombre_propio_parecido_no_se_marca(monkeypatch, tmp_path):
+    """Whisper escribe DECEPCION donde se dijo DESERCION. Corregirlo no es inventar."""
     import brain
 
-    respuestas = [
-        {"textos": [{"id": 0, "texto": "La decepcion escolar"}]},
-        {"textos": [{"id": 0, "texto": "La desercion escolar"}]},
-    ]
-
     def _dispatch(messages):
-        return respuestas.pop(0), {"total": 10}
+        return {"textos": [{"id": 0, "texto": "El ano de la Desercion escolar"}]}, {"total": 10}
 
     monkeypatch.setattr(brain, "_dispatch", _dispatch)
     monkeypatch.setattr(tl, "TRANSCRIPTS", tmp_path)
-    salida = tl.pedir_textos_para(HUECOS, DUR, stem="clip", transcripcion=TRANSCRIPCION)
-    assert salida == {0: "La desercion escolar"}
+    tl.reiniciar_incidencias()
+    salida = tl.pedir_textos_para(HUECOS, DUR, stem="clip", transcripcion="la decepcion escolar")
+
+    assert salida == {0: "El ano de la Desercion escolar"}
+    assert tl.INCIDENCIAS == []
 
 
 # ── Previsualizacion (punto 3) ───────────────────────────────────────────────
@@ -373,3 +380,87 @@ def test_un_sidecar_roto_no_tumba_la_lectura_de_incidencias(tmp_path, monkeypatc
     mtl.ruta_sidecar("roto.relleno").write_text("{no soy json", encoding="utf-8")
 
     assert mtl.incidencias_guardadas("roto.relleno") == []
+
+
+# ── La guarda reparte por TIPO de campo (sesion 8) ───────────────────────────
+
+
+def test_la_cifra_es_estricta_si_el_numero_no_se_dice():
+    import motion_guarda as g
+
+    assert g.cifra_dicha("10.5%", "en un 10.5 por ciento de medias superiores")
+    assert not g.cifra_dicha("87%", "no hablamos aqui de ninguna cantidad")
+
+
+def test_la_cifra_dicha_en_palabras_cuenta():
+    """Es justo el caso que motivo pedirle los textos al modelo: la regla exige unidad literal."""
+    import motion_guarda as g
+
+    assert g.cifra_dicha("10.5%", "diez y medio por ciento de los alumnos la dejaron")
+
+
+def test_un_nombre_propio_parecido_a_lo_dicho_se_acepta():
+    """El audio dice DESERCION y Whisper escribio DECEPCION. El modelo acerto, no invento."""
+    import motion_guarda as g
+
+    assert g.revisar("El ano de la Desercion escolar", "la decepcion escolar").sospechosas == ()
+
+
+def test_un_nombre_propio_que_no_se_parece_a_nada_si_se_marca():
+    import motion_guarda as g
+
+    veredicto = g.revisar("Un futuro para Villahermosa", "hablamos de Garcia")
+    assert "Villahermosa" in veredicto.sospechosas
+
+
+def test_dos_letreros_que_repiten_tres_palabras_significativas_se_detectan():
+    import motion_guarda as g
+
+    comun = g.secuencia_compartida(
+        "Garcia con vision de futuro", "Un Garcia con vision de futuro y bienestar"
+    )
+    assert comun == ("garcia", "vision", "futuro")
+
+
+def test_dos_letreros_distintos_no_se_detectan():
+    import motion_guarda as g
+
+    assert g.secuencia_compartida("Actividades culturales", "Garcia con vision") == ()
+
+
+def test_cede_la_pieza_de_menor_prioridad():
+    """El hook se lee sin contexto y el cierre se recuerda; una seccion se reescribe sin perder."""
+    huecos = [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {"id": 1, "plantilla": "titulo_seccion", "t0_ms": 9000, "limite": 60, "contexto": "y"},
+    ]
+    motivos = tl._motivos_por_repeticion(
+        {0: "Garcia con vision de futuro", 1: "Un Garcia con vision de futuro"}, huecos
+    )
+    assert list(motivos) == [1], "corrige la seccion, no el hook"
+
+
+def test_un_texto_pasado_de_largo_pide_correccion_en_vez_de_caer_al_respaldo():
+    bruto = [{"id": 0, "texto": "x" * 200}]
+    motivos = tl._motivos_por_largo(bruto, HUECOS)
+    assert 0 in motivos
+    assert "200 caracteres" in motivos[0]
+
+
+def test_se_tolera_que_el_modelo_renumere_los_ids():
+    """Devuelve los letreros en orden pero numerados de 0 en adelante. El orden manda."""
+    huecos = [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "a"},
+        {"id": 6, "plantilla": "cierre", "t0_ms": 50000, "limite": 60, "contexto": "b"},
+    ]
+    crudo = [{"id": 0, "texto": "El gancho"}, {"id": 1, "texto": "El cierre"}]
+    assert tl._sanear_relleno(crudo, huecos) == {0: "El gancho", 6: "El cierre"}
+
+
+def test_no_se_renumera_si_faltan_textos():
+    """Con menos textos que huecos, el orden ya no es lectura unica: manda el id declarado."""
+    huecos = [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "a"},
+        {"id": 6, "plantilla": "cierre", "t0_ms": 50000, "limite": 60, "contexto": "b"},
+    ]
+    assert tl._sanear_relleno([{"id": 1, "texto": "Suelto"}], huecos) == {}
