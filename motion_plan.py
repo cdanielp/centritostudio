@@ -403,6 +403,42 @@ BANDA_ARRIBA = "superior"
 # nativo a la banda superior. Es negativo: la pieza se compone desplazada hacia arriba.
 DESPLAZAMIENTO_SUPERIOR = BANDA_SUPERIOR[0] - CARRIL_VERTICAL[0]
 
+# Tercera banda del control de posicion del editor (HF-4, paso 2): "Abajo". Se define pegada
+# JUSTO DEBAJO del carril nativo, con su mismo alto (14 puntos de fraccion), en vez de inventar
+# una medida nueva. No hay margen real ahi: el carril nativo termina en 0.68 y la franja de
+# captions empieza en 0.70, asi que esta banda cae de lleno en ZONA_CAPTIONS. Es la opcion que
+# el editor ofrece pero rechaza al guardar (ver motion_edicion.validar_plan): se deja en el
+# selector, con su motivo, en vez de esconderla.
+_ALTO_CARRIL = CARRIL_VERTICAL[1] - CARRIL_VERTICAL[0]
+RANGO_INFERIOR = (CARRIL_VERTICAL[1], CARRIL_VERTICAL[1] + _ALTO_CARRIL)
+BANDA_INFERIOR = "inferior"
+
+# Cuanto hay que bajar la pieza para llevarla del carril nativo a la banda inferior. Positivo:
+# la pieza se compone desplazada hacia abajo.
+DESPLAZAMIENTO_INFERIOR = RANGO_INFERIOR[0] - CARRIL_VERTICAL[0]
+
+BANDAS_VALIDAS = (BANDA_CENTRO, BANDA_ARRIBA, BANDA_INFERIOR)
+
+# Rango ocupado (fraccion de alto) de cada banda, para comprobar si invade ZONA_CAPTIONS. Mismos
+# numeros para las dos orientaciones: ni el carril nativo ni la banda superior son CSS distinto
+# por orientacion (por eso el Paso 1 de HF-4 existe), asi que tampoco lo es esta comprobacion.
+RANGO_POR_BANDA = {
+    BANDA_CENTRO: CARRIL_VERTICAL,
+    BANDA_ARRIBA: BANDA_SUPERIOR,
+    BANDA_INFERIOR: RANGO_INFERIOR,
+}
+
+
+def banda_invade_captions(banda: str) -> bool:
+    """True si el rango de esa banda pisa la franja de captions (ZONA_CAPTIONS)."""
+    rango = RANGO_POR_BANDA.get(banda)
+    return rango is not None and rango[1] > ZONA_CAPTIONS[0]
+
+
+# Etiqueta en espanol de cada banda, para el selector del editor y para los motivos de rechazo.
+ETIQUETA_BANDA = {BANDA_ARRIBA: "Arriba", BANDA_CENTRO: "Centro", BANDA_INFERIOR: "Abajo"}
+
+
 # Buckets de `cve.zona_cara_en_rango` y la banda que dejan libre en 9:16.
 BANDA_POR_ZONA_CARA = {
     "top": BANDA_CENTRO,  # cara arriba: el carril nativo esta despejado
@@ -1168,12 +1204,16 @@ def _banda_libre(orientacion: str, t0_ms: int, t1_ms: int, tray_csv: Path | None
 
     Solo se consulta la cara en 9:16: ahi las cinco piezas comparten un carril estrecho y una
     cara centrada o baja se lo come, asi que la pieza sube a la banda superior. Sin dato de cara
-    se usa el carril nativo, que es el aprobado en el gate visual de HF-2. En 16:9 las bandas del
-    catalogo son disjuntas (lower_third abajo a la izquierda, el resto centradas arriba) y no
-    compiten con la cara, asi que la pieza se queda donde la dibuja su HTML.
+    se usa el carril nativo, que es el aprobado en el gate visual de HF-2.
+
+    En 16:9 la cara NUNCA se consulta (ni se toca el reframe): un horizontal no pasa por el
+    reencuadre y por tanto jamas trae trayectoria. El carril nativo (54-68% de alto) es el mismo
+    HTML que en vertical, sin CSS por orientacion, y ahi caia el letrero antes de esto: la banda
+    superior, que ya existia para la cara centrada/baja en 9:16, es tambien el destino sin dato
+    de cara en 16:9.
     """
     if orientacion != "vertical":
-        return BANDA_CENTRO
+        return BANDA_ARRIBA
     return BANDA_POR_ZONA_CARA.get(zona_cara(tray_csv, t0_ms, t1_ms), BANDA_SIN_DATO)
 
 
@@ -1484,6 +1524,13 @@ __all__ = [
     "INCIDENCIA_SIN_DATO_DE_CARA",
     "BANDA_CENTRO",
     "BANDA_SUPERIOR",
+    "BANDA_INFERIOR",
+    "RANGO_INFERIOR",
+    "DESPLAZAMIENTO_INFERIOR",
+    "BANDAS_VALIDAS",
+    "RANGO_POR_BANDA",
+    "banda_invade_captions",
+    "ETIQUETA_BANDA",
     "CARRIL_VERTICAL",
     "DESPLAZAMIENTO_SUPERIOR",
     "DURACION_MS",

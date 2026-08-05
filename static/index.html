@@ -2572,6 +2572,11 @@ function msAMinSeg(ms) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Paso 2 de HF-4: tres posiciones, no coordenada libre. El valor viaja tal cual en `banda` y
+// el backend decide si esa posicion cabe (motion_edicion.validar_plan la rechaza si pisa los
+// captions); esta UI no reimplementa esa regla, solo ofrece las tres opciones.
+const ME_BANDAS = [['superior', 'Arriba'], ['centro', 'Centro'], ['inferior', 'Abajo']];
+
 function meRender() {
   if (!mePlan) return;
   const editado = mePlan.origen === 'editado';
@@ -2585,14 +2590,19 @@ function meRender() {
       <label class="me-slot"><span>${escHtml(k)}</span>
         <input type="text" value="${escHtml(p.texto[k])}"
                oninput="meSetTexto(${i},'${esc(k)}',this.value)"></label>`).join('');
+    const bandaOpts = ME_BANDAS.map(([valor, etiqueta]) =>
+      `<option value="${valor}"${p.banda === valor ? ' selected' : ''}>${etiqueta}</option>`).join('');
     return `<div class="me-pieza">
       <div><b>${escHtml(p.plantilla)}</b>
-        <div class="me-sub">${p.t1_ms - p.t0_ms} ms · banda ${escHtml(p.banda)}</div>
+        <div class="me-sub">${p.t1_ms - p.t0_ms} ms</div>
         <div class="me-sub">termina en ${msAMinSeg(p.t1_ms)}</div></div>
       <div><input type="number" value="${p.t0_ms}" min="0" max="${dur}" step="100"
              oninput="meMover(${i},this.value)" title="Entra en el milisegundo">
         <div class="me-sub">${msAMinSeg(p.t0_ms)} de ${msAMinSeg(dur)}</div></div>
-      <div class="me-slots">${slots}</div>
+      <div class="me-slots">${slots}
+        <label class="me-slot"><span>Posición</span>
+          <select onchange="meSetBanda(${i},this.value)" aria-label="Posición de la pieza">${bandaOpts}</select></label>
+      </div>
       <div class="me-previs" id="me-previs-${i}">
         <button class="btn secondary" onclick="previsualizarPieza(${i})">Previsualizar</button>
       </div>
@@ -2631,6 +2641,10 @@ function meRender() {
 // Las tres ediciones tocan SOLO el objeto en memoria. Nada se escribe hasta Guardar, para que
 // una edicion a medias no deje un sidecar invalido en disco.
 function meSetTexto(i, slot, valor) { mePlan.piezas[i].texto[slot] = valor; }
+
+// Cambia solo el objeto en memoria, igual que meSetTexto: nada se escribe hasta Guardar, y ahi
+// el backend puede rechazar la posicion elegida (pisa captions) con su motivo en pantalla.
+function meSetBanda(i, valor) { mePlan.piezas[i].banda = valor; }
 
 function meMover(i, valor) {
   const p = mePlan.piezas[i];

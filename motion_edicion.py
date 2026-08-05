@@ -118,10 +118,23 @@ def _problemas_de_pieza(dato: object, indice: int, duracion_ms: int, catalogo: s
     ):
         problemas.append(f"{prefijo}: texto debe ser un objeto de cadenas")
 
-    banda = dato.get("banda", mp.BANDA_CENTRO)
-    if banda not in (mp.BANDA_CENTRO, mp.BANDA_ARRIBA):
-        problemas.append(f"{prefijo}: banda '{banda}' desconocida")
+    problemas.extend(_problemas_de_banda(prefijo, dato.get("banda", mp.BANDA_CENTRO)))
     return problemas
+
+
+def _problemas_de_banda(prefijo: str, banda: str) -> list[str]:
+    """Problemas de la posicion elegida (Paso 2 de HF-4): banda desconocida, o conocida pero
+    que pisa la franja de captions (se ofrece en el selector, pero no se guarda asi)."""
+    if banda not in mp.BANDAS_VALIDAS:
+        return [f"{prefijo}: banda '{banda}' desconocida"]
+    if mp.banda_invade_captions(banda):
+        etiqueta = mp.ETIQUETA_BANDA.get(banda, banda)
+        return [
+            f"{prefijo}: la posicion '{etiqueta}' pisa la franja de captions "
+            f"({mp.ZONA_CAPTIONS[0]:.0%}-{mp.ZONA_CAPTIONS[1]:.0%} del alto). Elige Arriba o "
+            f"Centro."
+        ]
+    return []
 
 
 def _problemas_entre_piezas(piezas: list[mp.Pieza], orientacion: str) -> list[str]:

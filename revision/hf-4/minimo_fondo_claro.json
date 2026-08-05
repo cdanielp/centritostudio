@@ -1,0 +1,20 @@
+{
+  "estilo": "minimo",
+  "plantilla_resuelta": "lower_third_minimo",
+  "banda": "centro",
+  "desplazamiento_px": 0,
+  "carril_nativo_medido": [
+    0.6318,
+    0.6823
+  ],
+  "posicion_final_medida": [
+    0.6318,
+    0.6823
+  ],
+  "zona_captions": [
+    0.7,
+    0.92
+  ],
+  "pisa_captions": false,
+  "png": "revision\\hf-4\\minimo_fondo_claro.png"
+}

@@ -319,6 +319,32 @@ def test_el_desplazamiento_en_pixeles_sube_la_pieza(tmp_path):
     assert y == int(round(mp.DESPLAZAMIENTO_SUPERIOR * 1920))
 
 
+# ── Banda "Abajo" del control de posicion (HF-4, paso 2) ──────────────────────
+
+
+def test_la_banda_inferior_pisa_los_captions_y_las_otras_dos_no():
+    assert mp.banda_invade_captions(mp.BANDA_INFERIOR) is True
+    assert mp.banda_invade_captions(mp.BANDA_CENTRO) is False
+    assert mp.banda_invade_captions(mp.BANDA_ARRIBA) is False
+
+
+def test_la_banda_inferior_empieza_justo_donde_termina_el_carril_nativo():
+    assert mp.RANGO_INFERIOR[0] == mp.CARRIL_VERTICAL[1]
+    assert mp.DESPLAZAMIENTO_INFERIOR == pytest.approx(
+        mp.RANGO_INFERIOR[0] - mp.CARRIL_VERTICAL[0]
+    )
+    assert mp.DESPLAZAMIENTO_INFERIOR > 0, "banda inferior: desplazamiento positivo (baja la pieza)"
+
+
+def test_el_desplazamiento_en_pixeles_baja_la_pieza_en_banda_inferior():
+    import motion_capa as mc
+
+    x, y = mc.desplazamiento_de_banda(mp.BANDA_INFERIOR, 1920)
+    assert x == 0
+    assert y > 0, "la banda inferior se compone desplazando el overlay hacia ABAJO"
+    assert y == int(round(mp.DESPLAZAMIENTO_INFERIOR * 1920))
+
+
 def test_en_vertical_sin_csv_se_coloca_en_el_carril_nativo_y_se_avisa():
     """FAIL-OPEN, no fail-closed: un dato que falta degrada la capa, no la apaga.
 
@@ -364,6 +390,15 @@ def test_en_16_9_la_cara_no_se_consulta(tmp_path):
     """Las bandas del catalogo en 16:9 son disjuntas y no compiten con la cara."""
     plan = _plan(20000, orientacion="horizontal", tray_csv=_csv_cara(tmp_path, 0.55))
     assert _nombres(plan) == ["hook", "lower_third", "cierre"]
+
+
+def test_sin_dato_de_cara_la_orientacion_decide_el_carril():
+    """Paso 1 de HF-4: el bug era que un horizontal sin trayectoria (nunca pasa por el
+    reframe) caia en el carril nativo del 9:16 (54-68%) en vez de subir. Vertical no cambia."""
+    horizontal = _plan(20000, orientacion="horizontal", tray_csv=None)
+    vertical = _plan(20000, orientacion="vertical", tray_csv=None)
+    assert {p.banda for p in horizontal.piezas} == {mp.BANDA_ARRIBA}
+    assert {p.banda for p in vertical.piezas} == {mp.BANDA_CENTRO}
 
 
 # ── Textos ───────────────────────────────────────────────────────────────────
