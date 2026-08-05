@@ -23,6 +23,11 @@ PIPELINE_VERSION = 2
 MODES = frozenset({"classic", "v2"})
 FX_PRESETS = frozenset({"express", "pro", "premium"})
 CAPTION_SOURCES = frozenset({"transcript", "srt"})
+# Formato de salida (HF-4, Formato dual). "9:16" es el default y el historico: reencuadra
+# siempre, igual que antes de este cambio. "16:9" no reencuadra si la fuente ya es horizontal.
+# "ambos" produce las dos salidas en una sola corrida, compartiendo planificacion temporal,
+# brain y b-roll (ver auto_formato.py).
+FORMATOS = frozenset({"9:16", "16:9", "ambos"})
 
 # Campos de la capa de letreros (Motor B, HF-3). Con `motion_enabled=False` NO entran al
 # `to_dict()` ni al fingerprint: un paquete v2 anterior a HF-3 conserva su fingerprint exacto
@@ -61,6 +66,10 @@ class AutoConfig:
     # Fuente de captions (S36-C2A2). "transcript" (default) = ruta histórica exacta;
     # "srt" = usa la selección SRT explícita del video y deriva SRT/words/groups por clip.
     caption_source: Literal["transcript", "srt"] = "transcript"
+    # Formato de salida (HF-4). Default "9:16" = ruta historica exacta (reencuadra siempre). No
+    # exige mode="v2": classic tambien puede pedir 16:9/ambos, solo que sin broll ni letreros
+    # (esas capas ya exigian v2 por su cuenta, antes de este campo).
+    formato: Literal["9:16", "16:9", "ambos"] = "9:16"
 
     # Capa de letreros del Motor B (HyperFrames, HF-3). DEFAULT OFF y aditiva: apagada, el
     # render y el nombre de salida son los historicos byte a byte. Solo v2: la ruta classic no
@@ -102,6 +111,10 @@ class AutoConfig:
             raise AutoConfigError(f"fx_preset invalido: {self.fx_preset!r}")
         if self.caption_source not in CAPTION_SOURCES:
             raise AutoConfigError(f"caption_source invalido: {self.caption_source!r}")
+        if self.formato not in FORMATOS:
+            raise AutoConfigError(
+                f"formato invalido: {self.formato!r} (usa {', '.join(sorted(FORMATOS))})"
+            )
         if not _es_pct(self.target_coverage_pct) or not _es_pct(self.max_coverage_pct):
             raise AutoConfigError("target/max_coverage_pct deben ser numeros en [0, 1]")
         if self.target_coverage_pct > self.max_coverage_pct:
@@ -151,6 +164,8 @@ class AutoConfig:
         if not self.motion_enabled:
             for campo in ("motion_enabled", *CAMPOS_MOTION, *CAMPOS_MOTION_BOOL, "motion_estilo"):
                 d.pop(campo, None)
+        if self.formato == "9:16":
+            d.pop("formato", None)
         return d
 
     def fingerprint(self) -> str:
@@ -163,6 +178,7 @@ __all__ = [
     "PIPELINE_VERSION",
     "CAPTION_SOURCES",
     "ESTILOS_MOTION",
+    "FORMATOS",
     "AutoConfig",
     "AutoConfigError",
 ]
