@@ -130,30 +130,51 @@ def _vista_de_plan(plan: mp.PlanMotion, origen: str, duracion_ms: int) -> dict:
     }
 
 
-def ver_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> dict:
-    """El plan que se compondria HOY para ese clip, con su origen y el catalogo disponible.
+def _hay_cambios_sin_renderizar(
+    mp4: Path, piezas_selladas: list, origen: str, duracion_ms: int, orientacion: str, catalogo: set
+) -> bool:
+    """True si lo que K guardo ya no es lo que hay en el MP4.
 
-    Si hay sidecar, se devuelve el EDITADO y `origen` lo dice. La interfaz necesita ese dato
-    para poder ofrecer el boton de volver al automatico solo cuando tiene sentido.
+    Desde que el editor ensena el plan del RENDER, guardar o descartar deja de cambiar el video
+    hasta que se vuelve a lanzar Automatico. Callarse eso convertiria la correccion del punto 3
+    en otra forma de mentir: el plan seria real y el aviso de "guardado" no.
     """
+    editado = me.cargar(mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo)
+    if editado is None:
+        return origen == me.ORIGEN_EDITADO  # se descarto la edicion y el MP4 aun la lleva
+    return me.a_sidecar(editado, duracion_ms=duracion_ms)["piezas"] != piezas_selladas
+
+
+def ver_plan(clip: str, *, textos: motion_capa.OpcionesMotion | None = None) -> dict:
+    """El plan EXACTO con el que se compuso el ultimo render de ese clip.
+
+    El editor NO replanifica, y esto es una correccion, no una preferencia: al replanificar en
+    el momento, el LLM recibia un juego de huecos distinto (los campos de marca del formulario
+    cambian que piezas caben) y devolvia otros textos. K corregia un letrero y el MP4 tenia
+    otro. Una previsualizacion que miente es peor que ninguna.
+
+    Si el clip no se ha compuesto todavia no hay plan que ensenar y se dice tal cual. Inventar
+    uno seria repetir el fallo con otra cara.
+
+    `textos` se acepta por compatibilidad de la firma y ya no decide nada: lo que se muestra
+    esta sellado en disco.
+    """
+    del textos
     mp4 = resolver_clip(clip)
     duracion_ms, orientacion, _fps = _meta_del_clip(mp4)
     versiones = motion_capa.versiones_del_catalogo(CATALOGO)
-    opciones = textos or motion_capa.OpcionesMotion(enabled=True, titulo=mp4.stem)
-    # `textos_llm` sigue el default del pipeline. Si el Studio mostrara el plan de las reglas
-    # mientras Auto renderiza con los del LLM, K corregiria un texto y veria otro en el video.
-    plan, origen = motion_capa.resolver_plan(
-        clip_mp4=mp4,
-        duracion_ms=duracion_ms,
-        orientacion=orientacion,
-        textos=opciones.textos(),
-        tramos=_tramos_del_clip(mp4),
-        tray_csv=_tray_del_clip(mp4),
-        catalogo=set(versiones),
-        textos_llm=opciones.textos_llm,
-        stem=mp4.stem,
-    )
+    sellado = me.cargar_render(mp4, orientacion=orientacion, catalogo=set(versiones))
+    if sellado is None:
+        raise StudioMotionError(
+            f"'{mp4.stem}' no tiene letreros compuestos todavia. Lanza Automatico sobre ese "
+            f"video con la capa encendida y vuelve: el editor ensena el plan del render, no uno "
+            f"calculado al vuelo."
+        )
+    plan, origen = sellado
     vista = _vista_de_plan(plan, origen, duracion_ms)
+    vista["pendiente_de_render"] = _hay_cambios_sin_renderizar(
+        mp4, vista["piezas"], origen, duracion_ms, orientacion, set(versiones)
+    )
     vista["clip"] = mp4.stem
     vista["catalogo"] = catalogo_para_ui()
     vista["separacion_min_ms"] = mp.SEPARACION_MIN_MS
@@ -329,6 +350,8 @@ def guardar_plan(clip: str, piezas: object) -> dict:
     me.guardar(mp4, resultado.plan, duracion_ms=duracion_ms)
     vista = _vista_de_plan(resultado.plan, me.ORIGEN_EDITADO, duracion_ms)
     vista["clip"] = mp4.stem
+    # Recien guardado es, por definicion, lo que el MP4 todavia no lleva.
+    vista["pendiente_de_render"] = True
     return vista
 
 

@@ -2547,12 +2547,21 @@ function meRender() {
   sel.innerHTML = meCatalogo.map(t =>
     `<option value="${escHtml(t.nombre)}">${escHtml(t.nombre)} · ${t.duracion_ms} ms</option>`).join('');
 
+  // El plan que se ensena es el del ULTIMO RENDER, no uno calculado al abrir. Por eso hay que
+  // decir cuando lo guardado ya no es lo que hay en el MP4: si no, "guardado" pareceria
+  // "aplicado" y volveriamos a la previsualizacion que miente.
+  const avisos = [];
+  if (mePlan.pendiente_de_render) {
+    avisos.push(`<div class="msg err">Hay cambios guardados que el video todavia no lleva. ` +
+      `Vuelve a lanzar Automatico sobre este video para aplicarlos.</div>`);
+  }
   const omitidas = (mePlan.omisiones || []);
   if (omitidas.length && !editado) {
-    document.getElementById('me-avisos').innerHTML =
-      `<div class="msg" style="margin-bottom:10px">El planificador descarto: ` +
-      omitidas.map(o => `${escHtml(o.plantilla)} (${escHtml(o.motivo)})`).join(' · ') + `</div>`;
+    avisos.push(`<div class="msg">El planificador descarto: ` +
+      omitidas.map(o => `${escHtml(o.plantilla)} (${escHtml(o.motivo)})`).join(' · ') + `</div>`);
   }
+  document.getElementById('me-avisos').innerHTML =
+    avisos.length ? `<div style="margin-bottom:10px">${avisos.join('')}</div>` : '';
 }
 
 // Las tres ediciones tocan SOLO el objeto en memoria. Nada se escribe hasta Guardar, para que

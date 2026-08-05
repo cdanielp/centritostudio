@@ -28,6 +28,11 @@ from pathlib import Path
 import motion_plan as mp
 
 SUFIJO_SIDECAR = "_motion_plan.json"
+# El plan EXACTO con el que se compuso el ultimo render de este clip. No es lo mismo que el
+# sidecar de edicion: aquel es lo que K quiere, este es lo que de verdad se pinto. El editor
+# tiene que ensenar ESTE, porque replanificar en el momento puede dar otros textos (el LLM
+# recibe otro juego de huecos) y entonces K corrige un letrero que no esta en el MP4.
+SUFIJO_RENDER = "_motion_render.json"
 VERSION_SIDECAR = 1
 # Cuanto puede durar un clip como maximo, en ms. Es un tope de cordura del validador, no una
 # regla de negocio: por encima de esto lo que hay es un numero mal tecleado.
@@ -57,6 +62,12 @@ def ruta_sidecar(clip_mp4: Path) -> Path:
     """Donde vive el plan editado de un clip: junto al MP4, con su mismo stem."""
     clip_mp4 = Path(clip_mp4)
     return clip_mp4.with_name(f"{clip_mp4.stem}{SUFIJO_SIDECAR}")
+
+
+def ruta_render(clip_mp4: Path) -> Path:
+    """Donde queda sellado el plan con el que se compuso el ultimo render de ese clip."""
+    clip_mp4 = Path(clip_mp4)
+    return clip_mp4.with_name(f"{clip_mp4.stem}{SUFIJO_RENDER}")
 
 
 # ── Validacion ───────────────────────────────────────────────────────────────
@@ -218,6 +229,49 @@ def guardar(clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int) -> Path:
     return destino
 
 
+def sellar_render(clip_mp4: Path, plan: mp.PlanMotion, *, duracion_ms: int, origen: str) -> Path:
+    """Deja escrito el plan EXACTO que se acaba de componer. Un fallo no tumba el render.
+
+    Es lo que hace honesta la previsualizacion: sin esto, el editor replanificaba y podia
+    ensenar textos que no estan en el MP4, porque el LLM recibe un juego de huecos distinto
+    segun los campos de marca que traiga el formulario.
+    """
+    from atomic_io import atomic_write_json  # noqa: PLC0415
+
+    destino = ruta_render(clip_mp4)
+    atomic_write_json(destino, {**a_sidecar(plan, duracion_ms=duracion_ms), "origen": origen})
+    return destino
+
+
+def cargar_render(clip_mp4: Path, *, orientacion: str, catalogo: set[str]):
+    """(plan, origen) del ultimo render de ese clip, o None si no hay o no vale. FAIL-OPEN.
+
+    La duracion sale del propio sidecar: es la que tenia el clip cuando se compuso, y es la
+    unica contra la que ese plan es valido.
+    """
+    ruta = ruta_render(clip_mp4)
+    if not ruta.is_file():
+        return None
+    try:
+        dato = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"[motion] plan renderizado ilegible: {ruta.name} ({exc})")
+        return None
+    if not isinstance(dato, dict):
+        return None
+    duracion_ms = dato.get("duracion_ms")
+    if not isinstance(duracion_ms, int):
+        return None
+    resultado = validar_plan(
+        dato, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
+    )
+    if not resultado.ok:
+        print(f"[motion] plan renderizado no valido: {'; '.join(resultado.problemas)}")
+        return None
+    origen = dato.get("origen")
+    return resultado.plan, (origen if isinstance(origen, str) else ORIGEN_AUTOMATICO)
+
+
 def descartar(clip_mp4: Path) -> bool:
     """Borra el sidecar y vuelve al plan automatico. True si habia algo que borrar."""
     destino = ruta_sidecar(clip_mp4)
@@ -258,14 +312,18 @@ def cargar(clip_mp4: Path, *, duracion_ms: int, orientacion: str, catalogo: set[
 __all__ = [
     "ORIGEN_AUTOMATICO",
     "ORIGEN_EDITADO",
+    "SUFIJO_RENDER",
     "SUFIJO_SIDECAR",
     "VERSION_SIDECAR",
     "PlanEditadoInvalido",
     "ResultadoValidacion",
     "a_sidecar",
     "cargar",
+    "cargar_render",
     "descartar",
     "guardar",
+    "ruta_render",
     "ruta_sidecar",
+    "sellar_render",
     "validar_plan",
 ]

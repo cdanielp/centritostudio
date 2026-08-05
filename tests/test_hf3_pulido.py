@@ -464,3 +464,101 @@ def test_no_se_renumera_si_faltan_textos():
         {"id": 6, "plantilla": "cierre", "t0_ms": 50000, "limite": 60, "contexto": "b"},
     ]
     assert tl._sanear_relleno([{"id": 1, "texto": "Suelto"}], huecos) == {}
+
+
+# ── El editor ensena el plan RENDERIZADO, no uno calculado al vuelo ──────────
+
+
+def _plan_de_prueba():
+    import motion_plan as mpl
+
+    return mpl.PlanMotion(
+        "vertical",
+        (
+            mpl.Pieza("hook", 0, 2500, {"titulo": "El gancho", "kicker": "DATO"}, "centro", 0),
+            mpl.Pieza("titulo_seccion", 9000, 11000, {"titulo": "La seccion"}, "centro", 9000),
+        ),
+        (),
+        (),
+    )
+
+
+@pytest.fixture
+def clip_sellado(tmp_path, monkeypatch):
+    """Un clip con su plan de render ya sellado, como lo deja `clips_de_motion`."""
+    import motion_capa
+    import studio_motion as sm
+
+    mp4 = tmp_path / "clipx.mp4"
+    mp4.write_bytes(b"no es un mp4 de verdad, nadie lo abre en esta prueba")
+    plan = _plan_de_prueba()
+    motion_capa._sellar_plan_renderizado(mp4, plan, 60000, "automatico")
+
+    monkeypatch.setattr(sm, "resolver_clip", lambda clip: mp4)
+    monkeypatch.setattr(sm, "_meta_del_clip", lambda ruta: (60000, "vertical", 30))
+    monkeypatch.setattr(sm, "_tramos_del_clip", lambda ruta: [])
+    return plan
+
+
+def test_el_editor_ensena_exactamente_el_plan_renderizado(clip_sellado):
+    """Campo por campo. Si el editor replanificara, aqui saldrian otros textos.
+
+    Es la prueba del punto 3: el LLM recibe un juego de huecos distinto segun los campos de
+    marca del formulario, asi que replanificar al abrir el editor podia ensenar un letrero que
+    no esta en el MP4. K corregia uno y veia otro.
+    """
+    import motion_edicion as me
+    import studio_motion as sm
+
+    vista = sm.ver_plan("clipx")
+    esperado = me.a_sidecar(clip_sellado, duracion_ms=60000)["piezas"]
+
+    assert vista["piezas"] == esperado
+    assert vista["orientacion"] == clip_sellado.orientacion
+    assert vista["origen"] == "automatico"
+
+
+def test_un_clip_sin_render_no_inventa_un_plan(tmp_path, monkeypatch):
+    import studio_motion as sm
+
+    mp4 = tmp_path / "sinrender.mp4"
+    mp4.write_bytes(b"tampoco es un mp4")
+    monkeypatch.setattr(sm, "resolver_clip", lambda clip: mp4)
+    monkeypatch.setattr(sm, "_meta_del_clip", lambda ruta: (60000, "vertical", 30))
+
+    with pytest.raises(sm.StudioMotionError, match="no tiene letreros compuestos"):
+        sm.ver_plan("sinrender")
+
+
+def test_el_plan_sellado_sobrevive_a_una_relectura(tmp_path):
+    """El sello se escribe y se relee sin perder ni un campo: es el contrato del editor."""
+    import motion_capa
+    import motion_edicion as me
+
+    mp4 = tmp_path / "clipy.mp4"
+    plan = _plan_de_prueba()
+    motion_capa._sellar_plan_renderizado(mp4, plan, 60000, "editado")
+
+    leido, origen = me.cargar_render(
+        mp4, orientacion="vertical", catalogo={"hook", "titulo_seccion"}
+    )
+    assert origen == "editado"
+    assert me.a_sidecar(leido, duracion_ms=60000) == me.a_sidecar(plan, duracion_ms=60000)
+
+
+def test_guardar_un_plan_avisa_de_que_el_video_no_lo_lleva(clip_sellado, tmp_path):
+    """Desde que el editor ensena el render, "guardado" no es "aplicado" y hay que decirlo."""
+    import studio_motion as sm
+
+    piezas = sm.ver_plan("clipx")["piezas"]
+    piezas[0]["texto"]["titulo"] = "Otro gancho"
+
+    vista = sm.guardar_plan("clipx", piezas)
+    assert vista["pendiente_de_render"] is True
+    assert sm.ver_plan("clipx")["pendiente_de_render"] is True, "el MP4 sigue con el viejo"
+
+
+def test_sin_edicion_pendiente_no_se_avisa(clip_sellado):
+    import studio_motion as sm
+
+    assert sm.ver_plan("clipx")["pendiente_de_render"] is False

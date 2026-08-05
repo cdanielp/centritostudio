@@ -359,6 +359,24 @@ def validar_sin_solape(piezas: list[mp.Pieza], orientacion: str) -> None:
             )
 
 
+def _sellar_plan_renderizado(
+    clip_mp4: Path | None, plan: mp.PlanMotion, duracion_ms: int, origen: str
+) -> None:
+    """Deja junto al clip el plan EXACTO que se va a componer. Un fallo aqui no tumba el render.
+
+    Es lo unico que permite que el editor ensene lo que de verdad esta en el MP4 en vez de
+    replanificar, que puede dar otros textos porque el LLM recibe otro juego de huecos.
+    """
+    if clip_mp4 is None:
+        return
+    try:
+        import motion_edicion as me  # noqa: PLC0415
+
+        me.sellar_render(clip_mp4, plan, duracion_ms=duracion_ms, origen=origen)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[motion] no se pudo sellar el plan renderizado: {exc}")
+
+
 def _informe_base(plan: mp.PlanMotion | None) -> dict:
     return {
         "enabled": True,
@@ -448,6 +466,7 @@ def _clips_de_motion(
     )
     informe = _informe_base(plan)
     informe["origen"] = origen
+    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, origen)
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
         return ResultadoMotion((), informe)

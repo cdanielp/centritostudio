@@ -658,7 +658,7 @@ def _renumerado(dato: list, huecos: list[dict]) -> list | None:
     reales = [h["id"] for h in huecos]
     if ids == reales:
         return None  # no hay nada que renumerar
-    return [{**x, "id": real} for x, real in zip(dato, reales)]
+    return [{**x, "id": real} for x, real in zip(dato, reales, strict=True)]
 
 
 def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
