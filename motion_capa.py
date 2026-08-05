@@ -207,6 +207,9 @@ def rellenar_textos_con_llm(
                     "t0_ms": pieza.t0_ms,
                     "limite": slot[1],
                     "contexto": contexto,
+                    # La cifra viaja para que la etiqueta no la repita: la tarjeta ya la pinta
+                    # en grande justo encima, y decirla dos veces en el mismo cuadro se ve mal.
+                    "cifra": pieza.texto.get("cifra", ""),
                 }
             )
         if not huecos:

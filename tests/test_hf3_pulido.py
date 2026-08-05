@@ -589,3 +589,57 @@ def test_el_decimal_partido_del_transcriptor_no_tumba_la_cifra():
     import motion_guarda as g
 
     assert g.cifra_dicha("10.5%", "", clip="este fue en un 10 .5 % de medias superiores")
+
+
+# ── Dos piezas no arrancan igual y la etiqueta no repite la cifra (sesion 9) ──
+
+
+def test_dos_letreros_que_arrancan_con_la_misma_palabra_se_detectan():
+    """Tres letreros empezando por "Garcia" se leen como el mismo aunque digan cosas distintas."""
+    import motion_guarda as g
+
+    assert g.arranque_compartido("Garcia con deportes", "Un Garcia con empleo") == "garcia"
+    assert g.arranque_compartido("Garcia con deportes", "El empleo en Garcia") == ""
+
+
+def test_el_arranque_repetido_corrige_la_pieza_de_menor_prioridad():
+    huecos = [
+        {"id": 0, "plantilla": "hook", "t0_ms": 0, "limite": 60, "contexto": "x"},
+        {"id": 1, "plantilla": "titulo_seccion", "t0_ms": 9000, "limite": 60, "contexto": "y"},
+    ]
+    motivos = tl._motivos_por_repeticion(
+        {0: "Garcia con deportes", 1: "Garcia con empleo y futuro"}, huecos
+    )
+    assert list(motivos) == [1]
+    assert "empieza por" in motivos[1]
+
+
+def test_la_etiqueta_no_repite_la_cifra_que_va_en_grande():
+    """K lo confirmo mirando la demo 16: "10.5%" arriba y "10.5% dejo la prepa" debajo."""
+    assert tl._sin_la_cifra_delante("10.5% dejo la prepa en 2023-2024", "10.5%") == (
+        "dejo la prepa en 2023-2024"
+    )
+    assert tl._sin_la_cifra_delante("10.5 dejo la prepa", "10.5%") == "dejo la prepa"
+
+
+def test_una_cifra_a_mitad_de_la_etiqueta_no_se_toca():
+    """Ahi suele estar haciendo falta, y recortarla dejaria un texto roto."""
+    assert tl._sin_la_cifra_delante("subio hasta 10.5% este ano", "10.5%") == (
+        "subio hasta 10.5% este ano"
+    )
+
+
+def test_el_saneado_del_relleno_tambien_quita_la_cifra_delante():
+    """La etiqueta la reescribe la SEGUNDA pasada, asi que ahi tambien hay que quitarla."""
+    huecos = [
+        {
+            "id": 0,
+            "plantilla": "dato_destacado",
+            "t0_ms": 8000,
+            "limite": 60,
+            "contexto": "x",
+            "cifra": "10.5%",
+        }
+    ]
+    crudo = [{"id": 0, "texto": "10.5% dejo la prepa"}]
+    assert tl._sanear_relleno(crudo, huecos) == {0: "dejo la prepa"}

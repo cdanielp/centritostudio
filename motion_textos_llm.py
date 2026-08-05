@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -45,6 +46,8 @@ LIMITES = {
     "cierre_titulo": mp.TITULO_SECCION_MAX_CHARS,
 }
 MAX_SECCIONES = 8  # tope de cordura de la respuesta, no una regla de colocacion
+
+_NUMERO_INICIAL = re.compile(r"\d+(?:[.,]\d+)?")
 
 _SYSTEM = (
     "Eres editor de video en espanol de Mexico. Escribes los letreros que van sobre un clip "
@@ -220,6 +223,29 @@ def _secciones_validas(valor: object, duracion_ms: int) -> tuple[tuple[int, str]
     return tuple(salida)
 
 
+def _sin_la_cifra_delante(etiqueta: str, cifra: str) -> str:
+    """La etiqueta sin la cifra que la tarjeta ya pinta en grande encima. PURO.
+
+    Medido a ojo sobre la demo 16: la tarjeta decia "10.5%" en grande y "10.5% dejo la prepa en
+    2023-2024" debajo. La etiqueta es el CONTEXTO de la cifra, no la cifra otra vez.
+
+    Se quita solo si va DELANTE, que es como la devuelve el modelo. Si la cifra aparece a mitad
+    de la frase suele estar haciendo falta ahi, y recortarla dejaria un texto roto.
+    """
+    if not etiqueta or not cifra:
+        return etiqueta
+    numero = _NUMERO_INICIAL.match(cifra)
+    candidatos = [cifra, cifra.rstrip("%").strip()]
+    if numero:
+        candidatos.append(numero.group(0))
+    for aguja in candidatos:
+        if aguja and etiqueta.lower().startswith(aguja.lower()):
+            # Lo que queda pegado es puntuacion o el conector que unia la cifra a la frase.
+            limpio = etiqueta[len(aguja) :].lstrip(" %:,.-").strip()
+            return limpio or etiqueta
+    return etiqueta
+
+
 def sanear(dato: object, duracion_ms: int) -> TextosLLM | None:
     """Respuesta cruda del modelo -> `TextosLLM`, o None si no hay nada aprovechable.
 
@@ -238,8 +264,12 @@ def sanear(dato: object, duracion_ms: int) -> TextosLLM | None:
         hook_kicker=_texto_valido(dato.get("hook_kicker"), LIMITES["hook_kicker"]),
         secciones=_secciones_validas(dato.get("secciones"), duracion_ms),
         dato_cifra=cifra,
-        # Una etiqueta sin cifra no significa nada: se descarta con ella.
-        dato_etiqueta=_texto_valido(dato.get("dato_etiqueta"), LIMITES["dato_etiqueta"])
+        # Una etiqueta sin cifra no significa nada: se descarta con ella. Y si la trae delante,
+        # se le quita: la tarjeta pinta la cifra en grande justo encima, asi que repetirla en la
+        # etiqueta la dice dos veces en el mismo cuadro.
+        dato_etiqueta=_sin_la_cifra_delante(
+            _texto_valido(dato.get("dato_etiqueta"), LIMITES["dato_etiqueta"]), cifra
+        )
         if cifra
         else "",
         dato_t0_ms=t0_dato if cifra else None,
@@ -406,6 +436,9 @@ Reglas, todas obligatorias:
 - Puedes resumir con tus palabras, pero NO inventes datos, nombres ni cifras que no se digan.
 - NINGUN letrero puede repetir el tema ni la frase de otro. Se leen seguidos en el mismo video:
   si dos dicen lo mismo, sobra uno. Mira la lista COMPLETA antes de escribir.
+- VARIA LA CONSTRUCCION entre letreros. Dos no pueden empezar por la misma palabra, ni seguir
+  el mismo molde. Si uno arranca con el sujeto, que el siguiente arranque con la accion, con la
+  cifra o con la consecuencia.
 - Devuelve un texto por CADA id de la lista, con EL MISMO id que se te dio. No los renumeres.
 
 JSON: {{"textos":[{{"id":int,"texto":str}}]}}"""
@@ -415,6 +448,12 @@ def _prompt_relleno(huecos: list[dict], duracion_ms: int) -> str:
     lineas = "\n".join(
         f"[{h['id']}] {h['plantilla']} en el segundo {h['t0_ms'] / 1000:.1f}, "
         f'maximo {h["limite"]} caracteres. Se habla: "{h["contexto"]}"'
+        + (
+            f'. Este letrero ya pinta "{h["cifra"]}" en grande: escribe SOLO el contexto de esa '
+            f"cifra, sin repetirla"
+            if h.get("cifra")
+            else ""
+        )
         for h in huecos
     )
     return _PROMPT_RELLENO.format(dur_s=duracion_ms / 1000.0, huecos=lineas)
@@ -429,7 +468,15 @@ def huella_relleno(huecos: list[dict], duracion_ms: int) -> str:
             "schema": SCHEMA_CACHE,
             "duracion_ms": duracion_ms,
             "huecos": [
-                [h["id"], h["plantilla"], h["t0_ms"], h["limite"], h["contexto"]] for h in huecos
+                [
+                    h["id"],
+                    h["plantilla"],
+                    h["t0_ms"],
+                    h["limite"],
+                    h["contexto"],
+                    h.get("cifra", ""),
+                ]
+                for h in huecos
             ],
             "system": _SYSTEM_RELLENO,
             "prompt": _PROMPT_RELLENO,
@@ -565,6 +612,16 @@ def _motivos_por_repeticion(textos: dict[int, str], huecos: list[dict]) -> dict[
                     f'repite "{" ".join(comun)}", que ya dice el letrero [{otro}]: "{textos[otro]}"'
                 )
                 break
+            # Tres letreros seguidos empezando por "Garcia" se leen como el mismo aunque cada
+            # uno diga algo distinto: lo que se repite es el SUJETO, no la frase. Repetir la
+            # plantilla esta bien; arrancar igual, no.
+            arranque = motion_guarda.arranque_compartido(textos[ident], textos[otro])
+            if arranque:
+                motivos[ident] = (
+                    f'empieza por "{arranque}", igual que el letrero [{otro}]: '
+                    f'"{textos[otro]}". Cambia el sujeto o la construccion.'
+                )
+                break
     return motivos
 
 
@@ -665,6 +722,7 @@ def _renumerado(dato: list, huecos: list[dict]) -> list | None:
 def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
     """Lista cruda -> {id: texto}, con el limite de cada hueco aplicado."""
     limites = {h["id"]: h["limite"] for h in huecos}
+    cifras = {h["id"]: h.get("cifra", "") for h in huecos}
     salida: dict[int, str] = {}
     if isinstance(dato, dict):  # tolerancia: algunos modelos devuelven {"3": "..."}
         dato = [{"id": k, "texto": v} for k, v in dato.items()]
@@ -680,6 +738,7 @@ def _sanear_relleno(dato: object, huecos: list[dict]) -> dict[int, str]:
         if not isinstance(ident, int) or isinstance(ident, bool) or ident not in limites:
             continue
         texto = _texto_valido(item.get("texto"), limites[ident])
+        texto = _sin_la_cifra_delante(texto, cifras.get(ident, ""))
         if texto:
             salida[ident] = texto
     return salida

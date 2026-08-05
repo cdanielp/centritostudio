@@ -271,6 +271,22 @@ def secuencia_compartida(texto_a: str, texto_b: str, minimo: int = SECUENCIA_MIN
     return mejor
 
 
+def arranque_compartido(texto_a: str, texto_b: str) -> str:
+    """La primera palabra significativa si los dos letreros arrancan con ella. PURO.
+
+    Es la otra cara de la repeticion, y la que se ve antes en pantalla: tres letreros seguidos
+    empezando por "Garcia" se leen como el mismo aunque cada uno diga algo distinto. Lo que se
+    repite ahi es el SUJETO, no la frase, y por eso `secuencia_compartida` no lo caza.
+
+    Se compara la primera palabra CON CONTENIDO, no la primera del texto: "Un Garcia..." y
+    "Garcia..." arrancan igual para quien lo lee.
+    """
+    a, b = _significativas(texto_a), _significativas(texto_b)
+    if not a or not b or a[0] != b[0]:
+        return ""
+    return a[0]
+
+
 def _ventanas(palabras: list[str], largo: int) -> set[tuple]:
     if largo > len(palabras):
         return set()
@@ -283,6 +299,7 @@ __all__ = [
     "RAIZ_MINIMA",
     "SECUENCIA_MINIMA",
     "Veredicto",
+    "arranque_compartido",
     "cifra_dicha",
     "normalizar",
     "revisar",
