@@ -544,7 +544,7 @@ F4.2-CORTES se ADELANTA a F5-s2: el material real de K (OBS/edicion) tiene corte
 
 ## ADDENDUM DE PULIDO HF-3 (2026-08-04)
 
-**PR #47 MERGEADO en `main` via merge commit `PENDIENTE` (dos padres).** Rama
+**PR #47 MERGEADO en `main` via merge commit `366f218` (dos padres: `dc6f6d0` + `eadf703`).** Rama
 `feat/hf-3-pulido` preservada. Cierra el pulido de HF-3 en cuatro rondas, todo medido sobre los
 34 clips reales y con gate visual de K en cada una. Bitacora completa en
 `revision/hf-3/BITACORA.md` (sesiones 6 a 9).
