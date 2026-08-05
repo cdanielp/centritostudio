@@ -5,6 +5,7 @@
     "nombre": "hook",
     "version": "1.0.4"
   },
+  "estilo": "pms",
   "duracion_ms": 2500,
   "fps": 30,
   "tamano": {

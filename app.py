@@ -825,11 +825,12 @@ def start_render(
     motion_nombre: str | None = None,
     motion_rol: str | None = None,
     motion_cta: str | None = None,
+    motion_estilo: str | None = None,
 ):
     _validar_name(name)
     _validar_params_render(caption_source, caption_qa, densidad, position)
     motion_opts = _opciones_motion(
-        motion_enabled, motion_titulo, motion_nombre, motion_rol, motion_cta
+        motion_enabled, motion_titulo, motion_nombre, motion_rol, motion_cta, motion_estilo
     )
     _validar_params_srt(caption_source, srt_offset_ms, srt_alineado_parcial, srt_min_coverage)
     mp4 = INPUT_DIR / f"{name}.mp4"
@@ -1204,6 +1205,7 @@ def start_auto(
     motion_nombre: str | None = None,
     motion_rol: str | None = None,
     motion_cta: str | None = None,
+    motion_estilo: str | None = None,
 ):
     """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
     _validar_name(name)
@@ -1214,8 +1216,18 @@ def start_auto(
         "motion_nombre": motion_nombre,
         "motion_rol": motion_rol,
         "motion_cta": motion_cta,
+        "motion_estilo": motion_estilo,
     }
     _validar_params_motion(motion)
+    if motion_estilo is not None:
+        import motion_capa  # noqa: PLC0415
+
+        if motion_estilo not in motion_capa.ESTILOS_VALIDOS:
+            raise HTTPException(
+                400,
+                f"motion_estilo invalido: {motion_estilo!r} "
+                f"(usa {', '.join(motion_capa.ESTILOS_VALIDOS)})",
+            )
     if caption_source == "srt":
         return _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion)
     mp4 = _resolver_video_input(name)
@@ -1248,12 +1260,15 @@ def start_auto(
     return {"job_id": jid}
 
 
-def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
+def _opciones_motion(enabled: bool, titulo, nombre, rol, cta, estilo=None):
     """Parametros publicos del render -> `motion_capa.OpcionesMotion`. Default OFF.
 
     Un texto sin la casilla es 400 y no un render silencioso sin letreros: quien escribe el
     titulo espera verlo en pantalla. Sin `motion_titulo` el planificador no coloca hook ni
     cierre, asi que se exige explicitamente en vez de devolver un video vacio de letreros.
+
+    `estilo` sigue la misma regla que los textos: mandarlo sin la capa encendida es 400. "pms"
+    (el estilo de fabrica) es el default cuando la capa SI esta encendida y no se manda nada.
     """
     import motion_capa  # noqa: PLC0415
 
@@ -1264,6 +1279,7 @@ def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
             ("motion_nombre", nombre),
             ("motion_rol", rol),
             ("motion_cta", cta),
+            ("motion_estilo", estilo),
         )
         if valor is not None
     )
@@ -1273,6 +1289,11 @@ def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
         return motion_capa.OpcionesMotion()
     if not (titulo or "").strip():
         raise HTTPException(400, "motion_titulo es obligatorio con motion_enabled=true.")
+    if estilo is not None and estilo not in motion_capa.ESTILOS_VALIDOS:
+        raise HTTPException(
+            400,
+            f"motion_estilo invalido: {estilo!r} (usa {', '.join(motion_capa.ESTILOS_VALIDOS)})",
+        )
     campos = (
         ("motion_titulo", titulo),
         ("motion_nombre", nombre),
@@ -1288,6 +1309,7 @@ def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
         nombre=nombre or "",
         rol=rol or "",
         cta=cta if cta is not None else "Sigue para más",
+        estilo=estilo or motion_capa.ESTILO_DEFAULT,
     )
 
 

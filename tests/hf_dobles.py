@@ -15,6 +15,7 @@ PIEZA_OK = {
     "contrato": 1,
     "pieza_id": "hook_principal",
     "plantilla": {"nombre": "hook", "version": "1.0.0"},
+    "estilo": "pms",
     "duracion_ms": 6000,
     "fps": 30,
     "tamano": {"ancho": 1920, "alto": 1080},

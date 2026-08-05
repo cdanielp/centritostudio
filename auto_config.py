@@ -31,6 +31,9 @@ CAPTION_SOURCES = frozenset({"transcript", "srt"})
 CAMPOS_MOTION = ("motion_nombre", "motion_rol", "motion_cta")
 CAMPOS_MOTION_BOOL = ("motion_textos_llm",)
 MOTION_TEXTO_MAX = 120
+# Estilos visuales de los letreros (HF-4). "pms" es el de fabrica y el default; debe coincidir
+# siempre con `hyperframes.contrato.ESTILOS_VALIDOS` (unica fuente de verdad del vocabulario).
+ESTILOS_MOTION = frozenset({"pms", "claro", "minimo", "rudo"})
 
 
 class AutoConfigError(ValueError):
@@ -72,6 +75,9 @@ class AutoConfig:
     # Los textos de los letreros los escribe el LLM. Las heuristicas de espanol se quedan como
     # respaldo y entran solas si el modelo falla. Solo cuenta con `motion_enabled`.
     motion_textos_llm: bool = True
+    # Estilo visual de TODOS los letreros del paquete. "pms" es el de fabrica; una funcion sin
+    # variante para el estilo pedido cae a "pms" sola (ver `motion_capa.resolver_estilo`).
+    motion_estilo: str = "pms"
 
     target_coverage_pct: float = 0.27
     max_coverage_pct: float = 0.35
@@ -119,6 +125,11 @@ class AutoConfig:
                 raise AutoConfigError(f"{campo} supera {MOTION_TEXTO_MAX} caracteres")
             if "\n" in valor or "\r" in valor:
                 raise AutoConfigError(f"{campo} no admite saltos de linea")
+        if self.motion_estilo not in ESTILOS_MOTION:
+            raise AutoConfigError(
+                f"motion_estilo invalido: {self.motion_estilo!r} "
+                f"(usa {', '.join(sorted(ESTILOS_MOTION))})"
+            )
         if self.motion_enabled and self.mode != "v2":
             raise AutoConfigError(
                 "motion_enabled exige mode='v2': el paquete classic no sella un fingerprint de "
@@ -138,7 +149,7 @@ class AutoConfig:
         d = asdict(self)
         d["pipeline_version"] = PIPELINE_VERSION
         if not self.motion_enabled:
-            for campo in ("motion_enabled", *CAMPOS_MOTION, *CAMPOS_MOTION_BOOL):
+            for campo in ("motion_enabled", *CAMPOS_MOTION, *CAMPOS_MOTION_BOOL, "motion_estilo"):
                 d.pop(campo, None)
         return d
 
@@ -148,4 +159,10 @@ class AutoConfig:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-__all__ = ["PIPELINE_VERSION", "CAPTION_SOURCES", "AutoConfig", "AutoConfigError"]
+__all__ = [
+    "PIPELINE_VERSION",
+    "CAPTION_SOURCES",
+    "ESTILOS_MOTION",
+    "AutoConfig",
+    "AutoConfigError",
+]

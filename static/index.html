@@ -570,6 +570,32 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         <label class="auto-preset"><span>Nombre (lower third)</span><input type="text" id="auto-motion-nombre" maxlength="120" placeholder="Vacío omite el lower third"></label>
         <label class="auto-preset"><span>Rol</span><input type="text" id="auto-motion-rol" maxlength="120" placeholder="Ej. Fundador"></label>
         <label class="auto-preset"><span>Llamada a la acción (cierre)</span><input type="text" id="auto-motion-cta" maxlength="120" placeholder="Sigue para más"></label>
+        <div class="auto-estilo-field">
+          <span class="auto-estilo-label">Estilo de letreros</span>
+          <div id="auto-motion-estilo-grupo" class="auto-estilo-grid" role="radiogroup" aria-label="Estilo de letreros">
+            <label class="auto-estilo-card">
+              <input type="radio" name="auto-motion-estilo" value="pms" checked>
+              <img src="/static/previews/estilo_pms.png" alt="Vista previa del estilo PMS">
+              <span>PMS</span>
+            </label>
+            <label class="auto-estilo-card">
+              <input type="radio" name="auto-motion-estilo" value="claro">
+              <img src="/static/previews/estilo_claro.png" alt="Vista previa del estilo Claro">
+              <span>Claro</span>
+            </label>
+            <label class="auto-estilo-card">
+              <input type="radio" name="auto-motion-estilo" value="minimo">
+              <img src="/static/previews/estilo_minimo.png" alt="Vista previa del estilo Mínimo">
+              <span>Mínimo</span>
+            </label>
+            <label class="auto-estilo-card">
+              <input type="radio" name="auto-motion-estilo" value="rudo">
+              <img src="/static/previews/estilo_rudo.png" alt="Vista previa del estilo Rudo">
+              <span>Rudo</span>
+            </label>
+          </div>
+          <span class="msg" style="margin:0;color:var(--muted);font-size:11px">Hoy solo el lower third tiene los cuatro estilos; el resto de los letreros usa PMS.</span>
+        </div>
       </div>
       <div class="cap-grid auto-fixed-rules">
         <span class="cap-chip">Captions siempre ON</span><span class="cap-chip">Reframe 9:16</span>
@@ -811,6 +837,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .auto-mode-card span{font-size:12px;line-height:1.45;color:var(--muted)}
 .auto-mode-card.selected{border-color:var(--purple);background:#140f24;box-shadow:0 0 0 1px rgba(124,58,237,.2)}
 .auto-mode-card:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.auto-estilo-field{display:flex;flex-direction:column;gap:8px;padding:11px 0;border-bottom:0.5px solid #202032}
+.auto-estilo-label{font-size:13px;color:var(--text)}
+.auto-estilo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.auto-estilo-card{display:flex;flex-direction:column;gap:6px;padding:8px;color:var(--text);
+  background:#101019;border:0.5px solid #2a2a3e;border-radius:10px;cursor:pointer;font:inherit;font-size:12px}
+.auto-estilo-card img{width:100%;border-radius:6px;display:block;background:#0d0d14;aspect-ratio:980/190;object-fit:cover}
+.auto-estilo-card input{position:absolute;opacity:0;pointer-events:none}
+.auto-estilo-card:has(input:checked){border-color:var(--purple);background:#140f24;box-shadow:0 0 0 1px rgba(124,58,237,.2)}
+.auto-estilo-card:has(input:focus-visible){outline:2px solid var(--purple);outline-offset:2px}
+@media(max-width:720px){.auto-estilo-grid{grid-template-columns:1fr}}
 .auto-toggle,.auto-preset{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:11px 0;
   border-bottom:0.5px solid #202032;font-size:13px}
 .auto-toggle span{display:flex;flex-direction:column;gap:3px;min-width:0}.auto-toggle small{color:var(--muted);font-size:11px;font-weight:400}
@@ -923,10 +959,11 @@ function updateAutoConfigUI() {
   const motionTextos = document.getElementById('auto-motion-textos');
   if (motionTextos) motionTextos.hidden = !motion;
   const summary = document.getElementById('auto-config-summary');
+  const estiloTxt = ESTILO_MOTION_LABELS[autoMotionEstiloValue()] || 'PMS';
   if (summary) summary.innerHTML = v2 ? `<div class="auto-summary-list">
     <span>Transcript, clipper, reframe y captions</span><span>B-roll ${broll?'activado':'desactivado'}</span>
     <span>FX ${fx?'activado · '+escHtml(preset?.value || 'express'):'desactivado'}</span><span>Verificación A/V obligatoria</span>
-    <span>Letreros ${motion?'activados':'desactivados'}</span>
+    <span>Letreros ${motion?'activados, estilo '+escHtml(estiloTxt):'desactivados'}</span>
     <span>Sidecars manuales respetados</span><span>Revisión del paquete en el Editor</span></div>`
     : `<div class="auto-summary-list"><span>Transcript y clipper</span><span>Reframe 9:16</span>
        <span>Captions y emojis</span><span>Reporte histórico</span></div>
@@ -934,12 +971,22 @@ function updateAutoConfigUI() {
   const btn = document.getElementById('auto-btn');
   if (btn) btn.textContent = v2 ? 'Generar paquete Auto v2' : 'Generar paquete clásico';
 }
+// Estilo de letreros (HF-4): vive en el radio marcado del grupo "auto-motion-estilo", se lee
+// SIEMPRE fresco en el momento de usarlo. Nunca se cachea en una variable JS suelta: ese fue
+// exactamente el patrón que rompió el desfase de SRT (D45/D49), porque una variable cacheada
+// no se entera cuando cambia el video o el DOM se repinta.
+const ESTILO_MOTION_LABELS = {pms:'PMS', claro:'Claro', minimo:'Mínimo', rudo:'Rudo'};
+function autoMotionEstiloValue() {
+  const marcado = document.querySelector('input[name="auto-motion-estilo"]:checked');
+  return marcado ? marcado.value : 'pms';
+}
 function setAutoControlsLocked(locked) {
   autoRunning = locked;
   ['auto-video-select','auto-broll-enabled','auto-fx-enabled','auto-fx-preset',
    'auto-motion-enabled','auto-motion-nombre','auto-motion-rol','auto-motion-cta'].forEach(id => {
     const el = document.getElementById(id); if (el) el.disabled = locked;
   });
+  document.querySelectorAll('input[name="auto-motion-estilo"]').forEach(el => { el.disabled = locked; });
   document.querySelectorAll('[data-auto-mode]').forEach(b => b.disabled = locked);
   document.getElementById('auto-btn').disabled = locked;
   updateAutoConfigUI();
@@ -2338,6 +2385,8 @@ async function startAuto() {
           const v = (document.getElementById('auto-motion-' + id)?.value || '').trim();
           if (v) params.set(key, v);
         });
+        // Leido fresco del radio marcado, no de una variable cacheada (D45/D49).
+        params.set('motion_estilo', autoMotionEstiloValue());
       }
     }
     const res = await fetch(`/api/videos/${encodeURIComponent(name)}/auto?${params}`, {method:'POST'});

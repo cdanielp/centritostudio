@@ -1,20 +1,20 @@
 {
   "contrato": 1,
-  "pieza_id": "ejemplo_dato_destacado",
+  "pieza_id": "ejemplo_lower_third_minimo",
   "plantilla": {
-    "nombre": "dato_destacado",
-    "version": "1.0.2"
+    "nombre": "lower_third_minimo",
+    "version": "1.0.0"
   },
-  "estilo": "pms",
-  "duracion_ms": 3000,
+  "estilo": "minimo",
+  "duracion_ms": 4500,
   "fps": 30,
   "tamano": {
     "ancho": 1080,
     "alto": 1920
   },
   "texto": {
-    "cifra": "87%",
-    "etiqueta": "menos tiempo de render al activar NVENC"
+    "nombre": "Carlos Daniel Penagos",
+    "rol": "Prompt Models Studio"
   },
   "marca": {
     "primario": "#06B6D4",

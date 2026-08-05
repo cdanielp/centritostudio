@@ -27,6 +27,7 @@ def construir_auto_config(
     motion_nombre: str | None = None,
     motion_rol: str | None = None,
     motion_cta: str | None = None,
+    motion_estilo: str | None = None,
 ) -> AutoConfig | None:
     """Parametros publicos de Studio -> contrato inmutable del pipeline.
 
@@ -58,6 +59,7 @@ def construir_auto_config(
             ("motion_nombre", motion_nombre),
             ("motion_rol", motion_rol),
             ("motion_cta", motion_cta),
+            ("motion_estilo", motion_estilo),
         ):
             if valor is not None:
                 extra[clave] = valor

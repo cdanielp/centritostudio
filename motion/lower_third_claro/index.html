@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es" data-composition-variables='[
+  {"id":"nombre","type":"string","label":"Nombre","default":"SIN-VARIABLE-nombre"},
+  {"id":"rol","type":"string","label":"Rol o tema","default":"SIN-VARIABLE-rol"},
+  {"id":"marca_primario","type":"color","label":"Color primario","default":"#FF3D3D"},
+  {"id":"marca_secundario","type":"color","label":"Color secundario","default":"#2A2A35"},
+  {"id":"marca_texto","type":"color","label":"Color de texto","default":"#F5F5F7"},
+  {"id":"duracion_ms","type":"number","label":"Duracion ms","default":4500},
+  {"id":"fps","type":"number","label":"FPS","default":30},
+  {"id":"tamano_ancho","type":"number","label":"Ancho","default":1080},
+  {"id":"tamano_alto","type":"number","label":"Alto","default":1920},
+  {"id":"semilla","type":"number","label":"Semilla","default":0}
+ ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <title>lower third claro</title>
+    <script src="gsap.min.js"></script>
+    <style>
+      /* Fuente embebida local: Inter variable (SIL OFL 1.1), sin cargas por red. */
+      @font-face {
+        font-family: "Inter";
+        src: url("fonts/InterVariable.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { overflow: hidden; background: transparent; }
+      :root {
+        --primario: #FF3D3D;
+        --secundario: #2A2A35;
+        --texto: #F5F5F7;
+        --u: 10.8px;
+        --vh: 19.2px;
+      }
+      #root { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+      .clip { position: absolute; inset: 0; }
+      /* Mismo carril que el estilo pms: contenido con el borde inferior en 68% de la altura,
+         lejos de la zona de captions (70-92% medida en HF-2). */
+      #lt {
+        position: absolute;
+        left: 5.5%;
+        bottom: 32%;
+        display: flex;
+        align-items: stretch;
+        max-width: 82%;
+        border-radius: calc(var(--u) * 1.4);
+        overflow: hidden;
+      }
+      #tab {
+        width: calc(var(--u) * 0.95);
+        background: var(--primario);
+        flex-shrink: 0;
+      }
+      /* Placa BLANCA y texto oscuro: identidad "claro". Estructural, no viaja por marca
+         (igual que la placa oscura del estilo pms tampoco viaja por marca). */
+      #panel {
+        background: #ffffff;
+        padding: calc(var(--u) * 1.9) calc(var(--u) * 3.4) calc(var(--u) * 2.1) calc(var(--u) * 2.6);
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--u) * 0.6);
+      }
+      #nombre {
+        color: #0f1115;
+        font-weight: 700;
+        font-size: calc(var(--u) * 4.1);
+        line-height: 1.08;
+        letter-spacing: -0.015em;
+        white-space: nowrap;
+      }
+      #rol {
+        color: #5a6170;
+        font-weight: 400;
+        font-size: calc(var(--u) * 2.2);
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920">
+      <div id="pieza" class="clip" data-start="0" data-duration="4.5" data-track-index="1">
+        <div id="lt">
+          <div id="tab"></div>
+          <div id="panel">
+            <div id="respira">
+              <div id="nombre">?</div>
+              <div id="rol">?</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var v = window.__hyperframes.getVariables();
+      var W = Number(v.tamano_ancho), H = Number(v.tamano_alto);
+      var FPS = Number(v.fps) || 30, DUR = Number(v.duracion_ms) / 1000;
+      var F = 1 / FPS;
+
+      var root = document.getElementById("root");
+      [document.documentElement, document.body, root].forEach(function (el) {
+        el.style.width = W + "px"; el.style.height = H + "px";
+      });
+      var css = document.documentElement.style;
+      css.setProperty("--u", Math.min(W, H) / 100 + "px");
+      css.setProperty("--vh", H / 100 + "px");
+      css.setProperty("--primario", v.marca_primario);
+      css.setProperty("--secundario", v.marca_secundario);
+      css.setProperty("--texto", v.marca_texto);
+      document.getElementById("pieza").setAttribute("data-duration", String(DUR));
+      document.getElementById("nombre").textContent = String(v.nombre);
+      document.getElementById("rol").textContent = String(v.rol);
+
+      var ENTRA = Math.min(14 * F, DUR * 0.28);
+      var SALE = Math.max(6 * F, ENTRA * 0.65);
+      var STAG = 4 * F;
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      var lt = document.getElementById("lt");
+      var tab = document.getElementById("tab");
+      var nombreEl = document.getElementById("nombre");
+      var rolEl = document.getElementById("rol");
+
+      /* La placa entra con escala+opacidad (no con un wipe de clip-path: combinado con
+         border-radius + overflow:hidden en el mismo elemento se midio NO reproducible,
+         canario de D50.5 en HF-4). La pestana de acento crece detras y el nombre/rol suben
+         con un pequeno stagger. */
+      gsap.set(lt, { opacity: 0, scale: 0.94, transformOrigin: "0% 100%" });
+      gsap.set(tab, { scaleY: 0, transformOrigin: "50% 0%" });
+      gsap.set(nombreEl, { y: 18, opacity: 0 });
+      gsap.set(rolEl, { y: 18, opacity: 0 });
+
+      tl.to(lt, { opacity: 1, scale: 1, duration: ENTRA, ease: "power3.out" }, 0);
+      tl.to(tab, { scaleY: 1, duration: ENTRA * 0.85, ease: "power2.out" }, STAG * 0.5);
+      tl.to(nombreEl, { y: 0, opacity: 1, duration: ENTRA * 0.85, ease: "power3.out" }, STAG);
+      tl.to(rolEl, { y: 0, opacity: 1, duration: ENTRA * 0.85, ease: "power3.out" }, STAG * 2);
+
+      /* Respiracion sinusoidal en wrapper propio (no pisa la entrada de la placa). */
+      var medio = 22 * F, resto = (DUR - SALE) - ENTRA;
+      var reps = Math.floor(resto / medio) - 1;
+      if (reps % 2 === 0) reps -= 1;
+      if (reps >= 1) {
+        tl.to("#respira", { scale: 1.006, duration: medio, ease: "sine.inOut", yoyo: true, repeat: reps }, ENTRA);
+      }
+
+      tl.to("#pieza", { y: 16, opacity: 0, duration: SALE, ease: "power2.in" }, DUR - SALE);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

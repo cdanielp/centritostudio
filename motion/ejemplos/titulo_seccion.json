@@ -5,6 +5,7 @@
     "nombre": "titulo_seccion",
     "version": "1.0.2"
   },
+  "estilo": "pms",
   "duracion_ms": 2000,
   "fps": 30,
   "tamano": {
