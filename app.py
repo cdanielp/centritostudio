@@ -1206,11 +1206,16 @@ def start_auto(
     motion_rol: str | None = None,
     motion_cta: str | None = None,
     motion_estilo: str | None = None,
+    formato: str = "9:16",
 ):
     """Configura classic/v2 y lanza el worker; nunca ejecuta el pipeline aqui."""
     _validar_name(name)
     if caption_source not in ("transcript", "srt"):
         raise HTTPException(400, "caption_source debe ser 'transcript' o 'srt'.")
+    if formato not in studio_auto.AUTO_FORMATOS:
+        raise HTTPException(
+            400, f"formato invalido: {formato!r} (usa {', '.join(studio_auto.AUTO_FORMATOS)})"
+        )
     motion = {
         "motion_enabled": motion_enabled,
         "motion_nombre": motion_nombre,
@@ -1229,7 +1234,9 @@ def start_auto(
                 f"(usa {', '.join(motion_capa.ESTILOS_VALIDOS)})",
             )
     if caption_source == "srt":
-        return _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion)
+        return _start_auto_srt(
+            name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion, formato
+        )
     mp4 = _resolver_video_input(name)
     if mp4 is None:
         raise HTTPException(404, f"Video {name} no encontrado en input/")
@@ -1241,6 +1248,7 @@ def start_auto(
             broll_enabled=broll_enabled,
             fx_enabled=fx_enabled,
             fx_preset=fx_preset,
+            formato=formato,
             **motion,
         )
     except (TypeError, ValueError) as exc:
@@ -1327,7 +1335,9 @@ def _validar_params_motion(motion: dict) -> None:
         raise HTTPException(400, f"{', '.join(sueltos)} exige motion_enabled=true.")
 
 
-def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion=None):
+def _start_auto_srt(
+    name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, motion=None, formato="9:16"
+):
     """Auto con caption_source=srt: usa el video EXACTO asociado (no por stem) y la selección SRT.
 
     La resolución de timings privados + procedencia por clip ocurre dentro de ejecutar_auto
@@ -1348,6 +1358,7 @@ def _start_auto_srt(name, objetivo, mode, broll_enabled, fx_enabled, fx_preset, 
             fx_enabled=fx_enabled,
             fx_preset=fx_preset,
             caption_source="srt",
+            formato=formato,
             **(motion or {}),
         )
     except (TypeError, ValueError) as exc:
