@@ -799,7 +799,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .me-slots{display:flex;flex-direction:column;gap:5px}
 .me-slot{display:grid;grid-template-columns:78px 1fr;gap:6px;align-items:center}
 .me-slot span{font-size:11px;color:var(--muted)}
-.me-anadir{display:grid;grid-template-columns:1fr 140px auto;gap:8px;align-items:center;
+.me-anadir{display:grid;grid-template-columns:1fr 140px 44px auto;gap:8px;align-items:center;
   padding-top:10px;border-top:var(--border)}
 .me-pie{display:flex;gap:8px;align-items:center;margin-top:12px}
 .me-error{border:0.5px solid var(--red);border-radius:8px;padding:9px;font-size:12px;
@@ -2516,11 +2516,18 @@ function meError(txt) {
   el.innerHTML = txt ? `<div class="me-error">${escHtml(txt)}</div>` : '';
 }
 
+// Los milisegundos son el dato que se edita, pero nadie ubica el segundo 46840 de un video de
+// memoria. El mm:ss va al lado, no en lugar del numero: quien mueve una pieza sigue tecleando ms.
+function msAMinSeg(ms) {
+  const total = Math.max(0, Math.round((ms || 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 function meRender() {
   if (!mePlan) return;
   const editado = mePlan.origen === 'editado';
   const badge = document.getElementById('me-origen');
-  badge.textContent = editado ? 'editado a mano' : 'automatico';
+  badge.textContent = editado ? 'editado a mano' : 'automático';
   badge.className = 'me-badge' + (editado ? ' editado' : '');
 
   const dur = mePlan.duracion_ms || 0;
@@ -2531,21 +2538,29 @@ function meRender() {
                oninput="meSetTexto(${i},'${esc(k)}',this.value)"></label>`).join('');
     return `<div class="me-pieza">
       <div><b>${escHtml(p.plantilla)}</b>
-        <div class="me-sub">${p.t1_ms - p.t0_ms} ms · banda ${escHtml(p.banda)}</div></div>
+        <div class="me-sub">${p.t1_ms - p.t0_ms} ms · banda ${escHtml(p.banda)}</div>
+        <div class="me-sub">termina en ${msAMinSeg(p.t1_ms)}</div></div>
       <div><input type="number" value="${p.t0_ms}" min="0" max="${dur}" step="100"
              oninput="meMover(${i},this.value)" title="Entra en el milisegundo">
-        <div class="me-sub">de ${dur} ms</div></div>
+        <div class="me-sub">${msAMinSeg(p.t0_ms)} de ${msAMinSeg(dur)}</div></div>
       <div class="me-slots">${slots}</div>
       <div class="me-previs" id="me-previs-${i}">
         <button class="btn secondary" onclick="previsualizarPieza(${i})">Previsualizar</button>
       </div>
       <button class="btn secondary" onclick="meBorrar(${i})">Borrar</button>
     </div>`;
-  }).join('') || '<div class="msg">Este clip no lleva ningun letrero.</div>';
+  }).join('') || '<div class="msg">Este clip no lleva ningún letrero.</div>';
 
   const sel = document.getElementById('me-nueva-plantilla');
   sel.innerHTML = meCatalogo.map(t =>
     `<option value="${escHtml(t.nombre)}">${escHtml(t.nombre)} · ${t.duracion_ms} ms</option>`).join('');
+  const nuevoT0 = document.getElementById('me-nuevo-t0');
+  const eco = document.getElementById('me-nuevo-t0-mmss');
+  if (nuevoT0 && eco) {
+    const pintar = () => { eco.textContent = nuevoT0.value ? msAMinSeg(nuevoT0.value) : ''; };
+    nuevoT0.oninput = pintar;
+    pintar();
+  }
 
   // El plan que se ensena es el del ULTIMO RENDER, no uno calculado al abrir. Por eso hay que
   // decir cuando lo guardado ya no es lo que hay en el MP4: si no, "guardado" pareceria
@@ -2557,7 +2572,7 @@ function meRender() {
   }
   const omitidas = (mePlan.omisiones || []);
   if (omitidas.length && !editado) {
-    avisos.push(`<div class="msg">El planificador descarto: ` +
+    avisos.push(`<div class="msg">El planificador descartó: ` +
       omitidas.map(o => `${escHtml(o.plantilla)} (${escHtml(o.motivo)})`).join(' · ') + `</div>`);
   }
   document.getElementById('me-avisos').innerHTML =
@@ -2610,7 +2625,7 @@ async function previsualizarPieza(i) {
       throw new Error(motivo);
     }
     const url = URL.createObjectURL(await res.blob());
-    celda.innerHTML = `<img src="${url}" alt="Previsualizacion de la pieza ${i + 1}">
+    celda.innerHTML = `<img src="${url}" alt="Previsualización de la pieza ${i + 1}">
       <button class="btn secondary" onclick="previsualizarPieza(${i})">Actualizar</button>`;
   } catch (e) {
     // La previsualizacion es un extra: si falla, el editor sigue sirviendo igual.
@@ -2650,7 +2665,7 @@ async function descartarPlanLetreros() {
     mePlan = data;
     meCatalogo = data.catalogo || meCatalogo;
     meRender();
-    meSetEstado(data.descartado ? 'Edicion descartada. Vuelve el plan automatico.' : 'No habia edicion.');
+    meSetEstado(data.descartado ? 'Edición descartada. Vuelve el plan automático.' : 'No había edición.');
   } catch (e) {
     meError(String(e.message || e));
     meSetEstado('');
@@ -3431,16 +3446,17 @@ _rutaInicial();
     <div class="me-anadir">
       <select id="me-nueva-plantilla"></select>
       <input type="number" id="me-nuevo-t0" placeholder="Entra en ms" min="0" step="100">
-      <button class="btn secondary" onclick="anadirPieza()">Anadir pieza</button>
+      <span id="me-nuevo-t0-mmss" class="me-sub"></span>
+      <button class="btn secondary" onclick="anadirPieza()">Añadir pieza</button>
     </div>
     <div class="me-pie">
       <button class="btn" onclick="guardarPlanLetreros()">Guardar plan</button>
-      <button class="btn secondary" onclick="descartarPlanLetreros()">Volver al automatico</button>
+      <button class="btn secondary" onclick="descartarPlanLetreros()">Volver al automático</button>
       <span id="me-estado" class="me-sub"></span>
     </div>
     <div class="msg" style="margin-top:8px">
-      Al guardar, este plan MANDA sobre el automatico. Vuelve a lanzar Auto sobre el mismo video
-      para re-renderizar: las piezas que no cambiaste salen de cache y no se vuelven a generar.
+      Al guardar, este plan MANDA sobre el automático. Vuelve a lanzar Auto sobre el mismo video
+      para re-renderizar: las piezas que no cambiaste salen de caché y no se vuelven a generar.
     </div>
   </div>
 </div>
