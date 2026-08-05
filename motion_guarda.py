@@ -48,6 +48,7 @@ SECUENCIA_MINIMA = 3
 
 _PALABRA = re.compile(r"[0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+")
 _NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
+_DECIMAL_PARTIDO = re.compile(r"(\d)\s+([.,])\s*(\d)")
 
 
 @dataclass(frozen=True)
@@ -141,20 +142,21 @@ def _es_nombre_propio(palabra: str, posicion: int) -> bool:
     return posicion > 0 and palabra[:1].isupper()
 
 
-def cifra_dicha(cifra: str, hablado: str) -> bool:
-    """ESTRICTO. El numero tiene que estar en lo que se dice AHI. PURO.
+def cifra_dicha(cifra: str, hablado: str, *, clip: str = "") -> bool:
+    """ESTRICTO. El numero tiene que haberse pronunciado. PURO.
 
     Es el unico campo donde la transcripcion manda sin discusion: un titular puede abstraer,
     pero un numero en pantalla que nadie pronuncio es un dato inventado.
 
-    `hablado` es el tramo donde el modelo dice que se pronuncia la cifra, no el clip entero:
-    contra el clip entero, un "dos" dicho en el segundo tres avalaria un "87%" del segundo
-    cuarenta. Se acepta por dos vias, y las dos son la misma exigencia:
+    Se acepta por dos vias, y cada una mira donde tiene sentido:
 
-    - Los digitos aparecen tal cual ("10.5" en "en un 10.5 por ciento"). La coma y el punto se
-      unifican porque el transcriptor no es coherente con el separador decimal.
-    - El tramo trae la cantidad EN PALABRAS ("diez y medio por ciento"). Sin esta via se
-      perderia justo lo que motivo pedirle los textos al modelo: la regla exige unidad literal
+    - Los DIGITOS aparecen tal cual en el clip ("10.5" en "en un 10.5 por ciento"). Se busca en
+      todo el clip a proposito: un numero dicho en el segundo tres y mostrado en el cuarenta
+      sigue siendo un numero que se dijo, y donde va la pieza lo decide `motion_plan`, no esto.
+      La coma y el punto se unifican porque el transcriptor no es coherente con el decimal.
+    - `hablado` trae la cantidad EN PALABRAS ("diez y medio por ciento"). Aqui si se exige el
+      tramo, porque un numeral suelto en cualquier parte del clip no avala nada. Sin esta via
+      se perderia lo que motivo pedirle los textos al modelo: la regla exige unidad literal
       detras del numero y por eso `dato_destacado` solo salia en 4 de 34 clips.
 
     Los numerales salen de `cve_keywords.NUMERALES`, que ya existe. Ninguna lista nueva.
@@ -163,12 +165,16 @@ def cifra_dicha(cifra: str, hablado: str) -> bool:
         return True  # sin cifra no hay nada que contrastar
 
     def _numeros(fuente: str) -> set[str]:
-        return {n.replace(",", ".") for n in _NUMERO.findall(fuente or "")}
+        # El transcriptor parte el decimal: escribe "10 .5 %" donde se dijo "diez punto cinco
+        # por ciento". Sin recomponerlo, la cifra correcta del clip que motivo todo esto caia al
+        # respaldo por un espacio. Es ruido del transcriptor, no una regla de espanol.
+        junto = _DECIMAL_PARTIDO.sub(r"\1\2\3", fuente or "")
+        return {n.replace(",", ".") for n in _NUMERO.findall(junto)}
 
     numeros = _numeros(cifra)
     if not numeros:
-        return revisar(cifra, hablado).ok  # una cifra sin digitos ("la mitad") es texto normal
-    if numeros <= _numeros(hablado):
+        return revisar(cifra, clip or hablado).ok  # sin digitos ("la mitad") es texto normal
+    if numeros <= _numeros(clip or hablado):
         return True
     import cve_keywords  # noqa: PLC0415
 

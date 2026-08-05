@@ -562,3 +562,30 @@ def test_sin_edicion_pendiente_no_se_avisa(clip_sellado):
     import studio_motion as sm
 
     assert sm.ver_plan("clipx")["pendiente_de_render"] is False
+
+
+def test_la_cifra_no_depende_del_instante_que_declare_el_modelo():
+    """El modelo se equivoca de tramo al senalar donde se dijo el numero.
+
+    Atar la comprobacion a ese instante hacia que un 10.5% dicho de verdad cayera al respaldo
+    solo porque el `dato_t0_ms` apuntaba dos tramos mas alla. Los digitos se buscan en el clip.
+    """
+    import motion_guarda as g
+
+    assert not g.cifra_dicha("10.5%", "pues por los traslados")
+    assert g.cifra_dicha(
+        "10.5%", "pues por los traslados", clip="fue en un 10.5 por ciento de medias superiores"
+    )
+
+
+def test_una_cifra_inventada_sigue_cayendo_aunque_se_mire_todo_el_clip():
+    import motion_guarda as g
+
+    assert not g.cifra_dicha("87%", "sin cantidades", clip="aqui nadie dice ningun numero")
+
+
+def test_el_decimal_partido_del_transcriptor_no_tumba_la_cifra():
+    """Whisper escribe "10 .5 %" donde se dijo "diez punto cinco por ciento"."""
+    import motion_guarda as g
+
+    assert g.cifra_dicha("10.5%", "", clip="este fue en un 10 .5 % de medias superiores")

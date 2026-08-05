@@ -341,7 +341,8 @@ def _cifra_verificada(textos: TextosLLM, tramos: list[mp.Tramo]) -> tuple[Textos
     import motion_guarda  # noqa: PLC0415
 
     hablado = _tramo_en(tramos, textos.dato_t0_ms)
-    if not textos.dato_cifra or motion_guarda.cifra_dicha(textos.dato_cifra, hablado):
+    clip = " ".join((t.texto or "") for t in tramos)
+    if not textos.dato_cifra or motion_guarda.cifra_dicha(textos.dato_cifra, hablado, clip=clip):
         return textos, []
     incidencia = {
         "campo": "dato_cifra",

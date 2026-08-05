@@ -308,3 +308,41 @@ rama sale de ahi, que si contiene `main`.
     transcribio "decepcion". El modelo escribio "desercion", que es lo CORRECTO, y la guarda lo
     marco como inventado porque su unica verdad es la transcripcion. El reintento devolvio un
     texto sin la palabra. La guarda funciona; su fuente de verdad es la que falla.
+
+## Sesion 8: la guarda por tipo, la repeticion entre piezas y la previsualizacion honesta
+
+- **PASO 1 OK (la guarda reparte por tipo de campo).** El caso que motivo la guarda era al
+  reves de lo que parecia: el audio dice DESERCION, Whisper transcribio DECEPCION, el modelo
+  escribio lo correcto y la guarda lo tumbo. "Saludos", "Presentacion" o "Forzar" tampoco eran
+  alucinaciones: eran un titular abstrayendo, que es lo que se le pide.
+  - CIFRA del `dato_destacado`: ESTRICTO. Un numero en pantalla que nadie dijo es un dato falso.
+    Se acepta por digitos literales en el clip o por la cantidad en palabras en el tramo
+    ("diez y medio por ciento"), reusando `cve_keywords.NUMERALES`, que ya existia.
+  - NOMBRES PROPIOS: tolerante por distancia de edicion. Si se parece a algo dicho, se acepta:
+    quien se equivoco casi siempre es el transcriptor.
+  - Todo lo demas: solo se REGISTRA. El editor existe y K es la ultima guarda.
+  - Fuera el reintento general: gastaba una llamada por clip y devolvia un texto peor, porque
+    obligar al modelo a usar solo palabras del fragmento es pedirle que copie el fragmento.
+  - Dos trampas medidas de camino. Atar la cifra al `dato_t0_ms` que declara el modelo la hacia
+    rehen de ese instante, que el modelo falla; los digitos se buscan en todo el clip. Y el
+    transcriptor parte el decimal ("10 .5 %"), asi que la cifra correcta caia al respaldo por un
+    espacio: se recompone antes de comparar.
+  - Sobre los 34 clips: **23 incidencias, todas registradas, ninguna tumba un texto.**
+- **PASO 2 OK (las piezas dejan de repetirse).** El prompt pide explicitamente que ningun
+  letrero repita a otro y le ensena la lista completa. Despues se contrastan tres palabras
+  significativas seguidas entre piezas y la de MENOR prioridad (hook, cierre, dato_destacado,
+  titulo_seccion) se reescribe. **1 clip con repeticion pasa a 0.**
+- **PASO 4 OK (los que no caben).** El limite viaja en el prompt y lo pasado de largo se corrige
+  en la MISMA llamada que arregla la repeticion, en vez de dos viajes. La causa real de las tres
+  piezas sin texto no era la longitud: el modelo renumeraba los ids de 0 en adelante y el ultimo
+  letrero no encajaba en ningun hueco. **Cobertura 96.6% -> 100% en clips con transcripcion.**
+- **PASO 3 OK (la previsualizacion deja de mentir).** El editor replanificaba al abrirse, y el
+  LLM recibia un juego de huecos distinto segun los campos de marca del formulario, asi que K
+  podia corregir un letrero que el MP4 no tenia. Ahora `clips_de_motion` sella junto al clip el
+  plan EXACTO con el que compone y el editor lee ESE. Un clip sin componer lo dice en claro y no
+  inventa un plan. Como consecuencia, guardar deja de cambiar el video hasta el siguiente
+  Automatico, y el editor lo avisa: callarlo seria mentir de otra forma.
+- **PASO 5 OK (demos).** Cache borrada antes de renderizar.
+  `<LAB>\demo\16_TEXTO_FINAL.mp4` con su hoja de 7 frames y `<LAB>\demo\17_EDITOR.png`. Las 7
+  piezas del editor son las 7 del video, campo por campo, y la captura no gasto ni una llamada
+  al LLM porque el plan ya estaba sellado.
