@@ -730,14 +730,15 @@ def desplazamiento_de_banda(banda: str, alto: int) -> tuple[int, int] | None:
     """(x, y) de composicion para la banda pedida, o None si va donde el HTML la dibuja.
 
     La pieza SIEMPRE se renderiza a cuadro completo con su contenido en el carril nativo; para
-    llevarla a la banda superior no se toca la plantilla, se compone el overlay desplazado hacia
-    arriba. Asi hay UN solo HTML por pieza y no dos que se desincronizan, y el desplazamiento
-    queda donde se puede probar sin renderizar.
+    llevarla a la banda superior o a la inferior no se toca la plantilla, se compone el overlay
+    desplazado hacia arriba o hacia abajo. Asi hay UN solo HTML por pieza y no dos que se
+    desincronizan, y el desplazamiento queda donde se puede probar sin renderizar.
     """
-    if banda != mp.BANDA_ARRIBA:
-        return None
-    y = int(round(mp.DESPLAZAMIENTO_SUPERIOR * int(alto)))
-    return (0, y)
+    if banda == mp.BANDA_ARRIBA:
+        return (0, int(round(mp.DESPLAZAMIENTO_SUPERIOR * int(alto))))
+    if banda == mp.BANDA_INFERIOR:
+        return (0, int(round(mp.DESPLAZAMIENTO_INFERIOR * int(alto))))
+    return None
 
 
 def _overlay_de(pieza: mp.Pieza, resultado, alto: int) -> ClipOverlay:

@@ -118,6 +118,25 @@ def test_una_banda_desconocida_se_rechaza():
     assert "banda" in " ".join(r.problemas)
 
 
+def test_la_posicion_abajo_se_rechaza_por_pisar_los_captions():
+    """Paso 2 de HF-4: 'Abajo' aparece en el selector pero no se puede guardar (pisa captions)."""
+    r = _validar(_plan(_pieza("hook", 0, banda=mp.BANDA_INFERIOR)))
+    assert not r.ok
+    problema = " ".join(r.problemas)
+    assert "Abajo" in problema
+    assert "captions" in problema
+
+
+def test_arriba_y_centro_se_aceptan():
+    r = _validar(
+        _plan(
+            _pieza("hook", 0, banda=mp.BANDA_ARRIBA),
+            _pieza("cierre", 50000, {"titulo": "T", "cta": "C"}, banda=mp.BANDA_CENTRO),
+        )
+    )
+    assert r.ok, r.problemas
+
+
 def test_se_devuelven_TODOS_los_problemas_no_solo_el_primero():
     """El Studio los pinta juntos y K arregla de una pasada."""
     r = _validar(_plan(_pieza("inventada", 0), _pieza("tampoco", 9000)))
