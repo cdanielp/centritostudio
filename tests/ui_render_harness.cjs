@@ -252,6 +252,23 @@ if (fixture.fn === "clip") {
     fetch = (url) => { __captured = String(url); return Promise.resolve({ok: true, json: () => Promise.resolve({job_id: 'j'})}); };
     startRender();
     __out__ = JSON.stringify({url: __captured, f6_hidden: !!g('field-cve-f6').style.display && g('field-cve-f6').style.display === 'none'});`;
+} else if (fixture.fn === "auto_params") {
+  // HF-4 Formato dual: captura la URL del POST /api/videos/{name}/auto que arma startAuto(),
+  // igual que 'render_params' hace para el render manual.
+  const pre = fixture.pre || {};
+  body = `
+    const g = (id) => document.getElementById(id);
+    g('auto-video-select').value = 'v1';
+    g('auto-objetivo').value = 'clips';
+    g('auto-mode').value = ${JSON.stringify(pre.mode || "classic")};
+    if (g('auto-formato')) g('auto-formato').value = ${JSON.stringify(pre.formato || "9:16")};
+    g('auto-broll-enabled').checked = true;
+    g('auto-fx-enabled').checked = true;
+    g('auto-fx-preset').value = 'express';
+    let __captured = '';
+    fetch = (url) => { __captured = String(url); return Promise.resolve({ok: true, json: () => Promise.resolve({job_id: 'j'})}); };
+    startAuto();
+    __out__ = JSON.stringify({url: __captured});`;
 }
 
 const wrapped = `${code}\n;try {\n${body}\n} catch (e) { __err__ = String((e && e.stack) || e); }`;

@@ -552,6 +552,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
           <b>Automático v2</b><span>Agrega b-roll automático, FX y verificación A/V al mismo pipeline.</span>
         </button>
       </div>
+      <label class="auto-preset" style="margin-top:12px"><span>Formato</span>
+        <select id="auto-formato" onchange="updateAutoConfigUI()">
+          <option value="9:16" selected>9:16 (vertical)</option>
+          <option value="16:9">16:9 (horizontal)</option>
+          <option value="ambos">Ambos</option>
+        </select>
+      </label>
     </div>
 
     <div class="step" id="auto-v2-config" hidden>
@@ -598,9 +605,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
         </div>
       </div>
       <div class="cap-grid auto-fixed-rules">
-        <span class="cap-chip">Captions siempre ON</span><span class="cap-chip">Reframe 9:16</span>
-        <span class="cap-chip">Audio verificado</span><span class="cap-chip">Manual gana</span>
-        <span class="cap-chip">Máximo un video</span><span class="cap-chip">Hook protegido 3s</span>
+        <span class="cap-chip">Captions siempre ON</span><span class="cap-chip">Audio verificado</span>
+        <span class="cap-chip">Manual gana</span><span class="cap-chip">Máximo un video</span>
+        <span class="cap-chip">Hook protegido 3s</span>
       </div>
       <div class="msg" style="margin-top:9px">Tus ajustes manuales tienen prioridad en conflictos. La densidad la administra el planner.</div>
       <div id="auto-pexels-status" class="msg" style="margin-top:6px"></div>
@@ -811,6 +818,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple)}
 .me-badge{font-size:10px;padding:2px 8px;border-radius:999px;border:var(--border);
   text-transform:uppercase;letter-spacing:.06em}
 .me-badge.editado{color:var(--purple);border-color:var(--purple)}
+.me-formato-switch{display:flex;gap:6px;margin-top:6px}
+.me-formato-switch button{font-size:11px;padding:3px 9px;border-radius:999px;border:var(--border);
+  background:transparent;color:var(--muted);cursor:pointer}
+.me-formato-switch button.activo{color:var(--purple);border-color:var(--purple)}
 .me-lista{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .me-pieza{border:var(--border);border-radius:8px;padding:10px;display:grid;
   grid-template-columns:130px 90px 1fr 120px auto;gap:8px;align-items:start}
@@ -942,6 +953,10 @@ function setAutoMode(mode) {
   });
   updateAutoConfigUI();
 }
+const FORMATO_LABELS = {'9:16':'9:16 (vertical)', '16:9':'16:9 (horizontal)', 'ambos':'Ambos'};
+function autoFormatoValue() {
+  return document.getElementById('auto-formato')?.value || '9:16';
+}
 function updateAutoConfigUI() {
   const mode = document.getElementById('auto-mode')?.value || 'classic';
   const v2 = mode === 'v2';
@@ -960,12 +975,15 @@ function updateAutoConfigUI() {
   if (motionTextos) motionTextos.hidden = !motion;
   const summary = document.getElementById('auto-config-summary');
   const estiloTxt = ESTILO_MOTION_LABELS[autoMotionEstiloValue()] || 'PMS';
+  const formatoTxt = FORMATO_LABELS[autoFormatoValue()] || '9:16 (vertical)';
+  const reframeTxt = autoFormatoValue() === '9:16' ? 'Reframe 9:16' : `Formato ${escHtml(formatoTxt)}`;
   if (summary) summary.innerHTML = v2 ? `<div class="auto-summary-list">
     <span>Transcript, clipper, reframe y captions</span><span>B-roll ${broll?'activado':'desactivado'}</span>
     <span>FX ${fx?'activado · '+escHtml(preset?.value || 'express'):'desactivado'}</span><span>Verificación A/V obligatoria</span>
     <span>Letreros ${motion?'activados, estilo '+escHtml(estiloTxt):'desactivados'}</span>
+    <span>${reframeTxt}</span>
     <span>Sidecars manuales respetados</span><span>Revisión del paquete en el Editor</span></div>`
-    : `<div class="auto-summary-list"><span>Transcript y clipper</span><span>Reframe 9:16</span>
+    : `<div class="auto-summary-list"><span>Transcript y clipper</span><span>${reframeTxt}</span>
        <span>Captions y emojis</span><span>Reporte histórico</span></div>
        <div class="msg" style="margin-top:8px">Usa el flujo clásico histórico; no envía AutoConfig ni activa motores v2.</div>`;
   const btn = document.getElementById('auto-btn');
@@ -982,7 +1000,7 @@ function autoMotionEstiloValue() {
 }
 function setAutoControlsLocked(locked) {
   autoRunning = locked;
-  ['auto-video-select','auto-broll-enabled','auto-fx-enabled','auto-fx-preset',
+  ['auto-video-select','auto-formato','auto-broll-enabled','auto-fx-enabled','auto-fx-preset',
    'auto-motion-enabled','auto-motion-nombre','auto-motion-rol','auto-motion-cta'].forEach(id => {
     const el = document.getElementById(id); if (el) el.disabled = locked;
   });
@@ -2372,6 +2390,8 @@ async function startAuto() {
   const t0 = Date.now();
   try {
     const params = new URLSearchParams({objetivo, mode});
+    // Leido fresco del select, no de una variable cacheada (D45/D49).
+    params.set('formato', autoFormatoValue());
     if (srtPanel.captionSource('auto') === 'srt') params.set('caption_source', 'srt');
     if (mode === 'v2') {
       params.set('broll_enabled', document.getElementById('auto-broll-enabled').checked ? 'true' : 'false');
@@ -2492,7 +2512,10 @@ function renderAutoV2Clip(c, i, pkgId) {
 }
 function renderAutoResult(result) {
   const wrap = document.getElementById('auto-result');
-  document.getElementById('auto-resumen').textContent = result.resumen || 'Paquete generado';
+  const resumenEl = document.getElementById('auto-resumen');
+  const formatoJob = result.meta?.formato;
+  resumenEl.innerHTML = escHtml(result.resumen || 'Paquete generado')
+    + (formatoJob ? ` <span class="cap-chip" style="margin-left:6px">Formato: ${escHtml(FORMATO_LABELS[formatoJob] || formatoJob)}</span>` : '');
   const clipsEl = document.getElementById('auto-clips');
   const pkgId = result.paquete ? result.paquete.replace(/^output\/paquetes\//, '') : '';
   const clips = result.clips || [];
@@ -2523,12 +2546,28 @@ function renderAutoResult(result) {
 let mePlan = null;      // ultimo plan devuelto por el backend
 let meCatalogo = [];    // plantillas disponibles, con su duracion fija
 
+// HF-4 Formato dual: el nombre del clip ya lleva el sufijo de formato (_9x16/_16x9, ver
+// auto_formato.py). El "otro" formato de un clip es el mismo stem con el sufijo cambiado; no
+// siempre existe (si el video solo se genero en un formato, o si "16:9" se omitio por no tener
+// ruta de reencuadre desde una fuente vertical) y por eso se prueba en vez de asumirse.
+function meSiblingClip(clip) {
+  if (/_9x16(_|$)/.test(clip)) return clip.replace('_9x16', '_16x9');
+  if (/_16x9(_|$)/.test(clip)) return clip.replace('_16x9', '_9x16');
+  return null;
+}
+function meFormatoDe(clip) {
+  if (/_9x16(_|$)/.test(clip)) return '9:16';
+  if (/_16x9(_|$)/.test(clip)) return '16:9';
+  return null;
+}
+
 async function abrirEditorLetreros(clip) {
   if (!clip) return;
   document.getElementById('motion-editor').hidden = false;
   document.getElementById('me-clip').textContent = clip;
   meSetEstado('Cargando...');
   meError('');
+  await meRenderFormatoSwitch(clip);
   // Los textos de marca del formulario de Auto viajan para que el plan que se ve sea el que
   // se compondria de verdad, no uno con los slots vacios.
   const q = new URLSearchParams();
@@ -2547,6 +2586,27 @@ async function abrirEditorLetreros(clip) {
     meError(String(e.message || e));
     meSetEstado('');
   }
+}
+
+// Selector de formato del editor (HF-4, Paso 4): si el clip abierto tiene un hermano en el
+// otro formato (mismo stem, sufijo _9x16/_16x9 distinto), se ofrece un boton para saltar sin
+// cerrar el editor. Cada formato carga SU sello exacto (/api/motion/plan/{clip}); no se
+// reusa ni se replanifica nada aqui, solo se cambia que nombre de clip se pide.
+async function meRenderFormatoSwitch(clip) {
+  const el = document.getElementById('me-formato-switch');
+  if (!el) return;
+  const propio = meFormatoDe(clip);
+  const hermano = meSiblingClip(clip);
+  if (!propio || !hermano) { el.hidden = true; el.innerHTML = ''; return; }
+  const existe = await fetch(`/api/motion/plan/${encodeURIComponent(hermano)}`)
+    .then(r => r.ok).catch(() => false);
+  if (!existe) { el.hidden = true; el.innerHTML = ''; return; }
+  const otro = meFormatoDe(hermano);
+  el.hidden = false;
+  el.innerHTML = [[propio, clip, true], [otro, hermano, false]]
+    .map(([f, c, activo]) => `<button type="button" class="${activo ? 'activo' : ''}"
+      onclick="abrirEditorLetreros('${esc(c)}')">${escHtml(FORMATO_LABELS[f] || f)}</button>`)
+    .join('');
 }
 
 function cerrarEditorLetreros() {
@@ -3527,6 +3587,7 @@ _rutaInicial();
       <div>
         <b>Letreros del clip</b>
         <div id="me-clip" class="me-sub"></div>
+        <div id="me-formato-switch" class="me-formato-switch" hidden></div>
       </div>
       <div class="me-head-acciones">
         <span id="me-origen" class="me-badge"></span>
