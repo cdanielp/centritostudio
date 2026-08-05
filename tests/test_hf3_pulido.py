@@ -724,3 +724,38 @@ def test_la_huella_de_entrada_no_depende_de_donde_viva_la_trayectoria(tmp_path):
     assert motion_capa.huella_de_entrada(**comunes, tray_csv=a) == motion_capa.huella_de_entrada(
         **comunes, tray_csv=b
     )
+
+
+# ── El CTA por defecto lleva su acento (sesion 10) ───────────────────────────
+
+
+def test_el_cta_por_defecto_lleva_acento():
+    """Sale en pantalla en TODOS los videos, asi que un "mas" sin tilde se ve en todos."""
+    import auto_config
+
+    assert auto_config.AutoConfig().motion_cta == "Sigue para más"
+
+
+def test_ningun_default_del_repo_escribe_el_cta_sin_acento():
+    """Barrido: el mismo texto vivia en el default de la API, en la config y en los fixtures."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1]
+    # La aguja se arma en trozos para que este archivo no se cace a si mismo.
+    aguja = "Sigue para " + "mas"
+    salida = subprocess.run(
+        ["git", "grep", "-l", aguja, "--", "*.py", "*.html", "*.json"],
+        cwd=raiz,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    culpables = [
+        linea
+        for linea in salida.stdout.splitlines()
+        # Las mediciones son artefactos historicos: dicen lo que se genero entonces.
+        if linea and not linea.startswith("revision/hf-3/medicion_carril")
+    ]
+    assert culpables == [], f"CTA sin acento en: {culpables} ({sys.platform})"

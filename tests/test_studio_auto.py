@@ -24,7 +24,7 @@ def test_capabilities_defaults_v2_y_reglas_fijas():
         "verify_av": True,
         "manual_sidecars": True,
         "motion_enabled": False,
-        "motion_cta": "Sigue para mas",
+        "motion_cta": "Sigue para más",
     }
     assert data["motion"]["default_enabled"] is False
     assert data["motion"]["available_modes"] == ["v2"]

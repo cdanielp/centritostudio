@@ -31,7 +31,7 @@ SALIDA = Path(__file__).resolve().parent / "medicion_carril.json"
 # Textos representativos de un run real: hay titulo del clipper, hay nombre y hay CTA, para que
 # ninguna pieza se caiga por configuracion vacia y lo que se mida sean las REGLAS.
 TITULO = "Titulo del clipper viral"
-NOMBRE, ROL, CTA = "Carlos Daniel Penagos", "Prompt Models Studio", "Sigue para mas"
+NOMBRE, ROL, CTA = "Carlos Daniel Penagos", "Prompt Models Studio", "Sigue para más"
 
 
 def duracion_y_tamano(mp4: Path) -> tuple[float, int, int] | None:

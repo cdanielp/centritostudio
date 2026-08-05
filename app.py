@@ -1258,7 +1258,7 @@ def _opciones_motion(enabled: bool, titulo, nombre, rol, cta):
         titulo=titulo or "",
         nombre=nombre or "",
         rol=rol or "",
-        cta=cta if cta is not None else "Sigue para mas",
+        cta=cta if cta is not None else "Sigue para más",
     )
 
 
