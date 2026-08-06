@@ -81,6 +81,40 @@ def test_contrato_invalido_es_400(api, query):
     assert FakeThread.created == []
 
 
+# ── Formato (HF-4) ─────────────────────────────────────────────────────────
+
+
+def test_formato_default_9x16_sigue_historico(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/auto")
+    assert r.status_code == 200
+    assert _thread().kwargs == {"config": None}  # ruta historica exacta, sin config
+
+
+@pytest.mark.parametrize("formato", ["16:9", "ambos"])
+def test_formato_no_historico_viaja_a_la_config(api, formato):
+    client, _ = api
+    r = client.post(f"/api/videos/demo/auto?formato={formato}")
+    assert r.status_code == 200
+    config = _thread().kwargs["config"]
+    assert config is not None
+    assert config.formato == formato
+
+
+def test_formato_invalido_es_400(api):
+    client, _ = api
+    assert client.post("/api/videos/demo/auto?formato=4:3").status_code == 400
+    assert FakeThread.created == []
+
+
+def test_v2_formato_ambos_viaja_a_la_config(api):
+    client, _ = api
+    r = client.post("/api/videos/demo/auto?mode=v2&formato=ambos")
+    assert r.status_code == 200
+    config = _thread().kwargs["config"]
+    assert config.mode == "v2" and config.formato == "ambos"
+
+
 def test_video_inexistente_404(api):
     client, _ = api
     assert client.post("/api/videos/no-existe/auto?mode=v2").status_code == 404
@@ -177,6 +211,18 @@ def test_auto_srt_con_seleccion_usa_video_exacto(api, monkeypatch):
     thread = _thread()
     assert thread.kwargs["config"].caption_source == "srt"
     assert thread.args[1].name == "demo.mov"  # video EXACTO (no el decoy .mp4)
+
+
+def test_auto_srt_formato_ambos_viaja_a_la_config(api, monkeypatch):
+    client, root = api
+    trans = root / "transcripts"
+    trans.mkdir()
+    monkeypatch.setattr(studio_app, "TRANSCRIPTS", trans)
+    (root / "demo.mov").write_bytes(b"mov-real")
+    _asociar_srt(trans, video_filename="demo.mov")
+    r = client.post("/api/videos/demo/auto?caption_source=srt&formato=ambos")
+    assert r.status_code == 200
+    assert _thread().kwargs["config"].formato == "ambos"
 
 
 def test_auto_srt_video_exacto_ausente_409(api, monkeypatch):

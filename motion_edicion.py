@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import motion_plan as mp
+import motion_plan_spatial as mps
 
 SUFIJO_SIDECAR = "_motion_plan.json"
 # El plan EXACTO con el que se compuso el ultimo render de este clip. No es lo mismo que el
@@ -73,7 +74,9 @@ def ruta_render(clip_mp4: Path) -> Path:
 # ── Validacion ───────────────────────────────────────────────────────────────
 
 
-def _problemas_de_pieza(dato: object, indice: int, duracion_ms: int, catalogo: set[str]) -> list:
+def _problemas_de_pieza(
+    dato: object, indice: int, duracion_ms: int, catalogo: set[str], orientacion: str
+) -> list:
     """Problemas de UNA pieza, con el indice delante para que el Studio sepa cual senalar."""
     prefijo = f"pieza {indice + 1}"
     if not isinstance(dato, dict):
@@ -118,21 +121,22 @@ def _problemas_de_pieza(dato: object, indice: int, duracion_ms: int, catalogo: s
     ):
         problemas.append(f"{prefijo}: texto debe ser un objeto de cadenas")
 
-    problemas.extend(_problemas_de_banda(prefijo, dato.get("banda", mp.BANDA_CENTRO)))
+    problemas.extend(_problemas_de_banda(prefijo, dato.get("banda", mp.BANDA_CENTRO), orientacion))
     return problemas
 
 
-def _problemas_de_banda(prefijo: str, banda: str) -> list[str]:
+def _problemas_de_banda(prefijo: str, banda: str, orientacion: str) -> list[str]:
     """Problemas de la posicion elegida (Paso 2 de HF-4): banda desconocida, o conocida pero
-    que pisa la franja de captions (se ofrece en el selector, pero no se guarda asi)."""
-    if banda not in mp.BANDAS_VALIDAS:
+    que pisa la franja de captions DE ESE FORMATO (se ofrece en el selector, pero no se guarda
+    asi)."""
+    if banda not in mps.BANDAS_VALIDAS:
         return [f"{prefijo}: banda '{banda}' desconocida"]
-    if mp.banda_invade_captions(banda):
-        etiqueta = mp.ETIQUETA_BANDA.get(banda, banda)
+    if mps.banda_invade_captions(banda, orientacion):
+        etiqueta = mps.ETIQUETA_BANDA.get(banda, banda)
+        zona = mps.ZONA_CAPTIONS_POR_ORIENTACION[orientacion]
         return [
             f"{prefijo}: la posicion '{etiqueta}' pisa la franja de captions "
-            f"({mp.ZONA_CAPTIONS[0]:.0%}-{mp.ZONA_CAPTIONS[1]:.0%} del alto). Elige Arriba o "
-            f"Centro."
+            f"({zona[0]:.1%}-{zona[1]:.1%} del alto). Elige Arriba o Centro."
         ]
     return []
 
@@ -187,7 +191,7 @@ def validar_plan(
 
     problemas: list[str] = []
     for i, cruda in enumerate(crudas):
-        problemas.extend(_problemas_de_pieza(cruda, i, duracion_ms, catalogo))
+        problemas.extend(_problemas_de_pieza(cruda, i, duracion_ms, catalogo, orientacion))
     if problemas:
         return ResultadoValidacion(problemas=tuple(problemas))
 

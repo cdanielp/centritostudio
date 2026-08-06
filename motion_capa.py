@@ -24,10 +24,11 @@ Tres reglas de esta capa, en orden de importancia:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import motion_plan as mp
+import motion_plan_spatial as mps
 from clip_overlay import ClipOverlay
 from hyperframes.contrato import ESTILOS_VALIDOS
 
@@ -125,10 +126,17 @@ class OpcionesMotion:
 
 @dataclass(frozen=True)
 class ResultadoMotion:
-    """Clips listos para componer + informe. `clips` vacio siempre es una salida valida."""
+    """Clips listos para componer + informe. `clips` vacio siempre es una salida valida.
+
+    `plan` (HF-4, Formato dual) es el `PlanMotion` TEMPORAL vivo detras de `informe["plan"]`
+    (que solo trae el dict serializado). Una pierna extra de formato lo necesita para
+    `plan_para_otro_formato`, sin volver a llamar al LLM. `None` cuando la capa esta apagada o
+    fallo: sin plan primario no hay de donde derivar una pierna extra.
+    """
 
     clips: tuple[ClipOverlay, ...] = ()
     informe: dict = field(default_factory=dict)
+    plan: mp.PlanMotion | None = None
 
     @property
     def activo(self) -> bool:
@@ -254,6 +262,70 @@ def resolver_plan(
     # El sello va AQUI y no en el render: es lo que hace que la proxima corrida reutilice este
     # plan en vez de volver a negociarlo, y lo que el editor ensena.
     _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, marca)
+    return plan, me.ORIGEN_AUTOMATICO
+
+
+# HF-4 Paso 1/3 (Formato dual): una pieza cuya banda en ESTA orientacion invade su propia
+# franja de captions (que puede ser distinta de la orientacion primaria) se omite EN ESE
+# FORMATO, no en los dos. No es lo mismo que MOTIVO_NO_CABE_EN_EL_LIENZO (ese es el backstop de
+# alfa medido tras renderizar; este es una comprobacion de banda ANTES de pedir la pieza).
+MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO = "banda_invade_captions_en_este_formato"
+
+
+def plan_para_otro_formato(
+    plan_base: mp.PlanMotion,
+    *,
+    clip_mp4: Path | None,
+    duracion_ms: int,
+    orientacion: str,
+    tray_csv: Path | None,
+    catalogo: set[str],
+    huella_entrada: str = "",
+) -> tuple[mp.PlanMotion, str]:
+    """(plan, origen) para una pierna EXTRA de formato (HF-4, Formato dual).
+
+    Reusa integramente el plan TEMPORAL ya resuelto por `resolver_plan()` para la pierna
+    primaria (piezas, tiempos, textos): CERO llamadas al LLM ni a Pexels. Solo redistribuye
+    banda para esta orientacion vía `motion_plan_spatial.colocar_bandas` (el PASO ESPACIAL), y
+    omite -con motivo propio- cualquier pieza cuya banda en ESTA orientacion invada su franja
+    de captions, sin tocar la lista de omisiones de la pierna primaria.
+
+    Como con la pierna primaria: un plan editado a mano para ESTE `clip_mp4` (que ya es un
+    nombre distinto al de la primaria) manda sobre el derivado automaticamente.
+
+    Sella el plan derivado ella misma (mismo trato que `resolver_plan`, PASO 3 de HF-4): al
+    saltarse `resolver_plan()` por completo (no hay LLM que pedirle) tambien se salta SU sello,
+    y sin este paso el sidecar `<clip>_motion_render.json` de esta pierna nunca se escribiria
+    -- el editor la encontraria como "sin componer" a pesar de que el MP4 si tiene letreros.
+    """
+    import motion_edicion as me  # noqa: PLC0415 (solo con la capa encendida)
+
+    if clip_mp4 is not None:
+        editado = me.cargar(
+            clip_mp4, duracion_ms=duracion_ms, orientacion=orientacion, catalogo=catalogo
+        )
+        if editado is not None:
+            print(f"[motion] plan EDITADO a mano ({orientacion}): {len(editado.piezas)} pieza(s)")
+            return editado, me.ORIGEN_EDITADO
+
+    recolocadas = mps.colocar_bandas(plan_base.piezas, orientacion=orientacion, tray_csv=tray_csv)
+    piezas_ok: list[mp.Pieza] = []
+    omisiones = list(plan_base.omisiones)
+    for pieza in recolocadas:
+        if mps.banda_invade_captions(pieza.banda, orientacion):
+            print(
+                f"[motion] pieza '{pieza.plantilla}' omitida en {orientacion}: "
+                f"{MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO}"
+            )
+            omisiones.append(
+                mp.Omision(pieza.plantilla, MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO, orientacion)
+            )
+        else:
+            piezas_ok.append(pieza)
+    plan = replace(
+        plan_base, orientacion=orientacion, piezas=tuple(piezas_ok), omisiones=tuple(omisiones)
+    )
+    _sellar_plan_renderizado(clip_mp4, plan, duracion_ms, me.ORIGEN_AUTOMATICO, huella_entrada)
     return plan, me.ORIGEN_AUTOMATICO
 
 
@@ -516,6 +588,23 @@ def _sellar_plan_renderizado(
         print(f"[motion] no se pudo sellar el plan renderizado: {exc}")
 
 
+def sellar_copia_para_editor(
+    ruta_publicada: Path | None, plan: mp.PlanMotion, duracion_ms: int, origen: str
+) -> None:
+    """Sella una SEGUNDA copia del plan junto al MP4 FINAL publicado (el que ve el usuario).
+
+    `resolver_plan`/`plan_para_otro_formato` ya sellan junto al clip de identidad INTERNO
+    (dentro de `clips_dir`, la clave estable que sobrevive entre corridas de Auto y evita
+    volver a preguntarle al LLM -- ver `motion_capa.resolver_plan`). Pero
+    `studio_motion.resolver_clip()` -lo que el editor usa para encontrar un clip por su
+    nombre- resuelve al MP4 final YA PUBLICADO en el paquete, que es un archivo DISTINTO con
+    un nombre distinto (lleva el sufijo de estilo, `_hormozi`). Sin esta segunda copia el
+    editor jamas encuentra el sello de un clip que Auto v2 genero: aparece como "sin componer"
+    aunque el video si tenga letreros. Fail-open, mismo trato que el sello interno.
+    """
+    _sellar_plan_renderizado(ruta_publicada, plan, duracion_ms, origen, "")
+
+
 def _informe_base(plan: mp.PlanMotion | None) -> dict:
     return {
         "enabled": True,
@@ -540,11 +629,18 @@ def clips_de_motion(
     tray_csv: Path | None = None,
     timeout_s: float = 180.0,
     clip_mp4: Path | None = None,
+    plan_precomputado: tuple[mp.PlanMotion, str] | None = None,
 ) -> ResultadoMotion:
     """Planifica, pide las piezas y devuelve los overlays. NUNCA lanza.
 
     `raiz_cache` debe apuntar DENTRO del paquete (ver `raiz_cache_de_paquete`): asi las piezas
     viajan con el paquete y una reanudacion las encuentra en vez de volver a renderizarlas.
+
+    `plan_precomputado` (HF-4, Formato dual): cuando se pasa, se SALTA `resolver_plan()` (y por
+    tanto el LLM) y se usa ese `(plan, origen)` tal cual -- ver `plan_para_otro_formato`. Sigue
+    pidiendo las piezas a HyperFrames a este `ancho`/`alto` (necesario: el MOV y el desplazamiento
+    de banda dependen del lienzo de destino) y sigue sellando su propio `_motion_render.json`
+    junto a `clip_mp4` (que ya es un nombre distinto al de la pierna primaria).
     """
     if not opciones.enabled:
         return ResultadoMotion((), {"enabled": False})
@@ -562,6 +658,7 @@ def clips_de_motion(
             tray_csv=tray_csv,
             timeout_s=timeout_s,
             clip_mp4=clip_mp4,
+            plan_precomputado=plan_precomputado,
         )
     except Exception as exc:  # noqa: BLE001 - fail-open duro: la capa jamas tumba el render
         print(f"[motion] capa desactivada por un fallo, el video sale sin letreros: {exc}")
@@ -582,6 +679,7 @@ def _clips_de_motion(
     tray_csv: Path | None,
     timeout_s: float,
     clip_mp4: Path | None,
+    plan_precomputado: tuple[mp.PlanMotion, str] | None = None,
 ) -> ResultadoMotion:
     from hyperframes import pedir_pieza  # noqa: PLC0415 (solo con la capa encendida)
     from hyperframes.catalogo import Catalogo  # noqa: PLC0415
@@ -593,25 +691,28 @@ def _clips_de_motion(
     versiones = versiones_del_catalogo(ruta_catalogo)
 
     estilo_pedido = opciones.estilo or ESTILO_DEFAULT
-    plan, origen = resolver_plan(
-        clip_mp4=clip_mp4,
-        duracion_ms=duracion_ms,
-        orientacion=orientacion,
-        textos=opciones.textos(),
-        tramos=tramos,
-        tray_csv=tray_csv,
-        catalogo=set(versiones),
-        textos_llm=opciones.textos_llm,
-        stem=Path(clip_mp4).stem if clip_mp4 else "",
-        estilo=estilo_pedido,
-    )
+    if plan_precomputado is not None:
+        plan, origen = plan_precomputado
+    else:
+        plan, origen = resolver_plan(
+            clip_mp4=clip_mp4,
+            duracion_ms=duracion_ms,
+            orientacion=orientacion,
+            textos=opciones.textos(),
+            tramos=tramos,
+            tray_csv=tray_csv,
+            catalogo=set(versiones),
+            textos_llm=opciones.textos_llm,
+            stem=Path(clip_mp4).stem if clip_mp4 else "",
+            estilo=estilo_pedido,
+        )
     informe = _informe_base(plan)
     informe["origen"] = origen
     informe["estilo"] = estilo_pedido
     informe["incidencias_estilo"] = []
     if plan.vacio:
         print(f"[motion] el planificador no coloco ninguna pieza ({len(plan.omisiones)} omitidas)")
-        return ResultadoMotion((), informe)
+        return ResultadoMotion((), informe, plan=plan)
 
     validar_sin_solape(list(plan.piezas), orientacion)
 
@@ -656,12 +757,15 @@ def _clips_de_motion(
                 {"plantilla": pieza.plantilla, "razon": r.razon_fallo.value, "detalle": r.detalle}
             )
             continue
-        # Backstop de Paso 2 (HF-4b): el anclaje de las plantillas horizontales (Paso 1) ya
-        # cubre el caso normal; esto es lo que evita que una pieza SALGA CORTADA cuando el
-        # texto es tan largo que ni el anclaje alcanza. Solo horizontal: el carril vertical no
-        # se toca en esta sesion y ya paso su propio gate visual en HF-2/HF-3.
-        if orientacion == "horizontal" and not pieza_cabe_en_el_lienzo(
-            pieza, Path(r.ruta_mov), int(ancho), int(alto)
+        # Backstop de Paso 2 (HF-4b, extendido a las dos orientaciones por el hotfix de HF-4):
+        # el anclaje estatico de las plantillas (Paso 1) cubre el caso normal; esto es lo que
+        # evita que una pieza salga CORTADA o INVISIBLE cuando el texto es tan largo -- o el
+        # anclaje de esa orientacion tiene un defecto -- que ni el anclaje alcanza. Antes corria
+        # solo en horizontal, razonando que "el carril vertical ya paso su propio gate visual en
+        # HF-2/HF-3"; ese gate solo probo UN texto corto (revision/hf-3/confirmar_banda.py) y
+        # dejo pasar exactamente esta clase de fallo en vertical con texto largo real.
+        if not pieza_cabe_en_el_lienzo(
+            pieza, Path(r.ruta_mov), int(ancho), int(alto), orientacion=orientacion
         ):
             print(f"[motion] pieza '{pieza.plantilla}' omitida: {MOTIVO_NO_CABE_EN_EL_LIENZO}")
             informe["piezas_fallidas"].append(
@@ -693,7 +797,7 @@ def _clips_de_motion(
     )
     _resellar_con_incidencias_de_estilo(clip_mp4, plan, origen, duracion_ms, huella, informe)
     print(f"[motion] {len(clips)}/{len(plan.piezas)} piezas compuestas en {orientacion}")
-    return ResultadoMotion(tuple(clips), informe)
+    return ResultadoMotion(tuple(clips), informe, plan=plan)
 
 
 def _resellar_con_incidencias_de_estilo(
@@ -773,10 +877,24 @@ def bbox_alfa(
 
     crudo = subprocess.run(
         [
-            "ffmpeg", "-v", "error", "-ss", f"{t_s:.3f}", "-i", str(mov), "-frames:v", "1",
-            "-vf", "alphaextract,format=gray", "-f", "rawvideo", "-",
+            "ffmpeg",
+            "-v",
+            "error",
+            "-ss",
+            f"{t_s:.3f}",
+            "-i",
+            str(mov),
+            "-frames:v",
+            "1",
+            "-vf",
+            "alphaextract,format=gray",
+            "-f",
+            "rawvideo",
+            "-",
         ],
-        capture_output=True, check=True, timeout=timeout_s,
+        capture_output=True,
+        check=True,
+        timeout=timeout_s,
     ).stdout
     if len(crudo) < alto * ancho:
         return None
@@ -789,21 +907,29 @@ def bbox_alfa(
     return (primera, ultima) if primera is not None else None
 
 
-def pieza_cabe_en_el_lienzo(pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: int) -> bool:
+def pieza_cabe_en_el_lienzo(
+    pieza: mp.Pieza, ruta_mov: Path, ancho: int, alto: int, *, orientacion: str = "horizontal"
+) -> bool:
     """True si el contenido de la pieza, ya desplazado por su banda, queda DENTRO del lienzo
-    y sin invadir la franja de captions. Backstop de tiempo de ejecucion (Paso 2 de HF-4b):
-    el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto cubre el extremo
-    que ese anclaje no pueda absorber. Sin alfa medible no hay nada que recortar: pasa.
+    y sin invadir la franja de captions DE ESA orientacion. Backstop de tiempo de ejecucion
+    (Paso 2 de HF-4b): el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto
+    cubre el extremo que ese anclaje no pueda absorber.
+
+    Sin alfa medible NO pasa (HF-4 hotfix). Antes "sin alfa medible" fallaba abierto (`return
+    True`) razonando que sin bbox no habia nada que recortar; ese fail-open era el agujero que
+    dejo salir mariosoto_clip2_corto con returncode 0 y dos piezas invisibles en 9:16 (una pieza
+    a su instante de sostenimiento SIEMPRE tiene contenido -- cero alfa ahi es la pieza entera
+    fuera del lienzo, el caso mas grave, no el mas inocuo).
     """
     bbox = bbox_alfa(ruta_mov, pieza.duracion_ms * _FRACCION_INSTANTE_MEDIO, ancho, alto)
     if bbox is None:
-        return True
+        return False
     y0, y1 = bbox
     dy = (desplazamiento_de_banda(pieza.banda, alto) or (0, 0))[1]
     y0, y1 = y0 + dy, y1 + dy
     if y0 < 0 or y1 > alto:
         return False
-    return (y1 / alto) <= mp.ZONA_CAPTIONS[0]
+    return (y1 / alto) <= mps.ZONA_CAPTIONS_POR_ORIENTACION[orientacion][0]
 
 
 def _overlay_de(pieza: mp.Pieza, resultado, alto: int) -> ClipOverlay:
@@ -860,14 +986,17 @@ __all__ = [
     "bbox_alfa",
     "pieza_cabe_en_el_lienzo",
     "MOTIVO_NO_CABE_EN_EL_LIENZO",
+    "MOTIVO_BANDA_INVADE_CAPTIONS_EN_FORMATO",
     "huella_de_entrada",
     "marca_de",
     "orientacion_de",
     "plan_automatico",
+    "plan_para_otro_formato",
     "raiz_cache_de_paquete",
     "rellenar_textos_con_llm",
     "resolver_estilo",
     "resolver_plan",
+    "sellar_copia_para_editor",
     "tramos_de_groups",
     "validar_sin_solape",
     "versiones_del_catalogo",

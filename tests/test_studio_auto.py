@@ -33,8 +33,8 @@ def test_capabilities_defaults_v2_y_reglas_fijas():
         "max_video_windows": 1,
         "max_coverage_pct": 0.35,
         "captions": True,
-        "reframe": "9:16",
     }
+    assert data["formatos"] == {"options": ["9:16", "16:9", "ambos"], "default": "9:16"}
 
 
 def test_capabilities_no_exponen_secretos_ni_rutas():
@@ -88,3 +88,43 @@ def test_funcion_pura_rechaza_bools_ambiguos(field, value):
     kwargs[field] = value
     with pytest.raises(TypeError):
         studio_auto.construir_auto_config(**kwargs)
+
+
+# ── Formato (HF-4) ─────────────────────────────────────────────────────────
+
+
+def test_construir_classic_formato_9x16_explicito_sigue_devolviendo_none():
+    assert (
+        studio_auto.construir_auto_config(
+            mode="classic",
+            broll_enabled=True,
+            fx_enabled=True,
+            fx_preset="express",
+            formato="9:16",
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("formato", ["16:9", "ambos"])
+def test_construir_classic_formato_no_historico_no_devuelve_none(formato):
+    config = studio_auto.construir_auto_config(
+        mode="classic", broll_enabled=True, fx_enabled=True, fx_preset="express", formato=formato
+    )
+    assert isinstance(config, AutoConfig)
+    assert config.mode == "classic"
+    assert config.formato == formato
+
+
+def test_construir_v2_formato_viaja_a_la_config():
+    config = studio_auto.construir_auto_config(
+        mode="v2", broll_enabled=True, fx_enabled=True, fx_preset="express", formato="ambos"
+    )
+    assert config.formato == "ambos"
+
+
+def test_construir_formato_invalido_es_error():
+    with pytest.raises(ValueError, match="formato invalido"):
+        studio_auto.construir_auto_config(
+            mode="v2", broll_enabled=True, fx_enabled=True, fx_preset="express", formato="4:3"
+        )

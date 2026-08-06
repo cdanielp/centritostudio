@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_hook",
   "plantilla": {
     "nombre": "hook",
-    "version": "1.0.5"
+    "version": "1.0.6"
   },
   "estilo": "pms",
   "duracion_ms": 2500,

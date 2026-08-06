@@ -346,8 +346,13 @@ def test_resolve_video_confina_y_rechaza_symlink_fuera(tmp_path):
         link.symlink_to(outside)
     except (OSError, NotImplementedError):
         return  # sin privilegios de symlink: la confinación positiva de arriba cubre el invariante
+    # stem="linked" (no el default "demo"): sin esto, `_validar_filename_video` revienta con
+    # StudioSrtIntegrityError por la inconsistencia filename<->stem ANTES de llegar a probar el
+    # confinamiento del symlink, que es lo que este test verifica. En una maquina sin privilegio
+    # de symlink el `return` de arriba nunca deja correr esta linea, asi que el bug del fixture
+    # quedaba invisible (bloqueado con Developer Mode activado, como en esta maquina).
     with pytest.raises(rt.StudioSrtSelectedVideoMissing):
-        rt.resolve_selected_video(_rt("linked.mov"), input_dir=inp)
+        rt.resolve_selected_video(_rt("linked.mov", stem="linked"), input_dir=inp)
 
 
 def test_resolve_video_error_no_expone_ruta(tmp_path):

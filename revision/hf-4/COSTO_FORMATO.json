@@ -1,0 +1,24 @@
+[
+  {
+    "formato": "9:16",
+    "segundos": 64.7,
+    "salidas": 1,
+    "llamadas": {
+      "llm_brain": 2,
+      "pexels_imagen": 4,
+      "llm_motion_texto_pasada1": 2,
+      "llm_motion_texto_pasada2": 2
+    }
+  },
+  {
+    "formato": "ambos",
+    "segundos": 88.6,
+    "salidas": 2,
+    "llamadas": {
+      "llm_brain": 1,
+      "pexels_imagen": 2,
+      "llm_motion_texto_pasada1": 1,
+      "llm_motion_texto_pasada2": 1
+    }
+  }
+]

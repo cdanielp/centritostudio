@@ -82,8 +82,11 @@ def test_la_pieza_horizontal_no_se_corta_con_texto_de_tres_lineas(plantilla, cam
 
     with tempfile.TemporaryDirectory(prefix="hf4b_test_") as tmp:
         r = pedir_pieza(
-            dato, destino=(ANCHO, ALTO), catalogo=catalogo,
-            raiz_cache=Path(tmp), timeout_s=180,
+            dato,
+            destino=(ANCHO, ALTO),
+            catalogo=catalogo,
+            raiz_cache=Path(tmp),
+            timeout_s=180,
         )
         assert r.razon_fallo is None, f"{plantilla}: {r.razon_fallo} {r.detalle}"
 
@@ -103,8 +106,9 @@ def test_la_pieza_horizontal_no_se_corta_con_texto_de_tres_lineas(plantilla, cam
         )
         import motion_plan as mp2
 
-        limite_captions = mp2.ZONA_CAPTIONS[0] - MARGEN_CAPTIONS
+        zona_horizontal = mp2.ZONA_CAPTIONS_POR_ORIENTACION["horizontal"][0]
+        limite_captions = zona_horizontal - MARGEN_CAPTIONS
         assert y1 / ALTO <= limite_captions, (
             f"{plantilla}: el borde inferior queda en {y1 / ALTO:.4f}, invade la franja de "
-            f"captions (empieza en {mp2.ZONA_CAPTIONS[0]:.2f})"
+            f"captions (empieza en {zona_horizontal:.3f})"
         )

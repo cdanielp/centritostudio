@@ -97,7 +97,15 @@
          que la pieza baja a la franja 50-70% (contenido hasta 68%, sombra por encima
          del 70%) y reduce cuerpo para caber sin competir con la cara. */
       @media (orientation: portrait) {
-        #zona { height: 68%; place-items: end center; }
+        /* HF-4 hotfix: el borde superior en 54% es del gemelo horizontal (regla de mas
+           arriba) y esta regla solo tocaba `height`, asi que el 54% se colaba aqui tambien:
+           la caja quedaba en [54%,122%] y con `place-items:end` el contenido se ancla al
+           borde INFERIOR de esa caja (122%, fuera del lienzo). Un titulo corto quedaba
+           bastante alto dentro de la caja y su borde superior asomaba por debajo del 100%;
+           uno largo (mas alto) simplemente no llegaba a asomar: 0 pixeles, sin error. Con
+           `top:auto; bottom:32%` la caja pasa a [0%,68%]: el contenido queda anclado en
+           68% (el carril nativo aprobado) crezca lo que crezca hacia arriba. */
+        #zona { top: auto; bottom: 32%; height: 68%; place-items: end center; }
         #placa {
           padding: calc(var(--u) * 2.6) calc(var(--u) * 3.4);
           box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);

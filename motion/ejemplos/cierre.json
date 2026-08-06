@@ -3,7 +3,7 @@
   "pieza_id": "ejemplo_cierre",
   "plantilla": {
     "nombre": "cierre",
-    "version": "1.0.5"
+    "version": "1.0.6"
   },
   "estilo": "pms",
   "duracion_ms": 3500,
