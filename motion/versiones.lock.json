@@ -1,15 +1,15 @@
 {
   "cierre": {
-    "sello": "d22b7f25535e209168e7cdc46c3c35c6d290280763a882d6d3ac96a0815cd060",
-    "version": "1.0.5"
+    "sello": "dd2e1ac9af39a239088b31f326eba9bd226053ae3bcdc2e8e533a93d932ab422",
+    "version": "1.0.6"
   },
   "dato_destacado": {
-    "sello": "81928944a2d66f41fdb1af602f099340f09b13b15a51711e105092c2582a007f",
-    "version": "1.0.3"
+    "sello": "26a6f4885002b688556fedada59781195f1cc6b78301a397a2232a6c69f9e81f",
+    "version": "1.0.4"
   },
   "hook": {
-    "sello": "cd7f0e3c835f49270b91eda03c217957a676996a76732fd37cf41ab307606aa6",
-    "version": "1.0.5"
+    "sello": "34d01907c379b408c6db5dac533e30596dcef8d7a147e043b0280a1421ea97af",
+    "version": "1.0.6"
   },
   "lower_third": {
     "sello": "eb672b2be3485a9ec9af1909b2ed14f909bf29a327ba5f9a9c69cdbe0178b7fc",
@@ -28,7 +28,7 @@
     "version": "1.0.0"
   },
   "titulo_seccion": {
-    "sello": "5f8df451a10b6577ebade962ad9ceeb1d76535cc6b999a7c7a0ce4cba18119cd",
-    "version": "1.0.3"
+    "sello": "3dfc0d88bf25f8863f1b4889c088b7ce1f6251823805b258b3f91a7d687cf659",
+    "version": "1.0.4"
   }
 }

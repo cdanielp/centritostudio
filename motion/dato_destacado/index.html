@@ -84,7 +84,11 @@
       /* Vertical 9:16: la cara del reframe vive en 20-45% del alto; la pieza baja a la
          franja 50-70% (contenido hasta 68%) y la cifra reduce cuerpo para caber. */
       @media (orientation: portrait) {
-        #zona { height: 68%; place-items: end center; }
+        /* HF-4 hotfix: ver motion/hook/index.html para el detalle completo. Este bloque solo
+           tocaba `height`, asi que el `top:54%` del gemelo horizontal se colaba y la caja
+           quedaba en [54%,122%] con el contenido anclado al borde inferior (fuera del
+           lienzo). Con `top:auto; bottom:32%` la caja pasa a [0%,68%]. */
+        #zona { top: auto; bottom: 32%; height: 68%; place-items: end center; }
         #placa {
           padding: calc(var(--u) * 2.4) calc(var(--u) * 3.6);
           box-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.2) var(--sombra);

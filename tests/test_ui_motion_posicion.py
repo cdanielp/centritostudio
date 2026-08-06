@@ -50,7 +50,7 @@ def test_abajo_no_se_esconde_del_selector():
 
 def test_el_selector_esta_cableado_a_meSetBanda():
     bloque = _bloque_editor()
-    assert "onchange=\"meSetBanda(" in bloque or "onchange='meSetBanda(" in bloque
+    assert 'onchange="meSetBanda(' in bloque or "onchange='meSetBanda(" in bloque
 
 
 def test_meSetBanda_muta_el_plan_en_memoria():

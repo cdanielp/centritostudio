@@ -82,8 +82,11 @@ def test_la_pieza_horizontal_no_se_corta_con_texto_de_tres_lineas(plantilla, cam
 
     with tempfile.TemporaryDirectory(prefix="hf4b_test_") as tmp:
         r = pedir_pieza(
-            dato, destino=(ANCHO, ALTO), catalogo=catalogo,
-            raiz_cache=Path(tmp), timeout_s=180,
+            dato,
+            destino=(ANCHO, ALTO),
+            catalogo=catalogo,
+            raiz_cache=Path(tmp),
+            timeout_s=180,
         )
         assert r.razon_fallo is None, f"{plantilla}: {r.razon_fallo} {r.detalle}"
 

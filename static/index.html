@@ -992,6 +992,19 @@ function updateAutoConfigUI() {
        <div class="msg" style="margin-top:8px">Usa el flujo clásico histórico; no envía AutoConfig ni activa motores v2.</div>`;
   const btn = document.getElementById('auto-btn');
   if (btn) btn.textContent = v2 ? 'Generar paquete Auto v2' : 'Generar paquete clásico';
+  renumerarPasosAuto();
+}
+// Los pasos de "Modo Automático" tienen numero fijo en el HTML ("3 Configuración v2" solo
+// existe en v2), pero el paso 3 se oculta en Clásico y sin esto la numeracion visible saltaba
+// 1, 2, 4, 5: los badges nunca se recalculaban tras ocultar/mostrar un paso. Renumera SOLO los
+// `.step-head .step-num` de este panel, en orden de documento, contando unicamente los pasos
+// visibles en ese momento (oculto por `hidden` o por `display:none` en un ancestro).
+function renumerarPasosAuto() {
+  let n = 0;
+  document.querySelectorAll('#tab-auto .step-head .step-num').forEach(el => {
+    const paso = el.closest('.step');
+    if (paso && paso.offsetParent !== null) el.textContent = String(++n);
+  });
 }
 // Estilo de letreros (HF-4): vive en el radio marcado del grupo "auto-motion-estilo", se lee
 // SIEMPRE fresco en el momento de usarlo. Nunca se cachea en una variable JS suelta: ese fue
@@ -2539,6 +2552,7 @@ function renderAutoResult(result) {
        <div class="msg" style="margin-top:8px">Paquete ${escHtml(pkgId)} · <a href="/api/paquetes/${encodeURIComponent(pkgId)}/reporte" target="_blank" rel="noopener" style="color:var(--purple)">Ver REPORTE.md</a></div>`
     : '';
   wrap.style.display = 'block';
+  renumerarPasosAuto();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2610,7 +2624,7 @@ async function meRenderFormatoSwitch(clip) {
   el.innerHTML = [[propio, clip, true], [otro, hermano, false]]
     .map(([f, c, activo]) => `<button type="button" class="${activo ? 'activo' : ''}"
       onclick="abrirEditorLetreros('${esc(c)}')">${escHtml(FORMATO_LABELS[f] || f)}</button>`)
-    .join('');
+    .join('') + `<span class="me-sub" style="margin-left:4px">Plan independiente del otro formato: editar y guardar aquí no cambia ${escHtml(FORMATO_LABELS[otro] || otro)}.</span>`;
 }
 
 function cerrarEditorLetreros() {

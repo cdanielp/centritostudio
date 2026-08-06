@@ -331,9 +331,7 @@ def test_la_banda_inferior_pisa_los_captions_y_las_otras_dos_no():
 
 def test_la_banda_inferior_empieza_justo_donde_termina_el_carril_nativo():
     assert mp.RANGO_INFERIOR[0] == mp.CARRIL_VERTICAL[1]
-    assert mp.DESPLAZAMIENTO_INFERIOR == pytest.approx(
-        mp.RANGO_INFERIOR[0] - mp.CARRIL_VERTICAL[0]
-    )
+    assert mp.DESPLAZAMIENTO_INFERIOR == pytest.approx(mp.RANGO_INFERIOR[0] - mp.CARRIL_VERTICAL[0])
     assert mp.DESPLAZAMIENTO_INFERIOR > 0, "banda inferior: desplazamiento positivo (baja la pieza)"
 
 

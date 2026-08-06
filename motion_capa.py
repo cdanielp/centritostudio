@@ -757,11 +757,14 @@ def _clips_de_motion(
                 {"plantilla": pieza.plantilla, "razon": r.razon_fallo.value, "detalle": r.detalle}
             )
             continue
-        # Backstop de Paso 2 (HF-4b): el anclaje de las plantillas horizontales (Paso 1) ya
-        # cubre el caso normal; esto es lo que evita que una pieza SALGA CORTADA cuando el
-        # texto es tan largo que ni el anclaje alcanza. Solo horizontal: el carril vertical no
-        # se toca en esta sesion y ya paso su propio gate visual en HF-2/HF-3.
-        if orientacion == "horizontal" and not pieza_cabe_en_el_lienzo(
+        # Backstop de Paso 2 (HF-4b, extendido a las dos orientaciones por el hotfix de HF-4):
+        # el anclaje estatico de las plantillas (Paso 1) cubre el caso normal; esto es lo que
+        # evita que una pieza salga CORTADA o INVISIBLE cuando el texto es tan largo -- o el
+        # anclaje de esa orientacion tiene un defecto -- que ni el anclaje alcanza. Antes corria
+        # solo en horizontal, razonando que "el carril vertical ya paso su propio gate visual en
+        # HF-2/HF-3"; ese gate solo probo UN texto corto (revision/hf-3/confirmar_banda.py) y
+        # dejo pasar exactamente esta clase de fallo en vertical con texto largo real.
+        if not pieza_cabe_en_el_lienzo(
             pieza, Path(r.ruta_mov), int(ancho), int(alto), orientacion=orientacion
         ):
             print(f"[motion] pieza '{pieza.plantilla}' omitida: {MOTIVO_NO_CABE_EN_EL_LIENZO}")
@@ -874,10 +877,24 @@ def bbox_alfa(
 
     crudo = subprocess.run(
         [
-            "ffmpeg", "-v", "error", "-ss", f"{t_s:.3f}", "-i", str(mov), "-frames:v", "1",
-            "-vf", "alphaextract,format=gray", "-f", "rawvideo", "-",
+            "ffmpeg",
+            "-v",
+            "error",
+            "-ss",
+            f"{t_s:.3f}",
+            "-i",
+            str(mov),
+            "-frames:v",
+            "1",
+            "-vf",
+            "alphaextract,format=gray",
+            "-f",
+            "rawvideo",
+            "-",
         ],
-        capture_output=True, check=True, timeout=timeout_s,
+        capture_output=True,
+        check=True,
+        timeout=timeout_s,
     ).stdout
     if len(crudo) < alto * ancho:
         return None
@@ -896,12 +913,17 @@ def pieza_cabe_en_el_lienzo(
     """True si el contenido de la pieza, ya desplazado por su banda, queda DENTRO del lienzo
     y sin invadir la franja de captions DE ESA orientacion. Backstop de tiempo de ejecucion
     (Paso 2 de HF-4b): el anclaje estatico de las plantillas (Paso 1) cubre el caso normal, esto
-    cubre el extremo que ese anclaje no pueda absorber. Sin alfa medible no hay nada que
-    recortar: pasa.
+    cubre el extremo que ese anclaje no pueda absorber.
+
+    Sin alfa medible NO pasa (HF-4 hotfix). Antes "sin alfa medible" fallaba abierto (`return
+    True`) razonando que sin bbox no habia nada que recortar; ese fail-open era el agujero que
+    dejo salir mariosoto_clip2_corto con returncode 0 y dos piezas invisibles en 9:16 (una pieza
+    a su instante de sostenimiento SIEMPRE tiene contenido -- cero alfa ahi es la pieza entera
+    fuera del lienzo, el caso mas grave, no el mas inocuo).
     """
     bbox = bbox_alfa(ruta_mov, pieza.duracion_ms * _FRACCION_INSTANTE_MEDIO, ancho, alto)
     if bbox is None:
-        return True
+        return False
     y0, y1 = bbox
     dy = (desplazamiento_de_banda(pieza.banda, alto) or (0, 0))[1]
     y0, y1 = y0 + dy, y1 + dy

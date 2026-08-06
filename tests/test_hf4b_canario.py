@@ -26,14 +26,22 @@ RAIZ = Path(__file__).resolve().parents[1]
 # (plantilla, orientacion, ancho, alto, texto_base, campo_a_variar)
 CASOS = [
     (
-        "hook", "horizontal", 1920, 1080,
-        {"kicker": "DATO", "titulo": "Un titulo cualquiera"}, "titulo",
+        "hook",
+        "horizontal",
+        1920,
+        1080,
+        {"kicker": "DATO", "titulo": "Un titulo cualquiera"},
+        "titulo",
     ),
     ("cierre", "horizontal", 1920, 1080, {"titulo": "Un cierre", "cta": "Sigue"}, "titulo"),
     ("titulo_seccion", "horizontal", 1920, 1080, {"titulo": "Una seccion"}, "titulo"),
     (
-        "dato_destacado", "horizontal", 1920, 1080,
-        {"cifra": "42%", "etiqueta": "crecimiento"}, "etiqueta",
+        "dato_destacado",
+        "horizontal",
+        1920,
+        1080,
+        {"cifra": "42%", "etiqueta": "crecimiento"},
+        "etiqueta",
     ),
     (
         "lower_third_minimo",
